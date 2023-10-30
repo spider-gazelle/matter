@@ -1,0 +1,22 @@
+name: matter
+version: 0.1.0
+
+authors:
+  - Giorgi Kavrelishvili <giorgi.kavrelishvili@pm.me>
+
+dependencies:
+  mDNS:
+    github: spider-gazelle/mdns
+
+  secure-remote-password:
+    github: spider-gazelle/secure-remote-password
+
+  named_information:
+    github: spider-gazelle/named_information
+
+  verhoeff:
+    github: spider-gazelle/verhoeff
+
+crystal: 1.9.2
+
+license: MIT
