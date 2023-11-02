@@ -4,7 +4,7 @@ module Matter
 
     abstract def port
     abstract def start
-    abstract def close
+    abstract def stop
 
     abstract def mdns_broadcaster=(mdnsBroadcaster : MdnsBroadcaster)
     abstract def mdns_scanner=(mdnsScanner : MdnsScanner)
