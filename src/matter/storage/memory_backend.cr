@@ -13,7 +13,7 @@ module Matter
       end
 
       def get(contexts : Array(String), key : String) : Type
-        raise Exception.new("Context and key must not be empty!") if context.size == 0 || key.size == 0
+        raise Exception.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
 

@@ -5,9 +5,6 @@ authors:
   - Giorgi Kavrelishvili <giorgi.kavrelishvili@pm.me>
 
 dependencies:
-  mDNS:
-    github: spider-gazelle/mdns
-
   secure-remote-password:
     github: spider-gazelle/secure-remote-password
 
