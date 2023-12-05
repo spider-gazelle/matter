@@ -67,7 +67,7 @@ module Matter
           when .is_a?(UInt32)
             return encode_unsigned_int(value.as(UInt32))
           when .is_a?(UInt64)
-            return encode_unsigned_int(value.as(UInt64))
+            raise Exception.new("UInt64 is not a valid value")
           when .is_a?(Bool)
             return encode_bool(value.as(Bool))
           else
@@ -111,7 +111,7 @@ module Matter
           encode_ansi1(Type::UTF8String.value, value.to_slice)
         end
 
-        private def encode_unsigned_int(value : UInt8 | UInt16 | UInt32 | UInt64, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian)
+        private def encode_unsigned_int(value : UInt8 | UInt16 | UInt32, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian)
           writer = IO::Memory.new
 
           byte_format.encode(value.to_u32, writer)
@@ -139,7 +139,7 @@ module Matter
           encode_ansi1(Type::UnsignedInt.value, slice)
         end
 
-        private def encode_length_bytes(value : UInt8 | UInt16 | UInt32 | UInt64, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian)
+        private def encode_length_bytes(value : UInt8 | UInt16 | UInt32, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian)
           writer = IO::Memory.new
 
           byte_format.encode(value.to_u32, writer)
@@ -168,7 +168,7 @@ module Matter
         end
 
         private def encode_ansi1(type : UInt8, data : Slice(UInt8)) : Slice(UInt8)
-          Slice(UInt8).join([Slice(UInt8).new(1, type), encode_length_bytes(data.size.to_u64), data])
+          Slice(UInt8).join([Slice(UInt8).new(1, type), encode_length_bytes(data.size.to_u32), data])
         end
 
         def decode(data : Slice(UInt8)) : Node
