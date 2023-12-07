@@ -9,7 +9,7 @@ module Matter
 
       CONSTRUCTED = 0x20
 
-      alias Value = UInt8 | UInt16 | UInt32 | UInt64 | String | Bool | Time | Nil | Slice(UInt8) | Array(Value) | Hash(String, Value)
+      alias Value = UInt8 | UInt16 | UInt32 | UInt32 | String | Bool | Time | Nil | Slice(UInt8) | Array(Value) | Hash(String, Value)
 
       enum Type : UInt8
         Boolean          = 0x01
@@ -49,7 +49,7 @@ module Matter
                 writer = IO::Memory.new
                 byte_format = IO::ByteFormat::BigEndian
 
-                byte_format.encode(value[BITS_PADDING].as(UInt64), writer)
+                byte_format.encode(value[BITS_PADDING].as(UInt8), writer)
 
                 return encode_ansi1(value[TAG_ID_KEY].as(UInt8), Slice(UInt8).join([writer.rewind.to_slice, value.[BYTES_KEY].as(Slice(UInt8))]))
               else
@@ -66,12 +66,12 @@ module Matter
             return encode_unsigned_int(value.as(UInt16))
           when .is_a?(UInt32)
             return encode_unsigned_int(value.as(UInt32))
-          when .is_a?(UInt64)
-            raise Exception.new("UInt64 is not a valid value")
           when .is_a?(Bool)
             return encode_bool(value.as(Bool))
+          when .is_a?(Nil)
+            return Slice(UInt8).new(1, 0)
           else
-            return Slice(UInt8).empty
+            raise Exception.new("An unsupported type was passed to the encoder")
           end
         end
 
@@ -90,7 +90,7 @@ module Matter
             encoded_entries.push(encode(entry))
           end
 
-          encode_ansi1((Type::Set.value | CONSTRUCTED).to_u8, Slice.join(encoded_entries))
+          encode_ansi1((Type::Set.value | CONSTRUCTED).to_u8, Slice(UInt8).join(encoded_entries))
         end
 
         private def encode_slice(value : Slice(UInt8)) : Slice(UInt8)
@@ -104,15 +104,17 @@ module Matter
             attributes.push(encode(hash[key]))
           end
 
-          encode_ansi1((Type::Sequence.value | CONSTRUCTED).to_u8, Slice.join(attributes))
+          encode_ansi1((Type::Sequence.value | CONSTRUCTED).to_u8, Slice(UInt8).join(attributes))
         end
 
         private def encode_string(value : String) : Slice(UInt8)
           encode_ansi1(Type::UTF8String.value, value.to_slice)
         end
 
-        private def encode_unsigned_int(value : UInt8 | UInt16 | UInt32, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian)
-          writer = IO::Memory.new
+        def encode_unsigned_int(value : UInt8 | UInt16 | UInt32, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian)
+          return encode_ansi1(Type::UnsignedInt.value, Slice(UInt8).new(1, 0)) if value == 0
+
+          writer = IO::Memory.new(5)
 
           byte_format.encode(value.to_u32, writer)
 
@@ -120,14 +122,11 @@ module Matter
 
           loop do
             writer.pos = index
-
             break if writer.read_bytes(UInt8, byte_format) != 0
 
             writer.pos = index + 1
-
             break if writer.read_bytes(UInt8, byte_format) >= 0x80
 
-            writer.pos = index
             index += 1
 
             break if index == 4
@@ -139,27 +138,31 @@ module Matter
           encode_ansi1(Type::UnsignedInt.value, slice)
         end
 
-        private def encode_length_bytes(value : UInt8 | UInt16 | UInt32, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian)
-          writer = IO::Memory.new
+        def encode_length_bytes(value, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian)
+          return Slice(UInt8).new(1, 0) if value == 0
 
-          byte_format.encode(value.to_u32, writer)
+          slice = Slice(UInt8).new(5)
+          writer = IO::Memory.new(slice)
 
           index = 0
+          writer.pos = 1
+
+          byte_format.encode(value.to_u32, writer)
+          writer.rewind
 
           loop do
-            writer.pos = index
+            break if writer.read_bytes(UInt8, byte_format) != 0_u8
 
-            break if writer.read_bytes(UInt8, byte_format) != 0
             index += 1
             break if index == 4
           end
 
-          length = writer.rewind.to_slice.size - index
-
+          length = slice.size - index
           writer.pos = index
 
           if length > 1 || writer.read_bytes(UInt8) >= 0x80
             index -= 1
+            writer.pos = index
             byte_format.encode(UInt8.new(0x80 + length), writer)
           end
 
@@ -168,7 +171,7 @@ module Matter
         end
 
         private def encode_ansi1(type : UInt8, data : Slice(UInt8)) : Slice(UInt8)
-          Slice(UInt8).join([Slice(UInt8).new(1, type), encode_length_bytes(data.size.to_u32), data])
+          Slice(UInt8).join([Slice(UInt8).new(1, type), encode_length_bytes(data.size), data])
         end
 
         def decode(data : Slice(UInt8)) : Node
@@ -187,7 +190,7 @@ module Matter
             array = slice.to_a.[1..]
             data = Slice(UInt8).new(array.size) { |i| array[i] }
 
-            return Node.new(tag_id: tag.as(UInt8), data: data, padding: array.first.to_u64)
+            return Node.new(tag_id: tag.as(UInt8), data: data, padding: array.first.to_u8)
           end
 
           if (tag & CONSTRUCTED) == 0
@@ -233,8 +236,10 @@ module Matter
         getter value : Hash(String, Value) = {} of String => Value
 
         def initialize(object_id : String)
+          chunks = object_id.split.map(&.to_u8(16))
+
           value[TAG_ID_KEY] = Type::ObjectIdentifier.value
-          value[BYTES_KEY] = object_id.to_slice
+          value[BYTES_KEY] = Slice(UInt8).new(chunks.size) { |i| chunks[i] }
         end
       end
 
@@ -254,7 +259,7 @@ module Matter
       class ByteArray
         getter value : Hash(String, Value) = {} of String => Value
 
-        def initialize(data : Slice(UInt8), padding : UInt64 = 0)
+        def initialize(data : Slice(UInt8), padding : UInt8 = 0)
           value[TAG_ID_KEY] = Type::BitString.value
           value[BYTES_KEY] = data
           value[BITS_PADDING] = padding
@@ -266,9 +271,9 @@ module Matter
 
         getter value : Hash(String, Value) = {} of String => Value
 
-        def initialize(tag_id : UInt8, value : Value?)
+        def initialize(tag_id : UInt8, sub : Value? = nil)
           value[TAG_ID_KEY] = tag_id | Class::ContextSpecific.value | CONSTRUCTED
-          value[BYTES_KEY] = value.nil? ? Slice(UInt8).empty : encode(value)
+          value[BYTES_KEY] = sub.nil? ? Slice(UInt8).empty : encode(sub)
         end
       end
 
@@ -284,7 +289,7 @@ module Matter
       class Node
         getter value : Hash(String, Value) = {} of String => Value
 
-        def initialize(tag_id : UInt8, data : Slice(UInt8), elements : Array(Value) = [] of Value, padding : UInt64 = 0)
+        def initialize(tag_id : UInt8, data : Slice(UInt8), elements : Array(Value) = [] of Value, padding : UInt8? = nil)
           value[TAG_ID_KEY] = tag_id
           value[BYTES_KEY] = data
           value[ELEMENTS_KEY] = elements
@@ -293,69 +298,71 @@ module Matter
       end
 
       PublicKeyEcPrime256v1_X962 = ->(key : Slice(UInt8)) {
-        {
-          type: {
-            algorithm: ObjectId.new("2A8648CE3D0201"),   # EC Public Key
-            curve:     ObjectId.new("2A8648CE3D030107"), # Curve P256_V1
+        value = {
+          "type" => {
+            "algorithm" => ObjectId.new("2A 86 48 CE 3D 02 01").value.as(Matter::Codec::DERCodec::Value),    # EC Public Key
+            "curve"     => ObjectId.new("2A 86 48 CE 3D 03 01 07").value.as(Matter::Codec::DERCodec::Value), # Curve P256_V1
           },
-          bytes: ByteArray.new(key),
-        }
+          "bytes" => ByteArray.new(key).value.as(Matter::Codec::DERCodec::Value),
+        } of String => Value
+
+        value.as(Matter::Codec::DERCodec::Value)
       }
 
       EcdsaWithSHA256_X962 = ->{
-        Object.new("2A8648CE3D040302")
+        Object.new("2A 86 48 CE 3D 04 03 02").value
       }
 
       SHA256_CMS = ->{
-        Object.new("608648016503040201")
+        Object.new("60 86 48 01 65 03 04 02 01").value
       }
 
       OrganisationName_X520 = ->(name : String) {
-        [Object.new("55040A", {"name" => name})]
+        [Object.new("55 04 0A", {"name" => name}).value] of Value
       }
 
       SubjectKeyIdentifier_X509 = ->(identifier : Slice(UInt8)) {
-        Object.new("551d0e", {"value" => Base.encode(identifier)})
+        Object.new("55 1d 0e", {"value" => Base.encode(identifier)}).value
       }
 
       AuthorityKeyIdentifier_X509 = ->(identifier : Slice(UInt8)) {
-        Object.new("551d23", {"value" => Base.encode({"id" => ContextTaggedSlice.new(0, identifier).value})})
+        Object.new("55 1d 23", {"value" => Base.encode({"id" => ContextTaggedSlice.new(0, identifier).value})}).value
       }
 
       BasicConstraints_X509 = ->(constraints : Value) {
-        Object.new("551d13", {"critical" => true, "value" => Base.encode(constraints)})
+        Object.new("55 1d 13", {"critical" => true, "value" => Base.encode(constraints)}).value
       }
 
       ExtendedKeyUsage_X509 = ->(client_auth : Bool, server_auth : Bool) {
-        Object.new("551d25", {
+        Object.new("55 1d 25", {
           "critical" => true,
           "value"    => Base.encode({
-            "client" => client_auth ? ObjectId.new("2b06010505070302").value : nil,
-            "server" => server_auth ? ObjectId.new("2b06010505070301").value : nil,
+            "client" => client_auth ? ObjectId.new("2b 06 01 05 05 07 03 02").value : nil,
+            "server" => server_auth ? ObjectId.new("2b 06 01 05 05 07 03 01").value : nil,
           } of String => Value),
-        })
+        }).value
       }
 
       KeyUsage_Signature_X509 = ->{
-        Object.new("551d0f", {
+        Object.new("55 1d 0f", {
           "critical" => true.as(Value),
           "value"    => Base.encode(ByteArray.new(Slice(UInt8).new(1, (0x03 << 1).to_u8), 1).value),
-        } of String => Value)
+        } of String => Value).value
       }
 
       KeyUsage_Signature_ContentCommited_X509 = ->{
-        Object.new("551d0f", {
+        Object.new("55 1d 0f", {
           "critical" => true,
           "value"    => Base.encode(ByteArray.new(Slice(UInt8).new(1, (0x03 << 1).to_u8), 1).value),
-        } of String => Value)
+        } of String => Value).value
       }
 
       Pkcs7Data = ->(data : Value) {
-        Object.new("2A864886F70D010701", {"value" => ContextTagged.new(0, data).value})
+        Object.new("2A 86 48 86 F7 0D 01 07 01", {"value" => ContextTagged.new(0, data).value}).value
       }
 
       Pkcs7SignedData = ->(data : Value) {
-        Object.new("2a864886f70d010702", {"value" => ContextTagged.new(0, data).value})
+        Object.new("2a 86 48 86 f7 0d 01 07 02", {"value" => ContextTagged.new(0, data).value}).value
       }
     end
   end
