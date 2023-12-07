@@ -236,10 +236,8 @@ module Matter
         getter value : Hash(String, Value) = {} of String => Value
 
         def initialize(object_id : String)
-          chunks = object_id.split.map(&.to_u8(16))
-
           value[TAG_ID_KEY] = Type::ObjectIdentifier.value
-          value[BYTES_KEY] = Slice(UInt8).new(chunks.size) { |i| chunks[i] }
+          value[BYTES_KEY] = object_id.hexbytes
         end
       end
 
@@ -300,8 +298,8 @@ module Matter
       PublicKeyEcPrime256v1_X962 = ->(key : Slice(UInt8)) {
         value = {
           "type" => {
-            "algorithm" => ObjectId.new("2A 86 48 CE 3D 02 01").value.as(Matter::Codec::DERCodec::Value),    # EC Public Key
-            "curve"     => ObjectId.new("2A 86 48 CE 3D 03 01 07").value.as(Matter::Codec::DERCodec::Value), # Curve P256_V1
+            "algorithm" => ObjectId.new("2A8648CE3D0201").value.as(Matter::Codec::DERCodec::Value),    # EC Public Key
+            "curve"     => ObjectId.new("2A8648CE3D030107").value.as(Matter::Codec::DERCodec::Value), # Curve P256_V1
           },
           "bytes" => ByteArray.new(key).value.as(Matter::Codec::DERCodec::Value),
         } of String => Value
@@ -310,59 +308,59 @@ module Matter
       }
 
       EcdsaWithSHA256_X962 = ->{
-        Object.new("2A 86 48 CE 3D 04 03 02").value
+        Object.new("2A8648CE3D040302").value
       }
 
       SHA256_CMS = ->{
-        Object.new("60 86 48 01 65 03 04 02 01").value
+        Object.new("608648016503040201").value
       }
 
       OrganisationName_X520 = ->(name : String) {
-        [Object.new("55 04 0A", {"name" => name}).value] of Value
+        [Object.new("55040A", {"name" => name}).value] of Value
       }
 
       SubjectKeyIdentifier_X509 = ->(identifier : Slice(UInt8)) {
-        Object.new("55 1d 0e", {"value" => Base.encode(identifier)}).value
+        Object.new("551d0e", {"value" => Base.encode(identifier)}).value
       }
 
       AuthorityKeyIdentifier_X509 = ->(identifier : Slice(UInt8)) {
-        Object.new("55 1d 23", {"value" => Base.encode({"id" => ContextTaggedSlice.new(0, identifier).value})}).value
+        Object.new("551d23", {"value" => Base.encode({"id" => ContextTaggedSlice.new(0, identifier).value})}).value
       }
 
       BasicConstraints_X509 = ->(constraints : Value) {
-        Object.new("55 1d 13", {"critical" => true, "value" => Base.encode(constraints)}).value
+        Object.new("551d13", {"critical" => true, "value" => Base.encode(constraints)}).value
       }
 
       ExtendedKeyUsage_X509 = ->(client_auth : Bool, server_auth : Bool) {
-        Object.new("55 1d 25", {
+        Object.new("551d25", {
           "critical" => true,
           "value"    => Base.encode({
-            "client" => client_auth ? ObjectId.new("2b 06 01 05 05 07 03 02").value : nil,
-            "server" => server_auth ? ObjectId.new("2b 06 01 05 05 07 03 01").value : nil,
+            "client" => client_auth ? ObjectId.new("2b06010505070302").value : nil,
+            "server" => server_auth ? ObjectId.new("2b06010505070301").value : nil,
           } of String => Value),
         }).value
       }
 
       KeyUsage_Signature_X509 = ->{
-        Object.new("55 1d 0f", {
+        Object.new("551d0f", {
           "critical" => true.as(Value),
           "value"    => Base.encode(ByteArray.new(Slice(UInt8).new(1, (0x03 << 1).to_u8), 1).value),
         } of String => Value).value
       }
 
       KeyUsage_Signature_ContentCommited_X509 = ->{
-        Object.new("55 1d 0f", {
+        Object.new("551d0f", {
           "critical" => true,
           "value"    => Base.encode(ByteArray.new(Slice(UInt8).new(1, (0x03 << 1).to_u8), 1).value),
         } of String => Value).value
       }
 
       Pkcs7Data = ->(data : Value) {
-        Object.new("2A 86 48 86 F7 0D 01 07 01", {"value" => ContextTagged.new(0, data).value}).value
+        Object.new("2A864886F70D010701", {"value" => ContextTagged.new(0, data).value}).value
       }
 
       Pkcs7SignedData = ->(data : Value) {
-        Object.new("2a 86 48 86 f7 0d 01 07 02", {"value" => ContextTagged.new(0, data).value}).value
+        Object.new("2a864886f70d010702", {"value" => ContextTagged.new(0, data).value}).value
       }
     end
   end
