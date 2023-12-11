@@ -76,6 +76,8 @@ module Matter
       end
 
       module Base
+        extend self
+
         def decode_packet(data : Slice(UInt8)) : Packet
           io = IO::Memory.new
 

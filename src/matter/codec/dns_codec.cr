@@ -114,6 +114,8 @@ module Matter
       end
 
       module Base
+        extend self
+
         def decode(message : Slice(UInt8), byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian) : Message?
           begin
             reader = IO::Memory.new
