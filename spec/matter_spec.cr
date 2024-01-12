@@ -17,7 +17,6 @@ describe Matter do
 
     message = Matter::Codec::MessageCodec::Message.new(packet_header: packet_header, payload_header: payload_header, payload: Slice[1_u8, 2_u8, 3_u8, 4_u8, 5_u8])
 
-
     payload_encoded_packet = Matter::Codec::MessageCodec::Base.encode_payload(message)
     second_message = Matter::Codec::MessageCodec::Base.decode_payload(payload_encoded_packet)
 
@@ -33,7 +32,7 @@ describe Matter do
     query = Matter::Codec::DNSCodec::Query.new(name: "www.google.com", record_type: Matter::Codec::DNSCodec::RecordType::PTR, record_class: Matter::Codec::DNSCodec::RecordClass::IN, unicast_response: false)
 
     queries = [
-      query
+      query,
     ] of Matter::Codec::DNSCodec::Query
 
     answers = [
