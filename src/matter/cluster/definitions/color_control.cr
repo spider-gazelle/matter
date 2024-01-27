@@ -44,6 +44,17 @@ module Matter
           Down = 3
         end
 
+        enum Action : UInt8
+          DeActivateTheColorLoop                                              = 0
+          ActivateTheColorLoopFromTheValueInTheColorLoopStartEnhancedHueField = 1
+          ActivateTheColorLoopFromTheValueOfTheEnhancedCurrentHueAttribute    = 2
+        end
+
+        enum ColorLoopSetDirection : UInt8
+          DecrementTheHueInTheColorLoop = 0
+          IncrementTheHueInTheColorLoop = 1
+        end
+
         # Input to the ColorControl moveToHue command
         struct MoveToHueRequest
           include TLV::Serializable
@@ -228,6 +239,8 @@ module Matter
 
         # Input to the ColorControl moveColor command
         struct MoveColorRequest
+          include TLV::Serializable
+
           # The X field specifies the rate of movement in steps per second. A step is a change in the device’s
           # CurrentX attribute of one unit.
           @[TLV::Field(tag: 0)]
@@ -383,6 +396,167 @@ module Matter
         # Input to the ColorControl enhancedMoveToHue command
         struct EnhancedMoveToHueRequest
           include TLV::Serializable
+
+          # The Hue field specifies the hue to be moved to.
+          @[TLV::Field(tag: 0)]
+          property enhanced_hue : UInt8
+
+          # The Direction field shall be one of the non-reserved values in Values of the Direction Field.
+          @[TLV::Field(tag: 1)]
+          property direction : Direction
+
+          # The TransitionTime field specifies, in 1/10ths of a second, the time that shall be taken to move to the new hue.
+          @[TLV::Field(tag: 2)]
+          property transition_time : UInt16
+
+          @[TLV::Field(tag: 3)]
+          property mask : UInt8
+
+          @[TLV::Field(tag: 4)]
+          property override : UInt8
+        end
+
+        # Input to the ColorControl enhancedMoveHue command
+        struct EnhancedMoveHueRequest
+          include TLV::Serializable
+
+          # This field is identical to the MoveMode field of the MoveHue command of the Color Control cluster (see
+          # sub-clause MoveHue Command). If the MoveMode field is equal to 0 (Stop), the Rate field shall be ignored.
+          @[TLV::Field(tag: 0)]
+          property move_mode : MoveMode
+
+          # The Rate field specifies the rate of movement in steps per second. A step is a change in the extended hue of
+          # a device by one unit. If the MoveMode field is set to 1 (up) or 3 (down) and the Rate field has a value of
+          # zero, the command has no effect and a response command shall be sent in response, with the status code set
+          # to INVALID_COMMAND. If the MoveMode field is set to 0 (stop) the Rate field shall be ignored.
+          @[TLV::Field(tag: 1)]
+          property rate : UInt16
+
+          @[TLV::Field(tag: 2)]
+          property mask : UInt8
+
+          @[TLV::Field(tag: 3)]
+          property override : UInt8
+        end
+
+        # Input to the ColorControl enhancedStepHue command
+        struct EnhancedStepHueRequest
+          include TLV::Serializable
+
+          # This field is identical to the StepMode field of the StepHue command of the Color Control cluster (see
+          # sub-clause StepHue Command).
+          @[TLV::Field(tag: 0)]
+          property step_mode : StepMode
+
+          # The StepSize field specifies the change to be added to (or subtracted from) the current value of the
+          # device’s enhanced hue.
+          @[TLV::Field(tag: 1)]
+          property step_size : UInt16
+
+          # The TransitionTime field specifies, in units of 1/10ths of a second, the time that shall be taken to perform
+          # the step. A step is a change to the device’s enhanced hue of a magnitude corresponding to the StepSize field.
+          #
+          # Note: Here TransitionTime data field is of data type uint16, while the TransitionTime data field of the
+          # StepHue command is of data type uint8.
+          @[TLV::Field(tag: 2)]
+          property transition_time : UInt16
+
+          @[TLV::Field(tag: 3)]
+          property mask : UInt8
+
+          @[TLV::Field(tag: 4)]
+          property override : UInt8
+        end
+
+        # Input to the ColorControl enhancedMoveToHueAndSaturation command
+        struct EnhancedMoveToHueAndSaturationRequest
+          include TLV::Serializable
+
+          # The EnhancedHue field specifies the target extended hue for the lamp.
+          @[TLV::Field(tag: 0)]
+          property enhanced_hue : UInt16
+
+          # This field is identical to the Saturation field of the MoveToHueAndSaturation command of the Color Control
+          # cluster (see sub-clause MoveToHueAndSaturation Command).
+          @[TLV::Field(tag: 1)]
+          property saturation : UInt8
+
+          # This field is identical to the TransitionTime field of the MoveToHue command of the Color Control cluster
+          # (see sub-clause MoveToHueAndSaturation Command).
+          @[TLV::Field(tag: 2)]
+          property transition_time : UInt16
+
+          @[TLV::Field(tag: 3)]
+          property mask : UInt8
+
+          @[TLV::Field(tag: 4)]
+          property override : UInt8
+        end
+
+        # Input to the ColorControl colorLoopSet command
+        struct ColorLoopSetRequest
+          include TLV::Serializable
+
+          # The UpdateFlags field specifies which color loop attributes to update before the color loop is started. This
+          # field shall be formatted as illustrated in Format of the UpdateFlags Field of the ColorLoopSet Command.
+          #
+          # The UpdateAction sub-field is 1 bit in length and specifies whether the device shall adhere to the action
+          # field in order to process the command. If this sub-field is set to 1, the device shall adhere to the action
+          # field. If this sub-field is set to 0, the device shall ignore the Action field.
+          #
+          # The UpdateDirection sub-field is 1 bit in length and specifies whether the device shall update the
+          # ColorLoopDirection attribute with the Direction field. If this sub-field is set to 1, the device shall
+          # update the value of the ColorLoopDirection attribute with the value of the Direction field. If this
+          # sub-field is set to 0, the device shall ignore the Direction field.
+          #
+          # The UpdateTime sub-field is 1 bit in length and specifies whether the device shall update the ColorLoopTime
+          # attribute with the Time field. If this sub-field is set to 1, the device shall update the value of the
+          # ColorLoopTime attribute with the value of the Time field. If this sub-field is set to 0, the device shall
+          # ignore the Time field.
+          #
+          # The UpdateStartHue sub-field is 1 bit in length and specifies whether the device shall update the
+          # ColorLoopStartEnhancedHue attribute with the StartHue field. If this sub-field is set to 1, the device shall
+          # update the value of the ColorLoopStartEnhancedHue attribute with the value of the StartHue field. If this
+          # sub-field is set to 0, the device shall ignore the StartHue field.
+          @[TLV::Field(tag: 0)]
+          property update_flag : UInt8
+
+          # The Action field specifies the action to take for the color loop if the UpdateAction sub-field of the
+          # UpdateFlags field is set to 1. This field shall be set to one of the non-reserved values listed in Values of
+          # the Action Field of the ColorLoopSet Command.
+          @[TLV::Field(tag: 1)]
+          property action : Action
+
+          # The Direction field specifies the direction for the color loop if the Update Direction field of the
+          # UpdateFlags field is set to 1. This field shall be set to one of the non-reserved values listed in Values of
+          # the Direction Field of the ColorLoopSet Command.
+          @[TLV::Field(tag: 2)]
+          property direction : ColorLoopSetDirection
+
+          # The Time field specifies the number of seconds over which to perform a full color loop if the UpdateTime
+          # sub-field of the UpdateFlags field is set to 1.
+          @[TLV::Field(tag: 3)]
+          property time : UInt16
+
+          @[TLV::Field(tag: 4)]
+          property start_hue : UInt16
+
+          @[TLV::Field(tag: 5)]
+          property mask : UInt8
+
+          @[TLV::Field(tag: 6)]
+          property override : UInt8
+        end
+
+        # Input to the ColorControl stopMoveStep command
+        struct StopMoveStepRequest
+          include TLV::Serializable
+
+          @[TLV::Field(tag: 0)]
+          property mask : UInt8
+
+          @[TLV::Field(tag: 1)]
+          property override : UInt8
         end
       end
     end

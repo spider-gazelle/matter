@@ -3,6 +3,8 @@ module Matter
     module Definitions
       module Binding
         struct Target
+          include TLV::Serializable
+
           # This field is the remote target node ID. If the Endpoint field is present, this field shall be present.
           @[TLV::Field(tag: 1)]
           property node : DataType::NodeId?
