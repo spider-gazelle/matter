@@ -89,8 +89,6 @@ module Matter
           @[TLV::Field(tag: 0)]
           property timeout : UInt16
         end
-
-
       end
     end
   end

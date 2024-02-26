@@ -55,7 +55,7 @@ module Matter
         struct RenameInputRequest
           include TLV::Serializable
 
-          @[TLV::Filed(tag: 0)]
+          @[TLV::Field(tag: 0)]
           property index : UInt8
 
           @[TLV::Field(tag: 1)]
