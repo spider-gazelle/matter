@@ -295,8 +295,15 @@ module Matter
           end
         end
 
-        def encode(message_type : MessageType, transaction_id : UInt16, queries : Array(Query), answers : Array(Record), authorities : Array(Record), additional_records : Array(Record), byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian) : Slice(UInt8)
+        def encode(message : Message, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian) : Slice(UInt8)
           writer = IO::Memory.new
+
+          message_type = message.message_type
+          transaction_id = message.transaction_id
+          queries = message.queries
+          answers = message.answers
+          authorities = message.authorities
+          additional_records = message.additional_records
 
           if queries.size > 0 && message_type != MessageType::Query && message_type != MessageType::TruncatedQuery
             raise Exception.new("Queries can only be included in query messages!")
@@ -331,7 +338,7 @@ module Matter
           writer.rewind.to_slice
         end
 
-        private def encode_record(record_entry : Record, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian) : Slice(UInt8)
+        def encode_record(record_entry : Record, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian) : Slice(UInt8)
           writer = IO::Memory.new
 
           writer.write(encode_qname(record_entry.name, byte_format))
