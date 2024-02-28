@@ -28,6 +28,8 @@ module Matter
       end
 
       class Record
+        include JSON::Serializable
+
         getter name : String
         getter record_type : RecordType
         getter record_class : RecordClass
@@ -37,9 +39,15 @@ module Matter
 
         def initialize(@name : String, @record_type : RecordType, @record_class : RecordClass, @ttl : UInt32, @value : Value, @flush_cache : Bool = false)
         end
+
+        def to_h
+          {"name" => name, "recordType" => record_type, "recordClass" => record_class, "isFlushCache" => flush_cache?, "ttl" => ttl, "value" => value}
+        end
       end
 
       class Query
+        include JSON::Serializable
+
         getter name : String
         getter record_type : RecordType
         getter record_class : RecordClass
@@ -47,9 +55,15 @@ module Matter
 
         def initialize(@name : String, @record_type : RecordType, @record_class : RecordClass, @unicast_response : Bool = false)
         end
+
+        def to_h
+          {"name" => name, "recordType" => record_type, "recordClass" => record_class, "isUnicastResponse" => unicast_response?}
+        end
       end
 
       class Message
+        include JSON::Serializable
+
         getter transaction_id : UInt16
         getter message_type : MessageType
         getter queries : Array(Query)
@@ -58,6 +72,10 @@ module Matter
         getter additional_records : Array(Record)
 
         def initialize(@transaction_id : UInt16, @message_type : MessageType, @queries : Array(Query), @answers : Array(Record), @authorities : Array(Record), @additional_records : Array(Record))
+        end
+
+        def to_h
+          {"transactionId" => transaction_id, "messageType" => message_type, "queries" => queries.map(&.to_h), "answers" => answers.map(&.to_h), "authorities" => authorities.map(&.to_h), "additionalRecords" => additional_records.map(&.to_h)}
         end
       end
 
@@ -74,12 +92,18 @@ module Matter
       end
 
       class SrvRecordValue
+        include JSON::Serializable
+
         getter priority : UInt16
         getter weight : UInt16
         getter port : UInt16
         getter target : String
 
         def initialize(@priority : UInt16, @weight : UInt16, @port : UInt16, @target : String)
+        end
+
+        def to_h
+          {"priority" => priority, "weight" => weight, "port" => port, "taget" => target}
         end
       end
 

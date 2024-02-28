@@ -1,12 +1,14 @@
 module Matter
   module Utilities
     class Cache(T)
-      @known_keys = Set(String).new
-      @values = Hash(String, T).new
-      @timestamps = Hash(String, Int64).new
+      alias Interface = Socket::IPAddress | UInt32
+
+      @known_keys = Set(Interface).new
+      @values = Hash(Interface, T).new
+      @timestamps = Hash(Interface, Int64).new
       @periodic_timer = Channel(Bool).new
 
-      def initialize(@generator : String -> T, @expiration_ms : Int64, @expire_callback : (String, T -> Nil)? = nil)
+      def initialize(@generator : Interface -> T, @expiration_ms : Int64, @expire_callback : (Interface, T -> Nil)? = nil)
         spawn do
           loop do
             if has_expired = @periodic_timer.receive?
@@ -24,8 +26,7 @@ module Matter
         end
       end
 
-      def get(params : Array) : T
-        key = params.join(",")
+      def get(key : Interface) : T
         value = @values[key]?
 
         if value.nil?
@@ -38,7 +39,7 @@ module Matter
         value
       end
 
-      def keys : Array(String)
+      def keys : Array(Interface)
         @known_keys.to_a
       end
 
@@ -54,7 +55,7 @@ module Matter
         @periodic_timer.send(true)
       end
 
-      private def delete_entry(key : String)
+      private def delete_entry(key : Interface)
         value = @values[key]?
 
         unless @expire_callback.nil? || value.nil?

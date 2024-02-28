@@ -1,4 +1,6 @@
 require "big"
+require "log"
+require "json"
 
 require "tlv"
 require "secure-remote-password"
@@ -9,5 +11,4 @@ require "./extensions/**"
 require "./matter/**"
 
 module Matter
-  PORT = 5540
 end

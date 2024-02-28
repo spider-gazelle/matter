@@ -1,5 +1,7 @@
 module Matter
   class Server
+    PORT = 5540
+
     getter nodes : Array(Node) = [] of Node
 
     getter storage_manager : Storage::Manager
