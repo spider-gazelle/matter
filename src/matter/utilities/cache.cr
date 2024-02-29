@@ -1,7 +1,7 @@
 module Matter
   module Utilities
     class Cache(T)
-      alias Interface = Socket::IPAddress | UInt32
+      alias Interface = Socket::IPAddress
 
       @known_keys = Set(Interface).new
       @values = Hash(Interface, T).new

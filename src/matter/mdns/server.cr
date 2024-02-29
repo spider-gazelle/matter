@@ -8,14 +8,14 @@ module Matter
       Log = ::Log.for(self)
 
       alias DNSCodec = Codec::DNSCodec
-      alias Interface = Socket::IPAddress | UInt32
+      alias Interface = Socket::IPAddress
 
       include DNSCodec::Base
       include Utilities::DeepEqual
 
       getter multicast_server : Network::MulticastServer
 
-      def initialize(address : Socket::IPAddress = Network::MulticastServer::IPv4, buffer_size = 16, loopback = false, hops = 255)
+      def initialize(address : Socket::IPAddress = Network::Constants::MDNS_ADDRESS_IPv4, buffer_size = 16, loopback = false, hops = 255)
         Log.debug { "Creating the multicast server" }
 
         # Assign the multicast server
@@ -37,7 +37,7 @@ module Matter
           15 * 60 * 1000
         )
 
-        @record_last_sent_as_multicast_answer = Hash(String, Int32).new
+        @record_last_sent_as_multicast_answer = Hash(String, Int64).new
 
         Log.debug { "Listening to incomming packets" }
 
@@ -49,12 +49,16 @@ module Matter
             break if multicast_server.socket.closed?
 
             size, address = multicast_server.socket.receive(buffer)
+
+            Log.debug { "Received a connection from (#{address})" }
+
             break if size == 0
 
             message_slice = buffer[0..size].clone
             handle_dns_message(address, message_slice)
 
             # as per DNS-SD spec wait 20-120ms before sending more packets
+            # TODO: Fix sleep
             sleep (20 + (rand(100) / 1000.0).floor).seconds
           end
         end
@@ -70,7 +74,7 @@ module Matter
       def announce(interface : Interface, announced_net_port : Int32? = nil)
         records = @records.get(interface)
 
-        Log.debug { "Getting records for #{interface} "}
+        Log.debug { "Getting records for #{interface} " }
 
         records.each do |key, value|
           if announced_net_port.nil? != true && key_for_port?(key, announced_net_port) != true
@@ -130,13 +134,11 @@ module Matter
       end
 
       private def handle_dns_message(address : Socket::IPAddress, message_slice : Slice(UInt8))
-
         Log.debug { "Received a message from (#{address}), (#{message_slice.size})" }
 
-        interface = address.family.inet? ? Network::Constants::DEFAULT_INTERFACE_IPV4 : Network::Constants::DEFAULT_INTERFACE_IPV6
+        interface = address.family.inet? ? Network::Constants::MDNS_ADDRESS_IPv4 : Network::Constants::MDNS_ADDRESS_IPv6
         interface_records = @records.get(interface)
 
-        # TODO: Return DNS message processing under this line to avoid load
         if interface_records.size == 0
           Log.info { "DROPPING: No records found for the interface, (#{interface})" }
           return
@@ -167,53 +169,61 @@ module Matter
           end)
 
           additional_records =
-            message.queries.find { |query| query.record_type != DNSCodec::RecordType::A || query.record_type != DNSCodec::RecordType::AAAA } ? port_records.reject { |port_record| !answers.includes?(port_record) && port_record.record_type != DNSCodec::RecordType::PTR } : [] of DNSCodec::Record
+            message.queries.find { |query| query.record_type != DNSCodec::RecordType::A || query.record_type != DNSCodec::RecordType::AAAA } ? port_records.select { |record| !answers.includes?(record) && record.record_type != DNSCodec::RecordType::PTR } : [] of DNSCodec::Record
 
-          message.answers.each do |known_answer|
-            answers = (answers.reject do |answer|
-              deep_equal?(answer.to_h, known_answer.to_h)
+          if answers.size > 0
+            message.answers.each do |known_answer|
+              answers = (answers.select do |record|
+                !deep_equal?(record.to_h, known_answer.to_h)
+              end) || [] of DNSCodec::Record
 
               break if answers.size == 0
-            end) || [] of DNSCodec::Record
-          end
+            end
 
-          next if answers.size == 0
+            next if answers.size == 0
 
-          if additional_records.size > 0
-            message.answers.each do |known_answer|
-              additional_records = additional_records.reject { |additional_record| deep_equal?(additional_record.to_h, known_answer.to_h) }
+            if additional_records.size > 0
+              message.answers.each do |known_answer|
+                additional_records = additional_records.select do |record|
+                  !deep_equal?(record.to_h, known_answer.to_h)
+                end
+              end
             end
           end
 
           now = Time.local.to_unix_ms
 
-          unicast_response = (message.queries.reject do |query|
+          unicast_response = (message.queries.select do |query|
             !query.unicast_response?
           end).size == 0
 
           answers_time_since_last_multicast = answers.map do |answer|
-            {"timeSinceLastMulticast" => now - @record_last_sent_as_multicast_answer[build_dns_record_key(answer, interface)] || 0, "ttl" => answer.ttl}
+            {"timeSinceLastMulticast" => now - (@record_last_sent_as_multicast_answer[build_dns_record_key(answer, interface)]? || 0), "ttl" => answer.ttl}
           end
 
-          if (unicast_response && (answers_time_since_last_multicast.reject do |answer_time|
-               answer_time["timeSinceLastMulticast"] < (answer_time["ttl"] / 4) * 100
+          if (unicast_response && (answers_time_since_last_multicast.select do |answer_time|
+               answer_time["timeSinceLastMulticast"] > (answer_time["ttl"] / 4) * 100
              end).size > 0)
             # If the query is for unicast response, still send as multicast if they were last sent as multicast longer then 1/4 of their ttl
             unicast_response = false
           end
 
-          unless unicast_response
-            answers = answers.reject do |answer|
+          if !unicast_response
+            answers = answers.select do |answer|
               index = answers.index(answer)
 
-              next if index.nil?
-              answers_time_since_last_multicast[index]["timeSinceLastMulticast"] < 1000
+              raise Exception.new("Index can not be nil") if index.nil?
+
+              value = answers_time_since_last_multicast[index]
+              time_since_last_multicast = value["timeSinceLastMulticast"]
+
+              time_since_last_multicast > 1000
             end
 
             next if answers.size == 0
 
             answers.each do |answer|
-              @record_last_sent_as_multicast_answer[build_dns_record_key(answer, interface)]
+              @record_last_sent_as_multicast_answer[build_dns_record_key(answer, interface)] = now
             end
           end
 
@@ -283,16 +293,20 @@ module Matter
 
         if unicast_target
           multicast_server.socket.send(encoded_message_to_send, to: unicast_target)
+
+          Log.debug { "Sent message (#{message_to_send.to_json}) to (#{unicast_target}" }
         else
           multicast_server.socket.send(encoded_message_to_send, to: interface.as(Socket::IPAddress))
+
+          Log.debug { "Sent message (#{message_to_send.to_json}) to (#{interface}" }
         end
       end
 
       private def announce_records_for_interface(interface : Interface, records : Array(DNSCodec::Record))
         Log.debug { "Announcing records (#{records.to_json}) for interface (#{interface})" }
 
-        answers = records.reject { |record| record.record_type != DNSCodec::RecordType::PTR }
-        additional_records = records.reject { |record| record.record_type == DNSCodec::RecordType::PTR }
+        answers = records.select { |record| record.record_type == DNSCodec::RecordType::PTR }
+        additional_records = records.select { |record| record.record_type != DNSCodec::RecordType::PTR }
 
         message = DNSCodec::Message.new(
           transaction_id: 0_u16,
@@ -307,10 +321,10 @@ module Matter
 
       private def query_records(query : DNSCodec::Query, port_records : Array(DNSCodec::Record)) : Array(DNSCodec::Record)
         if query.record_type == DNSCodec::RecordType::ANY
-          return port_records.reject { |port_record| port_record.name != query.name }
+          return port_records.select { |port_record| port_record.name == query.name }
         end
 
-        port_records.reject { |port_record| port_record.name != query.name && port_record != query.record_type }
+        port_records.select { |port_record| port_record.name == query.name && port_record == query.record_type }
       end
     end
   end
