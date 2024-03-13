@@ -237,19 +237,21 @@ module Matter
 
           send_records(message, interface, unicast_response ? address : nil)
         end
+      rescue exception : Exception
+        Log.error(exception: exception) { "DROPPING: An issue occured during processing the DNS packet" }
       end
 
       private def send_records(message : DNSCodec::Message, interface : Interface, unicast_target : Socket::IPAddress? = nil)
         answers_to_send = [] of DNSCodec::Record + message.answers
         additional_records_to_send = [] of DNSCodec::Record + message.additional_records
 
-        message_to_send = DNSCodec::Message.new(
+        message_to_send = DNSCodec::MessagePartiallyPreEncoded.new(
           transaction_id: message.transaction_id,
           message_type: message.message_type,
           queries: [] of DNSCodec::Query,
-          answers: [] of DNSCodec::Record,
+          answers: [] of Slice(UInt8),
           authorities: [] of DNSCodec::Record,
-          additional_records: [] of DNSCodec::Record
+          additional_records: [] of Slice(UInt8)
         )
 
         empty_dns_message = encode(message_to_send)
@@ -273,6 +275,8 @@ module Matter
                 multicast_server.socket.send(encoded_message_to_send, to: interface.as(Socket::IPAddress))
               end
             end
+
+            message_to_send.answers.push(next_answer_encoded)
           else
             break
           end
@@ -286,7 +290,7 @@ module Matter
             break
           end
 
-          message_to_send.additional_records.push(additional_record)
+          message_to_send.additional_records.push(additional_record_encoded)
         end
 
         encoded_message_to_send = encode(message_to_send)

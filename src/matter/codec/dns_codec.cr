@@ -80,14 +80,20 @@ module Matter
       end
 
       class MessagePartiallyPreEncoded
+        include JSON::Serializable
+
         getter transaction_id : UInt16
         getter message_type : MessageType
         getter queries : Array(Query)
-        getter answers : Union(Array(Record), Array(Slice(UInt8)))
+        getter answers : Array(Slice(UInt8))
         getter authorities : Array(Record)
-        getter additional_records : Union(Array(Record), Array(Slice(UInt8)))
+        getter additional_records : Array(Slice(UInt8))
 
-        def initialize(@transaction_id : UInt16, @message_type : MessageType, @queries : Array(Query), @answers : Union(Array(Record), Array(Slice(UInt8))), @authorities : Array(Record), @additional_records : Union(Array(Record), Array(Slice(UInt8))))
+        def initialize(@transaction_id : UInt16, @message_type : MessageType, @queries : Array(Query), @answers : Array(Slice(UInt8)), @authorities : Array(Record), @additional_records : Array(Slice(UInt8)))
+        end
+
+        def to_h
+          {"transactionId" => transaction_id, "messageType" => message_type, "queries" => queries.map(&.to_h), "answers" => answers.map(&.to_h), "authorities" => authorities.map(&.to_h), "additionalRecords" => additional_records.map(&.to_h)}
         end
       end
 
@@ -319,7 +325,7 @@ module Matter
           end
         end
 
-        def encode(message : Message, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian) : Slice(UInt8)
+        def encode(message : Message | MessagePartiallyPreEncoded, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian) : Slice(UInt8)
           writer = IO::Memory.new
 
           message_type = message.message_type
@@ -344,19 +350,36 @@ module Matter
           byte_format.encode(authorities.size.to_u16, writer)
           byte_format.encode(additional_records.size.to_u16, writer)
 
+          # Queries
           queries.each do |query|
             writer.write(encode_qname(query.name, byte_format))
             byte_format.encode(query.record_type.value, writer)
             byte_format.encode((query.record_class.value | (query.unicast_response? ? 0x8000 : 0)).to_u16, writer)
           end
 
-          records = ([] of Record)
-            .concat(answers)
-            .concat(authorities)
-            .concat(additional_records)
+          # Answers
+          message.answers.each do |answer|
+            case answer
+            when Slice(UInt8)
+              writer.write(answer.as(Slice(UInt8)))
+            when Record
+              writer.write(encode_record(answer.as(Record), byte_format))
+            end
+          end
 
-          records.each do |record_entry|
-            writer.write(encode_record(record_entry, byte_format))
+          # Authorities
+          message.authorities.each do |authority|
+            writer.write(encode_record(authority, byte_format))
+          end
+
+          # Additional records
+          message.additional_records.each do |additional_record|
+            case additional_record
+            when Slice(UInt8)
+              writer.write(additional_record.as(Slice(UInt8)))
+            when Record
+              writer.write(encode_record(additional_record.as(Record), byte_format))
+            end
           end
 
           writer.rewind.to_slice
