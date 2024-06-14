@@ -13,13 +13,13 @@ module Matter
       include DNSCodec::Base
       include Utilities::DeepEqual
 
-      getter multicast_server : Network::MulticastServer
+      private getter server : Network::MulticastServer
 
       def initialize(address : Socket::IPAddress = Network::Constants::MDNS_ADDRESS_IPv4, buffer_size = 16, loopback = false, hops = 255)
         Log.debug { "Creating the multicast server" }
 
         # Assign the multicast server
-        @multicast_server = Network::MulticastServer.new(address, buffer_size, loopback, hops)
+        @server = Network::MulticastServer.new(address, buffer_size, loopback, hops)
 
         @records_generator = {} of String => (Interface) -> Array(DNSCodec::Record)
 
@@ -46,9 +46,9 @@ module Matter
           buffer = Slice(UInt8).new(9000)
 
           loop do
-            break if multicast_server.socket.closed?
+            break if server.socket.closed?
 
-            size, address = multicast_server.socket.receive(buffer)
+            size, address = server.socket.receive(buffer)
 
             Log.debug { "Received a connection from (#{address})" }
 
@@ -118,7 +118,7 @@ module Matter
       def close
         @records.close
         @record_last_sent_as_multicast_answer.clear
-        multicast_server.close
+        server.close
       end
 
       private def build_type_port_key(port : Int32, type : AnnouncementType) : String
@@ -270,9 +270,9 @@ module Matter
               Log.debug { "Encoded the message and sending it to the interface" }
 
               if unicast_target
-                multicast_server.socket.send(encoded_message_to_send, to: unicast_target)
+                server.socket.send(encoded_message_to_send, to: unicast_target)
               else
-                multicast_server.socket.send(encoded_message_to_send, to: interface.as(Socket::IPAddress))
+                server.socket.send(encoded_message_to_send, to: interface.as(Socket::IPAddress))
               end
             end
 
@@ -296,11 +296,11 @@ module Matter
         encoded_message_to_send = encode(message_to_send)
 
         if unicast_target
-          multicast_server.socket.send(encoded_message_to_send, to: unicast_target)
+          server.socket.send(encoded_message_to_send, to: unicast_target)
 
           Log.debug { "Sent message (#{message_to_send.to_json}) to (#{unicast_target}" }
         else
-          multicast_server.socket.send(encoded_message_to_send, to: interface.as(Socket::IPAddress))
+          server.socket.send(encoded_message_to_send, to: interface.as(Socket::IPAddress))
 
           Log.debug { "Sent message (#{message_to_send.to_json}) to (#{interface}" }
         end
