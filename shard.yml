@@ -17,6 +17,4 @@ dependencies:
   tlv:
     github: spider-gazelle/tlv
 
-crystal: 1.9.2
-
 license: MIT
