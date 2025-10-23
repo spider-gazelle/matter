@@ -1,0 +1,164 @@
+require "./spec_helper"
+require "../src/matter/session/pase/pase"
+
+describe Matter::Session::Pase do
+  describe "PbkdfParameters" do
+    it "creates PBKDF parameters" do
+      params = Matter::Session::Pase::PbkdfParameters.new(
+        iterations: 2000,
+        salt: Bytes.new(32, 1_u8)
+      )
+
+      params.iterations.should eq(2000)
+      params.salt.size.should eq(32)
+    end
+
+    it "creates default parameters" do
+      params = Matter::Session::Pase::PbkdfParameters.default
+      params.iterations.should eq(1000)
+      params.salt.size.should eq(32)
+    end
+  end
+
+  describe "PaseCommissioner" do
+    it "creates a commissioner with PIN" do
+      commissioner = Matter::Session::Pase::PaseCommissioner.new(
+        pin_code: 12345678_u32
+      )
+
+      commissioner.pin_code.should eq(12345678_u32)
+      commissioner.spake.should be_nil
+      commissioner.pbkdf_params.should be_nil
+    end
+
+    it "creates PBKDF param request" do
+      commissioner = Matter::Session::Pase::PaseCommissioner.new(
+        pin_code: 12345678_u32
+      )
+
+      request = commissioner.create_pbkdf_param_request
+      request.should be_a(Bytes)
+    end
+
+    it "processes PBKDF params and initializes SPAKE2+" do
+      commissioner = Matter::Session::Pase::PaseCommissioner.new(
+        pin_code: 12345678_u32
+      )
+
+      params = Matter::Session::Pase::PbkdfParameters.default
+      commissioner.process_pbkdf_param_response(Bytes.new(0), params)
+
+      commissioner.pbkdf_params.should_not be_nil
+      commissioner.spake.should_not be_nil
+    end
+
+    it "generates pake1 (pA)" do
+      commissioner = Matter::Session::Pase::PaseCommissioner.new(
+        pin_code: 12345678_u32
+      )
+
+      params = Matter::Session::Pase::PbkdfParameters.default
+      commissioner.process_pbkdf_param_response(Bytes.new(0), params)
+
+      p_a = commissioner.generate_pake1
+      p_a.should be_a(Bytes)
+      p_a.size.should eq(65) # Uncompressed EC point
+      p_a[0].should eq(0x04) # Uncompressed marker
+    end
+  end
+
+  describe "PaseResponder" do
+    it "creates a responder with PIN and parameters" do
+      params = Matter::Session::Pase::PbkdfParameters.default
+      responder = Matter::Session::Pase::PaseResponder.new(
+        pin_code: 12345678_u32,
+        pbkdf_params: params
+      )
+
+      responder.pin_code.should eq(12345678_u32)
+      responder.pbkdf_params.should eq(params)
+      responder.spake.should be_nil
+    end
+
+    it "processes PBKDF param request" do
+      responder = Matter::Session::Pase::PaseResponder.new(
+        pin_code: 12345678_u32
+      )
+
+      response = responder.process_pbkdf_param_request(Bytes.new(0))
+      response.should be_a(Bytes)
+    end
+
+    it "processes pake1 and generates pake2 (pB)" do
+      responder = Matter::Session::Pase::PaseResponder.new(
+        pin_code: 12345678_u32
+      )
+
+      # Create a dummy pA (would come from commissioner)
+      p_a = Bytes.new(65)
+      p_a[0] = 0x04 # Uncompressed marker
+
+      p_b = responder.process_pake1(p_a)
+      p_b.should be_a(Bytes)
+      p_b.size.should eq(65)
+      p_b[0].should eq(0x04)
+    end
+
+    it "generates pake3 confirmation" do
+      responder = Matter::Session::Pase::PaseResponder.new(
+        pin_code: 12345678_u32
+      )
+
+      # Initialize SPAKE2+
+      responder.initialize_spake
+
+      confirmation = responder.generate_pake3
+      confirmation.should be_a(Bytes)
+      confirmation.size.should eq(32)
+    end
+  end
+
+  describe "PASE session establishment" do
+    it "establishes a PASE session between commissioner and responder" do
+      pin_code = 12345678_u32
+      initiator_session_id = 1000_u16
+      responder_session_id = 2000_u16
+
+      result = Matter::Session::Pase.establish_session(
+        pin_code,
+        initiator_session_id,
+        responder_session_id
+      )
+
+      # Check initiator context
+      result[:initiator].session_id.should eq(initiator_session_id)
+      result[:initiator].peer_session_id.should eq(responder_session_id)
+      result[:initiator].session_type.should eq(Matter::Session::SessionType::Unicast)
+      result[:initiator].is_initiator.should be_true
+      result[:initiator].encryption_key.size.should eq(16)
+      result[:initiator].decryption_key.size.should eq(16)
+
+      # Check responder context
+      result[:responder].session_id.should eq(responder_session_id)
+      result[:responder].peer_session_id.should eq(initiator_session_id)
+      result[:responder].session_type.should eq(Matter::Session::SessionType::Unicast)
+      result[:responder].is_initiator.should be_false
+      result[:responder].encryption_key.size.should eq(16)
+      result[:responder].decryption_key.size.should eq(16)
+    end
+
+    it "allows multiple PASE sessions with different PINs" do
+      pin1 = 11111111_u32
+      pin2 = 22222222_u32
+
+      session1 = Matter::Session::Pase.establish_session(pin1, 100_u16, 200_u16)
+      session2 = Matter::Session::Pase.establish_session(pin2, 300_u16, 400_u16)
+
+      session1[:initiator].session_id.should eq(100_u16)
+      session2[:initiator].session_id.should eq(300_u16)
+
+      # Keys should be different (since PINs are different)
+      session1[:initiator].encryption_key.should_not eq(session2[:initiator].encryption_key)
+    end
+  end
+end

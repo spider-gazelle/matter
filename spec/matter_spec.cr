@@ -43,7 +43,17 @@ describe Matter do
       Matter::Codec::DNSCodec::SrvRecord.new(name: "www.instagram.com", srv: Matter::Codec::DNSCodec::SrvRecordValue.new(1_u16, 2_u16, 3_u16, "Hello, World!")),
     ] of Matter::Codec::DNSCodec::Record
 
-    encoded_message = Matter::Codec::DNSCodec::Base.encode(Matter::Codec::DNSCodec::MessageType::Query, 2_u16, queries: queries, answers: answers, authorities: [] of Matter::Codec::DNSCodec::Record, additional_records: [] of Matter::Codec::DNSCodec::Record)
+    # Create Message object with the data
+    message = Matter::Codec::DNSCodec::Message.new(
+      transaction_id: 2_u16,
+      message_type: Matter::Codec::DNSCodec::MessageType::Query,
+      queries: queries,
+      answers: answers,
+      authorities: [] of Matter::Codec::DNSCodec::Record,
+      additional_records: [] of Matter::Codec::DNSCodec::Record
+    )
+
+    encoded_message = Matter::Codec::DNSCodec::Base.encode(message)
     decoded_message = Matter::Codec::DNSCodec::Base.decode(encoded_message)
 
     raise Exception.new("Decoded message was nil") if decoded_message.nil?
