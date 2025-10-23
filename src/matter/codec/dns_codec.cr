@@ -28,6 +28,8 @@ module Matter
       end
 
       class Record
+        include JSON::Serializable
+
         getter name : String
         getter record_type : RecordType
         getter record_class : RecordClass
@@ -37,9 +39,15 @@ module Matter
 
         def initialize(@name : String, @record_type : RecordType, @record_class : RecordClass, @ttl : UInt32, @value : Value, @flush_cache : Bool = false)
         end
+
+        def to_h
+          {"name" => name, "recordType" => record_type, "recordClass" => record_class, "isFlushCache" => flush_cache?, "ttl" => ttl, "value" => value}
+        end
       end
 
       class Query
+        include JSON::Serializable
+
         getter name : String
         getter record_type : RecordType
         getter record_class : RecordClass
@@ -47,9 +55,15 @@ module Matter
 
         def initialize(@name : String, @record_type : RecordType, @record_class : RecordClass, @unicast_response : Bool = false)
         end
+
+        def to_h
+          {"name" => name, "recordType" => record_type, "recordClass" => record_class, "isUnicastResponse" => unicast_response?}
+        end
       end
 
       class Message
+        include JSON::Serializable
+
         getter transaction_id : UInt16
         getter message_type : MessageType
         getter queries : Array(Query)
@@ -59,27 +73,43 @@ module Matter
 
         def initialize(@transaction_id : UInt16, @message_type : MessageType, @queries : Array(Query), @answers : Array(Record), @authorities : Array(Record), @additional_records : Array(Record))
         end
+
+        def to_h
+          {"transactionId" => transaction_id, "messageType" => message_type, "queries" => queries.map(&.to_h), "answers" => answers.map(&.to_h), "authorities" => authorities.map(&.to_h), "additionalRecords" => additional_records.map(&.to_h)}
+        end
       end
 
       class MessagePartiallyPreEncoded
+        include JSON::Serializable
+
         getter transaction_id : UInt16
         getter message_type : MessageType
         getter queries : Array(Query)
-        getter answers : Union(Array(Record), Array(Slice(UInt8)))
+        getter answers : Array(Slice(UInt8))
         getter authorities : Array(Record)
-        getter additional_records : Union(Array(Record), Array(Slice(UInt8)))
+        getter additional_records : Array(Slice(UInt8))
 
-        def initialize(@transaction_id : UInt16, @message_type : MessageType, @queries : Array(Query), @answers : Union(Array(Record), Array(Slice(UInt8))), @authorities : Array(Record), @additional_records : Union(Array(Record), Array(Slice(UInt8))))
+        def initialize(@transaction_id : UInt16, @message_type : MessageType, @queries : Array(Query), @answers : Array(Slice(UInt8)), @authorities : Array(Record), @additional_records : Array(Slice(UInt8)))
+        end
+
+        def to_h
+          {"transactionId" => transaction_id, "messageType" => message_type, "queries" => queries.map(&.to_h), "answers" => answers.map(&.to_h), "authorities" => authorities.map(&.to_h), "additionalRecords" => additional_records.map(&.to_h)}
         end
       end
 
       class SrvRecordValue
+        include JSON::Serializable
+
         getter priority : UInt16
         getter weight : UInt16
         getter port : UInt16
         getter target : String
 
         def initialize(@priority : UInt16, @weight : UInt16, @port : UInt16, @target : String)
+        end
+
+        def to_h
+          {"priority" => priority, "weight" => weight, "port" => port, "taget" => target}
         end
       end
 
@@ -295,8 +325,15 @@ module Matter
           end
         end
 
-        def encode(message_type : MessageType, transaction_id : UInt16, queries : Array(Query), answers : Array(Record), authorities : Array(Record), additional_records : Array(Record), byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian) : Slice(UInt8)
+        def encode(message : Message | MessagePartiallyPreEncoded, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian) : Slice(UInt8)
           writer = IO::Memory.new
+
+          message_type = message.message_type
+          transaction_id = message.transaction_id
+          queries = message.queries
+          answers = message.answers
+          authorities = message.authorities
+          additional_records = message.additional_records
 
           if queries.size > 0 && message_type != MessageType::Query && message_type != MessageType::TruncatedQuery
             raise Exception.new("Queries can only be included in query messages!")
@@ -313,25 +350,42 @@ module Matter
           byte_format.encode(authorities.size.to_u16, writer)
           byte_format.encode(additional_records.size.to_u16, writer)
 
+          # Queries
           queries.each do |query|
             writer.write(encode_qname(query.name, byte_format))
             byte_format.encode(query.record_type.value, writer)
             byte_format.encode((query.record_class.value | (query.unicast_response? ? 0x8000 : 0)).to_u16, writer)
           end
 
-          records = ([] of Record)
-            .concat(answers)
-            .concat(authorities)
-            .concat(additional_records)
+          # Answers
+          message.answers.each do |answer|
+            case answer
+            when Slice(UInt8)
+              writer.write(answer.as(Slice(UInt8)))
+            when Record
+              writer.write(encode_record(answer.as(Record), byte_format))
+            end
+          end
 
-          records.each do |record_entry|
-            writer.write(encode_record(record_entry, byte_format))
+          # Authorities
+          message.authorities.each do |authority|
+            writer.write(encode_record(authority, byte_format))
+          end
+
+          # Additional records
+          message.additional_records.each do |additional_record|
+            case additional_record
+            when Slice(UInt8)
+              writer.write(additional_record.as(Slice(UInt8)))
+            when Record
+              writer.write(encode_record(additional_record.as(Record), byte_format))
+            end
           end
 
           writer.rewind.to_slice
         end
 
-        private def encode_record(record_entry : Record, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian) : Slice(UInt8)
+        def encode_record(record_entry : Record, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian) : Slice(UInt8)
           writer = IO::Memory.new
 
           writer.write(encode_qname(record_entry.name, byte_format))
