@@ -16,7 +16,7 @@ module Matter
         @event_requests : Array(EventPath) = [] of EventPath,
         @event_filters : Array(EventFilter)? = nil,
         @fabric_filtered : Bool = true,
-        @data_version_filters : Hash(ConcreteAttributePath, DataVersion)? = nil
+        @data_version_filters : Hash(ConcreteAttributePath, DataVersion)? = nil,
       )
       end
     end
@@ -60,7 +60,7 @@ module Matter
         @attribute_reports : Array(AttributeData) = [] of AttributeData,
         @attribute_status : Array(AttributeStatus) = [] of AttributeStatus,
         @more_chunks : Bool = false,
-        @suppress_response : Bool = false
+        @suppress_response : Bool = false,
       )
       end
     end
@@ -76,7 +76,7 @@ module Matter
         @write_requests : Array(AttributeWriteRequest) = [] of AttributeWriteRequest,
         @timed_request : Bool = false,
         @suppress_response : Bool = false,
-        @more_chunked_messages : Bool = false
+        @more_chunked_messages : Bool = false,
       )
       end
     end
@@ -90,7 +90,7 @@ module Matter
       def initialize(
         @path : AttributePath,
         @value : Bytes,
-        @data_version : DataVersion? = nil
+        @data_version : DataVersion? = nil,
       )
       end
     end
@@ -112,7 +112,7 @@ module Matter
       def initialize(
         @invoke_requests : Array(CommandDataIB) = [] of CommandDataIB,
         @timed_request : Bool = false,
-        @suppress_response : Bool = false
+        @suppress_response : Bool = false,
       )
       end
     end
@@ -155,7 +155,7 @@ module Matter
         @invoke_responses : Array(CommandResponse) = [] of CommandResponse,
         @invoke_status : Array(CommandStatus) = [] of CommandStatus,
         @suppress_response : Bool = false,
-        @more_chunked_messages : Bool = false
+        @more_chunked_messages : Bool = false,
       )
       end
     end
@@ -179,7 +179,7 @@ module Matter
         @min_interval_floor : UInt16 = 0_u16,
         @max_interval_ceiling : UInt16 = 3600_u16,
         @keep_subscriptions : Bool = false,
-        @data_version_filters : Hash(ConcreteAttributePath, DataVersion)? = nil
+        @data_version_filters : Hash(ConcreteAttributePath, DataVersion)? = nil,
       )
       end
     end
@@ -193,7 +193,7 @@ module Matter
       def initialize(
         @subscription_id : UInt32,
         @min_interval : UInt16,
-        @max_interval : UInt16
+        @max_interval : UInt16,
       )
       end
     end
@@ -211,7 +211,7 @@ module Matter
         @attribute_reports : Array(AttributeData) = [] of AttributeData,
         @event_reports : Array(EventData) = [] of EventData,
         @more_chunks : Bool = false,
-        @suppress_response : Bool = false
+        @suppress_response : Bool = false,
       )
       end
     end
@@ -229,7 +229,7 @@ module Matter
         @event_number : UInt64,
         @priority : EventPriority,
         @timestamp : UInt64,
-        @data : Bytes
+        @data : Bytes,
       )
       end
     end

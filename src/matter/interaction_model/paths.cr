@@ -11,7 +11,7 @@ module Matter
         @endpoint : UInt16? = nil,
         @cluster : UInt32? = nil,
         @attribute : UInt32? = nil,
-        @list_index : UInt16? = nil
+        @list_index : UInt16? = nil,
       )
       end
 
@@ -73,7 +73,7 @@ module Matter
         @endpoint : UInt16? = nil,
         @cluster : UInt32? = nil,
         @event : UInt32? = nil,
-        @is_urgent : Bool = false
+        @is_urgent : Bool = false,
       )
       end
 
@@ -113,7 +113,7 @@ module Matter
         @endpoint : UInt16,
         @cluster : UInt32,
         @attribute : UInt32,
-        @list_index : UInt16? = nil
+        @list_index : UInt16? = nil,
       )
       end
 
