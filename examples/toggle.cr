@@ -22,7 +22,7 @@ module Toggle
       DNSCodec::PtrRecord.new(DUMMY_QNAME, "abcd"),
       DNSCodec::SrvRecord.new(DUMMY_QNAME, DNSCodec::SrvRecordValue.new(0_u16, 0_u16, PORT, "abcd.local")),
       DNSCodec::TxtRecord.new(DUMMY_QNAME, ["A=1", "B=2"]),
-      DNSCodec::ARecord.new("abcd.local", DUMMY_IP)
+      DNSCodec::ARecord.new("abcd.local", DUMMY_IP),
     ] of Matter::Codec::DNSCodec::Record
   })
 

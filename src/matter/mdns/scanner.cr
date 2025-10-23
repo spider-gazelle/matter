@@ -87,7 +87,6 @@ module Matter
 
       private def handle_operational_txt_record(operational_record : DNSCodec::Record)
         if operational_record.ttl == 0
-
         end
       end
 

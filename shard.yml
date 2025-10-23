@@ -17,4 +17,13 @@ dependencies:
   tlv:
     github: spider-gazelle/tlv
 
+  openssl_ext:
+    github: spider-gazelle/openssl_ext
+
+  jwt:
+    github: crystal-community/jwt
+
+  spake2_plus:
+    github: spider-gazelle/spake2_plus
+
 license: MIT

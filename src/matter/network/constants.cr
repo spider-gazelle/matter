@@ -1,7 +1,7 @@
 module Matter
   module Network
     module Constants
-      MDNS_PORT = 5353
+      MDNS_PORT         = 5353
       MDNS_ADDRESS_IPv4 = Socket::IPAddress.new("224.0.0.251", MDNS_PORT)
       MDNS_ADDRESS_IPv6 = Socket::IPAddress.new("FF02::FB", MDNS_PORT)
 

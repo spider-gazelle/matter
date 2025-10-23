@@ -66,12 +66,12 @@ describe Matter do
     packet = {
       "request" => {
         "version"        => 0_u8.as(Matter::Codec::DERCodec::Value),
-        "subject"        => { "organization" => Matter::Codec::DERCodec::OrganisationName_X520.call("CSR").as(Matter::Codec::DERCodec::Value) } of String => Matter::Codec::DERCodec::Value,
+        "subject"        => {"organization" => Matter::Codec::DERCodec::OrganisationName_X520.call("CSR").as(Matter::Codec::DERCodec::Value)} of String => Matter::Codec::DERCodec::Value,
         "publicKey"      => Matter::Codec::DERCodec::PublicKeyEcPrime256v1_X962.call(Slice(UInt8).new(public_key.size) { |i| public_key[i] }),
         "endSignedBytes" => Matter::Codec::DERCodec::ContextTagged.new(0).value,
       } of String => Matter::Codec::DERCodec::Value,
       "signAlgorithm" => Matter::Codec::DERCodec::EcdsaWithSHA256_X962.call,
-      "signature" => Matter::Codec::DERCodec::ByteArray.new(Slice(UInt8).new(signature.size) { |i| signature[i] }).value,
+      "signature"     => Matter::Codec::DERCodec::ByteArray.new(Slice(UInt8).new(signature.size) { |i| signature[i] }).value,
     } of String => Matter::Codec::DERCodec::Value
 
     crafted = Matter::Codec::DERCodec::Base.encode(packet)

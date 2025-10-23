@@ -298,7 +298,7 @@ module Matter
       PublicKeyEcPrime256v1_X962 = ->(key : Slice(UInt8)) {
         value = {
           "type" => {
-            "algorithm" => ObjectId.new("2A8648CE3D0201").value.as(Matter::Codec::DERCodec::Value),    # EC Public Key
+            "algorithm" => ObjectId.new("2A8648CE3D0201").value.as(Matter::Codec::DERCodec::Value),   # EC Public Key
             "curve"     => ObjectId.new("2A8648CE3D030107").value.as(Matter::Codec::DERCodec::Value), # Curve P256_V1
           },
           "bytes" => ByteArray.new(key).value.as(Matter::Codec::DERCodec::Value),
@@ -307,11 +307,11 @@ module Matter
         value.as(Matter::Codec::DERCodec::Value)
       }
 
-      EcdsaWithSHA256_X962 = ->{
+      EcdsaWithSHA256_X962 = -> {
         Object.new("2A8648CE3D040302").value
       }
 
-      SHA256_CMS = ->{
+      SHA256_CMS = -> {
         Object.new("608648016503040201").value
       }
 
@@ -341,14 +341,14 @@ module Matter
         }).value
       }
 
-      KeyUsage_Signature_X509 = ->{
+      KeyUsage_Signature_X509 = -> {
         Object.new("551d0f", {
           "critical" => true.as(Value),
           "value"    => Base.encode(ByteArray.new(Slice(UInt8).new(1, (0x03 << 1).to_u8), 1).value),
         } of String => Value).value
       }
 
-      KeyUsage_Signature_ContentCommited_X509 = ->{
+      KeyUsage_Signature_ContentCommited_X509 = -> {
         Object.new("551d0f", {
           "critical" => true,
           "value"    => Base.encode(ByteArray.new(Slice(UInt8).new(1, (0x03 << 1).to_u8), 1).value),
