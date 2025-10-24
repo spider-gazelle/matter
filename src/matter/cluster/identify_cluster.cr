@@ -1,43 +1,64 @@
 require "./cluster"
-require "./definitions/identify"
 
 module Matter
   module Cluster
     # Identify Cluster Implementation (0x0003)
-    # Provides a way to identify devices (e.g., by flashing a light or making a sound)
+    #
+    # Provides an interface for a device to identify itself to a user
+    # (e.g., by flashing a light, sounding a beep, displaying a message).
+    #
+    # Commonly required on many device types for commissioning and user interaction.
+    #
+    # Matter Spec: Application 1.2
     class IdentifyCluster < Base
       CLUSTER_ID = 0x0003_u32
 
-      # Attribute IDs
-      IDENTIFY_TIME = 0x0000_u32
-      IDENTIFY_TYPE = 0x0001_u32
+      # Attributes (using ATTR_ prefix for consistency)
+      ATTR_IDENTIFY_TIME = 0x0000_u32
+      ATTR_IDENTIFY_TYPE = 0x0001_u32
 
-      # Command IDs
+      # Commands
       CMD_IDENTIFY       = 0x00_u32
-      CMD_TRIGGER_EFFECT = 0x01_u32
-      CMD_IDENTIFY_QUERY = 0x40_u32
+      CMD_TRIGGER_EFFECT = 0x40_u32
 
-      # Response IDs
-      CMD_IDENTIFY_QUERY_RESPONSE = 0x00_u32
+      # Identify Type enum - indicates how the device identifies itself
+      enum IdentifyType : UInt8
+        None         = 0 # No identification method
+        VisibleLight = 1 # Visible light (e.g., bulb flashes)
+        VisibleLED   = 2 # Visible LED indicator
+        AudibleBeep  = 3 # Audible beep/tone
+        Display      = 4 # Display message
+        Actuator     = 5 # Physical actuator (e.g., lock/unlock, open/close)
+      end
 
-      # Global attributes
-      CLUSTER_REVISION = 0xFFFD_u32
-      FEATURE_MAP      = 0xFFFC_u32
+      # Effect Identifier enum - visual/audible effects for identification
+      enum EffectIdentifier : UInt8
+        Blink         =   0 # Blink light
+        Breathe       =   1 # Breathe effect (fade in/out)
+        Okay          =   2 # "Okay" confirmation effect
+        ChannelChange =  11 # Channel change effect
+        FinishEffect  = 254 # Finish current effect
+        StopEffect    = 255 # Stop current effect
+      end
 
-      property identify_time : UInt16
-      property identify_type : Definitions::Identify::Type
+      # Effect Variant enum
+      enum EffectVariant : UInt8
+        Default = 0 # Default variant of the effect
+      end
 
-      # Callback for when identify is triggered
-      property on_identify : Proc(UInt16, Nil)?
+      # Attribute storage
+      property identify_time : UInt16 # Remaining identify time in seconds
+      property identify_type : IdentifyType
 
-      def initialize(
-        endpoint_id : DataType::EndpointNumber,
-        @identify_time : UInt16 = 0_u16,
-        @identify_type : Definitions::Identify::Type = Definitions::Identify::Type::None,
-      )
+      # Callbacks
+      @on_identify_started : Proc(Nil)?
+      @on_identify_stopped : Proc(Nil)?
+      @on_trigger_effect : Proc(EffectIdentifier, EffectVariant, Nil)?
+
+      def initialize(endpoint_id : DataType::EndpointNumber,
+                     @identify_type : IdentifyType = IdentifyType::None)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
-        @attribute_values[IDENTIFY_TIME] = encode_uint16(@identify_time)
-        @attribute_values[IDENTIFY_TYPE] = encode_uint8(@identify_type.value)
+        @identify_time = 0_u16
       end
 
       def name : String
@@ -47,32 +68,16 @@ module Matter
       def attributes : Array(AttributeMetadata)
         [
           AttributeMetadata.new(
-            id: DataType::AttributeId.new(IDENTIFY_TIME),
-            name: "IdentifyTime",
-            type: :uint16,
-            writable: true,
-            default: encode_uint16(0_u16)
+            DataType::AttributeId.new(ATTR_IDENTIFY_TIME),
+            "IdentifyTime",
+            :uint16,
+            writable: true
           ),
           AttributeMetadata.new(
-            id: DataType::AttributeId.new(IDENTIFY_TYPE),
-            name: "IdentifyType",
-            type: :uint8,
-            writable: false,
-            default: encode_uint8(Definitions::Identify::Type::None.value)
-          ),
-          AttributeMetadata.new(
-            id: DataType::AttributeId.new(CLUSTER_REVISION),
-            name: "ClusterRevision",
-            type: :uint16,
-            writable: false,
-            default: encode_uint16(4_u16)
-          ),
-          AttributeMetadata.new(
-            id: DataType::AttributeId.new(FEATURE_MAP),
-            name: "FeatureMap",
-            type: :uint32,
-            writable: false,
-            default: encode_uint32(0_u32)
+            DataType::AttributeId.new(ATTR_IDENTIFY_TYPE),
+            "IdentifyType",
+            :uint8,
+            writable: false
           ),
         ]
       end
@@ -80,102 +85,119 @@ module Matter
       def commands : Array(CommandMetadata)
         [
           CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_IDENTIFY),
-            name: "Identify"
+            DataType::CommandId.new(CMD_IDENTIFY),
+            "Identify"
           ),
           CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_TRIGGER_EFFECT),
-            name: "TriggerEffect"
-          ),
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_IDENTIFY_QUERY),
-            name: "IdentifyQuery"
+            DataType::CommandId.new(CMD_TRIGGER_EFFECT),
+            "TriggerEffect"
           ),
         ]
       end
 
       def read_attribute(attribute_id : UInt32) : InteractionModel::Status | Bytes
         case attribute_id
-        when IDENTIFY_TIME
+        when ATTR_IDENTIFY_TIME
           encode_uint16(@identify_time)
-        when IDENTIFY_TYPE
+        when ATTR_IDENTIFY_TYPE
           encode_uint8(@identify_type.value)
         else
-          super(attribute_id)
+          super
         end
       end
 
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
-        when IDENTIFY_TIME
-          if value.size >= 2
-            # Decode little-endian UInt16
+        when ATTR_IDENTIFY_TIME
+          if value.size == 2
             @identify_time = IO::ByteFormat::LittleEndian.decode(UInt16, value)
-            @attribute_values[IDENTIFY_TIME] = encode_uint16(@identify_time)
             increment_version
-
-            # Trigger identify callback if time is non-zero
-            if @identify_time > 0
-              @on_identify.try(&.call(@identify_time))
-            end
-
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
           end
         else
-          super(attribute_id, value)
+          super
         end
       end
 
       protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Bytes
         case command_id
         when CMD_IDENTIFY
-          # Would decode Definitions::Identify::Request from fields
-          # For simplified implementation, set identify time to 5 seconds
-          @identify_time = 5_u16
-          @attribute_values[IDENTIFY_TIME] = encode_uint16(@identify_time)
-          increment_version
-
-          # Trigger identify callback
-          @on_identify.try(&.call(@identify_time))
-
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          handle_identify_command(fields)
         when CMD_TRIGGER_EFFECT
-          # Would decode Definitions::Identify::TriggerEffectRequest from fields
-          # For simplified implementation, trigger a default effect
-          @on_identify.try(&.call(3_u16)) # 3 second effect
-
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
-        when CMD_IDENTIFY_QUERY
-          # Return current identify time if device is identifying
-          if @identify_time > 0
-            # Encode IdentifyQueryResponse
-            io = IO::Memory.new
-            IO::ByteFormat::LittleEndian.encode(@identify_time, io)
-            io.to_slice
-          else
-            # No response if not identifying
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
-          end
+          handle_trigger_effect_command(fields)
         else
-          InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand)
+          super
         end
       end
 
-      # Helper method to start identifying
-      def start_identify(duration : UInt16)
-        @identify_time = duration
-        @attribute_values[IDENTIFY_TIME] = encode_uint16(@identify_time)
+      # Handle Identify command
+      private def handle_identify_command(fields : Bytes) : InteractionModel::Status
+        if fields.size < 2
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+        end
+
+        new_time = IO::ByteFormat::LittleEndian.decode(UInt16, fields)
+        was_identifying = identifying?
+
+        @identify_time = new_time
         increment_version
-        @on_identify.try(&.call(@identify_time))
+
+        # Trigger callbacks
+        if new_time > 0 && !was_identifying
+          @on_identify_started.try &.call
+        elsif new_time == 0 && was_identifying
+          @on_identify_stopped.try &.call
+        end
+
+        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
       end
 
-      # Helper method to stop identifying
-      def stop_identify
-        @identify_time = 0_u16
-        @attribute_values[IDENTIFY_TIME] = encode_uint16(@identify_time)
-        increment_version
+      # Handle TriggerEffect command
+      private def handle_trigger_effect_command(fields : Bytes) : InteractionModel::Status
+        if fields.size < 2
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+        end
+
+        effect = EffectIdentifier.from_value(fields[0])
+        variant = EffectVariant.from_value(fields[1])
+
+        @on_trigger_effect.try &.call(effect, variant)
+
+        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+      end
+
+      # Check if device is currently identifying
+      def identifying? : Bool
+        @identify_time > 0
+      end
+
+      # Set callback for when identify starts
+      def on_identify_started(&block : -> Nil)
+        @on_identify_started = block
+      end
+
+      # Set callback for when identify stops
+      def on_identify_stopped(&block : -> Nil)
+        @on_identify_stopped = block
+      end
+
+      # Set callback for trigger effect
+      def on_trigger_effect(&block : EffectIdentifier, EffectVariant -> Nil)
+        @on_trigger_effect = block
+      end
+
+      # Helper: Decrement identify time (call this periodically, e.g., every second)
+      def tick
+        if @identify_time > 0
+          @identify_time -= 1
+          increment_version
+
+          if @identify_time == 0
+            @on_identify_stopped.try &.call
+          end
+        end
       end
     end
   end

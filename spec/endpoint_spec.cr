@@ -305,7 +305,7 @@ describe Matter::Endpoint do
       io = IO::Memory.new
       IO::ByteFormat::LittleEndian.encode(10_u16, io)
 
-      status = endpoint.write_attribute(0x0003_u32, Matter::Cluster::IdentifyCluster::IDENTIFY_TIME, io.to_slice)
+      status = endpoint.write_attribute(0x0003_u32, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME, io.to_slice)
       status.should be_a(Matter::InteractionModel::Status)
       status.as(Matter::InteractionModel::Status).success?.should be_true
 
@@ -508,7 +508,7 @@ describe Matter::MatterNode do
       io = IO::Memory.new
       IO::ByteFormat::LittleEndian.encode(15_u16, io)
 
-      status = node.write_attribute(1_u16, 0x0003_u32, Matter::Cluster::IdentifyCluster::IDENTIFY_TIME, io.to_slice)
+      status = node.write_attribute(1_u16, 0x0003_u32, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME, io.to_slice)
       status.success?.should be_true
 
       identify.identify_time.should eq(15_u16)
