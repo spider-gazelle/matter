@@ -109,7 +109,7 @@ module Matter
       end
 
       # Invoke a command
-      def invoke_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Bytes
+      def invoke_command(command_id : UInt32, fields : Bytes = Bytes.new(0)) : InteractionModel::Status | Bytes
         metadata = commands.find { |c| c.id.id == command_id }
         return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand) unless metadata
 

@@ -118,11 +118,23 @@ module Matter
     end
 
     # Invoke a command on a cluster on this endpoint
-    def invoke_command(cluster_id : UInt32, command_id : UInt32, fields : Bytes) : InteractionModel::Status | Bytes
+    def invoke_command(cluster_id : UInt32, command_id : UInt32, fields : Bytes = Bytes.new(0)) : InteractionModel::Status | Bytes
       cluster = get_cluster(cluster_id)
       return InteractionModel::Status.new(InteractionModel::StatusCode::Failure) unless cluster
 
       cluster.invoke_command(command_id, fields)
+    end
+
+    # Get a typed cluster by class
+    # Usage: endpoint.get_cluster(OnOffCluster)
+    def get_cluster(cluster_type : T.class) : T? forall T
+      cluster = @clusters.values.find { |c| c.is_a?(T) }
+      cluster.as(T) if cluster
+    end
+
+    # Get a typed cluster by class (raises if not found)
+    def get_cluster!(cluster_type : T.class) : T forall T
+      get_cluster(cluster_type) || raise KeyError.new("Cluster #{cluster_type} not found on endpoint #{@endpoint_id.number}")
     end
   end
 
@@ -198,11 +210,25 @@ module Matter
     end
 
     # Invoke a command on a cluster on an endpoint
-    def invoke_command(endpoint_id : UInt16, cluster_id : UInt32, command_id : UInt32, fields : Bytes) : InteractionModel::Status | Bytes
+    def invoke_command(endpoint_id : UInt16, cluster_id : UInt32, command_id : UInt32, fields : Bytes = Bytes.new(0)) : InteractionModel::Status | Bytes
       endpoint = get_endpoint(endpoint_id)
       return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedEndpoint) unless endpoint
 
       endpoint.invoke_command(cluster_id, command_id, fields)
+    end
+
+    # Get a typed cluster from an endpoint
+    # Usage: node.get_cluster(1_u16, OnOffCluster)
+    def get_cluster(endpoint_id : UInt16, cluster_type : T.class) : T? forall T
+      endpoint = get_endpoint(endpoint_id)
+      return nil unless endpoint
+
+      endpoint.get_cluster(cluster_type)
+    end
+
+    # Get a typed cluster from an endpoint (raises if not found)
+    def get_cluster!(endpoint_id : UInt16, cluster_type : T.class) : T forall T
+      get_cluster(endpoint_id, cluster_type) || raise KeyError.new("Cluster #{cluster_type} not found on endpoint #{endpoint_id}")
     end
 
     # Get a human-readable description of this matter node
