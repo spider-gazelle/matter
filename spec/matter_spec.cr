@@ -28,40 +28,6 @@ describe Matter do
     payload_header.acknowledged_message_id.should eq second_message.payload_header.acknowledged_message_id
   end
 
-  it "encodes/decodes dns messages" do
-    query = Matter::Codec::DNSCodec::Query.new(name: "www.google.com", record_type: Matter::Codec::DNSCodec::RecordType::PTR, record_class: Matter::Codec::DNSCodec::RecordClass::IN, unicast_response: false)
-
-    queries = [
-      query,
-    ] of Matter::Codec::DNSCodec::Query
-
-    answers = [
-      Matter::Codec::DNSCodec::AAAARecord.new(name: "www.instagram.com", ip: "2001:0db8:85a3:0000:0000:8a2e:0370:7334"),
-      Matter::Codec::DNSCodec::ARecord.new(name: "www.instagram.com", ip: "127.0.0.1"),
-      Matter::Codec::DNSCodec::PtrRecord.new(name: "www.instagram.com", ptr: "instagram.com"),
-      Matter::Codec::DNSCodec::TxtRecord.new(name: "www.instagram.com", entries: ["1", "2", "3", "4", "5"] of String),
-      Matter::Codec::DNSCodec::SrvRecord.new(name: "www.instagram.com", srv: Matter::Codec::DNSCodec::SrvRecordValue.new(1_u16, 2_u16, 3_u16, "Hello, World!")),
-    ] of Matter::Codec::DNSCodec::Record
-
-    # Create Message object with the data
-    message = Matter::Codec::DNSCodec::Message.new(
-      transaction_id: 2_u16,
-      message_type: Matter::Codec::DNSCodec::MessageType::Query,
-      queries: queries,
-      answers: answers,
-      authorities: [] of Matter::Codec::DNSCodec::Record,
-      additional_records: [] of Matter::Codec::DNSCodec::Record
-    )
-
-    encoded_message = Matter::Codec::DNSCodec::Base.encode(message)
-    decoded_message = Matter::Codec::DNSCodec::Base.decode(encoded_message)
-
-    raise Exception.new("Decoded message was nil") if decoded_message.nil?
-
-    decoded_message.queries.first.name.should eq queries.first.name
-    decoded_message.answers.first.value.should eq "2001:db8:85a3::8a2e:370:7334" # Compressed version of IPv6
-  end
-
   it "encodes/decodes in der codec" do
     data = Matter::Codec::DERCodec::Base.encode(Time.utc)
     node = Matter::Codec::DERCodec::Base.decode(data)

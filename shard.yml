@@ -23,4 +23,7 @@ dependencies:
   spake2_plus:
     github: spider-gazelle/spake2_plus
 
+  dns:
+    github: spider-gazelle/dns
+
 license: MIT

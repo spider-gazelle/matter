@@ -6,7 +6,7 @@ module Matter
     abstract def start
     abstract def stop
 
-    abstract def mdns_broadcaster=(mdnsBroadcaster : MdnsBroadcaster)
-    abstract def mdns_scanner=(mdnsScanner : MdnsScanner)
+    abstract def mdns_responder=(responder : MDNS::Responder)
+    abstract def mdns_scanner=(scanner : MDNS::Scanner)
   end
 end

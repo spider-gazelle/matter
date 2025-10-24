@@ -1,112 +1,428 @@
+require "dns"
+require "./service_type"
+require "./record_builder"
+
 module Matter
   module MDNS
+    # Discovered Matter device information
+    struct DiscoveredDevice
+      property instance_name : String
+      property hostname : String
+      property addresses : Array(Socket::IPAddress)
+      property port : Int32
+      property txt_records : Hash(String, String)
+      property service_type : ServiceType
+      property expires_at : Time
+
+      # Commissioning-specific fields
+      property vendor_id : UInt16?
+      property product_id : UInt16?
+      property discriminator : UInt16?
+      property device_type : UInt16?
+      property device_name : String?
+      property commissioning_mode : UInt8?
+
+      # Operational-specific fields
+      property fabric_id : UInt64?
+      property node_id : UInt64?
+
+      def initialize(
+        @instance_name : String,
+        @hostname : String,
+        @addresses : Array(Socket::IPAddress),
+        @port : Int32,
+        @txt_records : Hash(String, String),
+        @service_type : ServiceType,
+        @expires_at : Time,
+      )
+        parse_txt_records
+      end
+
+      # Parse TXT records into structured fields
+      private def parse_txt_records : Nil
+        case @service_type
+        when .commissioning?
+          parse_commissioning_txt
+        when .operational?
+          parse_operational_txt
+        end
+      end
+
+      private def parse_commissioning_txt : Nil
+        # VP=<vendor-id>+<product-id>
+        if vp = @txt_records["VP"]?
+          parts = vp.split('+')
+          @vendor_id = parts[0]?.try(&.to_u16?)
+          @product_id = parts[1]?.try(&.to_u16?)
+        end
+
+        @discriminator = @txt_records["D"]?.try(&.to_u16?)
+        @device_type = @txt_records["DT"]?.try(&.to_u16?)
+        @device_name = @txt_records["DN"]?
+        @commissioning_mode = @txt_records["CM"]?.try(&.to_u8?)
+      end
+
+      private def parse_operational_txt : Nil
+        # Try to parse fabric_id and node_id from instance name
+        # Format: <fabric-id>-<node-id>._matter._tcp.local
+        if match = @instance_name.match(/^([0-9A-F]+)-([0-9A-F]+)\./)
+          @fabric_id = match[1].to_u64?(16)
+          @node_id = match[2].to_u64?(16)
+        end
+      end
+
+      # Check if device has expired
+      def expired? : Bool
+        Time.utc >= @expires_at
+      end
+    end
+
+    # mDNS Scanner for discovering Matter devices
+    #
+    # Handles:
+    # - Listening to all mDNS traffic
+    # - Maintaining device discovery table
+    # - Processing unsolicited announcements
+    # - Sending queries for specific services
     class Scanner
-      Log = ::Log.for(self)
+      MDNS_PORT = 5353
+      MDNS_IPV4 = Socket::IPAddress.new("224.0.0.251", MDNS_PORT)
+      MDNS_IPV6 = Socket::IPAddress.new("ff02::fb", MDNS_PORT)
 
-      alias DNSCodec = Codec::DNSCodec
-      alias Interface = Socket::IPAddress
+      @devices : Hash(String, DiscoveredDevice) # Key: instance name
+      @socket : UDPSocket
+      @running : Bool
+      @receive_fiber : Fiber?
 
-      include DNSCodec::Base
+      # Callback for discovered devices
+      # Signature: (device : DiscoveredDevice) -> Nil
+      property on_device_discovered : Proc(DiscoveredDevice, Nil)?
 
-      START_ANNOUNCE_INTERVAL_SECONDS = 1.5
+      # Callback for device updates
+      # Signature: (device : DiscoveredDevice) -> Nil
+      property on_device_updated : Proc(DiscoveredDevice, Nil)?
 
-      private getter? closing : Bool = false
+      # Callback for device removal (goodbye or expired)
+      # Signature: (instance_name : String) -> Nil
+      property on_device_removed : Proc(String, Nil)?
 
-      private getter server : Network::MulticastServer
-      private getter active_announce_queries : Hash(String, DNSCodec::Query | DNSCodec::Record) = {} of String => DNSCodec::Query | DNSCodec::Record
+      def initialize
+        @socket = UDPSocket.new
+        @socket.reuse_address = true
+        @socket.reuse_port = true
+        @socket.bind("0.0.0.0", MDNS_PORT)
+        @socket.read_timeout = 100.milliseconds
 
-      private getter query_timer : Channel(Bool) = Channel(Bool).new
+        # Join multicast groups
+        begin
+          @socket.join_group(MDNS_IPV4)
+        rescue ex
+          puts "Warning: Could not join IPv4 multicast group: #{ex.message}"
+        end
 
-      def initialize(address : Socket::IPAddress = Network::Constants::MDNS_ADDRESS_IPv4, buffer_size = 16, loopback = false, hops = 255)
-        Log.debug { "Creating the multicast server" }
+        @devices = Hash(String, DiscoveredDevice).new
+        @running = false
+        @receive_fiber = nil
+      end
 
-        # Assign the multicast server
-        @server = Network::MulticastServer.new(address, buffer_size, loopback, hops)
+      # Start listening for mDNS announcements
+      def start : Nil
+        return if @running
 
+        @running = true
+        @receive_fiber = spawn do
+          receive_loop
+        end
+
+        # Start cleanup fiber
         spawn do
-          # https://tools.ietf.org/html/rfc6762#section-17
-          buffer = Slice(UInt8).new(9000)
+          cleanup_loop
+        end
+      end
 
-          loop do
-            break if server.socket.closed?
+      # Stop listening
+      def stop : Nil
+        @running = false
+        sleep 200.milliseconds if @receive_fiber
+        @receive_fiber = nil
+      end
 
-            size, address = server.socket.receive(buffer)
+      # Close scanner
+      def close : Nil
+        stop
+        @socket.close unless @socket.closed?
+      end
 
-            Log.debug { "Received a connection from (#{address})" }
+      # Query for commissioning devices
+      def query_commissioning : Nil
+        query_service(ServiceNames::COMMISSIONING)
+      end
 
-            break if size == 0
+      # Query for operational devices
+      def query_operational : Nil
+        query_service(ServiceNames::OPERATIONAL)
+      end
 
-            message_slice = buffer[0..size].clone
-            handle_dns_message(address, message_slice)
+      # Get all discovered devices
+      def devices : Array(DiscoveredDevice)
+        @devices.values
+      end
+
+      # Get commissioning devices
+      def commissioning_devices : Array(DiscoveredDevice)
+        @devices.values.select(&.service_type.commissioning?)
+      end
+
+      # Get operational devices
+      def operational_devices : Array(DiscoveredDevice)
+        @devices.values.select(&.service_type.operational?)
+      end
+
+      # Get device by instance name
+      def get_device(instance_name : String) : DiscoveredDevice?
+        @devices[instance_name]?
+      end
+
+      private def query_service(service : String) : Nil
+        # Build PTR query for service
+        question = DNS::Packet::Question.new(
+          name: service,
+          type: RecordBuilder::TYPE_PTR,
+          class_code: RecordBuilder::CLASS_IN
+        )
+
+        packet = DNS::Packet.new(
+          id: Random.rand(UInt16),
+          questions: [question]
+        )
+
+        data = packet.to_slice
+
+        # Send multicast query
+        begin
+          @socket.send(data, MDNS_IPV4)
+        rescue ex
+          puts "Error sending query: #{ex.message}"
+        end
+      end
+
+      private def receive_loop : Nil
+        buffer = Bytes.new(9000) # Max DNS packet size
+
+        while @running
+          begin
+            bytes_read, peer_address = @socket.receive(buffer)
+            next if bytes_read == 0
+
+            data = buffer[0, bytes_read]
+            packet = DNS::Packet.from_slice(data)
+            process_mdns_packet(packet, peer_address)
+          rescue IO::TimeoutError
+            # Normal - continue
+          rescue ex : Exception
+            puts "Error receiving mDNS packet: #{ex.message}"
           end
         end
       end
 
-      private def handle_dns_message(address : Socket::IPAddress, message_slice : Slice(UInt8))
-        interface = address.family.inet? ? Network::Constants::MDNS_ADDRESS_IPv4 : Network::Constants::MDNS_ADDRESS_IPv6
+      private def process_mdns_packet(packet : DNS::Packet, peer : Socket::IPAddress) : Nil
+        # Collect all records (answers + authorities + additionals)
+        all_records = packet.answers + packet.authorities + packet.additionals
 
-        return if closing?
+        # Group records by instance name
+        records_by_instance = Hash(String, Array(DNS::Packet::ResourceRecord)).new
 
-        message = decode(message_slice)
+        all_records.each do |record|
+          # Skip non-.local records
+          next unless record.name.ends_with?(".local")
 
-        # The message cannot be parsed
-        return if message.nil?
+          # Extract instance name from record
+          instance = extract_instance_name(record.name)
+          next unless instance
 
-        return if message.message_type != DNSCodec::MessageType::Response || message.message_type != DNSCodec::MessageType::TruncatedResponse
-
-        answers = message.answers + message.additional_records
-
-        # Check if we got operational discovery records and handle them
-        return if handle_operational_records(answers, get_active_query_earlier_answers)
-
-        # Else check if we got commissionable discovery records and handle them
-        handle_commissionable_records(answers, get_active_query_earlier_answers)
-      end
-
-      private def handle_operational_records(answers : Array(DNSCodec::Record), former_answers : Array(DNSCodec::Record)) : Bool
-        records_handled = false
-
-        operational_txt_record = answers.find { |answer| answer.record_type == DNSCodec::RecordType::TXT && answer.name.ends_with?(Constants::MATTER_SERVICE_QNAME) }
-
-        unless operational_txt_record.nil?
-          handle_operational_txt_record(operational_txt_record)
-          records_handled = true
+          records_by_instance[instance] ||= [] of DNS::Packet::ResourceRecord
+          records_by_instance[instance] << record
         end
 
-        operational_srv_record =
-          (answers.find { |answer| answer.record_type = DNSCodec::RecordType::SRV && answer.name.ends_with?(Constants::MATTER_SERVICE_QNAME) }) ||
-            (former_answers.find { |answer| answer.record_type = DNSCodec::RecordType::SRV && answer.name.ends_with?(Constants::MATTER_SERVICE_QNAME) })
-
-        unless operational_srv_record.nil?
-          handle_operational_srv_record(operational_srv_record, answers, former_answers)
-          records_handled = true
-        end
-
-        records_handled
-      end
-
-      private def handle_operational_txt_record(operational_record : DNSCodec::Record)
-        if operational_record.ttl == 0
+        # Process each instance's records
+        records_by_instance.each do |instance, records|
+          process_instance_records(instance, records)
         end
       end
 
-      # Remove a query from the list of active queries because discovery has finished or timed out and stop sending it
-      # out. If it was the last query announcing will stop completely.
-      private def remove_query(query_id : String)
-        active_announce_queries.delete(query_id)
+      private def extract_instance_name(name : String) : String?
+        # Check if this is a service instance name
+        if name.includes?(ServiceNames::COMMISSIONING)
+          return name if name.ends_with?(ServiceNames::COMMISSIONING)
+        elsif name.includes?(ServiceNames::OPERATIONAL)
+          return name if name.ends_with?(ServiceNames::OPERATIONAL)
+        end
 
-        if active_announce_queries.size == 0
-          Log.debug { "Removing last query #{query_id} and stopping announce timer" }
+        nil
+      end
 
-          query_timer.send(true)
-          @next_announce_interval_seconds = START_ANNOUNCE_INTERVAL_SECONDS
+      private def process_instance_records(instance : String, records : Array(DNS::Packet::ResourceRecord)) : Nil
+        # Extract information from records
+        srv_record = records.find { |r| r.type == RecordBuilder::TYPE_SRV }
+        txt_record = records.find { |r| r.type == RecordBuilder::TYPE_TXT }
+        a_records = records.select { |r| r.type == RecordBuilder::TYPE_A }
+        aaaa_records = records.select { |r| r.type == RecordBuilder::TYPE_AAAA }
+
+        # Need at least SRV record to identify the service
+        return unless srv_record
+
+        # Parse SRV record for port and hostname
+        port, hostname = parse_srv_record(srv_record)
+        return unless port && hostname
+
+        # Parse TXT record
+        txt_records = txt_record ? parse_txt_record(txt_record) : Hash(String, String).new
+
+        # Collect IP addresses
+        addresses = [] of Socket::IPAddress
+        a_records.each do |r|
+          if addr = parse_a_record(r)
+            addresses << addr
+          end
+        end
+        aaaa_records.each do |r|
+          if addr = parse_aaaa_record(r)
+            addresses << addr
+          end
+        end
+
+        # Determine service type
+        service_type = if instance.includes?(ServiceNames::COMMISSIONING)
+                         ServiceType::Commissioning
+                       elsif instance.includes?(ServiceNames::OPERATIONAL)
+                         ServiceType::Operational
+                       else
+                         return
+                       end
+
+        # Calculate expiration
+        ttl = srv_record.ttl
+        expires_at = Time.utc + ttl
+
+        # Handle TTL=0 (goodbye packet)
+        if ttl.total_seconds == 0
+          if @devices.has_key?(instance)
+            @devices.delete(instance)
+            @on_device_removed.try(&.call(instance))
+          end
+          return
+        end
+
+        # Update or create device
+        if existing = @devices[instance]?
+          # Update existing device
+          existing.hostname = hostname
+          existing.addresses = addresses
+          existing.port = port
+          existing.txt_records = txt_records
+          existing.expires_at = expires_at
+          @on_device_updated.try(&.call(existing))
         else
-          Log.debug { "Removing query #{query_id}" }
+          # Create new device
+          device = DiscoveredDevice.new(
+            instance_name: instance,
+            hostname: hostname,
+            addresses: addresses,
+            port: port,
+            txt_records: txt_records,
+            service_type: service_type,
+            expires_at: expires_at
+          )
+
+          @devices[instance] = device
+          @on_device_discovered.try(&.call(device))
         end
       end
 
-      private def get_active_query_earlier_answers
-        active_announce_queries.values.flat_map { |query| query.answers }
+      private def parse_srv_record(record : DNS::Packet::ResourceRecord) : Tuple(Int32?, String?)
+        io = IO::Memory.new(record.resource_data)
+
+        begin
+          priority = io.read_bytes(UInt16, IO::ByteFormat::BigEndian)
+          weight = io.read_bytes(UInt16, IO::ByteFormat::BigEndian)
+          port = io.read_bytes(UInt16, IO::ByteFormat::BigEndian)
+
+          # Parse target domain name
+          hostname = DNS::Resource.read_labels(io)
+
+          {port.to_i32, hostname}
+        rescue
+          {nil, nil}
+        end
+      end
+
+      private def parse_txt_record(record : DNS::Packet::ResourceRecord) : Hash(String, String)
+        txt_records = Hash(String, String).new
+        io = IO::Memory.new(record.resource_data)
+
+        while io.pos < record.resource_data.size
+          begin
+            length = io.read_byte
+            break unless length && length > 0
+
+            txt = Bytes.new(length)
+            io.read_fully(txt)
+
+            # Parse key=value
+            txt_str = String.new(txt)
+            if match = txt_str.match(/^([^=]+)=(.*)$/)
+              txt_records[match[1]] = match[2]
+            end
+          rescue
+            break
+          end
+        end
+
+        txt_records
+      end
+
+      private def parse_a_record(record : DNS::Packet::ResourceRecord) : Socket::IPAddress?
+        return nil unless record.resource_data.size == 4
+
+        # IPv4 address is 4 bytes
+        ip_bytes = record.resource_data
+        ip_str = "#{ip_bytes[0]}.#{ip_bytes[1]}.#{ip_bytes[2]}.#{ip_bytes[3]}"
+        Socket::IPAddress.new(ip_str, 0)
+      rescue
+        nil
+      end
+
+      private def parse_aaaa_record(record : DNS::Packet::ResourceRecord) : Socket::IPAddress?
+        return nil unless record.resource_data.size == 16
+
+        # IPv6 address is 16 bytes
+        # Convert to hex string representation
+        parts = [] of String
+        (0...16).step(2) do |i|
+          part = (record.resource_data[i].to_u16 << 8) | record.resource_data[i + 1].to_u16
+          parts << part.to_s(16)
+        end
+
+        ip_str = parts.join(":")
+        Socket::IPAddress.new(ip_str, 0)
+      rescue
+        nil
+      end
+
+      private def cleanup_loop : Nil
+        while @running
+          sleep 10.seconds
+
+          # Remove expired devices
+          @devices.reject! do |instance, device|
+            if device.expired?
+              @on_device_removed.try(&.call(instance))
+              true
+            else
+              false
+            end
+          end
+        end
       end
     end
   end
