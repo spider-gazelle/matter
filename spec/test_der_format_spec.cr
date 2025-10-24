@@ -13,47 +13,31 @@ describe "DER Format Generation" do
     # Build our DER
     our_der = crypto.build_ec_private_key_der(private_key_bytes, public_key_bytes)
 
-    puts "\nOur EC Private Key DER (#{our_der.size} bytes):"
-    puts our_der.hexstring
-
-    puts "\nHex dump:"
     our_der.each_slice(16) do |slice|
       hex = slice.map { |b| b.to_s(16).rjust(2, '0') }.join(" ")
       ascii = slice.map { |b| (32..126).includes?(b) ? b.chr : '.' }.join
-      puts "#{hex.ljust(48)} #{ascii}"
     end
 
     # Try to load it
     pem = crypto.der_to_pem(our_der, "EC PRIVATE KEY")
-    puts "\nPEM format:"
-    puts pem
 
     pkey = OpenSSL::PKey::EC.new(pem)
     pkey.private?.should be_true
-    puts "✅ Successfully loaded EC private key!"
   end
 
   it "generates valid SPKI DER for EC public key" do
     # Build our DER
     our_der = crypto.build_ec_public_key_der(public_key_bytes)
 
-    puts "\nOur EC Public Key DER (#{our_der.size} bytes):"
-    puts our_der.hexstring
-
-    puts "\nHex dump:"
     our_der.each_slice(16) do |slice|
       hex = slice.map { |b| b.to_s(16).rjust(2, '0') }.join(" ")
       ascii = slice.map { |b| (32..126).includes?(b) ? b.chr : '.' }.join
-      puts "#{hex.ljust(48)} #{ascii}"
     end
 
     # Try to load it
     pem = crypto.der_to_pem(our_der, "PUBLIC KEY")
-    puts "\nPEM format:"
-    puts pem
 
     pkey = OpenSSL::PKey::EC.new(pem)
     pkey.public?.should be_true
-    puts "✅ Successfully loaded EC public key!"
   end
 end
