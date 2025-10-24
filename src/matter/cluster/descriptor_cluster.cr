@@ -1,47 +1,49 @@
 require "./cluster"
-require "./definitions/descriptor"
 
 module Matter
   module Cluster
-    # Descriptor Cluster Implementation (0x001D)
-    # Required on all endpoints to describe the endpoint's configuration
+    # Descriptor Cluster (0x001D)
+    #
+    # Provides device composition information including device types,
+    # server/client clusters, and endpoint hierarchy.
+    #
+    # Required on all endpoints.
+    #
+    # Matter Spec: Core 9.5
     class DescriptorCluster < Base
       CLUSTER_ID = 0x001D_u32
 
-      # Attribute IDs
-      DEVICE_TYPE_LIST = 0x0000_u32
-      SERVER_LIST      = 0x0001_u32
-      CLIENT_LIST      = 0x0002_u32
-      PARTS_LIST       = 0x0003_u32
-      TAG_LIST         = 0x0004_u32
+      # Attributes
+      ATTR_DEVICE_TYPE_LIST = 0x0000_u32
+      ATTR_SERVER_LIST      = 0x0001_u32
+      ATTR_CLIENT_LIST      = 0x0002_u32
+      ATTR_PARTS_LIST       = 0x0003_u32
 
-      # Global attributes
-      CLUSTER_REVISION = 0xFFFD_u32
-      FEATURE_MAP      = 0xFFFC_u32
-      ATTRIBUTE_LIST   = 0xFFFB_u32
+      # Device Type Structure
+      struct DeviceTypeStruct
+        property device_type : UInt32 # Device type ID
+        property revision : UInt16    # Device type revision
 
-      # Store device types as raw data
-      struct DeviceTypeInfo
-        property device_type_id : UInt32
-        property revision : UInt16
-
-        def initialize(@device_type_id : UInt32, @revision : UInt16)
+        def initialize(@device_type : UInt32, @revision : UInt16)
         end
       end
 
-      property device_types : Array(DeviceTypeInfo)
-      property server_clusters : Array(UInt32)
-      property client_clusters : Array(UInt32)
-      property parts : Array(UInt16)
+      # Attribute storage
+      property device_type_list : Array(DeviceTypeStruct)
+      property server_list : Array(UInt32)
+      property client_list : Array(UInt32)
+      property parts_list : Array(UInt16)
 
-      def initialize(
-        endpoint_id : DataType::EndpointNumber,
-        @device_types : Array(DeviceTypeInfo) = [] of DeviceTypeInfo,
-        @server_clusters : Array(UInt32) = [] of UInt32,
-        @client_clusters : Array(UInt32) = [] of UInt32,
-        @parts : Array(UInt16) = [] of UInt16,
-      )
+      def initialize(endpoint_id : DataType::EndpointNumber)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
+
+        @device_type_list = [] of DeviceTypeStruct
+        @server_list = [] of UInt32
+        @client_list = [] of UInt32
+        @parts_list = [] of UInt16
+
+        # Descriptor cluster is always a server on every endpoint
+        @server_list << CLUSTER_ID
       end
 
       def name : String
@@ -51,117 +53,79 @@ module Matter
       def attributes : Array(AttributeMetadata)
         [
           AttributeMetadata.new(
-            id: DataType::AttributeId.new(DEVICE_TYPE_LIST),
-            name: "DeviceTypeList",
-            type: :array,
+            DataType::AttributeId.new(ATTR_DEVICE_TYPE_LIST),
+            "DeviceTypeList",
+            :list,
             writable: false
           ),
           AttributeMetadata.new(
-            id: DataType::AttributeId.new(SERVER_LIST),
-            name: "ServerList",
-            type: :array,
+            DataType::AttributeId.new(ATTR_SERVER_LIST),
+            "ServerList",
+            :list,
             writable: false
           ),
           AttributeMetadata.new(
-            id: DataType::AttributeId.new(CLIENT_LIST),
-            name: "ClientList",
-            type: :array,
+            DataType::AttributeId.new(ATTR_CLIENT_LIST),
+            "ClientList",
+            :list,
             writable: false
           ),
           AttributeMetadata.new(
-            id: DataType::AttributeId.new(PARTS_LIST),
-            name: "PartsList",
-            type: :array,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            id: DataType::AttributeId.new(TAG_LIST),
-            name: "TagList",
-            type: :array,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            id: DataType::AttributeId.new(CLUSTER_REVISION),
-            name: "ClusterRevision",
-            type: :uint16,
-            writable: false,
-            default: encode_uint16(1_u16)
-          ),
-          AttributeMetadata.new(
-            id: DataType::AttributeId.new(FEATURE_MAP),
-            name: "FeatureMap",
-            type: :uint32,
-            writable: false,
-            default: encode_uint32(0_u32)
-          ),
-          AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTRIBUTE_LIST),
-            name: "AttributeList",
-            type: :array,
+            DataType::AttributeId.new(ATTR_PARTS_LIST),
+            "PartsList",
+            :list,
             writable: false
           ),
         ]
       end
 
+      def commands : Array(CommandMetadata)
+        # No commands defined for Descriptor cluster
+        [] of CommandMetadata
+      end
+
       def read_attribute(attribute_id : UInt32) : InteractionModel::Status | Bytes
         case attribute_id
-        when DEVICE_TYPE_LIST
-          encode_device_type_list
-        when SERVER_LIST
-          encode_cluster_list(@server_clusters)
-        when CLIENT_LIST
-          encode_cluster_list(@client_clusters)
-        when PARTS_LIST
-          encode_parts_list
-        when TAG_LIST
-          Bytes.new(0) # Empty list for now
-        when ATTRIBUTE_LIST
-          encode_attribute_list
+        when ATTR_DEVICE_TYPE_LIST
+          # TODO: Encode device type list as TLV
+          Bytes.new(0)
+        when ATTR_SERVER_LIST
+          # TODO: Encode server list as TLV
+          Bytes.new(0)
+        when ATTR_CLIENT_LIST
+          # TODO: Encode client list as TLV
+          Bytes.new(0)
+        when ATTR_PARTS_LIST
+          # TODO: Encode parts list as TLV
+          Bytes.new(0)
         else
-          super(attribute_id)
+          super
         end
       end
 
-      private def encode_device_type_list : Bytes
-        # Simplified encoding - real implementation would use TLV
-        io = IO::Memory.new
-        IO::ByteFormat::LittleEndian.encode(@device_types.size.to_u16, io)
-        @device_types.each do |dt|
-          IO::ByteFormat::LittleEndian.encode(dt.device_type_id, io)
-          IO::ByteFormat::LittleEndian.encode(dt.revision, io)
-        end
-        io.to_slice
+      def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+        # All attributes are read-only
+        super
       end
 
-      private def encode_cluster_list(clusters : Array(UInt32)) : Bytes
-        # Simplified encoding - real implementation would use TLV
-        io = IO::Memory.new
-        IO::ByteFormat::LittleEndian.encode(clusters.size.to_u16, io)
-        clusters.each do |cluster_id|
-          IO::ByteFormat::LittleEndian.encode(cluster_id, io)
-        end
-        io.to_slice
+      # Helper: Check if a cluster is in the server list
+      def has_server_cluster?(cluster_id : UInt32) : Bool
+        @server_list.includes?(cluster_id)
       end
 
-      private def encode_parts_list : Bytes
-        # Simplified encoding - real implementation would use TLV
-        io = IO::Memory.new
-        IO::ByteFormat::LittleEndian.encode(@parts.size.to_u16, io)
-        @parts.each do |part|
-          IO::ByteFormat::LittleEndian.encode(part, io)
-        end
-        io.to_slice
+      # Helper: Check if a cluster is in the client list
+      def has_client_cluster?(cluster_id : UInt32) : Bool
+        @client_list.includes?(cluster_id)
       end
 
-      private def encode_attribute_list : Bytes
-        # List all attribute IDs
-        ids = attributes.map(&.id.id)
-        io = IO::Memory.new
-        IO::ByteFormat::LittleEndian.encode(ids.size.to_u16, io)
-        ids.each do |id|
-          IO::ByteFormat::LittleEndian.encode(id, io)
-        end
-        io.to_slice
+      # Helper: Check if an endpoint is in the parts list
+      def has_part?(endpoint_id : UInt16) : Bool
+        @parts_list.includes?(endpoint_id)
+      end
+
+      # Helper: Get primary device type
+      def primary_device_type : DeviceTypeStruct?
+        @device_type_list.first?
       end
     end
   end

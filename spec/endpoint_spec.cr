@@ -134,13 +134,9 @@ describe Matter::Endpoint do
       device_type = Matter::DeviceType.on_off_light
       endpoint = Matter::Endpoint.new(endpoint_id, device_type)
 
-      descriptor = Matter::Cluster::DescriptorCluster.new(
-        endpoint_id,
-        device_types: [Matter::Cluster::DescriptorCluster::DeviceTypeInfo.new(0x0100_u32, 2_u16)],
-        server_clusters: [0x0006_u32],
-        client_clusters: [] of UInt32,
-        parts: [] of UInt16
-      )
+      descriptor = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      descriptor.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(0x0100_u32, 2_u16)
+      descriptor.server_list << 0x0006_u32
 
       endpoint.add_cluster(descriptor)
 
@@ -215,13 +211,13 @@ describe Matter::Endpoint do
       endpoint = Matter::Endpoint.new(endpoint_id, device_type)
 
       # Add all required clusters
-      endpoint.add_cluster(Matter::Cluster::DescriptorCluster.new(
-        endpoint_id,
-        device_types: [Matter::Cluster::DescriptorCluster::DeviceTypeInfo.new(0x0100_u32, 2_u16)],
-        server_clusters: [0x0003_u32, 0x0004_u32, 0x0005_u32, 0x0006_u32],
-        client_clusters: [] of UInt32,
-        parts: [] of UInt16
-      ))
+      descriptor = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      descriptor.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(0x0100_u32, 2_u16)
+      descriptor.server_list << 0x0003_u32
+      descriptor.server_list << 0x0004_u32
+      descriptor.server_list << 0x0005_u32
+      descriptor.server_list << 0x0006_u32
+      endpoint.add_cluster(descriptor)
       endpoint.add_cluster(Matter::Cluster::IdentifyCluster.new(endpoint_id))
       endpoint.add_cluster(Matter::Cluster::GroupsCluster.new(endpoint_id))
       endpoint.add_cluster(Matter::Cluster::ScenesCluster.new(endpoint_id))
@@ -254,13 +250,14 @@ describe Matter::Endpoint do
       endpoint = Matter::Endpoint.new(endpoint_id, device_type)
 
       # Add all required clusters
-      endpoint.add_cluster(Matter::Cluster::DescriptorCluster.new(
-        endpoint_id,
-        device_types: [Matter::Cluster::DescriptorCluster::DeviceTypeInfo.new(0x0101_u32, 2_u16)],
-        server_clusters: [0x0003_u32, 0x0004_u32, 0x0005_u32, 0x0006_u32, 0x0008_u32],
-        client_clusters: [] of UInt32,
-        parts: [] of UInt16
-      ))
+      descriptor = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      descriptor.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(0x0101_u32, 2_u16)
+      descriptor.server_list << 0x0003_u32
+      descriptor.server_list << 0x0004_u32
+      descriptor.server_list << 0x0005_u32
+      descriptor.server_list << 0x0006_u32
+      descriptor.server_list << 0x0008_u32
+      endpoint.add_cluster(descriptor)
       endpoint.add_cluster(Matter::Cluster::IdentifyCluster.new(endpoint_id))
       endpoint.add_cluster(Matter::Cluster::GroupsCluster.new(endpoint_id))
       endpoint.add_cluster(Matter::Cluster::ScenesCluster.new(endpoint_id))
@@ -540,13 +537,13 @@ describe Matter::MatterNode do
       # Endpoint 1: Complete on/off light
       endpoint1_id = Matter::DataType::EndpointNumber.new(1_u16)
       endpoint1 = Matter::Endpoint.new(endpoint1_id, Matter::DeviceType.on_off_light)
-      endpoint1.add_cluster(Matter::Cluster::DescriptorCluster.new(
-        endpoint1_id,
-        device_types: [Matter::Cluster::DescriptorCluster::DeviceTypeInfo.new(0x0100_u32, 2_u16)],
-        server_clusters: [0x0003_u32, 0x0004_u32, 0x0005_u32, 0x0006_u32],
-        client_clusters: [] of UInt32,
-        parts: [] of UInt16
-      ))
+      descriptor1 = Matter::Cluster::DescriptorCluster.new(endpoint1_id)
+      descriptor1.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(0x0100_u32, 2_u16)
+      descriptor1.server_list << 0x0003_u32
+      descriptor1.server_list << 0x0004_u32
+      descriptor1.server_list << 0x0005_u32
+      descriptor1.server_list << 0x0006_u32
+      endpoint1.add_cluster(descriptor1)
       endpoint1.add_cluster(Matter::Cluster::IdentifyCluster.new(endpoint1_id))
       endpoint1.add_cluster(Matter::Cluster::GroupsCluster.new(endpoint1_id))
       endpoint1.add_cluster(Matter::Cluster::ScenesCluster.new(endpoint1_id))
