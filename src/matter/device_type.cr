@@ -1,0 +1,255 @@
+require "./datatype/device_type_id"
+require "./datatype/cluster_id"
+
+module Matter
+  # Device type definitions from the Matter specification
+  # Each device type defines required and optional clusters
+  class DeviceType
+    # Common Matter Device Types (Spec Chapter 7)
+
+    # Utility Device Types
+    ROOT_NODE     = 0x0016_u32 # Root Node (endpoint 0)
+    POWER_SOURCE  = 0x0011_u32 # Power Source
+    OTA_REQUESTOR = 0x0012_u32 # OTA Requestor
+    OTA_PROVIDER  = 0x0014_u32 # OTA Provider
+    AGGREGATOR    = 0x000E_u32 # Aggregator
+    BRIDGED_NODE  = 0x0013_u32 # Bridged Node
+
+    # Lighting Device Types
+    ON_OFF_LIGHT            = 0x0100_u32 # On/Off Light
+    DIMMABLE_LIGHT          = 0x0101_u32 # Dimmable Light
+    COLOR_TEMPERATURE_LIGHT = 0x010C_u32 # Color Temperature Light
+    EXTENDED_COLOR_LIGHT    = 0x010D_u32 # Extended Color Light
+
+    # Smart Plug/Outlet Device Types
+    ON_OFF_PLUG_IN_UNIT   = 0x010A_u32 # On/Off Plug-in Unit
+    DIMMABLE_PLUG_IN_UNIT = 0x010B_u32 # Dimmable Plug-in Unit
+
+    # Switch Device Types
+    ON_OFF_LIGHT_SWITCH = 0x0103_u32 # On/Off Light Switch
+    DIMMER_SWITCH       = 0x0104_u32 # Dimmer Switch
+    COLOR_DIMMER_SWITCH = 0x0105_u32 # Color Dimmer Switch
+    CONTROL_BRIDGE      = 0x0840_u32 # Control Bridge
+    PUMP_CONTROLLER     = 0x0304_u32 # Pump Controller
+    PUMP                = 0x0303_u32 # Pump
+
+    # Sensor Device Types
+    CONTACT_SENSOR     = 0x0015_u32 # Contact Sensor
+    LIGHT_SENSOR       = 0x0106_u32 # Light Sensor
+    OCCUPANCY_SENSOR   = 0x0107_u32 # Occupancy Sensor
+    TEMPERATURE_SENSOR = 0x0302_u32 # Temperature Sensor
+    PRESSURE_SENSOR    = 0x0305_u32 # Pressure Sensor
+    FLOW_SENSOR        = 0x0306_u32 # Flow Sensor
+    HUMIDITY_SENSOR    = 0x0307_u32 # Humidity Sensor
+
+    # Closure Device Types
+    DOOR_LOCK                  = 0x000A_u32 # Door Lock
+    DOOR_LOCK_CONTROLLER       = 0x000B_u32 # Door Lock Controller
+    WINDOW_COVERING            = 0x0202_u32 # Window Covering
+    WINDOW_COVERING_CONTROLLER = 0x0203_u32 # Window Covering Controller
+
+    # HVAC Device Types
+    HEATING_COOLING_UNIT = 0x0300_u32 # Heating/Cooling Unit
+    THERMOSTAT           = 0x0301_u32 # Thermostat
+    FAN                  = 0x002B_u32 # Fan
+
+    # Media Device Types
+    BASIC_VIDEO_PLAYER   = 0x0028_u32 # Basic Video Player
+    CASTING_VIDEO_PLAYER = 0x0023_u32 # Casting Video Player
+    SPEAKER              = 0x0022_u32 # Speaker
+    CONTENT_APP          = 0x0024_u32 # Content App
+    CASTING_VIDEO_CLIENT = 0x0029_u32 # Casting Video Client
+    VIDEO_REMOTE_CONTROL = 0x002A_u32 # Video Remote Control
+
+    getter device_type_id : DataType::DeviceTypeId
+    getter name : String
+    getter revision : UInt16
+    getter required_server_clusters : Array(UInt32)
+    getter optional_server_clusters : Array(UInt32)
+
+    def initialize(
+      @device_type_id : DataType::DeviceTypeId,
+      @name : String,
+      @revision : UInt16,
+      @required_server_clusters : Array(UInt32) = [] of UInt32,
+      @optional_server_clusters : Array(UInt32) = [] of UInt32,
+    )
+    end
+
+    # Factory methods for common device types
+
+    def self.root_node : DeviceType
+      new(
+        DataType::DeviceTypeId.new(ROOT_NODE),
+        "Root Node",
+        1_u16,
+        required_server_clusters: [
+          0x001D_u32, # Descriptor
+          0x0028_u32, # Basic Information
+          0x0030_u32, # General Commissioning
+          0x0031_u32, # Network Commissioning
+          0x003C_u32, # General Diagnostics
+          0x003E_u32, # Administrator Commissioning
+          0x003F_u32, # Operational Credentials
+          0x0033_u32, # Group Key Management
+        ],
+        optional_server_clusters: [
+          0x0003_u32, # Identify
+        ]
+      )
+    end
+
+    def self.on_off_light : DeviceType
+      new(
+        DataType::DeviceTypeId.new(ON_OFF_LIGHT),
+        "On/Off Light",
+        2_u16,
+        required_server_clusters: [
+          0x001D_u32, # Descriptor
+          0x0003_u32, # Identify
+          0x0004_u32, # Groups
+          0x0005_u32, # Scenes
+          0x0006_u32, # On/Off
+        ],
+        optional_server_clusters: [
+          0x0008_u32, # Level Control (for compatibility)
+        ]
+      )
+    end
+
+    def self.dimmable_light : DeviceType
+      new(
+        DataType::DeviceTypeId.new(DIMMABLE_LIGHT),
+        "Dimmable Light",
+        2_u16,
+        required_server_clusters: [
+          0x001D_u32, # Descriptor
+          0x0003_u32, # Identify
+          0x0004_u32, # Groups
+          0x0005_u32, # Scenes
+          0x0006_u32, # On/Off
+          0x0008_u32, # Level Control
+        ]
+      )
+    end
+
+    def self.on_off_plug_in_unit : DeviceType
+      new(
+        DataType::DeviceTypeId.new(ON_OFF_PLUG_IN_UNIT),
+        "On/Off Plug-in Unit",
+        2_u16,
+        required_server_clusters: [
+          0x001D_u32, # Descriptor
+          0x0003_u32, # Identify
+          0x0004_u32, # Groups
+          0x0005_u32, # Scenes
+          0x0006_u32, # On/Off
+        ],
+        optional_server_clusters: [
+          0x0008_u32, # Level Control
+        ]
+      )
+    end
+
+    def self.on_off_light_switch : DeviceType
+      new(
+        DataType::DeviceTypeId.new(ON_OFF_LIGHT_SWITCH),
+        "On/Off Light Switch",
+        2_u16,
+        required_server_clusters: [
+          0x001D_u32, # Descriptor
+          0x0003_u32, # Identify
+        ],
+        optional_server_clusters: [] of UInt32
+      )
+    end
+
+    def self.dimmer_switch : DeviceType
+      new(
+        DataType::DeviceTypeId.new(DIMMER_SWITCH),
+        "Dimmer Switch",
+        2_u16,
+        required_server_clusters: [
+          0x001D_u32, # Descriptor
+          0x0003_u32, # Identify
+        ],
+        optional_server_clusters: [] of UInt32
+      )
+    end
+
+    def self.contact_sensor : DeviceType
+      new(
+        DataType::DeviceTypeId.new(CONTACT_SENSOR),
+        "Contact Sensor",
+        1_u16,
+        required_server_clusters: [
+          0x001D_u32, # Descriptor
+          0x0003_u32, # Identify
+          0x0045_u32, # Boolean State
+        ],
+        optional_server_clusters: [] of UInt32
+      )
+    end
+
+    def self.temperature_sensor : DeviceType
+      new(
+        DataType::DeviceTypeId.new(TEMPERATURE_SENSOR),
+        "Temperature Sensor",
+        2_u16,
+        required_server_clusters: [
+          0x001D_u32, # Descriptor
+          0x0003_u32, # Identify
+          0x0402_u32, # Temperature Measurement
+        ],
+        optional_server_clusters: [] of UInt32
+      )
+    end
+
+    def self.door_lock : DeviceType
+      new(
+        DataType::DeviceTypeId.new(DOOR_LOCK),
+        "Door Lock",
+        2_u16,
+        required_server_clusters: [
+          0x001D_u32, # Descriptor
+          0x0003_u32, # Identify
+          0x0101_u32, # Door Lock
+        ],
+        optional_server_clusters: [] of UInt32
+      )
+    end
+
+    def self.thermostat : DeviceType
+      new(
+        DataType::DeviceTypeId.new(THERMOSTAT),
+        "Thermostat",
+        2_u16,
+        required_server_clusters: [
+          0x001D_u32, # Descriptor
+          0x0003_u32, # Identify
+          0x0004_u32, # Groups
+          0x0005_u32, # Scenes
+          0x0201_u32, # Thermostat
+        ],
+        optional_server_clusters: [
+          0x0204_u32, # Thermostat User Interface Configuration
+        ]
+      )
+    end
+
+    # Helper method to check if a cluster is required
+    def requires_cluster?(cluster_id : UInt32) : Bool
+      @required_server_clusters.includes?(cluster_id)
+    end
+
+    # Helper method to check if a cluster is optional
+    def supports_optional_cluster?(cluster_id : UInt32) : Bool
+      @optional_server_clusters.includes?(cluster_id)
+    end
+
+    # Helper method to check if a cluster is allowed (required or optional)
+    def allows_cluster?(cluster_id : UInt32) : Bool
+      requires_cluster?(cluster_id) || supports_optional_cluster?(cluster_id)
+    end
+  end
+end
