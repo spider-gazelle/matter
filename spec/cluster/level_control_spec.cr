@@ -1,6 +1,12 @@
 require "../spec_helper"
 require "../../src/matter/cluster/level_control_cluster"
 
+# Note: Time-based transition tests from matter.js behavioral tests
+# (packages/node/test/behaviors/level-control/LevelControlServerTest.ts)
+# require transition manager support with gradual level updates over time.
+# Current implementation performs instant level changes.
+# These tests can be added when transition support is implemented.
+
 describe Matter::Cluster::LevelControlCluster do
   describe "initialization" do
     it "creates level control cluster" do

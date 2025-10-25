@@ -26,4 +26,8 @@ dependencies:
   dns:
     github: spider-gazelle/dns
 
+development_dependencies:
+  timecop:
+    github: crystal-community/timecop.cr
+
 license: MIT

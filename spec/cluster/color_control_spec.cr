@@ -1,6 +1,12 @@
 require "../spec_helper"
 require "../../src/matter/cluster/color_control_cluster"
 
+# Note: Time-based transition tests from matter.js behavioral tests
+# (packages/node/test/behaviors/color-control/ColorControlServerTest.ts)
+# require transition manager support with gradual color changes over time.
+# Current implementation performs instant color changes.
+# These tests can be added when transition support is implemented.
+
 describe Matter::Cluster::ColorControlCluster do
   describe "initialization" do
     it "creates cluster with default values" do

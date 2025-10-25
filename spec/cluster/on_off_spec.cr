@@ -303,6 +303,26 @@ describe Matter::Cluster::OnOffCluster do
 
       callback_called.should be_false
     end
+
+    # Behavioral test migrated from matter.js
+    # packages/node/test/behaviors/on-off/OnOffServerTest.ts
+    it "properly supports observers on toggle sequence" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+      cluster = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: false)
+
+      observed_values = [] of Bool
+
+      cluster.on_state_changed do |state|
+        observed_values << state
+      end
+
+      # Toggle twice - should observe [true, false]
+      2.times do
+        cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
+      end
+
+      observed_values.should eq([true, false])
+    end
   end
 
   describe "data versioning" do
