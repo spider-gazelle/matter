@@ -1,0 +1,220 @@
+require "./cluster"
+
+module Matter
+  module Cluster
+    # Time Format Localization Cluster (0x002C)
+    #
+    # Provides attributes for determining and configuring time and date formatting
+    # information that a node uses when conveying values to a user. This cluster
+    # supports both hour format (12hr/24hr) and calendar format preferences.
+    #
+    # Specification: Matter 1.4 § 11.4
+    class TimeFormatLocalizationCluster < Base
+      CLUSTER_ID = 0x002C_u32
+
+      # Attributes
+      ATTR_HOUR_FORMAT              = 0x0000_u32
+      ATTR_ACTIVE_CALENDAR_TYPE     = 0x0001_u32
+      ATTR_SUPPORTED_CALENDAR_TYPES = 0x0002_u32
+
+      # Hour format values
+      enum HourFormat
+        Hr12            =   0 # 12-hour clock
+        Hr24            =   1 # 24-hour clock
+        UseActiveLocale = 255 # Use active locale clock
+      end
+
+      # Calendar type values
+      enum CalendarType
+        Buddhist        =   0
+        Chinese         =   1
+        Coptic          =   2
+        Ethiopian       =   3
+        Gregorian       =   4
+        Hebrew          =   5
+        Indian          =   6
+        Islamic         =   7
+        Japanese        =   8
+        Korean          =   9
+        Persian         =  10
+        Taiwanese       =  11
+        UseActiveLocale = 255
+      end
+
+      # Hour format preference (writable)
+      property hour_format : HourFormat
+
+      # Active calendar type (writable, optional - requires CalendarFormat feature)
+      property active_calendar_type : CalendarType?
+
+      # Supported calendar types (fixed, optional - requires CalendarFormat feature)
+      property supported_calendar_types : Array(CalendarType)?
+
+      def initialize(endpoint_id : DataType::EndpointNumber,
+                     @hour_format : HourFormat = HourFormat::Hr24,
+                     @active_calendar_type : CalendarType? = nil,
+                     @supported_calendar_types : Array(CalendarType)? = nil)
+        super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
+
+        # Validate active calendar type is in supported list if both are provided
+        if active = @active_calendar_type
+          if supported = @supported_calendar_types
+            unless supported.includes?(active)
+              raise ArgumentError.new("active_calendar_type must be in supported_calendar_types")
+            end
+          end
+        end
+
+        # Validate no duplicates in supported calendar types
+        if supported = @supported_calendar_types
+          if supported.size != supported.uniq.size
+            raise ArgumentError.new("supported_calendar_types must not contain duplicates")
+          end
+        end
+      end
+
+      def name : String
+        "TimeFormatLocalization"
+      end
+
+      def attributes : Array(AttributeMetadata)
+        attrs = [
+          AttributeMetadata.new(
+            DataType::AttributeId.new(ATTR_HOUR_FORMAT),
+            "HourFormat",
+            :uint8,
+            writable: true
+          ),
+        ]
+
+        # Add calendar format attributes if CalendarFormat feature is enabled
+        if @active_calendar_type || @supported_calendar_types
+          attrs << AttributeMetadata.new(
+            DataType::AttributeId.new(ATTR_ACTIVE_CALENDAR_TYPE),
+            "ActiveCalendarType",
+            :uint8,
+            writable: true
+          )
+          attrs << AttributeMetadata.new(
+            DataType::AttributeId.new(ATTR_SUPPORTED_CALENDAR_TYPES),
+            "SupportedCalendarTypes",
+            :array,
+            writable: false
+          )
+        end
+
+        attrs
+      end
+
+      def commands : Array(CommandMetadata)
+        [] of CommandMetadata # No commands for localization cluster
+      end
+
+      def read_attribute(attribute_id : UInt32) : Bytes | InteractionModel::Status
+        case attribute_id
+        when ATTR_HOUR_FORMAT
+          Bytes[@hour_format.value.to_u8]
+        when ATTR_ACTIVE_CALENDAR_TYPE
+          if active = @active_calendar_type
+            Bytes[active.value.to_u8]
+          else
+            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+          end
+        when ATTR_SUPPORTED_CALENDAR_TYPES
+          if supported = @supported_calendar_types
+            encode_array(supported.map(&.value.to_u8))
+          else
+            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+          end
+        else
+          super
+        end
+      end
+
+      def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+        case attribute_id
+        when ATTR_HOUR_FORMAT
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
+
+          hour_value = value[0]
+
+          # Validate hour format value
+          unless hour_value.in?(0_u8, 1_u8, 255_u8)
+            return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+          end
+
+          old_format = @hour_format
+          @hour_format = HourFormat.from_value(hour_value)
+
+          # Call callback if registered
+          @on_hour_format_changed.try &.call(old_format, @hour_format)
+          increment_version
+
+          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        when ATTR_ACTIVE_CALENDAR_TYPE
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
+
+          calendar_value = value[0]
+
+          # Validate calendar type value
+          valid_values = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 255]
+          unless valid_values.includes?(calendar_value)
+            return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+          end
+
+          new_calendar = CalendarType.from_value(calendar_value)
+
+          # Check if calendar format feature is enabled
+          unless @supported_calendar_types
+            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+          end
+
+          # Validate new calendar type is in supported list
+          unless @supported_calendar_types.not_nil!.includes?(new_calendar)
+            return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+          end
+
+          old_calendar = @active_calendar_type
+          @active_calendar_type = new_calendar
+
+          # Call callback if registered
+          @on_calendar_changed.try &.call(old_calendar, new_calendar)
+          increment_version
+
+          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        else
+          super
+        end
+      end
+
+      # Check if CalendarFormat feature is enabled
+      def calendar_format_enabled? : Bool
+        !@supported_calendar_types.nil?
+      end
+
+      # Callback when hour format changes
+      @on_hour_format_changed : Proc(HourFormat, HourFormat, Nil)?
+
+      def on_hour_format_changed(&block : HourFormat, HourFormat -> Nil)
+        @on_hour_format_changed = block
+      end
+
+      # Callback when calendar type changes
+      @on_calendar_changed : Proc(CalendarType?, CalendarType, Nil)?
+
+      def on_calendar_changed(&block : CalendarType?, CalendarType -> Nil)
+        @on_calendar_changed = block
+      end
+
+      private def encode_array(values : Array(UInt8)) : Bytes
+        # Simple encoding: [count, value1, value2, ...]
+        bytes = Bytes.new(1 + values.size)
+        bytes[0] = values.size.to_u8
+        values.each_with_index do |val, idx|
+          bytes[1 + idx] = val
+        end
+        bytes
+      end
+    end
+  end
+end
