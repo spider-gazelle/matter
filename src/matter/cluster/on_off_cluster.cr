@@ -8,8 +8,8 @@ module Matter
     class OnOffCluster < Base
       CLUSTER_ID = 0x0006_u32
 
-      # Attribute IDs
-      ON_OFF = 0x0000_u32
+      # Attribute IDs (using ATTR_ prefix for consistency)
+      ATTR_ON_OFF = 0x0000_u32
 
       # Command IDs
       CMD_OFF        = 0x00_u32
@@ -25,9 +25,12 @@ module Matter
 
       property on_off : Bool
 
+      # Callbacks
+      @on_state_changed : Proc(Bool, Nil)?
+
       def initialize(endpoint_id : DataType::EndpointNumber, @on_off : Bool = false)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
-        @attribute_values[ON_OFF] = encode_bool(@on_off)
+        @attribute_values[ATTR_ON_OFF] = encode_bool(@on_off)
       end
 
       def name : String
@@ -37,7 +40,7 @@ module Matter
       def attributes : Array(AttributeMetadata)
         [
           AttributeMetadata.new(
-            id: DataType::AttributeId.new(ON_OFF),
+            id: DataType::AttributeId.new(ATTR_ON_OFF),
             name: "OnOff",
             type: :bool,
             writable: false,
@@ -111,10 +114,22 @@ module Matter
       end
 
       private def set_on_off(value : Bool) : InteractionModel::Status
-        @on_off = value
-        @attribute_values[ON_OFF] = encode_bool(value)
-        increment_version
+        # Only update if state actually changes (optimization)
+        if @on_off != value
+          @on_off = value
+          @attribute_values[ATTR_ON_OFF] = encode_bool(value)
+          increment_version
+
+          # Trigger callback only on actual change
+          @on_state_changed.try &.call(value)
+        end
+
         InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+      end
+
+      # Set callback for state changes
+      def on_state_changed(&block : Bool -> Nil)
+        @on_state_changed = block
       end
     end
   end

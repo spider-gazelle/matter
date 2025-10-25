@@ -84,7 +84,7 @@ describe Matter::Cluster do
       attrs = cluster.attributes
       attrs.size.should eq(3)
 
-      on_off_attr = attrs.find { |a| a.id.id == Matter::Cluster::OnOffCluster::ON_OFF }
+      on_off_attr = attrs.find { |a| a.id.id == Matter::Cluster::OnOffCluster::ATTR_ON_OFF }
       on_off_attr.should_not be_nil
       on_off_attr.not_nil!.name.should eq("OnOff")
       on_off_attr.not_nil!.type.should eq(:bool)
@@ -113,7 +113,7 @@ describe Matter::Cluster do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::OnOffCluster.new(endpoint, on_off: true)
 
-      result = cluster.read_attribute(Matter::Cluster::OnOffCluster::ON_OFF)
+      result = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
       result.should be_a(Bytes)
       result.as(Bytes).should eq(Bytes[1]) # true
     end
@@ -131,7 +131,7 @@ describe Matter::Cluster do
       cluster.on_off.should be_false
 
       # Check attribute value updated
-      attr_value = cluster.read_attribute(Matter::Cluster::OnOffCluster::ON_OFF)
+      attr_value = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
       attr_value.as(Bytes).should eq(Bytes[0]) # false
     end
 

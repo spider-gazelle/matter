@@ -277,7 +277,7 @@ describe Matter::Endpoint do
       on_off = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: true)
       endpoint.add_cluster(on_off)
 
-      result = endpoint.read_attribute(0x0006_u32, Matter::Cluster::OnOffCluster::ON_OFF)
+      result = endpoint.read_attribute(0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
       result.should be_a(Bytes)
       result.as(Bytes).should eq(Bytes[1])
     end
@@ -463,10 +463,10 @@ describe Matter::MatterNode do
       node.invoke_command(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
 
       # Check endpoint 1 is on, endpoint 2 is still off
-      result1 = node.read_attribute(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ON_OFF)
+      result1 = node.read_attribute(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
       result1.as(Bytes).should eq(Bytes[1])
 
-      result2 = node.read_attribute(2_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ON_OFF)
+      result2 = node.read_attribute(2_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
       result2.as(Bytes).should eq(Bytes[0])
     end
   end
@@ -481,7 +481,7 @@ describe Matter::MatterNode do
       endpoint.add_cluster(on_off)
       node.add_endpoint(endpoint)
 
-      result = node.read_attribute(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ON_OFF)
+      result = node.read_attribute(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
       result.should be_a(Bytes)
       result.as(Bytes).should eq(Bytes[1])
     end

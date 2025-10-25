@@ -128,7 +128,7 @@ describe "Endpoint Ergonomics" do
       result = node.read_attribute(
         1_u16,
         Matter::Cluster::LevelControlCluster::CLUSTER_ID,
-        Matter::Cluster::LevelControlCluster::CURRENT_LEVEL
+        Matter::Cluster::LevelControlCluster::ATTR_CURRENT_LEVEL
       )
       result.should be_a(Bytes)
       result.as(Bytes)[0].should eq(0_u8) # Still at initial value
