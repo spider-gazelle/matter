@@ -1,6 +1,34 @@
 require "../spec_helper"
 require "../../src/matter/cluster/general_commissioning_cluster"
 
+# Helper functions for TLV encoding command data
+def create_arm_failsafe_request_tlv(expiry_length : UInt16, breadcrumb : UInt64) : Bytes
+  io = IO::Memory.new
+  writer = TLV::Writer.new(io)
+
+  data = {
+    0_u8 => expiry_length,
+    1_u8 => breadcrumb,
+  } of TLV::Tag => TLV::Value
+
+  writer.put(nil, data)
+  io.rewind.to_slice
+end
+
+def create_set_regulatory_config_request_tlv(regulatory_config : UInt8, country_code : String, breadcrumb : UInt64) : Bytes
+  io = IO::Memory.new
+  writer = TLV::Writer.new(io)
+
+  data = {
+    0_u8 => regulatory_config,
+    1_u8 => country_code,
+    2_u8 => breadcrumb,
+  } of TLV::Tag => TLV::Value
+
+  writer.put(nil, data)
+  io.rewind.to_slice
+end
+
 describe Matter::Cluster::GeneralCommissioningCluster do
   describe "initialization" do
     it "creates general commissioning cluster" do
@@ -153,7 +181,8 @@ describe Matter::Cluster::GeneralCommissioningCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::GeneralCommissioningCluster.new(endpoint_id)
 
-      result = cluster.invoke_command(Matter::Cluster::GeneralCommissioningCluster::CMD_ARM_FAIL_SAFE, Bytes.new(0))
+      command_data = create_arm_failsafe_request_tlv(60_u16, 0x1234_u64)
+      result = cluster.invoke_command(Matter::Cluster::GeneralCommissioningCluster::CMD_ARM_FAIL_SAFE, command_data)
       result.should be_a(Bytes)
     end
 
@@ -161,7 +190,8 @@ describe Matter::Cluster::GeneralCommissioningCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::GeneralCommissioningCluster.new(endpoint_id)
 
-      result = cluster.invoke_command(Matter::Cluster::GeneralCommissioningCluster::CMD_SET_REGULATORY_CONFIG, Bytes.new(0))
+      command_data = create_set_regulatory_config_request_tlv(2_u8, "US", 0x5678_u64) # IndoorOutdoor
+      result = cluster.invoke_command(Matter::Cluster::GeneralCommissioningCluster::CMD_SET_REGULATORY_CONFIG, command_data)
       result.should be_a(Bytes)
     end
 
@@ -169,6 +199,7 @@ describe Matter::Cluster::GeneralCommissioningCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::GeneralCommissioningCluster.new(endpoint_id)
 
+      # CommissioningComplete has no request parameters, but still needs empty TLV structure
       result = cluster.invoke_command(Matter::Cluster::GeneralCommissioningCluster::CMD_COMMISSIONING_COMPLETE, Bytes.new(0))
       result.should be_a(Bytes)
     end

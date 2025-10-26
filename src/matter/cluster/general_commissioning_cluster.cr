@@ -1,4 +1,5 @@
 require "./cluster"
+require "./definitions/general_commissioning"
 
 module Matter
   module Cluster
@@ -153,8 +154,7 @@ module Matter
         when ATTR_BREADCRUMB
           encode_uint64(@breadcrumb)
         when ATTR_BASIC_COMMISSIONING_INFO
-          # TODO: Encode BasicCommissioningInfo as TLV structure
-          Bytes.new(0)
+          encode_basic_commissioning_info
         when ATTR_REGULATORY_CONFIG
           encode_uint8(@regulatory_config.value)
         when ATTR_LOCATION_CAPABILITY
@@ -196,23 +196,94 @@ module Matter
       end
 
       private def handle_arm_fail_safe(fields : Bytes) : Bytes
-        # Simplified implementation
-        # TODO: Parse expiry_length and breadcrumb from fields
-        # TODO: Generate ArmFailSafeResponse with error code and debug text
-        Bytes.new(0)
+        # Parse TLV-encoded request
+        request = Definitions::GeneralCommissioning::ArmFailSafeRequest.new(fields)
+
+        # Use callback if available
+        error_code = if callback = @on_arm_fail_safe
+                       callback.call(request.expiryLengthSeconds, request.breadcrumb)
+                     else
+                       # Default implementation
+                       if request.expiryLengthSeconds == 0
+                         disarm_fail_safe
+                       else
+                         arm_fail_safe(request.expiryLengthSeconds)
+                         @breadcrumb = request.breadcrumb
+                       end
+                       CommissioningError::OK
+                     end
+
+        # Encode response as TLV
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        data = {
+          0_u8 => error_code.value,
+          1_u8 => "", # debug_text
+        } of TLV::Tag => TLV::Value
+        writer.put(nil, data)
+        io.rewind.to_slice
       end
 
       private def handle_set_regulatory_config(fields : Bytes) : Bytes
-        # Simplified implementation
-        # TODO: Parse new_regulatory_config, country_code, breadcrumb from fields
-        # TODO: Generate SetRegulatoryConfigResponse with error code and debug text
-        Bytes.new(0)
+        # Parse TLV-encoded request
+        request = Definitions::GeneralCommissioning::SetRegularConfigurationRequest.new(fields)
+
+        # Convert definitions enum to cluster enum
+        regulatory_config = RegulatoryLocationType.from_value(request.new_regulatory_configuration.value)
+
+        # Use callback if available
+        error_code = if callback = @on_set_regulatory_config
+                       callback.call(
+                         regulatory_config,
+                         request.country_code,
+                         request.breadcrumb
+                       )
+                     else
+                       # Default implementation
+                       @regulatory_config = regulatory_config
+                       @country_code = request.country_code
+                       @breadcrumb = request.breadcrumb
+                       increment_version
+                       CommissioningError::OK
+                     end
+
+        # Encode response as TLV
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        data = {
+          0_u8 => error_code.value,
+          1_u8 => "", # debug_text
+        } of TLV::Tag => TLV::Value
+        writer.put(nil, data)
+        io.rewind.to_slice
       end
 
       private def handle_commissioning_complete(fields : Bytes) : Bytes
-        # Simplified implementation
-        # TODO: Generate CommissioningCompleteResponse with error code and debug text
-        Bytes.new(0)
+        # CommissioningComplete has no request fields
+
+        # Use callback if available
+        error_code = if callback = @on_commissioning_complete
+                       callback.call
+                     else
+                       # Default implementation
+                       if @fail_safe_active
+                         disarm_fail_safe
+                         @breadcrumb = 0_u64
+                         CommissioningError::OK
+                       else
+                         CommissioningError::NoFailSafe
+                       end
+                     end
+
+        # Encode response as TLV
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        data = {
+          0_u8 => error_code.value,
+          1_u8 => "", # debug_text
+        } of TLV::Tag => TLV::Value
+        writer.put(nil, data)
+        io.rewind.to_slice
       end
 
       # Fail-safe management methods
@@ -244,6 +315,18 @@ module Matter
         io = IO::Memory.new
         io.write_bytes(value, IO::ByteFormat::LittleEndian)
         io.to_slice
+      end
+
+      # Helper: Encode BasicCommissioningInfo as TLV structure
+      private def encode_basic_commissioning_info : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        data = {
+          0_u8 => @basic_commissioning_info.fail_safe_expiry_length,
+          1_u8 => @basic_commissioning_info.max_cumulative_failsafe_seconds,
+        } of TLV::Tag => TLV::Value
+        writer.put(nil, data)
+        io.rewind.to_slice
       end
     end
   end
