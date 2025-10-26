@@ -101,9 +101,15 @@ module Matter
             decrypted_cert_der = @crypto.decrypt(encryption_key, peer_encrypted_cert, nonce_material)
             @peer_cert = decrypted_cert_der
 
-            # Parse the DER-encoded certificate for validation (optional, for production use)
-            # peer_cert_obj = OpenSSL::X509::Certificate.from_der(decrypted_cert_der)
-            # TODO: Validate certificate chain here using CertificateValidator
+            # Parse the DER-encoded certificate to verify it's valid
+            begin
+              peer_cert_obj = OpenSSL::X509::Certificate.from_der(decrypted_cert_der)
+              Log.debug { "Successfully parsed peer certificate in Sigma2" }
+              # Note: Full certificate chain validation should be done after the handshake
+              # by calling validate_certificate_chain(trusted_roots) with appropriate trusted roots
+            rescue parse_ex
+              Log.warn { "Failed to parse peer certificate: #{parse_ex.message}" }
+            end
           rescue ex
             # If decryption fails, store encrypted cert for now (backward compatibility with tests)
             @peer_cert = peer_encrypted_cert
@@ -229,6 +235,8 @@ module Matter
         property peer_cert : Bytes?
         property peer_ephemeral_key : Bytes?
         property shared_secret : Bytes?
+        property our_random : Bytes?           # Random value we sent in Sigma2
+        property our_ephemeral_public : Bytes? # Our ephemeral public key sent in Sigma2
         property crypto : Crypto::CryptoBase
         property fabric_id : UInt64
         property node_id : UInt64
@@ -242,6 +250,8 @@ module Matter
         )
           @peer_ephemeral_key = nil
           @shared_secret = nil
+          @our_random = nil
+          @our_ephemeral_public = nil
         end
 
         # Step 1: Process Sigma1 and generate Sigma2 response
@@ -272,6 +282,11 @@ module Matter
 
           # Generate random nonce for Sigma2 response
           random = @crypto.random_bytes(32)
+          @our_random = random # Store for later signature verification
+
+          # Store our ephemeral public key for later signature verification
+          ephemeral_public = @ephemeral_key.not_nil!.public_key
+          @our_ephemeral_public = ephemeral_public
 
           # Encrypt our certificate with deterministic nonce
           nonce = @crypto.create_hkdf_key(
@@ -286,7 +301,7 @@ module Matter
           session_id = @crypto.random_uint16
 
           {
-            ephemeral_public_key: @ephemeral_key.not_nil!.public_key,
+            ephemeral_public_key: ephemeral_public,
             random:               random,
             encrypted_cert:       encrypted_cert,
             session_id:           session_id,
@@ -331,11 +346,28 @@ module Matter
                 cert_obj = OpenSSL::X509::Certificate.from_der(decrypted_cert_der)
                 Log.debug { "Successfully parsed peer certificate" }
 
-                # TODO: In production, compute the actual transcript and verify the signature
-                # transcript = compute_sigma3_transcript(...)
-                # verify_result = OpenSSL::X509::SignatureVerifier.verify_signature(
-                #   transcript, signature, cert_obj, :SHA256
-                # )
+                # Compute the Sigma3 transcript (what the initiator signed)
+                # The initiator signs: our_random + our_ephemeral_public_key
+                if our_random = @our_random
+                  if our_ephemeral = @our_ephemeral_public
+                    transcript = our_random + our_ephemeral
+
+                    # Verify the signature using the peer's certificate
+                    verify_result = OpenSSL::X509::SignatureVerifier.verify_signature(
+                      transcript, signature, cert_obj, :SHA256
+                    )
+
+                    if verify_result
+                      Log.debug { "Sigma3 signature verification successful" }
+                    else
+                      Log.warn { "Sigma3 signature verification failed" }
+                    end
+                  else
+                    Log.warn { "Cannot verify signature: our ephemeral public key not available" }
+                  end
+                else
+                  Log.warn { "Cannot verify signature: our random value not available" }
+                end
               rescue parse_ex
                 Log.warn { "Failed to parse peer certificate: #{parse_ex.message}" }
               end
