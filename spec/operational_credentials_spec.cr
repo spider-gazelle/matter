@@ -26,6 +26,24 @@ module OpCredsTestHelpers
       label: label
     )
   end
+
+  # Helper to create a TLV-encoded test NOC certificate
+  # This creates a minimal valid Matter NOC with fabricId (field 21) and nodeId (field 17)
+  def create_test_noc(fabric_id : UInt64 = 0x1234567890_u64, node_id : UInt64 = 0xABCDEF_u64) : Bytes
+    io = IO::Memory.new
+    writer = TLV::Writer.new(io)
+
+    # Create a simplified NOC structure with the required fields
+    # In a real NOC, these would be nested in subject fields, but for testing
+    # we just need the parser to find fields 17 and 21
+    data = {
+      17_u8 => node_id,   # nodeId
+      21_u8 => fabric_id, # fabricId
+    } of TLV::Tag => TLV::Value
+
+    writer.put(nil, data)
+    io.rewind.to_slice
+  end
 end
 
 describe Matter::Clusters::OperationalCredentials do
@@ -135,6 +153,12 @@ describe Matter::Clusters::OperationalCredentials do
       fabric_table = OpCredsTestHelpers.create_fabric_table
       cluster = Matter::Clusters::OperationalCredentials.new(fabric_table)
 
+      # Set up attestation credentials
+      dac = Bytes.new(100, 1_u8)
+      pai = Bytes.new(100, 2_u8)
+      key = Matter::Crypto::Key.generate_key_pair
+      cluster.set_attestation_credentials(dac, pai, key)
+
       nonce = Bytes.new(32, 0_u8)
       cmd = Matter::Clusters::OperationalCredentials::AttestationRequestCommand.new(
         attestation_nonce: nonce
@@ -143,6 +167,7 @@ describe Matter::Clusters::OperationalCredentials do
       response = cluster.handle_attestation_request(cmd, session_id: 1_u64)
       response.attestation_elements.should_not be_nil
       response.attestation_signature.should_not be_nil
+      response.attestation_signature.size.should eq(64) # IEEE P1363 format for P-256
     end
   end
 
@@ -247,6 +272,12 @@ describe Matter::Clusters::OperationalCredentials do
       fabric_table = OpCredsTestHelpers.create_fabric_table
       cluster = Matter::Clusters::OperationalCredentials.new(fabric_table)
 
+      # Set up attestation credentials
+      dac = Bytes.new(100, 1_u8)
+      pai = Bytes.new(100, 2_u8)
+      key = Matter::Crypto::Key.generate_key_pair
+      cluster.set_attestation_credentials(dac, pai, key)
+
       nonce = Bytes.new(32, 0_u8)
       cmd = Matter::Clusters::OperationalCredentials::CSRRequestCommand.new(
         csr_nonce: nonce
@@ -262,6 +293,7 @@ describe Matter::Clusters::OperationalCredentials do
       response.should_not be_nil
       response.not_nil!.nocsr_elements.should_not be_nil
       response.not_nil!.attestation_signature.should_not be_nil
+      response.not_nil!.attestation_signature.size.should eq(64) # IEEE P1363 format for P-256
     end
   end
 
@@ -281,6 +313,12 @@ describe Matter::Clusters::OperationalCredentials do
     it "adds trusted root certificate" do
       fabric_table = OpCredsTestHelpers.create_fabric_table
       cluster = Matter::Clusters::OperationalCredentials.new(fabric_table)
+
+      # Set up attestation credentials
+      dac = Bytes.new(100, 1_u8)
+      pai = Bytes.new(100, 2_u8)
+      key = Matter::Crypto::Key.generate_key_pair
+      cluster.set_attestation_credentials(dac, pai, key)
 
       # First CSR to arm failsafe context
       csr_cmd = Matter::Clusters::OperationalCredentials::CSRRequestCommand.new(
@@ -302,6 +340,12 @@ describe Matter::Clusters::OperationalCredentials do
     it "rejects duplicate root certificate in same failsafe" do
       fabric_table = OpCredsTestHelpers.create_fabric_table
       cluster = Matter::Clusters::OperationalCredentials.new(fabric_table)
+
+      # Set up attestation credentials
+      dac = Bytes.new(100, 1_u8)
+      pai = Bytes.new(100, 2_u8)
+      key = Matter::Crypto::Key.generate_key_pair
+      cluster.set_attestation_credentials(dac, pai, key)
 
       # CSR first
       csr_cmd = Matter::Clusters::OperationalCredentials::CSRRequestCommand.new(
@@ -372,6 +416,12 @@ describe Matter::Clusters::OperationalCredentials do
       fabric_table = OpCredsTestHelpers.create_fabric_table
       cluster = Matter::Clusters::OperationalCredentials.new(fabric_table)
 
+      # Set up attestation credentials
+      dac = Bytes.new(100, 1_u8)
+      pai = Bytes.new(100, 2_u8)
+      key = Matter::Crypto::Key.generate_key_pair
+      cluster.set_attestation_credentials(dac, pai, key)
+
       # CSR first
       csr_cmd = Matter::Clusters::OperationalCredentials::CSRRequestCommand.new(
         csr_nonce: Bytes.new(32, 0_u8)
@@ -394,6 +444,12 @@ describe Matter::Clusters::OperationalCredentials do
       fabric_table = OpCredsTestHelpers.create_fabric_table
       cluster = Matter::Clusters::OperationalCredentials.new(fabric_table)
 
+      # Set up attestation credentials
+      dac = Bytes.new(100, 1_u8)
+      pai = Bytes.new(100, 2_u8)
+      key = Matter::Crypto::Key.generate_key_pair
+      cluster.set_attestation_credentials(dac, pai, key)
+
       # CSR
       csr_cmd = Matter::Clusters::OperationalCredentials::CSRRequestCommand.new(
         csr_nonce: Bytes.new(32, 0_u8)
@@ -406,9 +462,10 @@ describe Matter::Clusters::OperationalCredentials do
       )
       cluster.handle_add_trusted_root_certificate(root_cmd, failsafe_armed: true)
 
-      # AddNOC
+      # AddNOC with valid TLV-encoded NOC
+      noc = OpCredsTestHelpers.create_test_noc(fabric_id: 0x1234567890_u64, node_id: 0xABCDEF_u64)
       cmd = Matter::Clusters::OperationalCredentials::AddNOCCommand.new(
-        noc_value: Bytes.new(100),
+        noc_value: noc,
         icac_value: nil,
         ipk_value: Bytes.new(16),
         case_admin_subject: 1_u64,
@@ -425,6 +482,12 @@ describe Matter::Clusters::OperationalCredentials do
     it "rejects when table is full" do
       fabric_table = OpCredsTestHelpers.create_fabric_table(max_fabrics: 5_u8)
       cluster = Matter::Clusters::OperationalCredentials.new(fabric_table)
+
+      # Set up attestation credentials
+      dac = Bytes.new(100, 1_u8)
+      pai = Bytes.new(100, 2_u8)
+      key = Matter::Crypto::Key.generate_key_pair
+      cluster.set_attestation_credentials(dac, pai, key)
 
       # Fill table
       (1..5).each do |i|
@@ -466,6 +529,12 @@ describe Matter::Clusters::OperationalCredentials do
 
       cluster = Matter::Clusters::OperationalCredentials.new(fabric_table)
 
+      # Set up attestation credentials
+      dac = Bytes.new(100, 1_u8)
+      pai = Bytes.new(100, 2_u8)
+      key = Matter::Crypto::Key.generate_key_pair
+      cluster.set_attestation_credentials(dac, pai, key)
+
       # CSR without is_for_update_noc
       csr_cmd = Matter::Clusters::OperationalCredentials::CSRRequestCommand.new(
         csr_nonce: Bytes.new(32, 0_u8),
@@ -488,6 +557,12 @@ describe Matter::Clusters::OperationalCredentials do
       fabric_table.add_fabric(fabric)
 
       cluster = Matter::Clusters::OperationalCredentials.new(fabric_table)
+
+      # Set up attestation credentials
+      dac = Bytes.new(100, 1_u8)
+      pai = Bytes.new(100, 2_u8)
+      key = Matter::Crypto::Key.generate_key_pair
+      cluster.set_attestation_credentials(dac, pai, key)
 
       # CSR with is_for_update_noc
       csr_cmd = Matter::Clusters::OperationalCredentials::CSRRequestCommand.new(
@@ -607,6 +682,12 @@ describe Matter::Clusters::OperationalCredentials do
       fabric_table = OpCredsTestHelpers.create_fabric_table
       cluster = Matter::Clusters::OperationalCredentials.new(fabric_table)
 
+      # Set up attestation credentials
+      dac = Bytes.new(100, 1_u8)
+      pai = Bytes.new(100, 2_u8)
+      key = Matter::Crypto::Key.generate_key_pair
+      cluster.set_attestation_credentials(dac, pai, key)
+
       # CSR to set context
       csr_cmd = Matter::Clusters::OperationalCredentials::CSRRequestCommand.new(
         csr_nonce: Bytes.new(32, 0_u8)
@@ -632,6 +713,12 @@ describe Matter::Clusters::OperationalCredentials do
     it "resets context on failsafe success" do
       fabric_table = OpCredsTestHelpers.create_fabric_table
       cluster = Matter::Clusters::OperationalCredentials.new(fabric_table)
+
+      # Set up attestation credentials
+      dac = Bytes.new(100, 1_u8)
+      pai = Bytes.new(100, 2_u8)
+      key = Matter::Crypto::Key.generate_key_pair
+      cluster.set_attestation_credentials(dac, pai, key)
 
       # CSR to set context
       csr_cmd = Matter::Clusters::OperationalCredentials::CSRRequestCommand.new(

@@ -1,6 +1,7 @@
 require "../fabric"
 require "../fabric_table"
 require "../crypto/key"
+require "../crypto/crypto"
 require "base64"
 
 module Matter
@@ -651,33 +652,229 @@ module Matter
       # TODO: Implement proper Matter certificate TLV parsing
 
       private def build_attestation_elements(nonce : Bytes) : Bytes
-        # Placeholder: Should build TLV structure with certification declaration, nonce, timestamp
-        # For now, return nonce as-is for testing
-        nonce
+        # Build TLV structure for attestation elements
+        # TLV structure: {
+        #   1 => declaration (bytes)
+        #   2 => attestationNonce (32 bytes)
+        #   3 => timestamp (UInt32)
+        # }
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        # For now, use empty declaration bytes (TODO: implement certification declaration)
+        declaration = Bytes.new(0)
+        timestamp = Time.utc.to_unix.to_u32
+
+        data = {
+          1_u8 => declaration,
+          2_u8 => nonce,
+          3_u8 => timestamp,
+        } of TLV::Tag => TLV::Value
+
+        writer.put(nil, data)
+        io.rewind.to_slice
       end
 
       private def sign_attestation(data : Bytes) : Bytes
-        # Placeholder: Should sign with attestation key
-        # For now, return dummy signature
-        Bytes.new(64, 0_u8)
+        # Sign with attestation key using ECDSA
+        unless key = @attestation_key
+          raise "Attestation key not configured"
+        end
+
+        # Sign with ECDSA in IEEE P1363 format (r||s, 64 bytes for P-256)
+        Crypto.sign_ecdsa(key, data, "ieee-p1363")
       end
 
       private def build_csr_elements(nonce : Bytes, key : Crypto::Key) : Bytes
-        # Placeholder: Should build TLV CSR structure
-        # For now, return nonce as-is for testing
-        nonce
+        # Build TLV structure for CSR elements
+        # TLV structure: {
+        #   1 => certSigningRequest (bytes - DER-encoded CSR)
+        #   2 => csrNonce (32 bytes)
+        # }
+
+        # Create a DER-encoded CSR with the public key
+        csr = build_csr_der(key)
+
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        data = {
+          1_u8 => csr,
+          2_u8 => nonce,
+        } of TLV::Tag => TLV::Value
+
+        writer.put(nil, data)
+        io.rewind.to_slice
+      end
+
+      private def build_csr_der(key : Crypto::Key) : Bytes
+        # Build a simplified DER-encoded Certificate Signing Request
+        # This is a basic CSR containing just the public key
+        # Format based on PKCS#10 / RFC 2986
+
+        # Get public key bytes
+        pub_key = key.public_key
+
+        # Build CSR info structure (version, subject, public key)
+        csr_info_io = IO::Memory.new
+
+        # Version (INTEGER 0)
+        csr_info_io.write Bytes[0x02, 0x01, 0x00]
+
+        # Subject (empty SEQUENCE for CSR)
+        # SEQUENCE { SET { SEQUENCE { OID, UTF8String "CSR" } } }
+        # Simplified: just use empty subject
+        csr_info_io.write Bytes[0x30, 0x00] # Empty SEQUENCE
+
+        # SubjectPublicKeyInfo (SPKI format)
+        # Use the crypto module's DER building capability
+        spki = Crypto::StandardCrypto.new.build_ec_public_key_der(pub_key)
+        csr_info_io.write spki
+
+        # Context tag [0] for attributes (empty)
+        csr_info_io.write Bytes[0xa0, 0x00]
+
+        csr_info = csr_info_io.to_slice
+
+        # Sign the CSR info with the key
+        unless attestation_key = @attestation_key
+          raise "Attestation key required for CSR"
+        end
+        signature = Crypto.sign_ecdsa(attestation_key, csr_info, "der")
+
+        # Build final CSR: SEQUENCE { csrInfo, signAlgorithm, signature }
+        csr_io = IO::Memory.new
+
+        # CSR info
+        csr_io.write_byte 0x30_u8 # SEQUENCE tag
+        write_der_length(csr_io, csr_info.size)
+        csr_io.write csr_info
+
+        # Signature algorithm (ECDSA with SHA-256)
+        # SEQUENCE { OID ecdsa-with-SHA256 }
+        sig_algo = Bytes[0x30, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x02]
+        csr_io.write sig_algo
+
+        # Signature (BIT STRING)
+        csr_io.write_byte 0x03_u8 # BIT STRING tag
+        write_der_length(csr_io, signature.size + 1)
+        csr_io.write_byte 0x00_u8 # No unused bits
+        csr_io.write signature
+
+        # Wrap in final SEQUENCE
+        csr_content = csr_io.to_slice
+        result = IO::Memory.new
+        result.write_byte 0x30_u8 # SEQUENCE tag
+        write_der_length(result, csr_content.size)
+        result.write csr_content
+
+        result.to_slice
+      end
+
+      private def write_der_length(io : IO, length : Int)
+        if length < 128
+          io.write_byte length.to_u8
+        else
+          # Long form
+          bytes = [] of UInt8
+          temp = length
+          while temp > 0
+            bytes.unshift(temp.to_u8 & 0xFF)
+            temp >>= 8
+          end
+          io.write_byte (0x80 | bytes.size).to_u8
+          bytes.each { |b| io.write_byte b }
+        end
       end
 
       private def extract_fabric_id_from_noc(noc : Bytes) : UInt64
-        # Placeholder: Should parse Matter certificate TLV
-        # For now, return dummy value
-        0x1234567890_u64
+        # Parse Matter certificate TLV to extract fabricId (field 21)
+        # Matter certificates are TLV-encoded structures
+        begin
+          reader = TLV::Reader.new(noc)
+          cert_data = reader.get
+
+          # Navigate to the certificate structure
+          # The NOC is a TLV structure containing subject fields
+          # Look for field 21 (fabricId) in the certificate data
+          fabric_id = find_tlv_field(cert_data, 21_u8)
+
+          unless fabric_id
+            raise "fabricId not found in NOC certificate"
+          end
+
+          # fabricId should be a UInt64
+          case fabric_id
+          when UInt64
+            fabric_id
+          when Int
+            fabric_id.to_u64
+          else
+            raise "Invalid fabricId type: #{fabric_id.class}"
+          end
+        rescue ex
+          # If parsing fails, raise with context
+          raise "Failed to parse NOC certificate: #{ex.message}"
+        end
       end
 
       private def extract_node_id_from_noc(noc : Bytes) : UInt64
-        # Placeholder: Should parse Matter certificate TLV
-        # For now, return dummy value
-        0xABCDEF_u64
+        # Parse Matter certificate TLV to extract nodeId (field 17)
+        begin
+          reader = TLV::Reader.new(noc)
+          cert_data = reader.get
+
+          # Look for field 17 (nodeId) in the certificate data
+          node_id = find_tlv_field(cert_data, 17_u8)
+
+          unless node_id
+            raise "nodeId not found in NOC certificate"
+          end
+
+          # nodeId should be a UInt64
+          case node_id
+          when UInt64
+            node_id
+          when Int
+            node_id.to_u64
+          else
+            raise "Invalid nodeId type: #{node_id.class}"
+          end
+        rescue ex
+          # If parsing fails, raise with context
+          raise "Failed to parse NOC certificate: #{ex.message}"
+        end
+      end
+
+      # Helper method to recursively find a TLV field by tag
+      private def find_tlv_field(data : TLV::Value, tag : UInt8) : TLV::Value?
+        case data
+        when Hash
+          # TLV library stores tags as strings, so convert tag to string
+          tag_str = tag.to_s
+
+          # Check if the tag exists in the hash as string
+          return data[tag_str]? if data.has_key?(tag_str)
+
+          # Also check numeric tag (UInt8)
+          return data[tag]? if data.has_key?(tag)
+
+          # Recursively search in nested hashes
+          data.each_value do |value|
+            if found = find_tlv_field(value, tag)
+              return found
+            end
+          end
+        when Array
+          # Recursively search in array elements
+          data.each do |value|
+            if found = find_tlv_field(value, tag)
+              return found
+            end
+          end
+        end
+
+        nil
       end
     end
   end
