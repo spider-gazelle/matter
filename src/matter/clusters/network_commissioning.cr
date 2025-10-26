@@ -1,5 +1,7 @@
 require "../fabric_table"
 require "log"
+require "base64"
+require "json"
 
 module Matter
   module Clusters
@@ -635,6 +637,61 @@ module Matter
           networking_status: NetworkCommissioningStatus::Success,
           network_index: cmd.network_index
         )
+      end
+
+      # Restore network state from snapshot (used during failsafe rollback)
+      #
+      # This method restores the network configuration to a previously captured state.
+      # It's called during failsafe rollback to undo any network configuration changes
+      # made during a failed commissioning session.
+      #
+      # @param state Snapshot of network state (key-value pairs)
+      def restore_network_state(state : Hash(String, String)) : Nil
+        Log.info { "Restoring network state from snapshot" }
+
+        # Restore networks list
+        if networks_json = state["networks"]?
+          begin
+            network_data = Array(Hash(String, JSON::Any)).from_json(networks_json)
+            @networks.clear
+
+            network_data.each do |net|
+              network_id = Base64.decode(net["network_id"].as_s)
+              connected = net["connected"].as_bool
+              @networks << NetworkInfo.new(network_id, connected)
+            end
+
+            Log.debug { "Restored #{@networks.size} network(s)" }
+          rescue ex
+            Log.error(exception: ex) { "Failed to restore networks from snapshot" }
+          end
+        end
+
+        # Restore interface enabled state
+        if interface_enabled_str = state["interface_enabled"]?
+          @interface_enabled = interface_enabled_str == "true"
+          Log.debug { "Restored interface_enabled: #{@interface_enabled}" }
+        end
+
+        # Restore last networking status
+        if last_status_str = state["last_networking_status"]?
+          @last_networking_status = NetworkCommissioningStatus.from_value(last_status_str.to_u8)
+          Log.debug { "Restored last_networking_status: #{@last_networking_status}" }
+        end
+
+        # Restore last network ID
+        if last_network_id_str = state["last_network_id"]?
+          @last_network_id = Base64.decode(last_network_id_str) unless last_network_id_str.empty?
+          Log.debug { "Restored last_network_id" }
+        end
+
+        # Restore last connect error value
+        if last_error_str = state["last_connect_error_value"]?
+          @last_connect_error_value = last_error_str.to_i32? unless last_error_str.empty?
+          Log.debug { "Restored last_connect_error_value: #{@last_connect_error_value}" }
+        end
+
+        Log.info { "Network state restored successfully" }
       end
 
       # Helper methods

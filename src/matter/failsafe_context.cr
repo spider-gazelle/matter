@@ -1,5 +1,9 @@
 require "log"
 require "./failsafe_timer"
+require "./fabric_manager"
+require "./session_manager"
+require "./commissioning_window"
+require "./clusters/network_commissioning"
 
 module Matter
   # FailsafeContext manages commissioning state and coordinates rollback on failure
@@ -40,6 +44,10 @@ module Matter
     # Regulatory config snapshot (for rollback)
     property regulatory_config_snapshot : Tuple(UInt8, String)? # (location_type, country_code)
 
+    # NOC update snapshot (for UpdateNOC rollback)
+    # Stores: (fabric_index, operational_cert, operational_key)
+    property noc_update_snapshot : Tuple(UInt8, Bytes, Bytes)?
+
     @timer : FailsafeTimer?
     @expiry_callback : Proc(Nil)
 
@@ -60,6 +68,7 @@ module Matter
       @root_cert = nil
       @added_fabric_index = nil
       @regulatory_config_snapshot = nil
+      @noc_update_snapshot = nil
       @timer = nil
 
       Log.info { "Created failsafe context: fabric=#{@associated_fabric_index || "PASE"}, breadcrumb=#{breadcrumb}" }
@@ -171,6 +180,19 @@ module Matter
       Log.debug { "Marked context for UpdateNOC" }
     end
 
+    # Record NOC state before UpdateNOC for rollback
+    #
+    # @param fabric_index Fabric index being updated
+    # @param operational_cert Current operational certificate
+    # @param operational_key Current operational private key
+    def record_noc_update(fabric_index : UInt8, operational_cert : Bytes, operational_key : Bytes) : Nil
+      # Only record the first snapshot (don't overwrite on subsequent changes)
+      if @noc_update_snapshot.nil?
+        @noc_update_snapshot = {fabric_index, operational_cert, operational_key}
+        Log.debug { "Recorded NOC update snapshot for fabric #{fabric_index}" }
+      end
+    end
+
     # Record regulatory config state for rollback
     #
     # @param location_type Current regulatory location type (as UInt8)
@@ -198,11 +220,13 @@ module Matter
     #
     # @param fabric_manager FabricManager for fabric operations
     # @param session_manager SessionManager for PASE cleanup
+    # @param network_commissioning NetworkCommissioning cluster for network state restoration
     # @param commissioning_window For closing windows
     # @param general_commissioning GeneralCommissioning cluster for regulatory config reset
     def rollback(
       fabric_manager : FabricManager? = nil,
       session_manager : SessionManager? = nil,
+      network_commissioning : Clusters::NetworkCommissioning? = nil,
       commissioning_window : CommissioningWindow? = nil,
       general_commissioning : Clusters::GeneralCommissioning? = nil,
     ) : Nil
@@ -222,14 +246,31 @@ module Matter
 
       # Step 2: Revert UpdateNOC changes
       if @for_update_noc
-        # TODO: Implement NOC update reversion when OperationalCredentials is ready
-        Log.debug { "Would revert UpdateNOC changes (not yet implemented)" }
+        if snapshot = @noc_update_snapshot
+          if fm = fabric_manager
+            begin
+              fabric_index, operational_cert, operational_key = snapshot
+              fm.restore_noc(fabric_index, operational_cert, operational_key)
+              Log.info { "Reverted UpdateNOC changes for fabric #{fabric_index}" }
+            rescue ex
+              Log.error(exception: ex) { "Failed to revert UpdateNOC changes" }
+            end
+          end
+        else
+          Log.warn { "UpdateNOC marked but no snapshot recorded" }
+        end
       end
 
       # Step 3: Restore network commissioning state
       if snapshot = @network_state_snapshot
-        # TODO: Implement network state restoration when NetworkCommissioning is ready
-        Log.debug { "Would restore network state (not yet implemented)" }
+        if nc = network_commissioning
+          begin
+            nc.restore_network_state(snapshot)
+            Log.info { "Restored network commissioning state" }
+          rescue ex
+            Log.error(exception: ex) { "Failed to restore network state" }
+          end
+        end
       end
 
       # Step 4: Clear PASE sessions
@@ -278,6 +319,7 @@ module Matter
       @root_cert = nil
       @added_fabric_index = nil
       @regulatory_config_snapshot = nil
+      @noc_update_snapshot = nil
       @for_update_noc = false
       Log.debug { "Cleaned up temporary state" }
 
@@ -296,22 +338,10 @@ module Matter
     end
   end
 
-  # Placeholder types for future implementation
-  class FabricManager
-    def remove_fabric(index : UInt8); end
-  end
-
-  class SessionManager
-    def clear_pase_sessions; end
-  end
-
-  class CommissioningWindow
-    def close; end
-  end
-
-  module Clusters
-    class GeneralCommissioning
-      def restore_regulatory_config(location_type : UInt8, country_code : String); end
-    end
-  end
+  # Note: The following classes are now implemented in separate files:
+  # - FabricManager (./fabric_manager.cr)
+  # - SessionManager (./session_manager.cr)
+  # - CommissioningWindow (./commissioning_window.cr)
+  # - Clusters::NetworkCommissioning (./clusters/network_commissioning.cr)
+  # - Clusters::GeneralCommissioning (./clusters/general_commissioning.cr)
 end
