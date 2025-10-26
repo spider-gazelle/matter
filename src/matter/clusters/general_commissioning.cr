@@ -1,0 +1,392 @@
+require "../failsafe_context"
+require "log"
+
+module Matter
+  module Clusters
+    # General Commissioning Cluster (0x0030)
+    #
+    # Provides commands and attributes to support the device commissioning process.
+    # This includes commissioning window management, failsafe timer management,
+    # regulatory configuration, and commissioning completion.
+    #
+    # Matter Core Spec §11.9 - General Commissioning Cluster
+    class GeneralCommissioning
+      Log = ::Log.for("matter.cluster.general_commissioning")
+
+      CLUSTER_ID = 0x0030_u16
+
+      # Regulatory Location Type
+      enum RegulatoryLocationType : UInt8
+        Indoor        = 0
+        Outdoor       = 1
+        IndoorOutdoor = 2
+      end
+
+      # Commissioning Error Codes
+      enum CommissioningError : UInt8
+        OK                    = 0
+        ValueOutsideRange     = 1
+        InvalidAuthentication = 2
+        NoFailSafe            = 3
+        BusyWithOtherAdmin    = 4
+        RequiredTCNotAccepted = 5
+        TCMinVersionNotMet    = 6
+        TCRequired            = 7
+      end
+
+      # ========================================================================
+      # Attributes
+      # ========================================================================
+
+      # Breadcrumb attribute (0x0000) - progress tracking during commissioning
+      property breadcrumb : UInt64 = 0_u64
+
+      # BasicCommissioningInfo attribute (0x0001)
+      # Contains MaxCumulativeFailsafeSeconds and MaxNetworkCommissioningSeconds
+      property max_cumulative_failsafe_seconds : UInt16 = 900_u16   # 15 minutes default
+      property max_network_commissioning_seconds : UInt16 = 900_u16 # 15 minutes default
+
+      # RegulatoryConfig attribute (0x0002) - current regulatory location
+      property regulatory_config : RegulatoryLocationType = RegulatoryLocationType::Indoor
+
+      # LocationCapability attribute (0x0003) - supported regulatory locations
+      property location_capability : RegulatoryLocationType = RegulatoryLocationType::IndoorOutdoor
+
+      # SupportsConcurrentConnection attribute (0x0004)
+      property supports_concurrent_connection : Bool = true
+
+      # ========================================================================
+      # State Management
+      # ========================================================================
+
+      @failsafe_context : FailsafeContext?
+      @admin_fabric_index : UInt8?
+      @commissioning_window_open : Bool = false
+
+      def initialize
+        @failsafe_context = nil
+        @admin_fabric_index = nil
+        @commissioning_window_open = false
+      end
+
+      # ========================================================================
+      # ArmFailSafe Command (0x00)
+      # ========================================================================
+
+      # ArmFailSafe command request
+      struct ArmFailSafeRequest
+        property expiry_length_seconds : UInt16
+        property breadcrumb : UInt64
+        property timeout_ms : UInt32 = 0_u32 # Deprecated, kept for compatibility
+
+        def initialize(@expiry_length_seconds, @breadcrumb, @timeout_ms = 0_u32)
+        end
+      end
+
+      # ArmFailSafe command response
+      struct ArmFailSafeResponse
+        property error_code : CommissioningError
+        property debug_text : String = ""
+
+        def initialize(@error_code, @debug_text = "")
+        end
+      end
+
+      # Handle ArmFailSafe command
+      #
+      # Arms or re-arms the failsafe timer. The failsafe timer ensures that commissioning
+      # changes are rolled back if commissioning doesn't complete successfully.
+      #
+      # @param request ArmFailSafe request with expiry length and breadcrumb
+      # @param session_fabric_index Fabric index of requesting session (nil for PASE)
+      # @param is_pase_session Whether this is a PASE session
+      # @return ArmFailSafe response with status
+      def arm_failsafe(
+        request : ArmFailSafeRequest,
+        session_fabric_index : UInt8?,
+        is_pase_session : Bool,
+      ) : ArmFailSafeResponse
+        Log.info { "ArmFailSafe: expiry=#{request.expiry_length_seconds}s, breadcrumb=#{request.breadcrumb}, fabric=#{session_fabric_index || "PASE"}" }
+
+        # Validate expiry length is within spec limits
+        if request.expiry_length_seconds > 0 && request.expiry_length_seconds > @max_cumulative_failsafe_seconds
+          return ArmFailSafeResponse.new(
+            CommissioningError::ValueOutsideRange,
+            "ExpiryLengthSeconds exceeds max (#{@max_cumulative_failsafe_seconds}s)"
+          )
+        end
+
+        # Check for conflicts with other admins
+        # PASE sessions get priority when commissioning window is open
+        if context = @failsafe_context
+          # If there's an existing context, check for conflicts
+          unless context.matches_fabric?(session_fabric_index)
+            # Different fabric is trying to commission
+            if is_pase_session && @commissioning_window_open
+              # PASE gets priority - expire existing failsafe
+              Log.warn { "PASE session taking over from fabric #{context.associated_fabric_index}" }
+              expire_failsafe
+            else
+              # CASE session blocked by another admin
+              return ArmFailSafeResponse.new(
+                CommissioningError::BusyWithOtherAdmin,
+                "Another admin is currently commissioning"
+              )
+            end
+          end
+        end
+
+        # Handle disarm (expiry_length = 0)
+        if request.expiry_length_seconds == 0
+          if context = @failsafe_context
+            Log.info { "Disarming failsafe" }
+            context.disarm
+            @failsafe_context = nil
+            @admin_fabric_index = nil
+          end
+          # Don't update breadcrumb on disarm
+          return ArmFailSafeResponse.new(CommissioningError::OK)
+        end
+
+        # Create or re-arm failsafe context
+        if context = @failsafe_context
+          # Re-arm existing context
+          begin
+            context.arm(request.expiry_length_seconds, @max_cumulative_failsafe_seconds)
+            @breadcrumb = request.breadcrumb
+            Log.info { "Re-armed failsafe" }
+          rescue ex
+            Log.error(exception: ex) { "Failed to re-arm failsafe" }
+            return ArmFailSafeResponse.new(
+              CommissioningError::BusyWithOtherAdmin,
+              "Cannot re-arm: #{ex.message}"
+            )
+          end
+        else
+          # Create new context
+          @failsafe_context = FailsafeContext.new(
+            associated_fabric_index: session_fabric_index,
+            breadcrumb: request.breadcrumb,
+            expiry_callback: -> { handle_failsafe_expiry }
+          )
+          @failsafe_context.not_nil!.arm(
+            request.expiry_length_seconds,
+            @max_cumulative_failsafe_seconds
+          )
+          @admin_fabric_index = session_fabric_index
+          @breadcrumb = request.breadcrumb
+          Log.info { "Armed new failsafe" }
+        end
+
+        ArmFailSafeResponse.new(CommissioningError::OK)
+      end
+
+      # ========================================================================
+      # CommissioningComplete Command (0x04)
+      # ========================================================================
+
+      # CommissioningComplete command response
+      struct CommissioningCompleteResponse
+        property error_code : CommissioningError
+        property debug_text : String = ""
+
+        def initialize(@error_code, @debug_text = "")
+        end
+      end
+
+      # Handle CommissioningComplete command
+      #
+      # Signals that commissioning is complete. This validates that all required
+      # commissioning steps have been performed, then disarms the failsafe and
+      # persists the commissioned state.
+      #
+      # @param session_fabric_index Fabric index of requesting session
+      # @param is_case_session Whether this is a CASE session (required)
+      # @return CommissioningComplete response with status
+      def commissioning_complete(
+        session_fabric_index : UInt8?,
+        is_case_session : Bool,
+      ) : CommissioningCompleteResponse
+        Log.info { "CommissioningComplete: fabric=#{session_fabric_index}" }
+
+        # Validate session type - MUST be CASE
+        unless is_case_session
+          return CommissioningCompleteResponse.new(
+            CommissioningError::InvalidAuthentication,
+            "CommissioningComplete requires CASE session"
+          )
+        end
+
+        # Validate failsafe is armed
+        context = @failsafe_context
+        unless context && context.armed?
+          return CommissioningCompleteResponse.new(
+            CommissioningError::NoFailSafe,
+            "No active failsafe context"
+          )
+        end
+
+        # Validate fabric matches failsafe context
+        unless context.matches_fabric?(session_fabric_index)
+          return CommissioningCompleteResponse.new(
+            CommissioningError::InvalidAuthentication,
+            "Fabric mismatch: expected #{context.associated_fabric_index}, got #{session_fabric_index}"
+          )
+        end
+
+        # TODO: Validate Terms & Conditions acceptance if TC feature is enabled
+        # if terms_conditions_required? && !terms_conditions_accepted?
+        #   return CommissioningCompleteResponse.new(
+        #     CommissioningError::RequiredTCNotAccepted,
+        #     "Terms and Conditions not accepted"
+        #   )
+        # end
+
+        # Success - disarm failsafe and persist state
+        Log.info { "Commissioning completed successfully" }
+        context.disarm
+        @failsafe_context = nil
+        @admin_fabric_index = nil
+        @commissioning_window_open = false
+
+        # Reset breadcrumb on successful completion
+        @breadcrumb = 0_u64
+
+        # TODO: Persist fabric table
+        # TODO: Close commissioning window
+        # TODO: Clear PASE sessions
+
+        CommissioningCompleteResponse.new(CommissioningError::OK)
+      end
+
+      # ========================================================================
+      # SetRegulatoryConfig Command (0x02)
+      # ========================================================================
+
+      # SetRegulatoryConfig command request
+      struct SetRegulatoryConfigRequest
+        property new_regulatory_config : RegulatoryLocationType
+        property country_code : String
+        property breadcrumb : UInt64
+
+        def initialize(@new_regulatory_config, @country_code, @breadcrumb)
+        end
+      end
+
+      # SetRegulatoryConfig command response
+      struct SetRegulatoryConfigResponse
+        property error_code : CommissioningError
+        property debug_text : String = ""
+
+        def initialize(@error_code, @debug_text = "")
+        end
+      end
+
+      # Handle SetRegulatoryConfig command
+      #
+      # Sets the regulatory configuration (indoor/outdoor) and country code.
+      #
+      # @param request SetRegulatoryConfig request
+      # @return SetRegulatoryConfig response with status
+      def set_regulatory_config(
+        request : SetRegulatoryConfigRequest,
+      ) : SetRegulatoryConfigResponse
+        Log.info { "SetRegulatoryConfig: location=#{request.new_regulatory_config}, country=#{request.country_code}" }
+
+        # Validate regulatory location against capability
+        unless validate_regulatory_location(request.new_regulatory_config)
+          return SetRegulatoryConfigResponse.new(
+            CommissioningError::ValueOutsideRange,
+            "Requested location #{request.new_regulatory_config} not supported (capability: #{@location_capability})"
+          )
+        end
+
+        # Validate country code format (2-character ISO 3166-1 alpha-2)
+        unless request.country_code.size == 2 && request.country_code.chars.all?(&.ascii_uppercase?)
+          return SetRegulatoryConfigResponse.new(
+            CommissioningError::ValueOutsideRange,
+            "Invalid country code format (expected 2 uppercase letters)"
+          )
+        end
+
+        # TODO: Validate country code against whitelist if configured
+
+        # Apply configuration atomically (only update breadcrumb on success)
+        @regulatory_config = request.new_regulatory_config
+        @breadcrumb = request.breadcrumb
+
+        Log.info { "Regulatory config updated" }
+        SetRegulatoryConfigResponse.new(CommissioningError::OK)
+      end
+
+      # ========================================================================
+      # Helper Methods
+      # ========================================================================
+
+      # Validate that requested regulatory location is within capability
+      private def validate_regulatory_location(requested : RegulatoryLocationType) : Bool
+        case @location_capability
+        when RegulatoryLocationType::Indoor
+          requested == RegulatoryLocationType::Indoor
+        when RegulatoryLocationType::Outdoor
+          requested == RegulatoryLocationType::Outdoor
+        when RegulatoryLocationType::IndoorOutdoor
+          true # All locations supported
+        else
+          false
+        end
+      end
+
+      # Handle failsafe timer expiry - perform rollback
+      private def handle_failsafe_expiry : Nil
+        Log.warn { "Failsafe expired - performing rollback" }
+
+        if context = @failsafe_context
+          context.rollback
+          @failsafe_context = nil
+          @admin_fabric_index = nil
+        end
+
+        # Close commissioning window
+        @commissioning_window_open = false
+
+        # Reset breadcrumb
+        @breadcrumb = 0_u64
+      end
+
+      # Manually expire the failsafe (for PASE takeover)
+      private def expire_failsafe : Nil
+        if context = @failsafe_context
+          context.disarm
+          handle_failsafe_expiry
+        end
+      end
+
+      # Check if failsafe is currently armed
+      def failsafe_armed? : Bool
+        if context = @failsafe_context
+          context.armed?
+        else
+          false
+        end
+      end
+
+      # Get current failsafe context (for testing/inspection)
+      def failsafe_context : FailsafeContext?
+        @failsafe_context
+      end
+
+      # Open commissioning window (allows PASE sessions)
+      def open_commissioning_window : Nil
+        @commissioning_window_open = true
+        Log.info { "Commissioning window opened" }
+      end
+
+      # Close commissioning window
+      def close_commissioning_window : Nil
+        @commissioning_window_open = false
+        Log.info { "Commissioning window closed" }
+      end
+    end
+  end
+end
