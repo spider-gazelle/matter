@@ -44,6 +44,19 @@ module OpCredsTestHelpers
     writer.put(nil, data)
     io.rewind.to_slice
   end
+
+  # Helper to create a dummy DER-encoded root certificate for testing
+  # This creates a minimal valid DER structure (SEQUENCE with some data)
+  def create_test_root_cert : Bytes
+    # Create a minimal DER-encoded certificate structure
+    # Format: SEQUENCE (tag 0x30) + length + dummy data
+    io = IO::Memory.new
+    io.write_byte(0x30_u8) # SEQUENCE tag
+    io.write_byte(100_u8)  # Length (100 bytes of content)
+    # Add 100 bytes of dummy data
+    100.times { io.write_byte(0x00_u8) }
+    io.to_slice
+  end
 end
 
 describe Matter::Clusters::OperationalCredentials do
@@ -303,7 +316,7 @@ describe Matter::Clusters::OperationalCredentials do
       cluster = Matter::Clusters::OperationalCredentials.new(fabric_table)
 
       cmd = Matter::Clusters::OperationalCredentials::AddTrustedRootCertificateCommand.new(
-        root_ca_certificate: Bytes.new(100, 0_u8)
+        root_ca_certificate: OpCredsTestHelpers.create_test_root_cert
       )
 
       response = cluster.handle_add_trusted_root_certificate(cmd, failsafe_armed: false)
@@ -326,7 +339,7 @@ describe Matter::Clusters::OperationalCredentials do
       )
       cluster.handle_csr_request(csr_cmd, session_id: 1_u64, is_pase_session: true, failsafe_armed: true)
 
-      root_cert = Bytes.new(100, 0_u8)
+      root_cert = OpCredsTestHelpers.create_test_root_cert
       cmd = Matter::Clusters::OperationalCredentials::AddTrustedRootCertificateCommand.new(
         root_ca_certificate: root_cert
       )
@@ -354,7 +367,7 @@ describe Matter::Clusters::OperationalCredentials do
       cluster.handle_csr_request(csr_cmd, session_id: 1_u64, is_pase_session: true, failsafe_armed: true)
 
       # Add root cert
-      root_cert = Bytes.new(100, 0_u8)
+      root_cert = OpCredsTestHelpers.create_test_root_cert
       cmd = Matter::Clusters::OperationalCredentials::AddTrustedRootCertificateCommand.new(
         root_ca_certificate: root_cert
       )
@@ -458,7 +471,7 @@ describe Matter::Clusters::OperationalCredentials do
 
       # Root cert
       root_cmd = Matter::Clusters::OperationalCredentials::AddTrustedRootCertificateCommand.new(
-        root_ca_certificate: Bytes.new(100, 0_u8)
+        root_ca_certificate: OpCredsTestHelpers.create_test_root_cert
       )
       cluster.handle_add_trusted_root_certificate(root_cmd, failsafe_armed: true)
 
@@ -477,6 +490,56 @@ describe Matter::Clusters::OperationalCredentials do
       response.fabric_index.should_not be_nil
 
       cluster.commissioned_fabrics.should eq(1)
+    end
+
+    it "creates default ACL entry when AccessControlCluster is available" do
+      fabric_table = OpCredsTestHelpers.create_fabric_table
+      acl_cluster = Matter::Cluster::AccessControlCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+      cluster = Matter::Clusters::OperationalCredentials.new(fabric_table, acl_cluster)
+
+      # Set up attestation credentials
+      dac = Bytes.new(100, 1_u8)
+      pai = Bytes.new(100, 2_u8)
+      key = Matter::Crypto::Key.generate_key_pair
+      cluster.set_attestation_credentials(dac, pai, key)
+
+      # CSR
+      csr_cmd = Matter::Clusters::OperationalCredentials::CSRRequestCommand.new(
+        csr_nonce: Bytes.new(32, 0_u8)
+      )
+      cluster.handle_csr_request(csr_cmd, session_id: 1_u64, is_pase_session: true, failsafe_armed: true)
+
+      # Root cert
+      root_cmd = Matter::Clusters::OperationalCredentials::AddTrustedRootCertificateCommand.new(
+        root_ca_certificate: OpCredsTestHelpers.create_test_root_cert
+      )
+      cluster.handle_add_trusted_root_certificate(root_cmd, failsafe_armed: true)
+
+      # AddNOC with valid TLV-encoded NOC
+      noc = OpCredsTestHelpers.create_test_noc(fabric_id: 0x1234567890_u64, node_id: 0xABCDEF_u64)
+      admin_subject = 0x9999_u64
+      cmd = Matter::Clusters::OperationalCredentials::AddNOCCommand.new(
+        noc_value: noc,
+        icac_value: nil,
+        ipk_value: Bytes.new(16),
+        case_admin_subject: admin_subject,
+        admin_vendor_id: 0xFFF1_u16
+      )
+
+      # Verify no ACL entries before
+      acl_cluster.acl.size.should eq(0)
+
+      response = cluster.handle_add_noc(cmd, session_id: 1_u64, failsafe_armed: true)
+      response.status_code.should eq(Matter::Clusters::OperationalCredentials::NodeOperationalCertStatus::Ok)
+
+      # Verify default ACL entry was created
+      acl_cluster.acl.size.should eq(1)
+      acl_entry = acl_cluster.acl.first
+      acl_entry.privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer)
+      acl_entry.auth_mode.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
+      acl_entry.subjects.should eq([admin_subject])
+      acl_entry.targets.should be_nil # All targets
+      acl_entry.fabric_index.should eq(response.fabric_index)
     end
 
     it "rejects when table is full" do
@@ -504,7 +567,7 @@ describe Matter::Clusters::OperationalCredentials do
       cluster.handle_csr_request(csr_cmd, session_id: 1_u64, is_pase_session: true, failsafe_armed: true)
 
       root_cmd = Matter::Clusters::OperationalCredentials::AddTrustedRootCertificateCommand.new(
-        root_ca_certificate: Bytes.new(100, 0_u8)
+        root_ca_certificate: OpCredsTestHelpers.create_test_root_cert
       )
       cluster.handle_add_trusted_root_certificate(root_cmd, failsafe_armed: true)
 
@@ -573,7 +636,7 @@ describe Matter::Clusters::OperationalCredentials do
 
       # Add root cert (not allowed for update)
       root_cmd = Matter::Clusters::OperationalCredentials::AddTrustedRootCertificateCommand.new(
-        root_ca_certificate: Bytes.new(100, 0_u8)
+        root_ca_certificate: OpCredsTestHelpers.create_test_root_cert
       )
       cluster.handle_add_trusted_root_certificate(root_cmd, failsafe_armed: true)
 
@@ -662,6 +725,51 @@ describe Matter::Clusters::OperationalCredentials do
       response.status_code.should eq(Matter::Clusters::OperationalCredentials::NodeOperationalCertStatus::Ok)
 
       cluster.commissioned_fabrics.should eq(0)
+    end
+
+    it "removes fabric-scoped ACL entries when fabric is removed" do
+      fabric_table = OpCredsTestHelpers.create_fabric_table
+      acl_cluster = Matter::Cluster::AccessControlCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+      cluster = Matter::Clusters::OperationalCredentials.new(fabric_table, acl_cluster)
+
+      # Add a fabric
+      fabric = OpCredsTestHelpers.create_test_fabric(0x123_u64, 1_u8)
+      fabric_table.add_fabric(fabric)
+
+      # Manually add ACL entries for this fabric
+      acl_entry1 = Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
+        privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer,
+        auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+        subjects: [0x1111_u64],
+        targets: nil,
+        fabric_index: 1_u8
+      )
+      acl_cluster.acl << acl_entry1
+
+      # Add ACL entry for a different fabric
+      acl_entry2 = Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
+        privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Manage,
+        auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+        subjects: [0x2222_u64],
+        targets: nil,
+        fabric_index: 2_u8
+      )
+      acl_cluster.acl << acl_entry2
+
+      # Verify ACL state before removal
+      acl_cluster.acl.size.should eq(2)
+
+      # Remove fabric 1
+      cmd = Matter::Clusters::OperationalCredentials::RemoveFabricCommand.new(
+        fabric_index: 1_u8
+      )
+      response = cluster.handle_remove_fabric(cmd)
+      response.status_code.should eq(Matter::Clusters::OperationalCredentials::NodeOperationalCertStatus::Ok)
+
+      # Verify only fabric 1's ACL entry was removed
+      acl_cluster.acl.size.should eq(1)
+      acl_cluster.acl.first.fabric_index.should eq(2_u8)
+      acl_cluster.acl.first.subjects.should eq([0x2222_u64])
     end
 
     it "rejects removal of non-existent fabric" do
