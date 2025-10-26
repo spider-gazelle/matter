@@ -37,6 +37,9 @@ module Matter
     # Whether a new fabric was added during this context
     property added_fabric_index : UInt8?
 
+    # Regulatory config snapshot (for rollback)
+    property regulatory_config_snapshot : Tuple(UInt8, String)? # (location_type, country_code)
+
     @timer : FailsafeTimer?
     @expiry_callback : Proc(Nil)
 
@@ -56,6 +59,7 @@ module Matter
       @network_state_snapshot = nil
       @root_cert = nil
       @added_fabric_index = nil
+      @regulatory_config_snapshot = nil
       @timer = nil
 
       Log.info { "Created failsafe context: fabric=#{@associated_fabric_index || "PASE"}, breadcrumb=#{breadcrumb}" }
@@ -167,6 +171,18 @@ module Matter
       Log.debug { "Marked context for UpdateNOC" }
     end
 
+    # Record regulatory config state for rollback
+    #
+    # @param location_type Current regulatory location type (as UInt8)
+    # @param country_code Current country code (2-character string)
+    def record_regulatory_config(location_type : UInt8, country_code : String) : Nil
+      # Only record the first snapshot (don't overwrite on subsequent changes)
+      if @regulatory_config_snapshot.nil?
+        @regulatory_config_snapshot = {location_type, country_code}
+        Log.debug { "Recorded regulatory config snapshot: location=#{location_type}, country=#{country_code}" }
+      end
+    end
+
     # Perform complete rollback of all commissioning state
     #
     # This implements the 9-step rollback sequence from Matter spec:
@@ -183,10 +199,12 @@ module Matter
     # @param fabric_manager FabricManager for fabric operations
     # @param session_manager SessionManager for PASE cleanup
     # @param commissioning_window For closing windows
+    # @param general_commissioning GeneralCommissioning cluster for regulatory config reset
     def rollback(
       fabric_manager : FabricManager? = nil,
       session_manager : SessionManager? = nil,
       commissioning_window : CommissioningWindow? = nil,
+      general_commissioning : Clusters::GeneralCommissioning? = nil,
     ) : Nil
       Log.warn { "Performing failsafe rollback" }
 
@@ -243,13 +261,23 @@ module Matter
       Log.debug { "Cleared CSR nonce" }
 
       # Step 8: Reset regulatory config
-      # TODO: Implement when regulatory config is added
-      Log.debug { "Would reset regulatory config (not yet implemented)" }
+      if snapshot = @regulatory_config_snapshot
+        if gc = general_commissioning
+          begin
+            location_type, country_code = snapshot
+            gc.restore_regulatory_config(location_type, country_code)
+            Log.info { "Restored regulatory config: location=#{location_type}, country=#{country_code}" }
+          rescue ex
+            Log.error(exception: ex) { "Failed to restore regulatory config" }
+          end
+        end
+      end
 
       # Step 9: Clean up temporary state
       @network_state_snapshot = nil
       @root_cert = nil
       @added_fabric_index = nil
+      @regulatory_config_snapshot = nil
       @for_update_noc = false
       Log.debug { "Cleaned up temporary state" }
 
@@ -279,5 +307,11 @@ module Matter
 
   class CommissioningWindow
     def close; end
+  end
+
+  module Clusters
+    class GeneralCommissioning
+      def restore_regulatory_config(location_type : UInt8, country_code : String); end
+    end
   end
 end

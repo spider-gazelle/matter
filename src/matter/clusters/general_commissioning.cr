@@ -49,6 +49,9 @@ module Matter
       # RegulatoryConfig attribute (0x0002) - current regulatory location
       property regulatory_config : RegulatoryLocationType = RegulatoryLocationType::Indoor
 
+      # Country code (stored for rollback purposes)
+      property country_code : String = "XX" # Default: unknown/unspecified
+
       # LocationCapability attribute (0x0003) - supported regulatory locations
       property location_capability : RegulatoryLocationType = RegulatoryLocationType::IndoorOutdoor
 
@@ -325,8 +328,16 @@ module Matter
 
         # TODO: Validate country code against whitelist if configured
 
+        # Record current state for rollback if failsafe is armed
+        if context = @failsafe_context
+          if context.armed?
+            context.record_regulatory_config(@regulatory_config.value, @country_code)
+          end
+        end
+
         # Apply configuration atomically (only update breadcrumb on success)
         @regulatory_config = request.new_regulatory_config
+        @country_code = request.country_code
         @breadcrumb = request.breadcrumb
 
         Log.info { "Regulatory config updated" }
@@ -356,7 +367,7 @@ module Matter
         Log.warn { "Failsafe expired - performing rollback" }
 
         if context = @failsafe_context
-          context.rollback
+          context.rollback(general_commissioning: self)
           @failsafe_context = nil
           @admin_fabric_index = nil
         end
@@ -388,6 +399,19 @@ module Matter
       # Get current failsafe context (for testing/inspection)
       def failsafe_context : FailsafeContext?
         @failsafe_context
+      end
+
+      # Restore regulatory config from snapshot (called during rollback)
+      #
+      # This is called by FailsafeContext#rollback to restore the previous
+      # regulatory configuration when a failsafe expires.
+      #
+      # @param location_type Previous regulatory location type value
+      # @param country_code Previous country code
+      def restore_regulatory_config(location_type : UInt8, country_code : String) : Nil
+        @regulatory_config = RegulatoryLocationType.from_value(location_type)
+        @country_code = country_code
+        Log.info { "Restored regulatory config: location=#{@regulatory_config}, country=#{country_code}" }
       end
 
       # Open commissioning window (allows PASE sessions)
