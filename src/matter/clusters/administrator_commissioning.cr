@@ -75,11 +75,25 @@ module Matter
       @minimum_commissioning_timeout : UInt16 = MINIMUM_COMMISSIONING_TIMEOUT
       @maximum_commissioning_timeout : UInt16 = STANDARD_COMMISSIONING_TIMEOUT
       @mdns_advertiser : MDNS::Advertiser?
+      @window_start_time : Time?
+      @window_expiry_time : Time?
+
+      # Callbacks for external component integration
+      property on_configure_pase_server : Proc(Bytes, UInt32, Bytes, Nil)? # (verifier, iterations, salt) -> nil
+      property on_configure_pase_pin : Proc(UInt32, UInt32, Bytes, Nil)?   # (pin, iterations, salt) -> nil
+      property on_stop_pase_server : Proc(Nil)?
+      property on_close_failsafe : Proc(Nil)?
 
       def initialize
         @commissioning_timeout_fiber = nil
         @commissioning_timeout_channel = nil
         @mdns_advertiser = nil
+        @window_start_time = nil
+        @window_expiry_time = nil
+        @on_configure_pase_server = nil
+        @on_configure_pase_pin = nil
+        @on_stop_pase_server = nil
+        @on_close_failsafe = nil
       end
 
       # Configure timeout bounds (for testing)
@@ -149,12 +163,15 @@ module Matter
           discriminator: request.discriminator
         )
 
-        # TODO: Configure PASE server with verifier
-        # PaseServer.from_verification_value(
-        #   verifier: request.pake_passcode_verifier,
-        #   iterations: request.iterations,
-        #   salt: request.salt
-        # )
+        # Configure PASE server with verifier (if callback provided)
+        if callback = @on_configure_pase_server
+          callback.call(
+            request.pake_passcode_verifier,
+            request.iterations,
+            request.salt
+          )
+          Log.debug { "Configured PASE server with custom verifier" }
+        end
 
         Log.info { "Enhanced commissioning window opened for #{request.commissioning_timeout}s" }
       end
@@ -204,10 +221,16 @@ module Matter
           discriminator: request.discriminator
         )
 
-        # TODO: Configure PASE server with default PIN
-        # iterations = 1000_u32
-        # salt = Random::Secure.random_bytes(32)
-        # PaseServer.from_pin(default_passcode, iterations, salt)
+        # Configure PASE server with default PIN (if callback provided)
+        if callback = @on_configure_pase_pin
+          # Use standard parameters for basic commissioning
+          iterations = 1000_u32
+          salt = Random::Secure.random_bytes(32)
+          default_pin = 20202021_u32 # Standard test PIN
+
+          callback.call(default_pin, iterations, salt)
+          Log.debug { "Configured PASE server with default PIN" }
+        end
 
         Log.info { "Basic commissioning window opened for #{request.commissioning_timeout}s" }
       end
@@ -294,6 +317,10 @@ module Matter
         @window_status = status
         @admin_fabric_index = admin_fabric_index
         @admin_vendor_id = admin_vendor_id
+
+        # Track window timing
+        @window_start_time = Time.utc
+        @window_expiry_time = Time.utc + timeout.seconds
 
         # Start DNS-SD advertising
         start_mdns_advertising(discriminator)
@@ -396,8 +423,21 @@ module Matter
         @admin_fabric_index = nil
         @admin_vendor_id = nil
 
-        # TODO: Stop PASE server
-        # TODO: Close failsafe if armed
+        # Reset timing
+        @window_start_time = nil
+        @window_expiry_time = nil
+
+        # Stop PASE server (if callback provided)
+        if callback = @on_stop_pase_server
+          callback.call
+          Log.debug { "Stopped PASE server" }
+        end
+
+        # Close failsafe if armed (if callback provided)
+        if callback = @on_close_failsafe
+          callback.call
+          Log.debug { "Requested failsafe closure" }
+        end
 
         Log.info { "Commissioning window closed" }
       end
@@ -423,8 +463,11 @@ module Matter
 
       # Get time remaining on commissioning window (for testing)
       def time_remaining : Time::Span?
-        # TODO: Track start time and calculate remaining time
-        nil
+        return nil unless window_open?
+        return nil unless expiry = @window_expiry_time
+
+        remaining = expiry - Time.utc
+        remaining > Time::Span.zero ? remaining : Time::Span.zero
       end
 
       # Close and cleanup (for testing/shutdown)

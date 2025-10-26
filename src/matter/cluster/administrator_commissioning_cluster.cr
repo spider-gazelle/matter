@@ -50,6 +50,10 @@ module Matter
       property iterations : UInt32?
       property salt : Bytes?
 
+      # Session context (set by the session before invoking commands)
+      property session_fabric_index : UInt8?
+      property session_vendor_id : UInt16?
+
       # Callbacks
       property on_open_commissioning_window : Proc(UInt16, Bytes, UInt16, Bytes, UInt32, UInt8, UInt16, StatusCode)?
       property on_open_basic_commissioning_window : Proc(UInt16, UInt8, UInt16, StatusCode)?
@@ -68,6 +72,9 @@ module Matter
         @discriminator = nil
         @iterations = nil
         @salt = nil
+
+        @session_fabric_index = nil
+        @session_vendor_id = nil
 
         @on_open_commissioning_window = nil
         @on_open_basic_commissioning_window = nil
@@ -165,9 +172,8 @@ module Matter
           # Invoke callback if set
           status = if callback = @on_open_commissioning_window
                      # Get fabric index and vendor ID from session context
-                     # For now, use placeholder values
-                     fabric_index = 1_u8
-                     vendor_id = 0xFFF1_u16
+                     fabric_index = @session_fabric_index || 1_u8
+                     vendor_id = @session_vendor_id || 0xFFF1_u16
 
                      callback.call(
                        request.commissioning_timeout,
@@ -202,9 +208,8 @@ module Matter
           # Invoke callback if set
           status = if callback = @on_open_basic_commissioning_window
                      # Get fabric index and vendor ID from session context
-                     # For now, use placeholder values
-                     fabric_index = 1_u8
-                     vendor_id = 0xFFF1_u16
+                     fabric_index = @session_fabric_index || 1_u8
+                     vendor_id = @session_vendor_id || 0xFFF1_u16
 
                      callback.call(
                        request.commissioning_timeout,

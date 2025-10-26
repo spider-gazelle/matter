@@ -527,4 +527,175 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
       cluster.salt.should eq(salt)
     end
   end
+
+  describe "session context" do
+    it "initializes session context as nil" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+      cluster.session_fabric_index.should be_nil
+      cluster.session_vendor_id.should be_nil
+    end
+
+    it "uses session context in OpenCommissioningWindow callback" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+      # Set session context
+      cluster.session_fabric_index = 3_u8
+      cluster.session_vendor_id = 0xABCD_u16
+
+      # Create TLV-encoded OpenCommissioningWindowRequest
+      tlv_data = create_open_commissioning_window_tlv(
+        timeout: 900_u16,
+        verifier: Bytes.new(97, 0xAB_u8),
+        discriminator: 3840_u16,
+        iterations: 10000_u32,
+        salt: Bytes.new(32, 0xCD_u8)
+      )
+
+      # Set callback to verify session context is passed
+      callback_invoked = false
+      cluster.on_open_commissioning_window = ->(timeout : UInt16, verifier : Bytes, disc : UInt16, salt : Bytes, iter : UInt32, fabric : UInt8, vendor : UInt16) {
+        callback_invoked = true
+        fabric.should eq(3_u8)
+        vendor.should eq(0xABCD_u16)
+        Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
+      }
+
+      result = cluster.invoke_command(
+        Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
+        tlv_data
+      )
+
+      callback_invoked.should be_true
+      result.should be_a(Bytes)
+    end
+
+    it "uses default values when session context not set in OpenCommissioningWindow" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+      # Don't set session context - should use defaults
+
+      # Create TLV-encoded OpenCommissioningWindowRequest
+      tlv_data = create_open_commissioning_window_tlv(
+        timeout: 900_u16,
+        verifier: Bytes.new(97, 0xAB_u8),
+        discriminator: 3840_u16,
+        iterations: 10000_u32,
+        salt: Bytes.new(32, 0xCD_u8)
+      )
+
+      # Set callback to verify default values are used
+      callback_invoked = false
+      cluster.on_open_commissioning_window = ->(timeout : UInt16, verifier : Bytes, disc : UInt16, salt : Bytes, iter : UInt32, fabric : UInt8, vendor : UInt16) {
+        callback_invoked = true
+        fabric.should eq(1_u8)       # Default fabric_index
+        vendor.should eq(0xFFF1_u16) # Default vendor_id
+        Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
+      }
+
+      result = cluster.invoke_command(
+        Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
+        tlv_data
+      )
+
+      callback_invoked.should be_true
+      result.should be_a(Bytes)
+    end
+
+    it "uses session context in OpenBasicCommissioningWindow callback" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+      # Set session context
+      cluster.session_fabric_index = 5_u8
+      cluster.session_vendor_id = 0x1234_u16
+
+      # Create TLV-encoded OpenBasicCommissioningWindowRequest
+      tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
+
+      # Set callback to verify session context is passed
+      callback_invoked = false
+      cluster.on_open_basic_commissioning_window = ->(timeout : UInt16, fabric : UInt8, vendor : UInt16) {
+        callback_invoked = true
+        fabric.should eq(5_u8)
+        vendor.should eq(0x1234_u16)
+        Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
+      }
+
+      result = cluster.invoke_command(
+        Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+        tlv_data
+      )
+
+      callback_invoked.should be_true
+      result.should be_a(Bytes)
+    end
+
+    it "uses default values when session context not set in OpenBasicCommissioningWindow" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+      # Don't set session context - should use defaults
+
+      # Create TLV-encoded OpenBasicCommissioningWindowRequest
+      tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
+
+      # Set callback to verify default values are used
+      callback_invoked = false
+      cluster.on_open_basic_commissioning_window = ->(timeout : UInt16, fabric : UInt8, vendor : UInt16) {
+        callback_invoked = true
+        fabric.should eq(1_u8)       # Default fabric_index
+        vendor.should eq(0xFFF1_u16) # Default vendor_id
+        Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
+      }
+
+      result = cluster.invoke_command(
+        Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+        tlv_data
+      )
+
+      callback_invoked.should be_true
+      result.should be_a(Bytes)
+    end
+
+    it "allows session context to be updated between commands" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+      # First command with fabric 1
+      cluster.session_fabric_index = 1_u8
+      cluster.session_vendor_id = 0x1111_u16
+
+      tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
+
+      cluster.on_open_basic_commissioning_window = ->(timeout : UInt16, fabric : UInt8, vendor : UInt16) {
+        fabric.should eq(1_u8)
+        vendor.should eq(0x1111_u16)
+        Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
+      }
+
+      cluster.invoke_command(
+        Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+        tlv_data
+      )
+
+      # Second command with different fabric
+      cluster.session_fabric_index = 2_u8
+      cluster.session_vendor_id = 0x2222_u16
+
+      cluster.on_open_basic_commissioning_window = ->(timeout : UInt16, fabric : UInt8, vendor : UInt16) {
+        fabric.should eq(2_u8)
+        vendor.should eq(0x2222_u16)
+        Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
+      }
+
+      cluster.invoke_command(
+        Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+        tlv_data
+      )
+    end
+  end
 end

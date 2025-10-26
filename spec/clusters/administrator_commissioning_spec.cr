@@ -497,5 +497,241 @@ module Matter::Clusters
         cluster.window_open?.should be_false
       end
     end
+
+    describe "time tracking" do
+      it "returns nil time_remaining when window not open" do
+        cluster = AdministratorCommissioning.new
+
+        cluster.time_remaining.should be_nil
+      end
+
+      it "tracks time remaining during open window" do
+        cluster = AdministratorCommissioning.new
+        cluster.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
+
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+          commissioning_timeout: 5_u16
+        )
+
+        cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
+
+        remaining = cluster.time_remaining
+        remaining.should_not be_nil
+
+        # Time remaining should be close to 5 seconds (within tolerance)
+        if time = remaining
+          time.total_seconds.should be_close(5.0, 0.5)
+        end
+
+        cluster.close
+      end
+
+      it "returns zero when window has expired" do
+        cluster = AdministratorCommissioning.new
+        cluster.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
+
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+          commissioning_timeout: 1_u16
+        )
+
+        cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
+
+        # Wait for expiry
+        sleep 1.5.seconds
+        Fiber.yield
+
+        # Should return nil after window closes automatically
+        cluster.time_remaining.should be_nil
+      end
+
+      it "updates time remaining as time passes" do
+        cluster = AdministratorCommissioning.new
+        cluster.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
+
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+          commissioning_timeout: 5_u16
+        )
+
+        cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
+
+        first_check = cluster.time_remaining
+        sleep 1.seconds
+        second_check = cluster.time_remaining
+
+        first_check.should_not be_nil
+        second_check.should_not be_nil
+
+        if first = first_check
+          if second = second_check
+            # Second check should show less time remaining
+            second.total_seconds.should be < first.total_seconds
+          end
+        end
+
+        cluster.close
+      end
+    end
+
+    describe "integration callbacks" do
+      it "invokes on_configure_pase_server callback for enhanced commissioning" do
+        cluster = AdministratorCommissioning.new
+        callback_invoked = false
+        received_verifier = Bytes.new(0)
+        received_iterations = 0_u32
+        received_salt = Bytes.new(0)
+
+        cluster.on_configure_pase_server = ->(verifier : Bytes, iterations : UInt32, salt : Bytes) {
+          callback_invoked = true
+          received_verifier = verifier
+          received_iterations = iterations
+          received_salt = salt
+          nil
+        }
+
+        verifier = Bytes.new(97, 0xAA_u8)
+        salt = Bytes.new(32, 0xBB_u8)
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
+          commissioning_timeout: 900_u16,
+          pake_passcode_verifier: verifier,
+          discriminator: 1234_u16,
+          iterations: 5000_u32,
+          salt: salt
+        )
+
+        cluster.open_commissioning_window(request, 1_u8, 0x1234_u16)
+
+        callback_invoked.should be_true
+        received_verifier.should eq(verifier)
+        received_iterations.should eq(5000_u32)
+        received_salt.should eq(salt)
+
+        cluster.close
+      end
+
+      it "invokes on_configure_pase_pin callback for basic commissioning" do
+        cluster = AdministratorCommissioning.new
+        callback_invoked = false
+        received_pin = 0_u32
+        received_iterations = 0_u32
+
+        cluster.on_configure_pase_pin = ->(pin : UInt32, iterations : UInt32, salt : Bytes) {
+          callback_invoked = true
+          received_pin = pin
+          received_iterations = iterations
+          nil
+        }
+
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+          commissioning_timeout: 600_u16
+        )
+
+        cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
+
+        callback_invoked.should be_true
+        received_pin.should eq(20202021_u32) # Standard test PIN
+        received_iterations.should eq(1000_u32)
+
+        cluster.close
+      end
+
+      it "invokes on_stop_pase_server callback when window closes" do
+        cluster = AdministratorCommissioning.new
+        callback_invoked = false
+
+        cluster.on_stop_pase_server = -> {
+          callback_invoked = true
+          nil
+        }
+
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+          commissioning_timeout: 600_u16
+        )
+
+        cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
+        callback_invoked.should be_false # Not invoked yet
+
+        cluster.revoke_commissioning
+
+        callback_invoked.should be_true
+      end
+
+      it "invokes on_close_failsafe callback when window closes" do
+        cluster = AdministratorCommissioning.new
+        callback_invoked = false
+
+        cluster.on_close_failsafe = -> {
+          callback_invoked = true
+          nil
+        }
+
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+          commissioning_timeout: 600_u16
+        )
+
+        cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
+        callback_invoked.should be_false # Not invoked yet
+
+        cluster.revoke_commissioning
+
+        callback_invoked.should be_true
+      end
+
+      it "works without callbacks configured" do
+        cluster = AdministratorCommissioning.new
+
+        # Don't configure any callbacks
+
+        verifier = Bytes.new(97, 0_u8)
+        salt = Bytes.new(32, 1_u8)
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
+          commissioning_timeout: 900_u16,
+          pake_passcode_verifier: verifier,
+          discriminator: 1234_u16,
+          iterations: 10000_u32,
+          salt: salt
+        )
+
+        # Should not raise - callbacks are optional
+        cluster.open_commissioning_window(request, 1_u8, 0x1234_u16)
+        cluster.window_open?.should be_true
+
+        cluster.revoke_commissioning
+        cluster.window_open?.should be_false
+      end
+
+      it "invokes callbacks on timeout expiry" do
+        cluster = AdministratorCommissioning.new
+        cluster.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
+
+        pase_stopped = false
+        failsafe_closed = false
+
+        cluster.on_stop_pase_server = -> {
+          pase_stopped = true
+          nil
+        }
+
+        cluster.on_close_failsafe = -> {
+          failsafe_closed = true
+          nil
+        }
+
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+          commissioning_timeout: 1_u16
+        )
+
+        cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
+
+        pase_stopped.should be_false
+        failsafe_closed.should be_false
+
+        # Wait for timeout
+        sleep 1.5.seconds
+        Fiber.yield
+
+        pase_stopped.should be_true
+        failsafe_closed.should be_true
+      end
+    end
   end
 end
