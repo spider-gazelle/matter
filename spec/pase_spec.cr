@@ -18,6 +18,61 @@ describe Matter::Session::Pase do
       params.iterations.should eq(1000)
       params.salt.size.should eq(32)
     end
+
+    it "encodes and decodes PBKDF parameter request" do
+      # Create a request
+      request = Matter::Session::Pase::Definitions::PbkdfParamRequest.new
+
+      # Encode to TLV bytes
+      encoded = request.to_bytes
+      encoded.should be_a(Bytes)
+
+      # Decode from TLV bytes
+      decoded = Matter::Session::Pase::Definitions::PbkdfParamRequest.new(encoded)
+      decoded.initiator_random.should be_nil
+      decoded.initiator_session_id.should be_nil
+    end
+
+    it "encodes and decodes PBKDF parameter response" do
+      # Create a response with test data
+      salt = Bytes.new(32, 0xAB_u8)
+      response = Matter::Session::Pase::Definitions::PbkdfParamResponse.new(
+        iterations: 1000_u32,
+        salt: salt
+      )
+
+      # Encode to TLV bytes
+      encoded = response.to_bytes
+      encoded.should be_a(Bytes)
+
+      # Decode from TLV bytes
+      decoded = Matter::Session::Pase::Definitions::PbkdfParamResponse.new(encoded)
+      decoded.iterations.should eq(1000_u32)
+      decoded.salt.should eq(salt)
+      decoded.responder_session_id.should be_nil
+    end
+
+    it "round-trips PBKDF parameter request and response" do
+      # Commissioner creates request
+      commissioner = Matter::Session::Pase::PaseCommissioner.new(pin_code: 12345678_u32)
+      request_bytes = commissioner.create_pbkdf_param_request
+
+      # Responder processes request and creates response
+      params = Matter::Session::Pase::PbkdfParameters.default
+      responder = Matter::Session::Pase::PaseResponder.new(
+        pin_code: 12345678_u32,
+        pbkdf_params: params
+      )
+      response_bytes = responder.process_pbkdf_param_request(request_bytes)
+
+      # Commissioner processes response
+      commissioner.process_pbkdf_param_response(response_bytes)
+
+      # Verify parameters were correctly transmitted
+      commissioner.pbkdf_params.should_not be_nil
+      commissioner.pbkdf_params.not_nil!.iterations.should eq(params.iterations)
+      commissioner.pbkdf_params.not_nil!.salt.should eq(params.salt)
+    end
   end
 
   describe "PaseCommissioner" do
@@ -46,7 +101,12 @@ describe Matter::Session::Pase do
       )
 
       params = Matter::Session::Pase::PbkdfParameters.default
-      commissioner.process_pbkdf_param_response(Bytes.new(0), params)
+      # Create a properly encoded PBKDF parameter response
+      response = Matter::Session::Pase::Definitions::PbkdfParamResponse.new(
+        iterations: params.iterations.to_u32,
+        salt: params.salt
+      )
+      commissioner.process_pbkdf_param_response(response.to_bytes)
 
       commissioner.pbkdf_params.should_not be_nil
       commissioner.spake.should_not be_nil
@@ -58,7 +118,12 @@ describe Matter::Session::Pase do
       )
 
       params = Matter::Session::Pase::PbkdfParameters.default
-      commissioner.process_pbkdf_param_response(Bytes.new(0), params)
+      # Create a properly encoded PBKDF parameter response
+      response = Matter::Session::Pase::Definitions::PbkdfParamResponse.new(
+        iterations: params.iterations.to_u32,
+        salt: params.salt
+      )
+      commissioner.process_pbkdf_param_response(response.to_bytes)
 
       p_a = commissioner.generate_pake1
       p_a.should be_a(Bytes)
@@ -90,14 +155,25 @@ describe Matter::Session::Pase do
     end
 
     it "processes pake1 and generates pake2 (pB)" do
+      pin_code = 12345678_u32
+      params = Matter::Session::Pase::PbkdfParameters.default
+
+      # Create both commissioner and responder for valid protocol
+      commissioner = Matter::Session::Pase::PaseCommissioner.new(pin_code: pin_code)
       responder = Matter::Session::Pase::PaseResponder.new(
-        pin_code: 12345678_u32
+        pin_code: pin_code,
+        pbkdf_params: params
       )
 
-      # Create a dummy pA (would come from commissioner)
-      p_a = Bytes.new(65)
-      p_a[0] = 0x04 # Uncompressed marker
+      # Commissioner generates valid pA
+      response = Matter::Session::Pase::Definitions::PbkdfParamResponse.new(
+        iterations: params.iterations.to_u32,
+        salt: params.salt
+      )
+      commissioner.process_pbkdf_param_response(response.to_bytes)
+      p_a = commissioner.generate_pake1
 
+      # Responder processes pA and generates pB
       p_b = responder.process_pake1(p_a)
       p_b.should be_a(Bytes)
       p_b.size.should eq(65)
@@ -105,13 +181,26 @@ describe Matter::Session::Pase do
     end
 
     it "generates pake3 confirmation" do
+      pin_code = 12345678_u32
+      params = Matter::Session::Pase::PbkdfParameters.default
+
+      # Create both sides for valid protocol
+      commissioner = Matter::Session::Pase::PaseCommissioner.new(pin_code: pin_code)
       responder = Matter::Session::Pase::PaseResponder.new(
-        pin_code: 12345678_u32
+        pin_code: pin_code,
+        pbkdf_params: params
       )
 
-      # Initialize SPAKE2+
-      responder.initialize_spake
+      # Go through protocol steps to compute shared secret
+      response = Matter::Session::Pase::Definitions::PbkdfParamResponse.new(
+        iterations: params.iterations.to_u32,
+        salt: params.salt
+      )
+      commissioner.process_pbkdf_param_response(response.to_bytes)
+      p_a = commissioner.generate_pake1
+      p_b = responder.process_pake1(p_a)
 
+      # Now responder can generate confirmation
       confirmation = responder.generate_pake3
       confirmation.should be_a(Bytes)
       confirmation.size.should eq(32)

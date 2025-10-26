@@ -120,9 +120,19 @@ describe Matter::Session::Case do
         crypto: crypto
       )
 
-      # Must generate Sigma1 first
-      initiator.generate_sigma1
+      # Must go through protocol flow to compute shared secret
+      sigma1 = initiator.generate_sigma1
 
+      # Simulate peer response
+      peer_key = crypto.create_key_pair
+      peer_ephemeral = peer_key.public_key
+      peer_random = crypto.random_bytes(32)
+      peer_encrypted_cert = crypto.random_bytes(116)
+      peer_session_id = crypto.random_uint16
+
+      initiator.process_sigma2(peer_ephemeral, peer_random, peer_encrypted_cert, peer_session_id)
+
+      # Now can derive keys
       keys = initiator.derive_session_keys
 
       keys[:encryption].should be_a(Bytes)

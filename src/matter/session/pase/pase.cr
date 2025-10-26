@@ -1,6 +1,7 @@
 require "../../crypto/crypto"
 require "../../crypto/spake2p"
 require "../context"
+require "./definitions"
 
 module Matter
   module Session
@@ -29,33 +30,46 @@ module Matter
         property spake : Crypto::Spake2p?
         property context : Bytes
         property crypto : Crypto::CryptoBase
+        property w0_w1 : Crypto::Spake2p::W0W1?
+        property p_a : Bytes?
+        property secret_and_verifiers : Crypto::Spake2p::SecretAndVerifiers?
 
         def initialize(
           @pin_code : UInt32,
           @crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
           @context : Bytes = "CHIP PAKE V1 Commissioning".to_slice,
         )
+          @w0_w1 = nil
+          @p_a = nil
+          @secret_and_verifiers = nil
         end
 
         # Step 1: Request PBKDF parameters from responder
         def create_pbkdf_param_request : Bytes
-          # In real implementation, this would be a TLV-encoded message
-          # For now, return a placeholder
-          Bytes.new(0)
+          # Create a TLV-encoded PBKDF parameter request
+          # This can include optional initiator information
+          request = Definitions::PbkdfParamRequest.new
+          request.to_bytes
         end
 
         # Step 2: Process PBKDF parameters from responder
-        def process_pbkdf_param_response(response : Bytes, params : PbkdfParameters)
-          @pbkdf_params = params
+        def process_pbkdf_param_response(response : Bytes)
+          # Decode the TLV-encoded response to get PBKDF parameters
+          resp = Definitions::PbkdfParamResponse.new(response)
 
-          # Compute w0 from PIN using PBKDF2
-          w0_w1 = Crypto::Spake2p.compute_w0_w1(@crypto,
-            Crypto::Spake2p::PbkdfParameters.new(params.iterations, params.salt),
+          @pbkdf_params = PbkdfParameters.new(
+            iterations: resp.iterations.to_i32,
+            salt: resp.salt
+          )
+
+          # Compute w0 and w1 from PIN using PBKDF2
+          @w0_w1 = Crypto::Spake2p.compute_w0_w1(@crypto,
+            Crypto::Spake2p::PbkdfParameters.new(@pbkdf_params.not_nil!.iterations, @pbkdf_params.not_nil!.salt),
             @pin_code
           )
 
           # Create SPAKE2+ instance with w0
-          @spake = Crypto::Spake2p.create(@crypto, @context, w0_w1.w0)
+          @spake = Crypto::Spake2p.create(@crypto, @context, @w0_w1.not_nil!.w0)
         end
 
         # Step 3: Generate pA (our public value)
@@ -63,41 +77,57 @@ module Matter
           spake = @spake
           raise "SPAKE2+ not initialized" if spake.nil?
 
-          # Compute X (initiator's public value)
-          spake.compute_x
+          # Compute X (commissioner/prover's public value)
+          @p_a = spake.compute_x
+          @p_a.not_nil!
         end
 
-        # Step 4: Process pB (responder's public value) and generate verifier
+        # Step 4: Process pB (responder's public value) and compute confirmation
         def process_pake2(p_b : Bytes) : Bytes
           spake = @spake
-          raise "SPAKE2+ not initialized" if spake.nil?
+          w0_w1 = @w0_w1
+          p_a = @p_a
+          raise "SPAKE2+ not initialized" if spake.nil? || w0_w1.nil? || p_a.nil?
 
-          # Process Y (responder's public value)
-          # In SPAKE2+, after receiving Y, we can compute the shared secret
-          # This is done internally by the SPAKE2+ implementation
+          # Compute shared secret and verifiers from Y (responder's public value)
+          # This returns ke (shared secret), h_ay, and h_bx
+          @secret_and_verifiers = spake.compute_secret_and_verifiers_from_y(
+            w0_w1.w1,
+            p_a,
+            p_b
+          )
 
-          # For now, return empty confirmation
-          # In real implementation, compute confirmation value
-          Bytes.new(32)
+          # Return our confirmation value (h_ay)
+          @secret_and_verifiers.not_nil!.h_ay
         end
 
         # Step 5: Verify responder's confirmation
         def process_pake3(confirmation : Bytes) : Bool
-          # Verify the confirmation value
-          # In real implementation, check the confirmation
-          true
+          sav = @secret_and_verifiers
+          raise "Shared secret not computed" if sav.nil?
+
+          # Verify that the responder's confirmation matches our computed h_bx
+          confirmation == sav.h_bx
         end
 
         # Derive session keys after successful PASE
         def derive_session_keys : {encryption: Bytes, decryption: Bytes}
-          spake = @spake
-          raise "SPAKE2+ not initialized" if spake.nil?
+          sav = @secret_and_verifiers
+          raise "Shared secret not computed" if sav.nil?
 
-          # In real implementation, derive keys from shared secret
-          # For now, return placeholder keys
+          # Derive session keys from shared secret (ke) using HKDF
+          # Matter Spec: SessionKeys = HKDF(ke, salt, "SessionKeys", 32)
+          session_keys = @crypto.create_hkdf_key(
+            sav.ke,
+            Bytes.new(0), # Empty salt
+            "SessionKeys".to_slice,
+            32 # Derive 32 bytes total (16 for each key)
+          )
+
+          # Split into initiator-to-responder and responder-to-initiator keys
           {
-            encryption: @crypto.random_bytes(16),
-            decryption: @crypto.random_bytes(16),
+            encryption: session_keys[0, 16],  # I2R key
+            decryption: session_keys[16, 16], # R2I key
           }
         end
       end
@@ -109,6 +139,9 @@ module Matter
         property spake : Crypto::Spake2p?
         property context : Bytes
         property crypto : Crypto::CryptoBase
+        property w0_l : Crypto::Spake2p::W0L?
+        property p_b : Bytes?
+        property secret_and_verifiers : Crypto::Spake2p::SecretAndVerifiers?
 
         def initialize(
           @pin_code : UInt32,
@@ -116,26 +149,37 @@ module Matter
           @crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
           @context : Bytes = "CHIP PAKE V1 Commissioning".to_slice,
         )
+          @w0_l = nil
+          @p_b = nil
+          @secret_and_verifiers = nil
         end
 
         # Step 1: Process PBKDF parameter request and return parameters
         def process_pbkdf_param_request(request : Bytes) : Bytes
-          # In real implementation, this would be TLV-encoded
-          # For now, return placeholder
-          Bytes.new(0)
+          # Parse the TLV-encoded request (if not empty)
+          if request.size > 0
+            req = Definitions::PbkdfParamRequest.new(request)
+            # Could use req.initiator_random, req.initiator_session_id if needed
+          end
+
+          # Create and encode the PBKDF parameter response
+          response = Definitions::PbkdfParamResponse.new(
+            iterations: @pbkdf_params.iterations.to_u32,
+            salt: @pbkdf_params.salt
+          )
+          response.to_bytes
         end
 
         # Step 2: Initialize SPAKE2+ with w0 and L
         def initialize_spake
           # Compute w0 and L from PIN using PBKDF2
-          w0_l = Crypto::Spake2p.compute_w0_l(@crypto,
+          @w0_l = Crypto::Spake2p.compute_w0_l(@crypto,
             Crypto::Spake2p::PbkdfParameters.new(@pbkdf_params.iterations, @pbkdf_params.salt),
             @pin_code
           )
 
           # Create SPAKE2+ instance with w0
-          # Note: L is not passed to create, but used internally by the SPAKE2+ implementation
-          @spake = Crypto::Spake2p.create(@crypto, @context, w0_l.w0)
+          @spake = Crypto::Spake2p.create(@crypto, @context, @w0_l.not_nil!.w0)
         end
 
         # Step 3: Process pA (initiator's public value) and generate pB
@@ -143,33 +187,50 @@ module Matter
           initialize_spake unless @spake
 
           spake = @spake
-          raise "SPAKE2+ not initialized" if spake.nil?
+          w0_l = @w0_l
+          raise "SPAKE2+ not initialized" if spake.nil? || w0_l.nil?
 
-          # Process X (initiator's public value)
-          # Generate Y (our public value)
-          spake.compute_y
+          # Compute Y (responder/verifier's public value)
+          @p_b = spake.compute_y
+
+          # Compute shared secret and verifiers from X (initiator's public value)
+          @secret_and_verifiers = spake.compute_secret_and_verifiers_from_x(
+            w0_l.l,
+            p_a,
+            @p_b.not_nil!
+          )
+
+          @p_b.not_nil!
         end
 
         # Step 4: Generate confirmation value
         def generate_pake3 : Bytes
-          spake = @spake
-          raise "SPAKE2+ not initialized" if spake.nil?
+          sav = @secret_and_verifiers
+          raise "Shared secret not computed" if sav.nil?
 
-          # In real implementation, compute confirmation value
-          # For now, return placeholder
-          Bytes.new(32)
+          # Return our confirmation value (h_bx)
+          sav.h_bx
         end
 
         # Derive session keys after successful PASE
         def derive_session_keys : {encryption: Bytes, decryption: Bytes}
-          spake = @spake
-          raise "SPAKE2+ not initialized" if spake.nil?
+          sav = @secret_and_verifiers
+          raise "Shared secret not computed" if sav.nil?
 
-          # In real implementation, derive keys from shared secret
-          # For now, return placeholder keys
+          # Derive session keys from shared secret (ke) using HKDF
+          # Matter Spec: SessionKeys = HKDF(ke, salt, "SessionKeys", 32)
+          session_keys = @crypto.create_hkdf_key(
+            sav.ke,
+            Bytes.new(0), # Empty salt
+            "SessionKeys".to_slice,
+            32 # Derive 32 bytes total (16 for each key)
+          )
+
+          # Split into responder-to-initiator and initiator-to-responder keys
+          # Note: Responder's encryption is I2R, decryption is R2I (opposite of initiator)
           {
-            encryption: @crypto.random_bytes(16),
-            decryption: @crypto.random_bytes(16),
+            encryption: session_keys[16, 16], # R2I key
+            decryption: session_keys[0, 16],  # I2R key
           }
         end
       end
@@ -191,8 +252,8 @@ module Matter
         request = commissioner.create_pbkdf_param_request
         response = responder.process_pbkdf_param_request(request)
 
-        # 2. Commissioner processes params and generates pA
-        commissioner.process_pbkdf_param_response(response, pbkdf_params)
+        # 2. Commissioner processes params (decoded from response) and generates pA
+        commissioner.process_pbkdf_param_response(response)
         p_a = commissioner.generate_pake1
 
         # 3. Responder processes pA and generates pB
