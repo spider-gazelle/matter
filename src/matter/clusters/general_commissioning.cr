@@ -118,11 +118,17 @@ module Matter
 
         # Check for conflicts with other admins
         # PASE sessions get priority when commissioning window is open
+        # Also allow PASE (nil) to transition to CASE (fabric) for AddNOC
         if context = @failsafe_context
           # If there's an existing context, check for conflicts
           unless context.matches_fabric?(session_fabric_index)
             # Different fabric is trying to commission
-            if is_pase_session && @commissioning_window_open
+
+            # Allow PASE→CASE transition (nil → fabric) for AddNOC
+            if context.associated_fabric_index.nil? && session_fabric_index
+              Log.info { "PASE transitioning to CASE with fabric #{session_fabric_index}" }
+              # Allow re-arm to proceed (will update fabric below)
+            elsif is_pase_session && @commissioning_window_open
               # PASE gets priority - expire existing failsafe
               Log.warn { "PASE session taking over from fabric #{context.associated_fabric_index}" }
               expire_failsafe
@@ -154,6 +160,14 @@ module Matter
           begin
             context.arm(request.expiry_length_seconds, @max_cumulative_failsafe_seconds)
             @breadcrumb = request.breadcrumb
+
+            # Update fabric if PASE→CASE transition
+            if context.associated_fabric_index.nil? && session_fabric_index
+              context.associated_fabric_index = session_fabric_index
+              @admin_fabric_index = session_fabric_index
+              Log.info { "Updated failsafe fabric to #{session_fabric_index} (PASE→CASE transition)" }
+            end
+
             Log.info { "Re-armed failsafe" }
           rescue ex
             Log.error(exception: ex) { "Failed to re-arm failsafe" }
