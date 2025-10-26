@@ -225,20 +225,9 @@ module Matter
 
         key = new(KeyType::EC, CurveType::P256)
 
-        # Get private key DER
-        priv_io = IO::Memory.new
-        pkey.to_der(priv_io)
-        priv_der = priv_io.to_slice
-
-        # Get public key DER
-        pub_pkey = pkey.public_key
-        pub_io = IO::Memory.new
-        pub_pkey.to_der(pub_io)
-        pub_der = pub_io.to_slice
-
-        # Extract raw key material from DER
-        key.private_bits = extract_private_key_from_der(priv_der)
-        key.public_bits = extract_public_key_from_der(pub_der)
+        # Use new openssl_ext API to get raw key bytes directly
+        key.private_bits = pkey.private_key_bytes
+        key.public_bits = pkey.public_key_bytes
 
         key
       end
@@ -278,14 +267,27 @@ module Matter
         end
       end
 
-      # Compute shared secret for Diffie-Hellman
+      # Compute shared secret for Diffie-Hellman using ECDH
       def self.compute_shared_secret(private_key : Key, peer_public_key : Key) : Bytes
-        # Use OpenSSL ECDH
-        ec_key = OpenSSL::PKey::EC.generate(CRYPTO_EC_CURVE)
+        # Get raw key bytes
+        priv_bytes = private_key.private_key
+        pub_bytes = peer_public_key.public_key
 
-        # Build PEM format for the keys
-        # This is a simplified implementation - production code should use proper DER encoding
-        raise NotImplementedError.new("ECDH shared secret computation - needs OpenSSL bindings")
+        # Determine curve name from key size
+        curve_name = case priv_bytes.size
+                     when 32 then "prime256v1" # P-256
+                     when 48 then "secp384r1"  # P-384
+                     when 66 then "secp521r1"  # P-521
+                     else
+                       raise ArgumentError.new("Unsupported private key size: #{priv_bytes.size}")
+                     end
+
+        # Create EC keys from raw bytes using new openssl_ext API
+        priv_ec = OpenSSL::PKey::EC.from_private_bytes(priv_bytes, curve_name)
+        peer_ec = OpenSSL::PKey::EC.from_public_bytes(pub_bytes, curve_name)
+
+        # Compute shared secret using new openssl_ext API
+        OpenSSL::PKey::EC.compute_shared_secret(priv_ec, peer_ec)
       end
 
       private def infer_curve(bytes : Int32)
@@ -305,12 +307,32 @@ module Matter
         return unless priv = @private_bits
         return if @x_bits && @y_bits
 
-        # For now, mark as not implemented
-        # Full implementation would require reconstructing EC key from raw bytes
-        # which is non-trivial with the current OpenSSL bindings
-        Log.warn { "Public key derivation from private key not yet fully implemented" }
-      rescue e
-        Log.warn { "Could not derive public key from private: #{e.message}" }
+        # Public key derivation is optional - if it fails, public key must be set explicitly
+        # This is only an optimization for cases where we have private key but not public key
+        begin
+          # Determine curve name
+          curve_name = case @curve
+                       when CurveType::P256 then CRYPTO_EC_CURVE
+                       when CurveType::P384 then "secp384r1"
+                       when CurveType::P521 then "secp521r1"
+                       else                      CRYPTO_EC_CURVE # Default to P-256
+                       end
+
+          # Use new openssl_ext API to derive public key from private key
+          # Note: This requires OpenSSL 3+ and may not work in all environments
+          ec_key = OpenSSL::PKey::EC.from_private_bytes(priv, curve_name)
+          pub_bytes = ec_key.public_key_bytes
+
+          # Extract x and y coordinates from uncompressed public key (0x04 || x || y)
+          if pub_bytes[0] == 0x04_u8
+            coordinate_length = (pub_bytes.size - 1) // 2
+            @x_bits = pub_bytes[1, coordinate_length]
+            @y_bits = pub_bytes[coordinate_length + 1, coordinate_length]
+          end
+        rescue
+          # Silently ignore derivation failures - public key can be set explicitly if needed
+          # This is expected in some environments or when using FIPS mode
+        end
       end
     end
 

@@ -17,6 +17,19 @@ module Matter
         raise ArgumentError.new("Public key must be 65 bytes (uncompressed)") unless peer_public_key.size == 65
         raise ArgumentError.new("Public key must start with 0x04 (uncompressed marker)") unless peer_public_key[0] == 0x04
 
+        # Try new openssl_ext API first (OpenSSL 3+ compatible, cleaner code)
+        # Fall back to low-level API if new API not available in this environment
+        begin
+          priv_ec = OpenSSL::PKey::EC.from_private_bytes(private_key, "prime256v1")
+          peer_ec = OpenSSL::PKey::EC.from_public_bytes(peer_public_key, "prime256v1")
+          shared_secret = OpenSSL::PKey::EC.compute_shared_secret(priv_ec, peer_ec)
+          raise OpenSSL::Error.new("Unexpected shared secret length: #{shared_secret.size}") unless shared_secret.size == 32
+          return shared_secret
+        rescue OpenSSL::PKey::EcError
+          # Fall back to low-level implementation for environments where new API isn't available
+        end
+
+        # Low-level ECDH implementation using direct OpenSSL bindings
         # Create a temporary EC key for P-256 to get the group
         temp_key = OpenSSL::PKey::EC.generate("P-256")
         ec_key = LibCrypto.evp_pkey_get1_ec_key(temp_key)
