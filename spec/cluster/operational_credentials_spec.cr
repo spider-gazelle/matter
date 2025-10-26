@@ -1,6 +1,108 @@
 require "../spec_helper"
 require "../../src/matter/cluster/operational_credentials_cluster"
 
+# Helper functions for TLV encoding command data
+def create_attestation_request_tlv(nonce : Bytes) : Bytes
+  io = IO::Memory.new
+  writer = TLV::Writer.new(io)
+
+  data = {
+    0_u8 => nonce,
+  } of TLV::Tag => TLV::Value
+
+  writer.put(nil, data)
+  io.rewind.to_slice
+end
+
+def create_certificate_chain_request_tlv(cert_type : UInt8) : Bytes
+  io = IO::Memory.new
+  writer = TLV::Writer.new(io)
+
+  data = {
+    0_u8 => cert_type,
+  } of TLV::Tag => TLV::Value
+
+  writer.put(nil, data)
+  io.rewind.to_slice
+end
+
+def create_csr_request_tlv(nonce : Bytes, is_for_update : Bool? = nil) : Bytes
+  io = IO::Memory.new
+  writer = TLV::Writer.new(io)
+
+  data = {
+    0_u8 => nonce,
+  } of TLV::Tag => TLV::Value
+  data[1_u8] = is_for_update if is_for_update
+
+  writer.put(nil, data)
+  io.rewind.to_slice
+end
+
+def create_add_noc_request_tlv(noc : Bytes, icac : Bytes?, ipk : Bytes, admin_subject : UInt64, admin_vendor : UInt16) : Bytes
+  io = IO::Memory.new
+  writer = TLV::Writer.new(io)
+
+  # Create DataType wrappers and get their TLV representations
+  subject_id = Matter::DataType::SubjectId.new(admin_subject)
+  vendor_id = Matter::DataType::VendorId.new(admin_vendor)
+
+  data = {
+    0_u8 => noc,
+    2_u8 => ipk,
+    3_u8 => subject_id.to_h,
+    4_u8 => vendor_id.to_h,
+  } of TLV::Tag => TLV::Value
+  data[1_u8] = icac if icac
+
+  writer.put(nil, data)
+  io.rewind.to_slice
+end
+
+def create_update_noc_request_tlv(noc : Bytes, icac : Bytes?, fabric_index : UInt8) : Bytes
+  io = IO::Memory.new
+  writer = TLV::Writer.new(io)
+
+  # Create FabricIndex wrapper and get its TLV representation
+  fabric_idx = Matter::DataType::FabricIndex.new(fabric_index)
+
+  data = {
+      0_u8 => noc,
+    254_u8 => fabric_idx.to_h,
+  } of TLV::Tag => TLV::Value
+  data[1_u8] = icac if icac
+
+  writer.put(nil, data)
+  io.rewind.to_slice
+end
+
+def create_add_trusted_root_cert_request_tlv(cert : Bytes) : Bytes
+  io = IO::Memory.new
+  writer = TLV::Writer.new(io)
+
+  data = {
+    0_u8 => cert,
+  } of TLV::Tag => TLV::Value
+
+  writer.put(nil, data)
+  io.rewind.to_slice
+end
+
+def create_remove_fabric_request_tlv(fabric_index : UInt8) : Bytes
+  io = IO::Memory.new
+  writer = TLV::Writer.new(io)
+
+  # Create FabricIndex wrapper and get its TLV representation
+  fabric_idx = Matter::DataType::FabricIndex.new(fabric_index)
+
+  data = {
+    0_u8 => fabric_idx.to_h,
+  } of TLV::Tag => TLV::Value
+
+  writer.put(nil, data)
+  io.rewind.to_slice
+end
+
 describe Matter::Cluster::OperationalCredentialsCluster do
   describe "initialization" do
     it "creates operational credentials cluster" do
@@ -175,7 +277,9 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
 
-      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_ATTESTATION_REQUEST, Bytes.new(0))
+      nonce = Bytes.new(32, 0x42_u8)
+      command_data = create_attestation_request_tlv(nonce)
+      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_ATTESTATION_REQUEST, command_data)
       result.should be_a(Bytes)
     end
 
@@ -183,7 +287,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
 
-      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_CERTIFICATE_CHAIN_REQUEST, Bytes.new(0))
+      command_data = create_certificate_chain_request_tlv(1_u8) # DACCertificate
+      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_CERTIFICATE_CHAIN_REQUEST, command_data)
       result.should be_a(Bytes)
     end
 
@@ -191,7 +296,9 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
 
-      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST, Bytes.new(0))
+      nonce = Bytes.new(32, 0x42_u8)
+      command_data = create_csr_request_tlv(nonce)
+      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST, command_data)
       result.should be_a(Bytes)
     end
 
@@ -199,7 +306,10 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
 
-      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC, Bytes.new(0))
+      noc = Bytes.new(100, 0x01_u8)
+      ipk = Bytes.new(16, 0x02_u8)
+      command_data = create_add_noc_request_tlv(noc, nil, ipk, 0x1234567890_u64, 0xFFF1_u16)
+      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC, command_data)
       result.should be_a(Bytes)
     end
 
@@ -207,7 +317,9 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
 
-      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_NOC, Bytes.new(0))
+      noc = Bytes.new(100, 0x01_u8)
+      command_data = create_update_noc_request_tlv(noc, nil, 1_u8)
+      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_NOC, command_data)
       result.should be_a(Bytes)
     end
 
@@ -215,7 +327,9 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
 
-      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE, Bytes.new(0))
+      cert = Bytes.new(100, 0x01_u8)
+      command_data = create_add_trusted_root_cert_request_tlv(cert)
+      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE, command_data)
       result.should be_a(Bytes)
     end
 
@@ -223,7 +337,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
 
-      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_REMOVE_FABRIC, Bytes.new(0))
+      command_data = create_remove_fabric_request_tlv(1_u8)
+      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_REMOVE_FABRIC, command_data)
       result.should be_a(Bytes)
     end
   end
