@@ -1,6 +1,44 @@
 require "../spec_helper"
 require "../../src/matter/cluster/administrator_commissioning_cluster"
 
+# Helper to create TLV-encoded OpenCommissioningWindowRequest
+def create_open_commissioning_window_tlv(
+  timeout : UInt16,
+  verifier : Bytes,
+  discriminator : UInt16,
+  iterations : UInt32,
+  salt : Bytes,
+) : Bytes
+  io = IO::Memory.new
+  writer = TLV::Writer.new(io)
+
+  # Structure with anonymous tag
+  data = {
+    0_u8 => timeout,
+    1_u8 => verifier,
+    2_u8 => discriminator,
+    3_u8 => iterations,
+    4_u8 => salt,
+  } of TLV::Tag => TLV::Value
+
+  writer.put(nil, data)
+  io.rewind.to_slice
+end
+
+# Helper to create TLV-encoded OpenBasicCommissioningWindowRequest
+def create_open_basic_commissioning_window_tlv(timeout : UInt16) : Bytes
+  io = IO::Memory.new
+  writer = TLV::Writer.new(io)
+
+  # Structure with anonymous tag
+  data = {
+    0_u8 => timeout,
+  } of TLV::Tag => TLV::Value
+
+  writer.put(nil, data)
+  io.rewind.to_slice
+end
+
 describe Matter::Cluster::AdministratorCommissioningCluster do
   describe "initialization" do
     it "creates administrator commissioning cluster" do
@@ -124,6 +162,224 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
 
       result = cluster.invoke_command(Matter::Cluster::AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING, Bytes.new(0))
       result.should be_a(Bytes)
+    end
+  end
+
+  describe "command parsing with TLV" do
+    describe "OpenCommissioningWindow" do
+      it "parses valid TLV-encoded command" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+        # Create TLV-encoded OpenCommissioningWindowRequest
+        tlv_data = create_open_commissioning_window_tlv(
+          timeout: 900_u16,
+          verifier: Bytes.new(97, 0xAB_u8),
+          discriminator: 3840_u16,
+          iterations: 10000_u32,
+          salt: Bytes.new(32, 0xCD_u8)
+        )
+
+        # Set callback to verify parsed parameters
+        callback_invoked = false
+        cluster.on_open_commissioning_window = ->(timeout : UInt16, verifier : Bytes, disc : UInt16, salt : Bytes, iter : UInt32, fabric : UInt8, vendor : UInt16) {
+          callback_invoked = true
+          timeout.should eq(900_u16)
+          verifier.should eq(Bytes.new(97, 0xAB_u8))
+          disc.should eq(3840_u16)
+          iter.should eq(10000_u32)
+          salt.should eq(Bytes.new(32, 0xCD_u8))
+          Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
+        }
+
+        result = cluster.invoke_command(
+          Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
+          tlv_data
+        )
+
+        callback_invoked.should be_true
+        result.should be_a(Bytes)
+      end
+
+      it "handles malformed TLV data" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+        # Invalid TLV data
+        bad_tlv = Bytes[0xFF, 0xFF, 0xFF]
+
+        result = cluster.invoke_command(
+          Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
+          bad_tlv
+        )
+
+        result.should be_a(Bytes)
+        # Should return PAKEParameterError status
+        result.as(Bytes)[0].should eq(3_u8) # StatusCode::PAKEParameterError
+      end
+
+      it "returns error status from callback" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+        # Create TLV-encoded OpenCommissioningWindowRequest
+        tlv_data = create_open_commissioning_window_tlv(
+          timeout: 900_u16,
+          verifier: Bytes.new(97, 0xAB_u8),
+          discriminator: 3840_u16,
+          iterations: 10000_u32,
+          salt: Bytes.new(32, 0xCD_u8)
+        )
+
+        # Callback returns Busy error
+        cluster.on_open_commissioning_window = ->(timeout : UInt16, verifier : Bytes, disc : UInt16, salt : Bytes, iter : UInt32, fabric : UInt8, vendor : UInt16) {
+          Matter::Cluster::AdministratorCommissioningCluster::StatusCode::Busy
+        }
+
+        result = cluster.invoke_command(
+          Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
+          tlv_data
+        )
+
+        result.should be_a(Bytes)
+        result.as(Bytes)[0].should eq(2_u8) # StatusCode::Busy
+      end
+    end
+
+    describe "OpenBasicCommissioningWindow" do
+      it "parses valid TLV-encoded command" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+        # Create TLV-encoded OpenBasicCommissioningWindowRequest
+        tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
+
+        # Set callback to verify parsed parameters
+        callback_invoked = false
+        cluster.on_open_basic_commissioning_window = ->(timeout : UInt16, fabric : UInt8, vendor : UInt16) {
+          callback_invoked = true
+          timeout.should eq(600_u16)
+          Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
+        }
+
+        result = cluster.invoke_command(
+          Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+          tlv_data
+        )
+
+        callback_invoked.should be_true
+        result.should be_a(Bytes)
+      end
+
+      it "handles malformed TLV data" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+        # Invalid TLV data
+        bad_tlv = Bytes[0xFF, 0xFF, 0xFF]
+
+        result = cluster.invoke_command(
+          Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+          bad_tlv
+        )
+
+        result.should be_a(Bytes)
+        # Should return Busy error status (error handling for parse failure)
+        result.as(Bytes)[0].should eq(2_u8) # StatusCode::Busy
+      end
+
+      it "returns error status from callback" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+        # Create TLV-encoded OpenBasicCommissioningWindowRequest
+        tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
+
+        # Callback returns Busy error
+        cluster.on_open_basic_commissioning_window = ->(timeout : UInt16, fabric : UInt8, vendor : UInt16) {
+          Matter::Cluster::AdministratorCommissioningCluster::StatusCode::Busy
+        }
+
+        result = cluster.invoke_command(
+          Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+          tlv_data
+        )
+
+        result.should be_a(Bytes)
+        result.as(Bytes)[0].should eq(2_u8) # StatusCode::Busy
+      end
+    end
+
+    describe "RevokeCommissioning" do
+      it "invokes callback when set" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+        callback_invoked = false
+        cluster.on_revoke_commissioning = -> {
+          callback_invoked = true
+          Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
+        }
+
+        result = cluster.invoke_command(
+          Matter::Cluster::AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING,
+          Bytes.new(0)
+        )
+
+        callback_invoked.should be_true
+        result.should be_a(Bytes)
+      end
+
+      it "returns WindowNotOpen when no window is open" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+        # No callback set, window closed by default
+        result = cluster.invoke_command(
+          Matter::Cluster::AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING,
+          Bytes.new(0)
+        )
+
+        result.should be_a(Bytes)
+        result.as(Bytes)[0].should eq(4_u8) # StatusCode::WindowNotOpen
+      end
+
+      it "closes window when no callback set and window is open" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+        # Open a window first
+        cluster.open_basic_window(300_u16, 1_u8, 0xFFF1_u16)
+        cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
+
+        # Revoke with no callback - should close directly
+        result = cluster.invoke_command(
+          Matter::Cluster::AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING,
+          Bytes.new(0)
+        )
+
+        result.should be_a(Bytes)
+        result.as(Bytes)[0].should eq(0_u8) # Success
+        cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
+      end
+
+      it "returns error status from callback" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
+
+        # Callback returns WindowNotOpen error
+        cluster.on_revoke_commissioning = -> {
+          Matter::Cluster::AdministratorCommissioningCluster::StatusCode::WindowNotOpen
+        }
+
+        result = cluster.invoke_command(
+          Matter::Cluster::AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING,
+          Bytes.new(0)
+        )
+
+        result.should be_a(Bytes)
+        result.as(Bytes)[0].should eq(4_u8) # StatusCode::WindowNotOpen
+      end
     end
   end
 

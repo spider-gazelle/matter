@@ -1,4 +1,5 @@
 require "./cluster"
+require "./definitions/administrator_commissioning"
 
 module Matter
   module Cluster
@@ -157,20 +158,100 @@ module Matter
       end
 
       private def handle_open_commissioning_window(fields : Bytes) : Bytes
-        # Simplified implementation
-        # TODO: Parse commissioningTimeout, PAKEVerifier, discriminator, iterations, salt from fields
-        Bytes.new(0)
+        # Parse TLV-encoded command using the TLV library
+        begin
+          request = Definitions::AdministratorCommissioning::OpenCommissioningWindowRequest.new(fields)
+
+          # Invoke callback if set
+          status = if callback = @on_open_commissioning_window
+                     # Get fabric index and vendor ID from session context
+                     # For now, use placeholder values
+                     fabric_index = 1_u8
+                     vendor_id = 0xFFF1_u16
+
+                     callback.call(
+                       request.commissioning_timeout,
+                       request.pake_passcode_verifier,
+                       request.discriminator,
+                       request.salt,
+                       request.iterations,
+                       fabric_index,
+                       vendor_id
+                     )
+                   else
+                     StatusCode::Busy
+                   end
+
+          # Encode response (status code only for now)
+          response = IO::Memory.new
+          response.write_bytes(status.value, IO::ByteFormat::LittleEndian)
+          response.to_slice
+        rescue ex
+          # Return error response
+          response = IO::Memory.new
+          response.write_bytes(StatusCode::PAKEParameterError.value, IO::ByteFormat::LittleEndian)
+          response.to_slice
+        end
       end
 
       private def handle_open_basic_commissioning_window(fields : Bytes) : Bytes
-        # Simplified implementation
-        # TODO: Parse commissioningTimeout from fields
-        Bytes.new(0)
+        # Parse TLV-encoded command using the TLV library
+        begin
+          request = Definitions::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(fields)
+
+          # Invoke callback if set
+          status = if callback = @on_open_basic_commissioning_window
+                     # Get fabric index and vendor ID from session context
+                     # For now, use placeholder values
+                     fabric_index = 1_u8
+                     vendor_id = 0xFFF1_u16
+
+                     callback.call(
+                       request.commissioning_timeout,
+                       fabric_index,
+                       vendor_id
+                     )
+                   else
+                     StatusCode::Busy
+                   end
+
+          # Encode response (status code only for now)
+          response = IO::Memory.new
+          response.write_bytes(status.value, IO::ByteFormat::LittleEndian)
+          response.to_slice
+        rescue ex
+          # Return error response
+          response = IO::Memory.new
+          response.write_bytes(StatusCode::Busy.value, IO::ByteFormat::LittleEndian)
+          response.to_slice
+        end
       end
 
       private def handle_revoke_commissioning(fields : Bytes) : Bytes
-        # Simplified implementation
-        Bytes.new(0)
+        # RevokeCommissioning command has no parameters
+
+        # Invoke callback if set
+        status = if callback = @on_revoke_commissioning
+                   callback.call
+                 else
+                   # If no window is open, return error
+                   if @window_status == CommissioningWindowStatus::WindowNotOpen
+                     StatusCode::WindowNotOpen
+                   else
+                     # Close the window
+                     close_window
+                     StatusCode.new(0) # Success (generic InteractionModel status)
+                   end
+                 end
+
+        # Encode response (status code only for now)
+        response = IO::Memory.new
+        if status.is_a?(StatusCode)
+          response.write_bytes(status.value, IO::ByteFormat::LittleEndian)
+        else
+          response.write_bytes(0_u8, IO::ByteFormat::LittleEndian) # Success
+        end
+        response.to_slice
       end
 
       # Window management methods
