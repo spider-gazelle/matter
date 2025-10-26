@@ -1,4 +1,5 @@
 require "log"
+require "../mdns"
 
 module Matter
   module Clusters
@@ -56,6 +57,16 @@ module Matter
       property admin_vendor_id : UInt16?
 
       # ========================================================================
+      # Device Information (for DNS-SD advertising)
+      # ========================================================================
+
+      property device_name : String = "Matter Device"
+      property device_type : UInt32 = 0_u32             # Unknown device type
+      property vendor_id : UInt16 = 0xFFF1_u16          # Test vendor ID
+      property product_id : UInt16 = 0x8000_u16         # Test product ID
+      property addresses : Array(String) = [] of String # IP addresses to advertise
+
+      # ========================================================================
       # State Management
       # ========================================================================
 
@@ -63,10 +74,12 @@ module Matter
       @commissioning_timeout_channel : Channel(Nil)?
       @minimum_commissioning_timeout : UInt16 = MINIMUM_COMMISSIONING_TIMEOUT
       @maximum_commissioning_timeout : UInt16 = STANDARD_COMMISSIONING_TIMEOUT
+      @mdns_advertiser : MDNS::Advertiser?
 
       def initialize
         @commissioning_timeout_fiber = nil
         @commissioning_timeout_channel = nil
+        @mdns_advertiser = nil
       end
 
       # Configure timeout bounds (for testing)
@@ -132,7 +145,8 @@ module Matter
           timeout: request.commissioning_timeout,
           status: WindowStatus::EnhancedWindowOpen,
           admin_fabric_index: session_fabric_index,
-          admin_vendor_id: session_vendor_id
+          admin_vendor_id: session_vendor_id,
+          discriminator: request.discriminator
         )
 
         # TODO: Configure PASE server with verifier
@@ -152,8 +166,9 @@ module Matter
       # OpenBasicCommissioningWindow command request (Basic)
       struct OpenBasicCommissioningWindowRequest
         property commissioning_timeout : UInt16
+        property discriminator : UInt16 # Device discriminator
 
-        def initialize(@commissioning_timeout)
+        def initialize(@commissioning_timeout, @discriminator = 0_u16)
         end
       end
 
@@ -185,7 +200,8 @@ module Matter
           timeout: request.commissioning_timeout,
           status: WindowStatus::BasicWindowOpen,
           admin_fabric_index: session_fabric_index,
-          admin_vendor_id: session_vendor_id
+          admin_vendor_id: session_vendor_id,
+          discriminator: request.discriminator
         )
 
         # TODO: Configure PASE server with default PIN
@@ -272,11 +288,15 @@ module Matter
         status : WindowStatus,
         admin_fabric_index : UInt8?,
         admin_vendor_id : UInt16?,
+        discriminator : UInt16 = 0_u16,
       ) : Nil
         # Set attributes
         @window_status = status
         @admin_fabric_index = admin_fabric_index
         @admin_vendor_id = admin_vendor_id
+
+        # Start DNS-SD advertising
+        start_mdns_advertising(discriminator)
 
         # Start timeout timer
         start_commissioning_timeout(timeout)
@@ -317,8 +337,57 @@ module Matter
         close_commissioning_window
       end
 
+      # Start mDNS advertising for commissioning window
+      private def start_mdns_advertising(discriminator : UInt16) : Nil
+        return if @addresses.empty?
+
+        begin
+          # Determine commissioning mode
+          mode = case @window_status
+                 when WindowStatus::BasicWindowOpen
+                   MDNS::CommissioningMode::Basic
+                 when WindowStatus::EnhancedWindowOpen
+                   MDNS::CommissioningMode::Enhanced
+                 else
+                   MDNS::CommissioningMode::Disabled
+                 end
+
+          # Create service description
+          description = MDNS::CommissionableServiceDescription.new(
+            name: @device_name,
+            device_type: @device_type,
+            vendor_id: @vendor_id,
+            product_id: @product_id,
+            discriminator: discriminator,
+            mode: mode
+          )
+
+          # Create advertisement
+          advertisement = MDNS::CommissionableAdvertisement.new(description, @addresses)
+
+          # Create and start advertiser if needed
+          @mdns_advertiser ||= MDNS::Advertiser.new(Socket::Family::INET)
+          @mdns_advertiser.not_nil!.start_advertising(advertisement)
+
+          Log.info { "Started mDNS advertising: discriminator=#{discriminator}, mode=#{mode}" }
+        rescue ex
+          Log.error(exception: ex) { "Failed to start mDNS advertising" }
+        end
+      end
+
+      # Stop mDNS advertising
+      private def stop_mdns_advertising : Nil
+        if advertiser = @mdns_advertiser
+          advertiser.stop_advertising
+          Log.info { "Stopped mDNS advertising" }
+        end
+      end
+
       # Close commissioning window and reset state
       private def close_commissioning_window : Nil
+        # Stop DNS-SD advertising
+        stop_mdns_advertising
+
         # Stop timer
         stop_commissioning_timeout
 
@@ -328,7 +397,6 @@ module Matter
         @admin_vendor_id = nil
 
         # TODO: Stop PASE server
-        # TODO: Stop DNS-SD advertising
         # TODO: Close failsafe if armed
 
         Log.info { "Commissioning window closed" }
@@ -363,6 +431,12 @@ module Matter
       def close : Nil
         if window_open?
           close_commissioning_window
+        end
+
+        # Cleanup advertiser
+        if advertiser = @mdns_advertiser
+          advertiser.close
+          @mdns_advertiser = nil
         end
       end
 
