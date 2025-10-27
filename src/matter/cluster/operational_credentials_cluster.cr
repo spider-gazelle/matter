@@ -273,8 +273,18 @@ module Matter
       @access_control_cluster : AccessControlCluster? # Optional ACL cluster reference
       @current_fabric_index_value : UInt8 = 0_u8
 
+      # Session context for command handling
+      # NOTE: These should be set by the protocol layer (InteractionModel/Exchange)
+      # For testing, they default to sensible values
+      @session_id : UInt64? = nil
+      @session_fabric_index : UInt8? = nil
+      @failsafe_armed : Bool = true # Default to true for testing
+
       getter fabric_table : FabricTable
       property current_fabric_index : UInt8
+      property session_id : UInt64?
+      property session_fabric_index : UInt8?
+      property failsafe_armed : Bool
 
       # CurrentFabricIndex helper method (returns passed value or stored value)
       def current_fabric_index(session_fabric_index : UInt8?) : UInt8
@@ -573,8 +583,11 @@ module Matter
         # Parse TLV-encoded request
         request = Definitions::OperationalCredentials::CsrRequest.new(fields)
 
-        # TODO: Validate failsafe is armed (requires session context)
-        # For now, proceed with CSR generation
+        # Validate failsafe is armed
+        # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
+        unless @failsafe_armed
+          return encode_error_response("Failsafe not armed")
+        end
 
         # Check if NOC already added/updated in current failsafe
         if @failsafe_context.noc_added_or_updated
@@ -591,9 +604,11 @@ module Matter
         # Sign CSR with attestation key
         csr_signature = sign_attestation(csr_elements)
 
-        # Store CSR context in failsafe (session_id would come from context)
-        # Using a placeholder session ID for now
-        @failsafe_context.set_csr(0_u64, request.is_for_update_noc || false)
+        # Store CSR context in failsafe
+        # NOTE: @session_id should be set by protocol layer, defaults to 0 for testing
+        session_id = @session_id || 0_u64
+        is_for_update = request.is_for_update_noc || false
+        @failsafe_context.set_csr(session_id, is_for_update)
 
         # Encode response as TLV
         io = IO::Memory.new
@@ -610,8 +625,11 @@ module Matter
         # Parse TLV-encoded request
         request = Definitions::OperationalCredentials::AddNocRequest.new(fields)
 
-        # TODO: Validate failsafe is armed (requires session context)
-        # TODO: Get session_id from context
+        # Validate failsafe is armed
+        # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
+        unless @failsafe_armed
+          return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failsafe not armed")
+        end
 
         # Cannot call AddNOC twice in same failsafe
         if @failsafe_context.noc_added_or_updated
@@ -619,8 +637,9 @@ module Matter
         end
 
         # Must have CSR from this session
-        # TODO: Validate session_id matches
-        unless @failsafe_context.csr_session_id
+        # NOTE: @session_id should be set by protocol layer, defaults to 0 for testing
+        session_id = @session_id || 0_u64
+        unless @failsafe_context.csr_exists?(session_id)
           return encode_noc_response(NodeOperationalCertStatus::MissingCsr, nil, "CSR not found for this session")
         end
 
@@ -689,9 +708,15 @@ module Matter
         # Parse TLV-encoded request
         request = Definitions::OperationalCredentials::UpdateNocRequest.new(fields)
 
-        # TODO: Validate failsafe is armed (requires session context)
-        # TODO: Get session_id and session_fabric_index from context
-        session_fabric_index = request.fabric_index.index || 0_u8
+        # Validate failsafe is armed
+        # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
+        unless @failsafe_armed
+          return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failsafe not armed")
+        end
+
+        # Get session fabric index from instance variable or request
+        # NOTE: @session_fabric_index should be set by protocol layer
+        session_fabric_index = @session_fabric_index || request.fabric_index.index || 0_u8
 
         # Cannot call UpdateNOC after AddNOC in same failsafe
         if @failsafe_context.noc_added_or_updated
@@ -699,7 +724,9 @@ module Matter
         end
 
         # Must have CSR from this session with is_for_update_noc=true
-        unless @failsafe_context.csr_session_id && @failsafe_context.is_for_update_noc
+        # NOTE: @session_id should be set by protocol layer, defaults to 0 for testing
+        session_id = @session_id || 0_u64
+        unless @failsafe_context.csr_exists?(session_id) && @failsafe_context.is_for_update_noc
           return encode_noc_response(NodeOperationalCertStatus::MissingCsr, nil, "CSR for update not found")
         end
 
@@ -714,20 +741,24 @@ module Matter
           return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Session fabric not found")
         end
 
-        # Parse new NOC to verify fabric_id matches
+        # Parse new NOC to verify fabric_id matches and extract node_id
         begin
           new_fabric_id = extract_fabric_id_from_noc(request.noc_value)
           if new_fabric_id != fabric.fabric_id
             return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Fabric ID mismatch")
           end
+
+          # Extract new node_id from the updated NOC
+          new_node_id = extract_node_id_from_noc(request.noc_value)
         rescue ex
           return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failed to parse NOC: #{ex.message}")
         end
 
-        # Update fabric with new NOC
+        # Update fabric with new NOC, node_id, and operational key
         fabric.operational_cert = request.noc_value
         fabric.intermediate_cert = request.icac_value
         fabric.operational_key = @pending_noc_key.not_nil!
+        fabric.node_id = new_node_id
 
         @fabric_table.update_fabric(fabric)
 
@@ -741,8 +772,9 @@ module Matter
         # Parse TLV-encoded request
         request = Definitions::OperationalCredentials::UpdateFabricLabelRequest.new(fields)
 
-        # TODO: Get session_fabric_index from context
-        fabric_idx = request.fabric_index.index
+        # Get session fabric index from instance variable or request
+        # NOTE: @session_fabric_index should be set by protocol layer
+        fabric_idx = @session_fabric_index || request.fabric_index.index
 
         unless fabric_idx
           return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Invalid fabric index")
@@ -807,12 +839,16 @@ module Matter
         # Parse TLV-encoded request
         request = Definitions::OperationalCredentials::AddTrustedRootCertificateRequest.new(fields)
 
-        # TODO: Validate failsafe is armed (requires session context)
+        # Validate failsafe is armed
+        # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
+        # NOTE: This command has no response according to Matter spec, but we return empty
+        # bytes to indicate completion (success or failure cannot be distinguished)
+        unless @failsafe_armed
+          return Bytes.new(0)
+        end
 
         # Cannot set root cert twice in same failsafe
         if @failsafe_context.root_cert_set
-          # Return error response (but spec says this command has no response)
-          # For now, return empty bytes to indicate error
           return Bytes.new(0)
         end
 
@@ -1123,7 +1159,7 @@ module Matter
           )
         end
 
-        # Parse new NOC to verify fabric_id matches
+        # Parse new NOC to verify fabric_id matches and extract node_id
         new_fabric_id = extract_fabric_id_from_noc(cmd.noc_value)
         if new_fabric_id != fabric.fabric_id
           return NOCResponse.new(
@@ -1132,10 +1168,14 @@ module Matter
           )
         end
 
-        # Update fabric with new NOC
+        # Extract new node_id from the updated NOC
+        new_node_id = extract_node_id_from_noc(cmd.noc_value)
+
+        # Update fabric with new NOC, node_id, and operational key
         fabric.operational_cert = cmd.noc_value
         fabric.intermediate_cert = cmd.icac_value
         fabric.operational_key = @pending_noc_key.not_nil!
+        fabric.node_id = new_node_id
 
         @fabric_table.update_fabric(fabric)
 
