@@ -135,7 +135,7 @@ module Matter
 
           # This field, if present, shall denote the signal strength in dBm of the associated scan result.
           @[TLV::Field(tag: 5)]
-          property rssi : UInt8?
+          property rssi : Int8?
         end
 
         # ThreadInterfaceScanResultStruct represents a single Thread network scan result.
@@ -162,7 +162,7 @@ module Matter
           property extended_address : Slice(UInt8)?
 
           @[TLV::Field(tag: 6)]
-          property rssi : UInt8?
+          property rssi : Int8?
 
           @[TLV::Field(tag: 7)]
           property lqi : UInt8?
