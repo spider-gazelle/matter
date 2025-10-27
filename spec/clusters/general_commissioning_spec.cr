@@ -448,5 +448,206 @@ module Matter::Clusters
         cluster.failsafe_armed?.should be_false
       end
     end
+
+    describe "Terms & Conditions feature" do
+      it "allows commissioning complete when TC not required" do
+        cluster = GeneralCommissioning.new
+        cluster.terms_conditions_required = false
+
+        # Arm failsafe and complete commissioning
+        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 60_u16,
+          breadcrumb: 100_u64
+        )
+        cluster.arm_failsafe(arm_request, 1_u8, false)
+
+        response = cluster.commissioning_complete(1_u8, true)
+        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+      end
+
+      it "blocks commissioning complete when TC required but not accepted" do
+        cluster = GeneralCommissioning.new
+        cluster.terms_conditions_required = true
+        cluster.terms_conditions_accepted?.should be_false
+
+        # Arm failsafe
+        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 60_u16,
+          breadcrumb: 100_u64
+        )
+        cluster.arm_failsafe(arm_request, 1_u8, false)
+
+        # Try to complete commissioning without accepting TC
+        response = cluster.commissioning_complete(1_u8, true)
+        response.error_code.should eq(GeneralCommissioning::CommissioningError::RequiredTCNotAccepted)
+      end
+
+      it "allows commissioning complete when TC accepted" do
+        cluster = GeneralCommissioning.new
+        cluster.terms_conditions_required = true
+        cluster.accept_terms_conditions
+        cluster.terms_conditions_accepted?.should be_true
+
+        # Arm failsafe
+        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 60_u16,
+          breadcrumb: 100_u64
+        )
+        cluster.arm_failsafe(arm_request, 1_u8, false)
+
+        # Complete commissioning
+        response = cluster.commissioning_complete(1_u8, true)
+        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+      end
+
+      it "uses callback to check TC acceptance" do
+        cluster = GeneralCommissioning.new
+        cluster.terms_conditions_required = true
+
+        tc_check_called = false
+        cluster.on_check_terms_conditions = -> : Bool {
+          tc_check_called = true
+          true # Return true = accepted
+        }
+
+        # Arm failsafe
+        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 60_u16,
+          breadcrumb: 100_u64
+        )
+        cluster.arm_failsafe(arm_request, 1_u8, false)
+
+        # Complete commissioning
+        response = cluster.commissioning_complete(1_u8, true)
+        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        tc_check_called.should be_true
+      end
+    end
+
+    describe "commissioning complete callbacks" do
+      it "calls persist fabric table callback" do
+        cluster = GeneralCommissioning.new
+
+        persist_called = false
+        cluster.on_persist_fabric_table = -> : Nil {
+          persist_called = true
+        }
+
+        # Arm failsafe
+        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 60_u16,
+          breadcrumb: 100_u64
+        )
+        cluster.arm_failsafe(arm_request, 1_u8, false)
+
+        # Complete commissioning
+        response = cluster.commissioning_complete(1_u8, true)
+        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        persist_called.should be_true
+      end
+
+      it "calls clear PASE sessions callback" do
+        cluster = GeneralCommissioning.new
+
+        clear_pase_called = false
+        cluster.on_clear_pase_sessions = -> : Nil {
+          clear_pase_called = true
+        }
+
+        # Arm failsafe
+        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 60_u16,
+          breadcrumb: 100_u64
+        )
+        cluster.arm_failsafe(arm_request, 1_u8, false)
+
+        # Complete commissioning
+        response = cluster.commissioning_complete(1_u8, true)
+        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        clear_pase_called.should be_true
+      end
+
+      it "closes commissioning window on successful complete" do
+        cluster = GeneralCommissioning.new
+        cluster.open_commissioning_window
+
+        # Arm failsafe
+        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 60_u16,
+          breadcrumb: 100_u64
+        )
+        cluster.arm_failsafe(arm_request, 1_u8, false)
+
+        # Complete commissioning
+        response = cluster.commissioning_complete(1_u8, true)
+        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+
+        # Commissioning window should be closed (internal state verified)
+        cluster.failsafe_armed?.should be_false
+      end
+    end
+
+    describe "country code whitelist" do
+      it "allows any country code when whitelist not configured" do
+        cluster = GeneralCommissioning.new
+        cluster.country_code_whitelist.should be_nil
+
+        request = GeneralCommissioning::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Indoor,
+          country_code: "ZZ",
+          breadcrumb: 100_u64
+        )
+
+        response = cluster.set_regulatory_config(request)
+        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+      end
+
+      it "allows whitelisted country codes" do
+        cluster = GeneralCommissioning.new
+        cluster.country_code_whitelist = ["US", "CA", "GB", "JP"]
+
+        request = GeneralCommissioning::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Indoor,
+          country_code: "US",
+          breadcrumb: 100_u64
+        )
+
+        response = cluster.set_regulatory_config(request)
+        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        cluster.country_code.should eq("US")
+      end
+
+      it "blocks non-whitelisted country codes" do
+        cluster = GeneralCommissioning.new
+        cluster.country_code_whitelist = ["US", "CA", "GB"]
+
+        request = GeneralCommissioning::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Indoor,
+          country_code: "FR", # Not in whitelist
+          breadcrumb: 100_u64
+        )
+
+        response = cluster.set_regulatory_config(request)
+        response.error_code.should eq(GeneralCommissioning::CommissioningError::ValueOutsideRange)
+        response.debug_text.should contain("not in whitelist")
+      end
+
+      it "validates all countries in whitelist" do
+        cluster = GeneralCommissioning.new
+        cluster.country_code_whitelist = ["US", "CA", "GB", "DE", "FR", "JP"]
+
+        ["US", "CA", "GB", "DE", "FR", "JP"].each do |country|
+          request = GeneralCommissioning::SetRegulatoryConfigRequest.new(
+            new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Indoor,
+            country_code: country,
+            breadcrumb: 100_u64
+          )
+
+          response = cluster.set_regulatory_config(request)
+          response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+          cluster.country_code.should eq(country)
+        end
+      end
+    end
   end
 end

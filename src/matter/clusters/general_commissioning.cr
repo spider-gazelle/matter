@@ -59,17 +59,42 @@ module Matter
       property supports_concurrent_connection : Bool = true
 
       # ========================================================================
+      # Feature Support
+      # ========================================================================
+
+      # Terms & Conditions feature support
+      property terms_conditions_required : Bool = false
+
+      # Country code whitelist (nil = all countries allowed)
+      property country_code_whitelist : Array(String)? = nil
+
+      # ========================================================================
       # State Management
       # ========================================================================
 
       @failsafe_context : FailsafeContext?
       @admin_fabric_index : UInt8?
       @commissioning_window_open : Bool = false
+      @terms_conditions_accepted : Bool = false
+
+      # ========================================================================
+      # Callbacks
+      # ========================================================================
+
+      # Callback to check if Terms & Conditions have been accepted
+      property on_check_terms_conditions : (Proc(Bool))? = nil
+
+      # Callback to persist the fabric table after successful commissioning
+      property on_persist_fabric_table : (Proc(Nil))? = nil
+
+      # Callback to clear all PASE sessions after successful commissioning
+      property on_clear_pase_sessions : (Proc(Nil))? = nil
 
       def initialize
         @failsafe_context = nil
         @admin_fabric_index = nil
         @commissioning_window_open = false
+        @terms_conditions_accepted = false
       end
 
       # ========================================================================
@@ -251,27 +276,45 @@ module Matter
           )
         end
 
-        # TODO: Validate Terms & Conditions acceptance if TC feature is enabled
-        # if terms_conditions_required? && !terms_conditions_accepted?
-        #   return CommissioningCompleteResponse.new(
-        #     CommissioningError::RequiredTCNotAccepted,
-        #     "Terms and Conditions not accepted"
-        #   )
-        # end
+        # Validate Terms & Conditions acceptance if TC feature is enabled
+        if @terms_conditions_required
+          tc_accepted = if callback = @on_check_terms_conditions
+                          callback.call
+                        else
+                          @terms_conditions_accepted
+                        end
+
+          unless tc_accepted
+            return CommissioningCompleteResponse.new(
+              CommissioningError::RequiredTCNotAccepted,
+              "Terms and Conditions not accepted"
+            )
+          end
+        end
 
         # Success - disarm failsafe and persist state
         Log.info { "Commissioning completed successfully" }
         context.disarm
         @failsafe_context = nil
         @admin_fabric_index = nil
-        @commissioning_window_open = false
 
         # Reset breadcrumb on successful completion
         @breadcrumb = 0_u64
 
-        # TODO: Persist fabric table
-        # TODO: Close commissioning window
-        # TODO: Clear PASE sessions
+        # Persist fabric table to non-volatile storage
+        if callback = @on_persist_fabric_table
+          callback.call
+          Log.debug { "Fabric table persisted" }
+        end
+
+        # Close commissioning window
+        close_commissioning_window
+
+        # Clear PASE sessions (no longer needed after successful commissioning)
+        if callback = @on_clear_pase_sessions
+          callback.call
+          Log.debug { "PASE sessions cleared" }
+        end
 
         CommissioningCompleteResponse.new(CommissioningError::OK)
       end
@@ -326,7 +369,15 @@ module Matter
           )
         end
 
-        # TODO: Validate country code against whitelist if configured
+        # Validate country code against whitelist if configured
+        if whitelist = @country_code_whitelist
+          unless whitelist.includes?(request.country_code)
+            return SetRegulatoryConfigResponse.new(
+              CommissioningError::ValueOutsideRange,
+              "Country code #{request.country_code} not in whitelist"
+            )
+          end
+        end
 
         # Record current state for rollback if failsafe is armed
         if context = @failsafe_context
@@ -424,6 +475,20 @@ module Matter
       def close_commissioning_window : Nil
         @commissioning_window_open = false
         Log.info { "Commissioning window closed" }
+      end
+
+      # Accept Terms & Conditions (for TC feature)
+      #
+      # This method is used when the Terms & Conditions feature is enabled
+      # to mark that the user has accepted the terms.
+      def accept_terms_conditions : Nil
+        @terms_conditions_accepted = true
+        Log.info { "Terms & Conditions accepted" }
+      end
+
+      # Check if Terms & Conditions are accepted
+      def terms_conditions_accepted? : Bool
+        @terms_conditions_accepted
       end
     end
   end
