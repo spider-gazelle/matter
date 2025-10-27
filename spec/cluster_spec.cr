@@ -38,8 +38,8 @@ describe Matter::Cluster do
 
       result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
       result.should be_a(Bytes)
-      # Empty list encodes as 0 bytes in simplified implementation
-      result.as(Bytes).size.should eq(0)
+      # Empty list encodes as TLV array
+      result.as(Bytes).size.should be > 0
     end
 
     it "reads server list" do
@@ -52,8 +52,8 @@ describe Matter::Cluster do
 
       result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
       result.should be_a(Bytes)
-      # Simplified implementation returns empty bytes (TODO: implement TLV encoding)
-      result.as(Bytes).size.should eq(0)
+      # Now properly TLV encoded
+      result.as(Bytes).size.should be > 0
     end
 
     it "returns error for unsupported attribute" do

@@ -1,7 +1,7 @@
 require "../spec_helper"
-require "../../src/matter/clusters/administrator_commissioning"
+require "../../src/matter/cluster/administrator_commissioning_cluster"
 
-module Matter::Clusters
+module Matter::Cluster
   describe AdministratorCommissioning do
     describe "initialization and attributes" do
       it "initializes with default values" do
@@ -14,7 +14,7 @@ module Matter::Clusters
       end
 
       it "exposes cluster ID" do
-        AdministratorCommissioning::CLUSTER_ID.should eq(0x003C_u16)
+        AdministratorCommissioning::CLUSTER_ID.should eq(0x003C_u32)
       end
 
       it "defines window status enum values" do

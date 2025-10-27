@@ -1,5 +1,6 @@
 require "../spec_helper"
 require "../../src/matter/cluster/descriptor_cluster"
+require "tlv"
 
 describe Matter::Cluster::DescriptorCluster do
   describe "initialization" do
@@ -24,7 +25,8 @@ describe Matter::Cluster::DescriptorCluster do
 
       value = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
       value.should be_a(Bytes)
-      value.as(Bytes).should eq(Bytes.new(0)) # Empty list
+      # Empty list should be encoded as empty TLV array (not just Bytes.new(0))
+      value.as(Bytes).size.should be > 0
     end
 
     it "reads ServerList attribute" do
@@ -295,6 +297,349 @@ describe Matter::Cluster::DescriptorCluster do
 
       cluster.has_part?(1_u16).should be_true
       cluster.has_part?(3_u16).should be_false
+    end
+
+    it "gets primary device type" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+
+      cluster.primary_device_type.should be_nil
+
+      device_type1 = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+        device_type: 0x0100_u32,
+        revision: 2_u16
+      )
+      device_type2 = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+        device_type: 0x0016_u32,
+        revision: 1_u16
+      )
+
+      cluster.device_type_list << device_type1
+      cluster.device_type_list << device_type2
+
+      primary = cluster.primary_device_type
+      primary.should_not be_nil
+      primary.not_nil!.device_type.should eq(0x0100_u32)
+    end
+  end
+
+  describe "TLV encoding" do
+    describe "DeviceTypeList" do
+      it "encodes empty device type list" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+
+        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
+        encoded.should be_a(Bytes)
+        encoded.as(Bytes).size.should be > 0
+
+        # Decode and verify empty
+        reader = TLV::Reader.new(encoded.as(Bytes))
+        data = reader.get
+        device_types = data["Any"].as(Array(TLV::Value))
+        device_types.should be_empty
+      end
+
+      it "encodes single device type" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+
+        cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+          device_type: 0x0100_u32,
+          revision: 2_u16
+        )
+
+        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
+        encoded.should be_a(Bytes)
+
+        # Decode and verify
+        reader = TLV::Reader.new(encoded.as(Bytes))
+        data = reader.get
+        device_types = data["Any"].as(Array(TLV::Value))
+        device_types.size.should eq(1)
+
+        device_type_hash = device_types[0].as(Hash(TLV::Tag, TLV::Value))
+
+        # Handle TLV encoding integers as smallest size
+        device_type_id = case device_type_hash["0"]
+                         when UInt8  then device_type_hash["0"].as(UInt8).to_u32
+                         when UInt16 then device_type_hash["0"].as(UInt16).to_u32
+                         when UInt32 then device_type_hash["0"].as(UInt32)
+                         else             raise "Unexpected type"
+                         end
+        device_type_id.should eq(0x0100_u32)
+
+        revision = case device_type_hash["1"]
+                   when UInt8  then device_type_hash["1"].as(UInt8).to_u16
+                   when UInt16 then device_type_hash["1"].as(UInt16)
+                   else             raise "Unexpected type"
+                   end
+        revision.should eq(2_u16)
+      end
+
+      it "encodes multiple device types" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+
+        cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+          device_type: 0x0016_u32,
+          revision: 1_u16
+        )
+        cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+          device_type: 0x000E_u32,
+          revision: 1_u16
+        )
+
+        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
+
+        # Decode and verify
+        reader = TLV::Reader.new(encoded.as(Bytes))
+        data = reader.get
+        device_types = data["Any"].as(Array(TLV::Value))
+        device_types.size.should eq(2)
+
+        # First device type - handle integer size conversions
+        dt1 = device_types[0].as(Hash(TLV::Tag, TLV::Value))
+        dt1_id = case dt1["0"]
+                 when UInt8  then dt1["0"].as(UInt8).to_u32
+                 when UInt16 then dt1["0"].as(UInt16).to_u32
+                 when UInt32 then dt1["0"].as(UInt32)
+                 else             raise "Unexpected type"
+                 end
+        dt1_id.should eq(0x0016_u32)
+
+        dt1_rev = case dt1["1"]
+                  when UInt8  then dt1["1"].as(UInt8).to_u16
+                  when UInt16 then dt1["1"].as(UInt16)
+                  else             raise "Unexpected type"
+                  end
+        dt1_rev.should eq(1_u16)
+
+        # Second device type
+        dt2 = device_types[1].as(Hash(TLV::Tag, TLV::Value))
+        dt2_id = case dt2["0"]
+                 when UInt8  then dt2["0"].as(UInt8).to_u32
+                 when UInt16 then dt2["0"].as(UInt16).to_u32
+                 when UInt32 then dt2["0"].as(UInt32)
+                 else             raise "Unexpected type"
+                 end
+        dt2_id.should eq(0x000E_u32)
+
+        dt2_rev = case dt2["1"]
+                  when UInt8  then dt2["1"].as(UInt8).to_u16
+                  when UInt16 then dt2["1"].as(UInt16)
+                  else             raise "Unexpected type"
+                  end
+        dt2_rev.should eq(1_u16)
+      end
+    end
+
+    describe "ServerList" do
+      it "encodes server list" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+
+        # Descriptor is automatically added
+        cluster.server_list << 0x0006_u32 # On/Off
+        cluster.server_list << 0x0008_u32 # Level Control
+
+        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
+        encoded.should be_a(Bytes)
+
+        # Decode and verify
+        reader = TLV::Reader.new(encoded.as(Bytes))
+        data = reader.get
+        clusters = data["Any"].as(Array(TLV::Value))
+        clusters.size.should eq(3)
+
+        # Check cluster IDs (may be UInt8, UInt16, or UInt32 depending on TLV encoding)
+        cluster_ids = clusters.map do |c|
+          case c
+          when UInt8  then c.to_u32
+          when UInt16 then c.to_u32
+          when UInt32 then c
+          else             raise "Unexpected type"
+          end
+        end
+
+        cluster_ids.should contain(0x001D_u32) # Descriptor
+        cluster_ids.should contain(0x0006_u32) # On/Off
+        cluster_ids.should contain(0x0008_u32) # Level Control
+      end
+
+      it "encodes empty server list with only descriptor" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+
+        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
+
+        reader = TLV::Reader.new(encoded.as(Bytes))
+        data = reader.get
+        clusters = data["Any"].as(Array(TLV::Value))
+        clusters.size.should eq(1) # Just Descriptor itself
+
+        cluster_id = case clusters[0]
+                     when UInt8  then clusters[0].as(UInt8).to_u32
+                     when UInt16 then clusters[0].as(UInt16).to_u32
+                     when UInt32 then clusters[0].as(UInt32)
+                     else             raise "Unexpected type"
+                     end
+        cluster_id.should eq(0x001D_u32)
+      end
+    end
+
+    describe "ClientList" do
+      it "encodes empty client list" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+
+        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_CLIENT_LIST)
+        encoded.should be_a(Bytes)
+
+        reader = TLV::Reader.new(encoded.as(Bytes))
+        data = reader.get
+        clusters = data["Any"].as(Array(TLV::Value))
+        clusters.should be_empty
+      end
+
+      it "encodes client list with clusters" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+
+        cluster.client_list << 0x0006_u32 # On/Off client
+        cluster.client_list << 0x0008_u32 # Level Control client
+
+        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_CLIENT_LIST)
+
+        reader = TLV::Reader.new(encoded.as(Bytes))
+        data = reader.get
+        clusters = data["Any"].as(Array(TLV::Value))
+        clusters.size.should eq(2)
+
+        cluster_ids = clusters.map do |c|
+          case c
+          when UInt8  then c.to_u32
+          when UInt16 then c.to_u32
+          when UInt32 then c
+          else             raise "Unexpected type"
+          end
+        end
+
+        cluster_ids.should contain(0x0006_u32)
+        cluster_ids.should contain(0x0008_u32)
+      end
+    end
+
+    describe "PartsList" do
+      it "encodes empty parts list" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+
+        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
+        encoded.should be_a(Bytes)
+
+        reader = TLV::Reader.new(encoded.as(Bytes))
+        data = reader.get
+        parts = data["Any"].as(Array(TLV::Value))
+        parts.should be_empty
+      end
+
+      it "encodes parts list with child endpoints" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+
+        cluster.parts_list << 1_u16
+        cluster.parts_list << 2_u16
+        cluster.parts_list << 3_u16
+
+        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
+
+        reader = TLV::Reader.new(encoded.as(Bytes))
+        data = reader.get
+        parts = data["Any"].as(Array(TLV::Value))
+        parts.size.should eq(3)
+
+        endpoint_ids = parts.map do |p|
+          case p
+          when UInt8  then p.to_u16
+          when UInt16 then p
+          else             raise "Unexpected type"
+          end
+        end
+
+        endpoint_ids.should contain(1_u16)
+        endpoint_ids.should contain(2_u16)
+        endpoint_ids.should contain(3_u16)
+      end
+    end
+
+    describe "complete endpoint encoding" do
+      it "encodes root endpoint descriptor" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+
+        # Root node device type
+        cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+          device_type: 0x0016_u32,
+          revision: 1_u16
+        )
+
+        # Mandatory clusters
+        cluster.server_list << 0x001F_u32 # Access Control
+        cluster.server_list << 0x0028_u32 # Basic Information
+        cluster.server_list << 0x0030_u32 # General Commissioning
+
+        # Child endpoints
+        cluster.parts_list << 1_u16
+        cluster.parts_list << 2_u16
+
+        # Verify all attributes encode successfully
+        device_types = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
+        device_types.should be_a(Bytes)
+        device_types.as(Bytes).size.should be > 0
+
+        servers = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
+        servers.should be_a(Bytes)
+        servers.as(Bytes).size.should be > 0
+
+        clients = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_CLIENT_LIST)
+        clients.should be_a(Bytes)
+
+        parts = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
+        parts.should be_a(Bytes)
+        parts.as(Bytes).size.should be > 0
+      end
+
+      it "encodes light endpoint descriptor" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+
+        # On/Off Light device type
+        cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+          device_type: 0x0100_u32,
+          revision: 2_u16
+        )
+
+        # Server clusters
+        cluster.server_list << 0x0003_u32 # Identify
+        cluster.server_list << 0x0006_u32 # On/Off
+
+        # No client clusters or parts for leaf endpoint
+
+        # Decode device types
+        device_types = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
+        reader = TLV::Reader.new(device_types.as(Bytes))
+        data = reader.get
+        dt_array = data["Any"].as(Array(TLV::Value))
+        dt_array.size.should eq(1)
+
+        # Decode servers
+        servers = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
+        reader = TLV::Reader.new(servers.as(Bytes))
+        data = reader.get
+        server_array = data["Any"].as(Array(TLV::Value))
+        server_array.size.should eq(3) # Descriptor + Identify + On/Off
+      end
     end
   end
 end

@@ -3,7 +3,8 @@ require "./failsafe_timer"
 require "./fabric_manager"
 require "./session_manager"
 require "./commissioning_window"
-require "./clusters/network_commissioning"
+require "./cluster/network_commissioning_cluster"
+require "./cluster/general_commissioning_cluster"
 
 module Matter
   # FailsafeContext manages commissioning state and coordinates rollback on failure
@@ -226,9 +227,9 @@ module Matter
     def rollback(
       fabric_manager : FabricManager? = nil,
       session_manager : SessionManager? = nil,
-      network_commissioning : Clusters::NetworkCommissioning? = nil,
+      network_commissioning : Cluster::NetworkCommissioningCluster? = nil,
       commissioning_window : CommissioningWindow? = nil,
-      general_commissioning : Clusters::GeneralCommissioning? = nil,
+      general_commissioning : Cluster::GeneralCommissioningCluster? = nil,
     ) : Nil
       Log.warn { "Performing failsafe rollback" }
 
@@ -342,6 +343,6 @@ module Matter
   # - FabricManager (./fabric_manager.cr)
   # - SessionManager (./session_manager.cr)
   # - CommissioningWindow (./commissioning_window.cr)
-  # - Clusters::NetworkCommissioning (./clusters/network_commissioning.cr)
-  # - Clusters::GeneralCommissioning (./clusters/general_commissioning.cr)
+  # - Cluster::NetworkCommissioningCluster (./cluster/network_commissioning_cluster.cr)
+  # - Cluster::GeneralCommissioningCluster (./cluster/general_commissioning_cluster.cr)
 end

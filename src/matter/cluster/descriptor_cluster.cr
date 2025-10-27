@@ -1,4 +1,5 @@
 require "./cluster"
+require "tlv"
 
 module Matter
   module Cluster
@@ -21,8 +22,13 @@ module Matter
 
       # Device Type Structure
       struct DeviceTypeStruct
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property device_type : UInt32 # Device type ID
-        property revision : UInt16    # Device type revision
+
+        @[TLV::Field(tag: 1)]
+        property revision : UInt16 # Device type revision
 
         def initialize(@device_type : UInt32, @revision : UInt16)
         end
@@ -87,17 +93,13 @@ module Matter
       def read_attribute(attribute_id : UInt32) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_DEVICE_TYPE_LIST
-          # TODO: Encode device type list as TLV
-          Bytes.new(0)
+          encode_device_type_list
         when ATTR_SERVER_LIST
-          # TODO: Encode server list as TLV
-          Bytes.new(0)
+          encode_cluster_list(@server_list)
         when ATTR_CLIENT_LIST
-          # TODO: Encode client list as TLV
-          Bytes.new(0)
+          encode_cluster_list(@client_list)
         when ATTR_PARTS_LIST
-          # TODO: Encode parts list as TLV
-          Bytes.new(0)
+          encode_parts_list
         else
           super
         end
@@ -113,9 +115,19 @@ module Matter
         @server_list.includes?(cluster_id)
       end
 
+      # Helper: Check if a cluster is in the server list (by class)
+      def has_server_cluster?(cluster_class : Base.class) : Bool
+        has_server_cluster?(cluster_class.cluster_id)
+      end
+
       # Helper: Check if a cluster is in the client list
       def has_client_cluster?(cluster_id : UInt32) : Bool
         @client_list.includes?(cluster_id)
+      end
+
+      # Helper: Check if a cluster is in the client list (by class)
+      def has_client_cluster?(cluster_class : Base.class) : Bool
+        has_client_cluster?(cluster_class.cluster_id)
       end
 
       # Helper: Check if an endpoint is in the parts list
@@ -126,6 +138,85 @@ module Matter
       # Helper: Get primary device type
       def primary_device_type : DeviceTypeStruct?
         @device_type_list.first?
+      end
+
+      # Add a server cluster by class
+      #
+      # @param cluster_class The cluster class (e.g., OnOffCluster)
+      # @return self for chaining
+      #
+      # Example:
+      #   descriptor.add_server(OnOffCluster)
+      #             .add_server(LevelControlCluster)
+      def add_server(cluster_class : Base.class)
+        cluster_id = cluster_class.cluster_id
+        @server_list << cluster_id unless @server_list.includes?(cluster_id)
+        self
+      end
+
+      # Add a client cluster by class
+      #
+      # @param cluster_class The cluster class (e.g., OnOffCluster)
+      # @return self for chaining
+      #
+      # Example:
+      #   descriptor.add_client(OnOffCluster)
+      #             .add_client(LevelControlCluster)
+      def add_client(cluster_class : Base.class)
+        cluster_id = cluster_class.cluster_id
+        @client_list << cluster_id unless @client_list.includes?(cluster_id)
+        self
+      end
+
+      # Add a child endpoint to the parts list
+      #
+      # @param endpoint_id The endpoint ID
+      # @return self for chaining
+      #
+      # Example:
+      #   descriptor.add_part(1_u16)
+      #             .add_part(2_u16)
+      def add_part(endpoint_id : UInt16)
+        @parts_list << endpoint_id unless @parts_list.includes?(endpoint_id)
+        self
+      end
+
+      # Encode device type list as TLV array
+      private def encode_device_type_list : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        # Convert each DeviceTypeStruct to TLV hash format
+        device_types_array = @device_type_list.map do |device_type|
+          device_type.to_h.as(TLV::Value)
+        end
+
+        writer.put(nil, device_types_array)
+        io.to_slice
+      end
+
+      # Encode cluster list (server or client) as TLV array
+      private def encode_cluster_list(list : Array(UInt32)) : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        # Convert cluster IDs to TLV array
+        cluster_array = list.map { |id| id.as(TLV::Value) }
+
+        writer.put(nil, cluster_array)
+        io.to_slice
+      end
+
+      # Encode parts list as TLV array
+      private def encode_parts_list : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        # Convert endpoint IDs to TLV array
+        parts_array = @parts_list.map { |id| id.as(TLV::Value) }
+
+        writer.put(nil, parts_array)
+        io.to_slice
       end
     end
   end

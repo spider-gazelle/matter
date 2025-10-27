@@ -1,5 +1,5 @@
 require "../spec_helper"
-require "../../src/matter/clusters/general_commissioning"
+require "../../src/matter/cluster/general_commissioning_cluster"
 
 module Matter::Clusters
   describe GeneralCommissioning do
@@ -10,14 +10,14 @@ module Matter::Clusters
         cluster.breadcrumb.should eq(0_u64)
         cluster.max_cumulative_failsafe_seconds.should eq(900_u16)
         cluster.max_network_commissioning_seconds.should eq(900_u16)
-        cluster.regulatory_config.should eq(GeneralCommissioning::RegulatoryLocationType::Indoor)
+        cluster.regulatory_config.should eq(GeneralCommissioning::RegulatoryLocationType::IndoorOutdoor)
         cluster.location_capability.should eq(GeneralCommissioning::RegulatoryLocationType::IndoorOutdoor)
         cluster.supports_concurrent_connection.should be_true
         cluster.failsafe_armed?.should be_false
       end
 
       it "exposes cluster ID" do
-        GeneralCommissioning::CLUSTER_ID.should eq(0x0030_u16)
+        GeneralCommissioning::CLUSTER_ID.should eq(0x0030_u32)
       end
     end
 
@@ -271,8 +271,8 @@ module Matter::Clusters
         response = cluster.set_regulatory_config(request)
 
         response.error_code.should eq(GeneralCommissioning::CommissioningError::ValueOutsideRange)
-        cluster.regulatory_config.should eq(GeneralCommissioning::RegulatoryLocationType::Indoor) # Not changed
-        cluster.breadcrumb.should eq(0_u64)                                                       # Not updated on error
+        cluster.regulatory_config.should eq(GeneralCommissioning::RegulatoryLocationType::IndoorOutdoor) # Not changed
+        cluster.breadcrumb.should eq(0_u64)                                                              # Not updated on error
       end
 
       it "rejects invalid country code format" do

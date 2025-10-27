@@ -1,7 +1,8 @@
+require "./cluster"
 require "log"
 
 module Matter
-  module Clusters
+  module Cluster
     # Group Key Management Cluster (0x003F)
     # Matter Core Specification §11.2
     #
@@ -16,8 +17,8 @@ module Matter
     # - IPK Protection: KeySet 0 (IPK) cannot be removed
     # - Strict Validation: Epoch keys must be ordered, security policies enforced
     # - Cryptographic Operations: HKDF-based key derivation for operational keys
-    class GroupKeyManagement
-      CLUSTER_ID = 0x003F_u16
+    class GroupKeyManagementCluster < Base
+      CLUSTER_ID = 0x003F_u32
 
       # Feature flags for Group Key Management cluster
       @[Flags]
@@ -267,13 +268,69 @@ module Matter
 
       # Initialize the cluster
       def initialize(
+        endpoint_id : DataType::EndpointNumber,
         @features : Feature = Feature::None,
         @max_groups_per_fabric : UInt16 = 12_u16,
         @max_group_keys_per_fabric : UInt16 = 3_u16,
       )
+        super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
         @key_sets = Hash(UInt8, Hash(UInt16, GroupKeySetStruct)).new
         @group_key_map = [] of GroupKeyMapStruct
         @group_table = [] of GroupInfoMapStruct
+      end
+
+      def name : String
+        "GroupKeyManagement"
+      end
+
+      def attributes : Array(AttributeMetadata)
+        [
+          AttributeMetadata.new(
+            DataType::AttributeId.new(0x0000_u32),
+            "GroupKeyMap",
+            :list,
+            writable: false
+          ),
+          AttributeMetadata.new(
+            DataType::AttributeId.new(0x0001_u32),
+            "GroupTable",
+            :list,
+            writable: false
+          ),
+          AttributeMetadata.new(
+            DataType::AttributeId.new(0x0002_u32),
+            "MaxGroupsPerFabric",
+            :uint16,
+            writable: false
+          ),
+          AttributeMetadata.new(
+            DataType::AttributeId.new(0x0003_u32),
+            "MaxGroupKeysPerFabric",
+            :uint16,
+            writable: false
+          ),
+        ]
+      end
+
+      def commands : Array(CommandMetadata)
+        [
+          CommandMetadata.new(
+            DataType::CommandId.new(0x00_u32),
+            "KeySetWrite"
+          ),
+          CommandMetadata.new(
+            DataType::CommandId.new(0x01_u32),
+            "KeySetRead"
+          ),
+          CommandMetadata.new(
+            DataType::CommandId.new(0x03_u32),
+            "KeySetRemove"
+          ),
+          CommandMetadata.new(
+            DataType::CommandId.new(0x04_u32),
+            "KeySetReadAllIndices"
+          ),
+        ]
       end
 
       # Get group key map for the specified fabric

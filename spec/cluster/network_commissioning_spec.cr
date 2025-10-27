@@ -195,7 +195,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
         ssid: "TestNetwork".to_slice,
         bssid: Bytes[0x01, 0x02, 0x03, 0x04, 0x05, 0x06],
         channel: 6_u16,
-        wifi_band: 1_u8,
+        wifi_band: Matter::Cluster::NetworkCommissioningCluster::WiFiBandEnum::Band3G65,
         rssi: -45_i8
       )
 
@@ -210,7 +210,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
     it "creates Thread scan result" do
       result = Matter::Cluster::NetworkCommissioningCluster::ThreadInterfaceScanResult.new(
         pan_id: 0x1234_u16,
-        extended_pan_id: Bytes[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08],
+        extended_pan_id: 0x0102030405060708_u64,
         network_name: "TestThread",
         channel: 15_u16,
         version: 2_u8,

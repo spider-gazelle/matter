@@ -63,6 +63,13 @@ module Matter
       property cluster_id : DataType::ClusterId
       property data_version : UInt32
 
+      # Macro to add class method for accessing CLUSTER_ID constant
+      macro inherited
+        def self.cluster_id
+          CLUSTER_ID
+        end
+      end
+
       def initialize(@endpoint_id : DataType::EndpointNumber, @cluster_id : DataType::ClusterId)
         @data_version = 0_u32
         @attribute_values = {} of UInt32 => Bytes

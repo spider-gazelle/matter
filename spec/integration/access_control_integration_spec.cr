@@ -1,6 +1,6 @@
 require "../spec_helper"
 require "../../src/matter/cluster/access_control_cluster"
-require "../../src/matter/clusters/operational_credentials"
+require "../../src/matter/cluster/operational_credentials_cluster"
 require "../../src/matter/fabric_table"
 
 # Integration tests demonstrating real-world Access Control usage patterns

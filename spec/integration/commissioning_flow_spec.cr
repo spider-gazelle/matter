@@ -1,6 +1,6 @@
 require "../spec_helper"
-require "../../src/matter/clusters/administrator_commissioning"
-require "../../src/matter/clusters/general_commissioning"
+require "../../src/matter/cluster/administrator_commissioning_cluster"
+require "../../src/matter/cluster/general_commissioning_cluster"
 require "../../src/matter/failsafe_context"
 require "../../src/matter/session_manager"
 
@@ -9,8 +9,8 @@ module Matter
     describe "successful commissioning flow" do
       it "completes full commissioning with window → failsafe → complete" do
         # Setup: Create cluster instances
-        admin_comm = Clusters::AdministratorCommissioning.new
-        general_comm = Clusters::GeneralCommissioning.new
+        admin_comm = Cluster::AdministratorCommissioningCluster.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
 
         # Configure lower timeouts for fast testing
         admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
@@ -19,7 +19,7 @@ module Matter
         verifier = Bytes.new(97, 0xAB_u8)
         salt = Bytes.new(32, 0x01_u8)
 
-        open_request = Clusters::AdministratorCommissioning::OpenCommissioningWindowRequest.new(
+        open_request = Cluster::AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 5_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -28,7 +28,7 @@ module Matter
         )
 
         admin_comm.open_commissioning_window(open_request, 1_u8, 0x1234_u16)
-        admin_comm.window_status.should eq(Clusters::AdministratorCommissioning::WindowStatus::EnhancedWindowOpen)
+        admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::WindowStatus::EnhancedWindowOpen)
         admin_comm.admin_fabric_index.should eq(1_u8)
 
         # Step 2: New commissioner establishes PASE session (simulated)
@@ -36,7 +36,7 @@ module Matter
         sleep 0.1.seconds
 
         # Step 3: New commissioner arms failsafe
-        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 3_u16,
           breadcrumb: 100_u64
         )
@@ -47,7 +47,7 @@ module Matter
           is_pase_session: true
         )
 
-        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
         general_comm.failsafe_armed?.should be_true
         general_comm.breadcrumb.should eq(100_u64)
 
@@ -62,7 +62,7 @@ module Matter
         # And update the failsafe context fabric index to 2
 
         # For now, we'll re-arm failsafe with the new fabric to simulate AddNOC updating it
-        rearm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        rearm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 3_u16,
           breadcrumb: 150_u64
         )
@@ -74,7 +74,7 @@ module Matter
           is_case_session: true       # Now using CASE session
         )
 
-        complete_response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+        complete_response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
         general_comm.failsafe_armed?.should be_false
         general_comm.breadcrumb.should eq(0_u64) # Reset on success
 
@@ -83,21 +83,21 @@ module Matter
       end
 
       it "completes basic commissioning flow with default passcode" do
-        admin_comm = Clusters::AdministratorCommissioning.new
-        general_comm = Clusters::GeneralCommissioning.new
+        admin_comm = Cluster::AdministratorCommissioningCluster.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
 
         admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
         # Step 1: Open basic commissioning window
-        open_request = Clusters::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+        open_request = Cluster::AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 5_u16
         )
 
         admin_comm.open_basic_commissioning_window(open_request, 1_u8, 0x1234_u16)
-        admin_comm.window_status.should eq(Clusters::AdministratorCommissioning::WindowStatus::BasicWindowOpen)
+        admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::WindowStatus::BasicWindowOpen)
 
         # Step 2-6: Same flow as enhanced (PASE → ArmFailSafe → NOC → Complete)
-        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 3_u16,
           breadcrumb: 200_u64
         )
@@ -108,14 +108,14 @@ module Matter
         sleep 0.2.seconds
 
         # Simulate AddNOC updating fabric
-        rearm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        rearm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 3_u16,
           breadcrumb: 250_u64
         )
         general_comm.arm_failsafe(rearm_request, 2_u8, false)
 
         complete_response = general_comm.commissioning_complete(2_u8, true)
-        complete_response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+        complete_response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
 
         admin_comm.close
       end
@@ -123,11 +123,11 @@ module Matter
 
     describe "failsafe expiry and rollback" do
       it "triggers rollback when failsafe expires during commissioning" do
-        general_comm = Clusters::GeneralCommissioning.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
         rollback_invoked = Channel(Bool).new(1)
 
         # Arm failsafe with short timeout
-        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 1_u16, # 1 second
           breadcrumb: 999_u64
         )
@@ -148,18 +148,18 @@ module Matter
       end
 
       it "closes commissioning window when failsafe expires" do
-        admin_comm = Clusters::AdministratorCommissioning.new
-        general_comm = Clusters::GeneralCommissioning.new
+        admin_comm = Cluster::AdministratorCommissioningCluster.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
         admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
         # Open window
-        open_request = Clusters::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+        open_request = Cluster::AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 5_u16
         )
         admin_comm.open_basic_commissioning_window(open_request, 1_u8, 0x1234_u16)
 
         # Arm failsafe with short timeout
-        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 1_u16,
           breadcrumb: 100_u64
         )
@@ -181,17 +181,17 @@ module Matter
 
     describe "concurrent commissioner conflicts" do
       it "prevents second administrator from opening window" do
-        admin_comm = Clusters::AdministratorCommissioning.new
+        admin_comm = Cluster::AdministratorCommissioningCluster.new
         admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
         # Admin 1 opens window
-        open_request = Clusters::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+        open_request = Cluster::AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 5_u16
         )
         admin_comm.open_basic_commissioning_window(open_request, 1_u8, 0x1234_u16)
 
         # Admin 2 tries to open window (should fail)
-        expect_raises(Clusters::AdministratorCommissioning::BusyError, /already opened/) do
+        expect_raises(Cluster::AdministratorCommissioningCluster::BusyError, /already opened/) do
           admin_comm.open_basic_commissioning_window(open_request, 2_u8, 0x5678_u16)
         end
 
@@ -202,53 +202,53 @@ module Matter
       end
 
       it "prevents CASE session from arming failsafe when different fabric active" do
-        general_comm = Clusters::GeneralCommissioning.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
 
         # Fabric 1 arms failsafe
-        arm_request1 = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request1 = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 5_u16,
           breadcrumb: 100_u64
         )
         general_comm.arm_failsafe(arm_request1, 1_u8, false)
 
         # Fabric 2 tries to arm failsafe (should fail)
-        arm_request2 = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request2 = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 5_u16,
           breadcrumb: 200_u64
         )
         response = general_comm.arm_failsafe(arm_request2, 2_u8, false)
 
-        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::BusyWithOtherAdmin)
+        response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::BusyWithOtherAdmin)
         general_comm.breadcrumb.should eq(100_u64) # Not changed
       end
 
       it "allows PASE to take over from CASE when window open" do
-        admin_comm = Clusters::AdministratorCommissioning.new
-        general_comm = Clusters::GeneralCommissioning.new
+        admin_comm = Cluster::AdministratorCommissioningCluster.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
         admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
         # Open commissioning window
-        open_request = Clusters::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+        open_request = Cluster::AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 5_u16
         )
         admin_comm.open_basic_commissioning_window(open_request, 1_u8, 0x1234_u16)
         general_comm.open_commissioning_window
 
         # Fabric 1 (CASE) arms failsafe
-        arm_request1 = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request1 = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 5_u16,
           breadcrumb: 100_u64
         )
         general_comm.arm_failsafe(arm_request1, 1_u8, false)
 
         # PASE session takes over (priority)
-        arm_request2 = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request2 = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 5_u16,
           breadcrumb: 200_u64
         )
         response = general_comm.arm_failsafe(arm_request2, nil, true)
 
-        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
         general_comm.breadcrumb.should eq(200_u64) # PASE took over
 
         admin_comm.close
@@ -257,18 +257,18 @@ module Matter
 
     describe "window and failsafe coordination" do
       it "window expires independently of failsafe" do
-        admin_comm = Clusters::AdministratorCommissioning.new
-        general_comm = Clusters::GeneralCommissioning.new
+        admin_comm = Cluster::AdministratorCommissioningCluster.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
         admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
         # Open short window (1 second)
-        open_request = Clusters::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+        open_request = Cluster::AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 1_u16
         )
         admin_comm.open_basic_commissioning_window(open_request, 1_u8, 0x1234_u16)
 
         # Arm longer failsafe (5 seconds)
-        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 5_u16,
           breadcrumb: 100_u64
         )
@@ -286,18 +286,18 @@ module Matter
       end
 
       it "can revoke window while failsafe is armed" do
-        admin_comm = Clusters::AdministratorCommissioning.new
-        general_comm = Clusters::GeneralCommissioning.new
+        admin_comm = Cluster::AdministratorCommissioningCluster.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
         admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
         # Open window
-        open_request = Clusters::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+        open_request = Cluster::AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 5_u16
         )
         admin_comm.open_basic_commissioning_window(open_request, 1_u8, 0x1234_u16)
 
         # Arm failsafe
-        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 5_u16,
           breadcrumb: 100_u64
         )
@@ -314,18 +314,18 @@ module Matter
 
     describe "commissioning complete validation" do
       it "rejects commissioning complete without armed failsafe" do
-        general_comm = Clusters::GeneralCommissioning.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
 
         response = general_comm.commissioning_complete(1_u8, true)
 
-        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::NoFailSafe)
+        response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::NoFailSafe)
       end
 
       it "rejects commissioning complete with PASE session" do
-        general_comm = Clusters::GeneralCommissioning.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
 
         # Arm failsafe with PASE
-        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 5_u16,
           breadcrumb: 100_u64
         )
@@ -334,14 +334,14 @@ module Matter
         # Try to complete with PASE (should fail)
         response = general_comm.commissioning_complete(nil, false)
 
-        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::InvalidAuthentication)
+        response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::InvalidAuthentication)
       end
 
       it "rejects commissioning complete with wrong fabric" do
-        general_comm = Clusters::GeneralCommissioning.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
 
         # Arm failsafe with fabric 1
-        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 5_u16,
           breadcrumb: 100_u64
         )
@@ -350,16 +350,16 @@ module Matter
         # Try to complete with fabric 2 (should fail)
         response = general_comm.commissioning_complete(2_u8, true)
 
-        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::InvalidAuthentication)
+        response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::InvalidAuthentication)
       end
     end
 
     describe "re-arming failsafe during commissioning" do
       it "extends failsafe timeout with re-arm" do
-        general_comm = Clusters::GeneralCommissioning.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
 
         # Initial arm
-        arm_request1 = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request1 = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 2_u16,
           breadcrumb: 100_u64
         )
@@ -369,13 +369,13 @@ module Matter
         sleep 1.0.seconds
 
         # Re-arm with 2 more seconds
-        arm_request2 = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request2 = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 2_u16,
           breadcrumb: 200_u64
         )
         response = general_comm.arm_failsafe(arm_request2, nil, true)
 
-        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
         general_comm.breadcrumb.should eq(200_u64)
 
         # Failsafe should still be armed after original timeout
@@ -388,23 +388,23 @@ module Matter
       end
 
       it "disarms failsafe with expiry_length=0" do
-        general_comm = Clusters::GeneralCommissioning.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
 
         # Arm failsafe
-        arm_request1 = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request1 = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 5_u16,
           breadcrumb: 100_u64
         )
         general_comm.arm_failsafe(arm_request1, nil, true)
 
         # Disarm with 0
-        arm_request2 = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request2 = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 0_u16,
           breadcrumb: 200_u64
         )
         response = general_comm.arm_failsafe(arm_request2, nil, true)
 
-        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
         general_comm.failsafe_armed?.should be_false
         general_comm.breadcrumb.should eq(100_u64) # Not updated on disarm
       end
@@ -414,7 +414,7 @@ module Matter
       it "clears PASE sessions on successful commissioning" do
         # Create integrated system
         session_manager = SessionManager.new
-        general_comm = Clusters::GeneralCommissioning.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
 
         # Wire up callback
         general_comm.on_clear_pase_sessions = -> : Nil {
@@ -433,21 +433,21 @@ module Matter
         session_manager.pase_session_ids.size.should eq(2)
 
         # Complete commissioning
-        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
         general_comm.arm_failsafe(arm_request, 1_u8, false)
 
         response = general_comm.commissioning_complete(1_u8, true)
-        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
 
         # PASE sessions should be cleared
         session_manager.pase_session_ids.should be_empty
       end
 
       it "persists fabric table on successful commissioning" do
-        general_comm = Clusters::GeneralCommissioning.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
         fabric_persisted = false
         persisted_fabric_data : String? = nil
 
@@ -459,14 +459,14 @@ module Matter
         }
 
         # Complete commissioning
-        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
         general_comm.arm_failsafe(arm_request, 1_u8, false)
 
         response = general_comm.commissioning_complete(1_u8, true)
-        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
 
         # Fabric table should be persisted
         fabric_persisted.should be_true
@@ -476,8 +476,8 @@ module Matter
       it "integrates with SessionManager for full commissioning flow" do
         # Create complete system
         session_manager = SessionManager.new
-        admin_comm = Clusters::AdministratorCommissioning.new
-        general_comm = Clusters::GeneralCommissioning.new
+        admin_comm = Cluster::AdministratorCommissioningCluster.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
 
         admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
@@ -498,7 +498,7 @@ module Matter
         }
 
         # Step 1: Open commissioning window
-        open_request = Clusters::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+        open_request = Cluster::AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 5_u16
         )
         admin_comm.open_basic_commissioning_window(open_request, 1_u8, 0x1234_u16)
@@ -510,7 +510,7 @@ module Matter
         session_manager.has_pase_session?(1000_u16).should be_true
 
         # Step 3: Arm failsafe (PASE session)
-        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 5_u16,
           breadcrumb: 100_u64
         )
@@ -518,7 +518,7 @@ module Matter
 
         # Step 4: Add NOC and transition to CASE (simulated)
         # This would create fabric index 2
-        rearm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        rearm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 5_u16,
           breadcrumb: 150_u64
         )
@@ -535,7 +535,7 @@ module Matter
 
         # Step 5: Complete commissioning
         response = general_comm.commissioning_complete(2_u8, true)
-        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
 
         # Verify callbacks were invoked
         pase_sessions_cleared.should be_true
@@ -551,11 +551,11 @@ module Matter
       end
 
       it "enforces Terms & Conditions when enabled" do
-        general_comm = Clusters::GeneralCommissioning.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
         general_comm.terms_conditions_required = true
 
         # Try to complete commissioning without accepting TC
-        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
@@ -564,23 +564,23 @@ module Matter
         response = general_comm.commissioning_complete(1_u8, true)
 
         # Should be blocked
-        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::RequiredTCNotAccepted)
+        response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::RequiredTCNotAccepted)
 
         # Now accept and try again
         general_comm.accept_terms_conditions
 
-        arm_request2 = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request2 = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 200_u64
         )
         general_comm.arm_failsafe(arm_request2, 1_u8, false)
 
         response2 = general_comm.commissioning_complete(1_u8, true)
-        response2.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+        response2.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
       end
 
       it "uses TC callback to check acceptance" do
-        general_comm = Clusters::GeneralCommissioning.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
         general_comm.terms_conditions_required = true
 
         tc_check_count = 0
@@ -593,7 +593,7 @@ module Matter
         }
 
         # Try to complete commissioning without accepting TC
-        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
@@ -602,46 +602,46 @@ module Matter
         response = general_comm.commissioning_complete(1_u8, true)
 
         # Should be blocked
-        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::RequiredTCNotAccepted)
+        response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::RequiredTCNotAccepted)
         tc_check_count.should eq(1)
 
         # Now accept (externally)
         tc_accepted = true
 
-        arm_request2 = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request2 = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 200_u64
         )
         general_comm.arm_failsafe(arm_request2, 1_u8, false)
 
         response2 = general_comm.commissioning_complete(1_u8, true)
-        response2.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+        response2.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
         tc_check_count.should eq(2)
       end
 
       it "validates country codes with whitelist" do
-        general_comm = Clusters::GeneralCommissioning.new
+        general_comm = Cluster::GeneralCommissioningCluster.new
 
         # Configure whitelist for specific countries
         general_comm.country_code_whitelist = ["US", "CA", "GB", "DE"]
 
         # Try to set whitelisted country (should succeed)
-        request_us = Clusters::GeneralCommissioning::SetRegulatoryConfigRequest.new(
-          new_regulatory_config: Clusters::GeneralCommissioning::RegulatoryLocationType::Indoor,
+        request_us = Cluster::GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: Cluster::GeneralCommissioningCluster::RegulatoryLocationType::Indoor,
           country_code: "US",
           breadcrumb: 100_u64
         )
         response_us = general_comm.set_regulatory_config(request_us)
-        response_us.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+        response_us.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
 
         # Try to set non-whitelisted country (should fail)
-        request_jp = Clusters::GeneralCommissioning::SetRegulatoryConfigRequest.new(
-          new_regulatory_config: Clusters::GeneralCommissioning::RegulatoryLocationType::Indoor,
+        request_jp = Cluster::GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: Cluster::GeneralCommissioningCluster::RegulatoryLocationType::Indoor,
           country_code: "JP",
           breadcrumb: 200_u64
         )
         response_jp = general_comm.set_regulatory_config(request_jp)
-        response_jp.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::ValueOutsideRange)
+        response_jp.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
         response_jp.debug_text.should contain("not in whitelist")
       end
     end
