@@ -24,7 +24,8 @@ describe Matter::Cluster::AccessControlCluster do
 
       value = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL)
       value.should be_a(Bytes)
-      value.as(Bytes).should eq(Bytes.new(0)) # Empty list
+      # Empty list should be encoded as empty TLV array (not just Bytes.new(0))
+      value.as(Bytes).size.should be > 0
     end
 
     it "reads Extension attribute" do
@@ -107,8 +108,10 @@ describe Matter::Cluster::AccessControlCluster do
         fabric_index: 1_u8
       )
 
-      entry.privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer)
-      entry.auth_mode.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
+      entry.privilege.should eq(5_u8)
+      entry.auth_mode.should eq(2_u8)
+      entry.privilege_enum.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer)
+      entry.auth_mode_enum.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
       entry.subjects.should eq([0x1122334455667788_u64])
       entry.targets.should be_nil
       entry.fabric_index.should eq(1_u8)
@@ -365,6 +368,281 @@ describe Matter::Cluster::AccessControlCluster do
 
       cluster.extension << extension
       cluster.extension.size.should eq(1)
+    end
+  end
+
+  describe "TLV encoding/decoding" do
+    describe "ACL list" do
+      it "encodes and decodes empty ACL list" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+        # Read empty ACL list
+        encoded = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL)
+        encoded.should be_a(Bytes)
+
+        # Write it back
+        status = cluster.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL, encoded.as(Bytes))
+        status.status.should eq(Matter::InteractionModel::StatusCode::Success)
+        cluster.acl.should be_empty
+      end
+
+      it "encodes and decodes single ACL entry" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+        # Add ACL entry
+        entry = Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
+          privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer,
+          auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+          subjects: [0x1111_u64],
+          targets: nil,
+          fabric_index: 1_u8
+        )
+        cluster.acl << entry
+
+        # Encode
+        encoded = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL)
+        encoded.should be_a(Bytes)
+        encoded.as(Bytes).size.should be > 0
+
+        # Decode into new cluster
+        cluster2 = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+        status = cluster2.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL, encoded.as(Bytes))
+        status.status.should eq(Matter::InteractionModel::StatusCode::Success)
+
+        # Verify decoded entry
+        cluster2.acl.size.should eq(1)
+        decoded_entry = cluster2.acl[0]
+        decoded_entry.privilege.should eq(5_u8)
+        decoded_entry.auth_mode.should eq(2_u8)
+        decoded_entry.subjects.should eq([0x1111_u64])
+        decoded_entry.targets.should be_nil
+        decoded_entry.fabric_index.should eq(1_u8)
+      end
+
+      it "encodes and decodes ACL entry with multiple subjects" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+        # Add ACL entry with multiple subjects
+        entry = Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
+          privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Operate,
+          auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+          subjects: [0x1111_u64, 0x2222_u64, 0x3333_u64],
+          targets: nil,
+          fabric_index: 2_u8
+        )
+        cluster.acl << entry
+
+        # Round-trip
+        encoded = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL)
+        cluster2 = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+        cluster2.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL, encoded.as(Bytes))
+
+        # Verify
+        cluster2.acl.size.should eq(1)
+        cluster2.acl[0].subjects.size.should eq(3)
+        cluster2.acl[0].subjects.should eq([0x1111_u64, 0x2222_u64, 0x3333_u64])
+      end
+
+      it "encodes and decodes ACL entry with targets" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+        # Add ACL entry with targets
+        targets = [
+          Matter::Cluster::AccessControlCluster::Target.new(
+            cluster: 0x0006_u32,
+            endpoint: 1_u16,
+            device_type: nil
+          ),
+          Matter::Cluster::AccessControlCluster::Target.new(
+            cluster: nil,
+            endpoint: nil,
+            device_type: 0x0100_u32
+          ),
+        ]
+
+        entry = Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
+          privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Manage,
+          auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+          subjects: [0x4444_u64],
+          targets: targets,
+          fabric_index: 1_u8
+        )
+        cluster.acl << entry
+
+        # Round-trip
+        encoded = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL)
+        cluster2 = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+        cluster2.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL, encoded.as(Bytes))
+
+        # Verify
+        cluster2.acl.size.should eq(1)
+        decoded_targets = cluster2.acl[0].targets
+        decoded_targets.should_not be_nil
+        decoded_targets.not_nil!.size.should eq(2)
+
+        # First target
+        decoded_targets.not_nil![0].cluster.should eq(0x0006_u32)
+        decoded_targets.not_nil![0].endpoint.should eq(1_u16)
+        decoded_targets.not_nil![0].device_type.should be_nil
+
+        # Second target
+        decoded_targets.not_nil![1].cluster.should be_nil
+        decoded_targets.not_nil![1].endpoint.should be_nil
+        decoded_targets.not_nil![1].device_type.should eq(0x0100_u32)
+      end
+
+      it "encodes and decodes multiple ACL entries" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+        # Add multiple entries
+        3.times do |i|
+          entry = Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
+            privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Operate,
+            auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+            subjects: [(i + 1).to_u64 * 0x1111],
+            targets: nil,
+            fabric_index: 1_u8
+          )
+          cluster.acl << entry
+        end
+
+        # Round-trip
+        encoded = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL)
+        cluster2 = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+        cluster2.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL, encoded.as(Bytes))
+
+        # Verify
+        cluster2.acl.size.should eq(3)
+        cluster2.acl[0].subjects.should eq([0x1111_u64])
+        cluster2.acl[1].subjects.should eq([0x2222_u64])
+        cluster2.acl[2].subjects.should eq([0x3333_u64])
+      end
+
+      it "handles invalid TLV data gracefully" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+        # Try to write invalid data
+        invalid_data = Bytes[0xFF, 0xFF, 0xFF]
+        status = cluster.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL, invalid_data)
+
+        status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
+      end
+    end
+
+    describe "Extension list" do
+      it "encodes and decodes empty extension list" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+        # Read empty extension list
+        encoded = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_EXTENSION)
+        encoded.should be_a(Bytes)
+
+        # Write it back
+        status = cluster.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_EXTENSION, encoded.as(Bytes))
+        status.status.should eq(Matter::InteractionModel::StatusCode::Success)
+        cluster.extension.should be_empty
+      end
+
+      it "encodes and decodes single extension entry" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+        # Add extension entry
+        extension = Matter::Cluster::AccessControlCluster::ExtensionEntry.new(
+          data: Bytes[0x01, 0x02, 0x03, 0x04],
+          fabric_index: 1_u8
+        )
+        cluster.extension << extension
+
+        # Round-trip
+        encoded = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_EXTENSION)
+        cluster2 = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+        status = cluster2.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_EXTENSION, encoded.as(Bytes))
+        status.status.should eq(Matter::InteractionModel::StatusCode::Success)
+
+        # Verify
+        cluster2.extension.size.should eq(1)
+        cluster2.extension[0].data.should eq(Bytes[0x01, 0x02, 0x03, 0x04])
+        cluster2.extension[0].fabric_index.should eq(1_u8)
+      end
+
+      it "encodes and decodes multiple extension entries" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+        # Add multiple extensions
+        cluster.extension << Matter::Cluster::AccessControlCluster::ExtensionEntry.new(
+          data: Bytes[0xAA, 0xBB],
+          fabric_index: 1_u8
+        )
+        cluster.extension << Matter::Cluster::AccessControlCluster::ExtensionEntry.new(
+          data: Bytes[0xCC, 0xDD, 0xEE],
+          fabric_index: 2_u8
+        )
+
+        # Round-trip
+        encoded = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_EXTENSION)
+        cluster2 = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+        cluster2.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_EXTENSION, encoded.as(Bytes))
+
+        # Verify
+        cluster2.extension.size.should eq(2)
+        cluster2.extension[0].data.should eq(Bytes[0xAA, 0xBB])
+        cluster2.extension[0].fabric_index.should eq(1_u8)
+        cluster2.extension[1].data.should eq(Bytes[0xCC, 0xDD, 0xEE])
+        cluster2.extension[1].fabric_index.should eq(2_u8)
+      end
+
+      it "handles invalid TLV data gracefully" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+        # Try to write invalid data
+        invalid_data = Bytes[0xFF, 0xFF, 0xFF]
+        status = cluster.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_EXTENSION, invalid_data)
+
+        status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
+      end
+    end
+
+    describe "fabric-scoped encoding" do
+      it "preserves fabric index in ACL entries" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+        # Add entries for different fabrics
+        cluster.acl << Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
+          privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer,
+          auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+          subjects: [0x1111_u64],
+          targets: nil,
+          fabric_index: 1_u8
+        )
+        cluster.acl << Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
+          privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Operate,
+          auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+          subjects: [0x2222_u64],
+          targets: nil,
+          fabric_index: 2_u8
+        )
+
+        # Round-trip
+        encoded = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL)
+        cluster2 = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+        cluster2.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL, encoded.as(Bytes))
+
+        # Verify fabric isolation is preserved
+        cluster2.acl.size.should eq(2)
+        cluster2.acl[0].fabric_index.should eq(1_u8)
+        cluster2.acl[1].fabric_index.should eq(2_u8)
+      end
     end
   end
 end

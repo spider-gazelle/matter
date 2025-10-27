@@ -535,8 +535,10 @@ describe Matter::Clusters::OperationalCredentials do
       # Verify default ACL entry was created
       acl_cluster.acl.size.should eq(1)
       acl_entry = acl_cluster.acl.first
-      acl_entry.privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer)
-      acl_entry.auth_mode.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
+      acl_entry.privilege.should eq(5_u8) # Administer
+      acl_entry.auth_mode.should eq(2_u8) # CASE
+      acl_entry.privilege_enum.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer)
+      acl_entry.auth_mode_enum.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
       acl_entry.subjects.should eq([admin_subject])
       acl_entry.targets.should be_nil # All targets
       acl_entry.fabric_index.should eq(response.fabric_index)
