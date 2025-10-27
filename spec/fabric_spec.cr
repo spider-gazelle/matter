@@ -181,22 +181,73 @@ describe Matter::Fabric do
   end
 
   describe "helper methods" do
-    it "generates compressed fabric ID" do
+    it "generates compressed fabric ID using HKDF" do
       key = Matter::Crypto::Key.generate_key_pair
       ipk = Random::Secure.random_bytes(16)
+
+      # Create a known root public key (65 bytes: 0x04 || x || y)
+      root_pub_key = Bytes.new(65)
+      root_pub_key[0] = 0x04_u8 # Uncompressed point indicator
 
       fabric = Matter::Fabric.new(
         fabric_id: 0x1234567890ABCDEF_u64,
         fabric_index: 1_u8,
         node_id: 0xAABBCCDDEEFF0011_u64,
-        root_public_key: Random::Secure.random_bytes(65),
+        root_public_key: root_pub_key,
         operational_cert: Random::Secure.random_bytes(200),
         operational_key: key,
         ipk: ipk
       )
 
       compressed = fabric.compressed_fabric_id
-      compressed.size.should eq(16)
+
+      # Compressed fabric ID should be 8 bytes
+      compressed.size.should eq(8)
+
+      # Verify it's deterministic (same inputs produce same output)
+      compressed2 = fabric.compressed_fabric_id
+      compressed.should eq(compressed2)
+    end
+
+    it "compressed fabric ID uses HKDF with correct parameters" do
+      key = Matter::Crypto::Key.generate_key_pair
+      ipk = Random::Secure.random_bytes(16)
+
+      # Create root public key
+      root_pub_key = Bytes.new(65)
+      root_pub_key[0] = 0x04_u8 # Uncompressed point indicator
+      # Fill with test data
+      (1...65).each { |i| root_pub_key[i] = (i % 256).to_u8 }
+
+      fabric_id = 0x1234567890ABCDEF_u64
+
+      fabric = Matter::Fabric.new(
+        fabric_id: fabric_id,
+        fabric_index: 1_u8,
+        node_id: 0xAABBCCDDEEFF0011_u64,
+        root_public_key: root_pub_key,
+        operational_cert: Random::Secure.random_bytes(200),
+        operational_key: key,
+        ipk: ipk
+      )
+
+      compressed = fabric.compressed_fabric_id
+
+      # Manually calculate what it should be using HKDF
+      # Key: root public key without first byte
+      hkdf_key = root_pub_key[1..-1]
+
+      # Salt: fabric_id as 8 bytes (little-endian)
+      salt = Bytes.new(8)
+      IO::ByteFormat::LittleEndian.encode(fabric_id, salt)
+
+      # Info: "CompressedFabric"
+      info = "CompressedFabric".to_slice
+
+      # Calculate expected value
+      expected = Matter::Crypto.create_hkdf_key(hkdf_key, salt, info, 8)
+
+      compressed.should eq(expected)
     end
 
     it "marks fabric as used" do

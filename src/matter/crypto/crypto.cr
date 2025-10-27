@@ -286,7 +286,6 @@ module Matter
       end
 
       # Convert DER to PEM format
-      # TODO: Make private after testing
       def der_to_pem(der : Bytes, label : String) : String
         encoded = Base64.strict_encode(der)
         lines = [] of String
@@ -298,7 +297,6 @@ module Matter
       end
 
       # Build SEC1 DER format for EC private key
-      # TODO: Make private after testing
       def build_ec_private_key_der(priv : Bytes, pub : Bytes) : Bytes
         # P-256 curve OID: 1.2.840.10045.3.1.7 (complete with tag and length)
         curve_oid = Bytes[0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07]
@@ -343,7 +341,6 @@ module Matter
       end
 
       # Build SPKI DER format for EC public key
-      # TODO: Make private after testing
       def build_ec_public_key_der(pub : Bytes) : Bytes
         # Algorithm identifier for EC public key with P-256
         # SEQUENCE { OID ecPublicKey, OID prime256v1 }

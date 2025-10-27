@@ -107,16 +107,26 @@ module Matter
       # Fabric index
       property fabric_index : UInt8
 
-      # Node ID (compressed fabric ID + node ID)
+      # Node ID within the fabric
       property node_id : UInt64
 
-      def initialize(@fabric_index, @node_id)
+      # Compressed fabric ID (8-byte HKDF-derived value)
+      # This is used for mDNS service discovery sub-types
+      property compressed_fabric_id : Bytes
+
+      def initialize(@fabric_index, @node_id, @compressed_fabric_id)
       end
 
       # Operational ID for sub-type browsing
+      # Returns the compressed fabric ID as an uppercase hex string (16 characters)
+      #
+      # Format: XXXXXXXXXXXXXXXX (16 hex digits representing 8 bytes)
+      # Example: "1234567890ABCDEF"
+      #
+      # This is used as the sub-type in mDNS operational discovery:
+      # _<compressed-fabric-id>-<node-id>._sub._matter._tcp.local
       def operational_id : String
-        # TODO: Implement compressed fabric ID calculation
-        node_id.to_s(16).upcase
+        @compressed_fabric_id.hexstring.upcase
       end
     end
   end

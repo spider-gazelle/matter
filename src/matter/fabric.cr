@@ -154,13 +154,30 @@ module Matter
       )
     end
 
-    # Get the compressed fabric identifier (fabric_id + node_id concatenated)
-    # This is used in various Matter protocols
+    # Get the compressed fabric identifier using HKDF
+    # This is used in various Matter protocols, especially mDNS service discovery
+    #
+    # The compressed fabric ID is an 8-byte value derived from:
+    # - Key: root public key (excluding first byte which is 0x04 format indicator)
+    # - Salt: fabric_id (8 bytes, little-endian)
+    # - Info: "CompressedFabric"
+    # - Length: 8 bytes
+    #
+    # Specification: Matter 1.4 § 4.13.2.4.2 (Compressed Fabric Identifier)
     def compressed_fabric_id : Bytes
-      bytes = Bytes.new(16)
-      IO::ByteFormat::LittleEndian.encode(@fabric_id, bytes[0, 8])
-      IO::ByteFormat::LittleEndian.encode(@node_id, bytes[8, 8])
-      bytes
+      # Prepare salt: fabric_id as 8 bytes (little-endian)
+      salt = Bytes.new(8)
+      IO::ByteFormat::LittleEndian.encode(@fabric_id, salt)
+
+      # Key: root public key without first byte (skip 0x04 uncompressed point indicator)
+      # Root public key format is: 0x04 || x (32 bytes) || y (32 bytes) = 65 bytes total
+      key = @root_public_key[1..-1]
+
+      # Info: "CompressedFabric"
+      info = "CompressedFabric".to_slice
+
+      # Derive 8-byte compressed fabric ID using HKDF-SHA256
+      Crypto.create_hkdf_key(key, salt, info, 8)
     end
 
     # Get scoped node ID (used in CASE for peer identification)
