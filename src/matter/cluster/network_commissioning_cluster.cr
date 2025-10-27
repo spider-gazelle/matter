@@ -296,23 +296,6 @@ module Matter
         end
       end
 
-      # QueryIdentity command (0x09) - for future use
-      struct QueryIdentityRequest
-        property key_identifier : Bytes
-        property possession_nonce : Bytes?
-
-        def initialize(@key_identifier : Bytes, @possession_nonce : Bytes? = nil)
-        end
-      end
-
-      struct QueryIdentityResponse
-        property identity : Bytes
-        property possession_signature : Bytes?
-
-        def initialize(@identity : Bytes, @possession_signature : Bytes? = nil)
-        end
-      end
-
       # Instance variables
       property network_type : NetworkType
       property feature_map : Feature
@@ -919,17 +902,6 @@ module Matter
         NetworkConfigResponse.new(
           networking_status: NetworkCommissioningStatus::Success,
           network_index: cmd.network_index
-        )
-      end
-
-      # QueryIdentity command (0x09) - placeholder for future implementation
-      def handle_query_identity(
-        cmd : QueryIdentityRequest,
-        failsafe_armed : Bool,
-      ) : QueryIdentityResponse
-        # Not yet implemented
-        QueryIdentityResponse.new(
-          identity: Bytes.new(0)
         )
       end
 
