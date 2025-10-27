@@ -1,4 +1,5 @@
 require "./cluster"
+require "tlv"
 
 module Matter
   module Cluster
@@ -312,61 +313,52 @@ module Matter
       def read_attribute(attribute_id : UInt32) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_DATA_MODEL_REVISION
-          encode_uint16(@data_model_revision)
+          encode_tlv_uint16(@data_model_revision)
         when ATTR_VENDOR_NAME
-          # TODO: Encode string as TLV
-          Bytes.new(0)
+          encode_tlv_string(@vendor_name)
         when ATTR_VENDOR_ID
-          encode_uint16(@vendor_id)
+          encode_tlv_uint16(@vendor_id)
         when ATTR_PRODUCT_NAME
-          # TODO: Encode string as TLV
-          Bytes.new(0)
+          encode_tlv_string(@product_name)
         when ATTR_PRODUCT_ID
-          encode_uint16(@product_id)
+          encode_tlv_uint16(@product_id)
         when ATTR_NODE_LABEL
-          # TODO: Encode string as TLV
-          Bytes.new(0)
+          encode_tlv_string(@node_label)
         when ATTR_LOCATION
-          # TODO: Encode string as TLV
-          Bytes.new(0)
+          encode_tlv_string(@location)
         when ATTR_HARDWARE_VERSION
-          encode_uint16(@hardware_version)
+          encode_tlv_uint16(@hardware_version)
         when ATTR_HARDWARE_VERSION_STRING
-          # TODO: Encode string as TLV
-          Bytes.new(0)
+          encode_tlv_string(@hardware_version_string)
         when ATTR_SOFTWARE_VERSION
-          encode_uint32(@software_version)
+          encode_tlv_uint32(@software_version)
         when ATTR_SOFTWARE_VERSION_STRING
-          # TODO: Encode string as TLV
-          Bytes.new(0)
+          encode_tlv_string(@software_version_string)
         when ATTR_MANUFACTURING_DATE
-          # TODO: Encode string as TLV
-          Bytes.new(0)
+          encode_tlv_string(@manufacturing_date)
         when ATTR_PART_NUMBER
-          # TODO: Encode string as TLV
-          Bytes.new(0)
+          encode_tlv_string(@part_number)
         when ATTR_PRODUCT_URL
-          # TODO: Encode string as TLV
-          Bytes.new(0)
+          encode_tlv_string(@product_url)
         when ATTR_PRODUCT_LABEL
-          # TODO: Encode string as TLV
-          Bytes.new(0)
+          encode_tlv_string(@product_label)
         when ATTR_SERIAL_NUMBER
-          # TODO: Encode string as TLV
-          Bytes.new(0)
+          encode_tlv_string(@serial_number)
         when ATTR_LOCAL_CONFIG_DISABLED
-          encode_bool(@local_config_disabled)
+          encode_tlv_bool(@local_config_disabled)
         when ATTR_REACHABLE
-          encode_bool(@reachable)
+          encode_tlv_bool(@reachable)
         when ATTR_UNIQUE_ID
-          # TODO: Encode string as TLV
-          Bytes.new(0)
+          encode_tlv_string(@unique_id)
         when ATTR_CAPABILITY_MINIMA
-          # TODO: Encode CapabilityMinimaStruct as TLV
-          Bytes.new(0)
+          encode_capability_minima(@capability_minima)
         when ATTR_PRODUCT_APPEARANCE
-          # TODO: Encode ProductAppearanceStruct as TLV
-          Bytes.new(0)
+          if appearance = @product_appearance
+            encode_product_appearance(appearance)
+          else
+            # Attribute not present
+            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+          end
         else
           super
         end
@@ -375,18 +367,39 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_NODE_LABEL
-          # TODO: Decode TLV string
-          # @node_label = decode_string(value)
+          decoded = decode_tlv_string(value)
+          return decoded if decoded.is_a?(InteractionModel::Status)
+
+          # Validate max length (32 chars per Matter spec)
+          if decoded.bytesize > 32
+            return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+          end
+
+          @node_label = decoded
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_LOCATION
-          # TODO: Decode TLV string and validate ISO 3166-1 alpha-2
-          # @location = decode_string(value)
+          decoded = decode_tlv_string(value)
+          return decoded if decoded.is_a?(InteractionModel::Status)
+
+          # Validate ISO 3166-1 alpha-2 format (must be exactly 2 characters)
+          if decoded.size != 2
+            return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+          end
+
+          # Validate it contains only ASCII letters or is "XX" (region-agnostic)
+          unless decoded == "XX" || decoded.chars.all? { |c| c.ascii_letter? }
+            return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+          end
+
+          @location = decoded.upcase
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_LOCAL_CONFIG_DISABLED
-          # TODO: Decode TLV bool
-          # @local_config_disabled = decode_bool(value)
+          decoded = decode_tlv_bool(value)
+          return decoded if decoded.is_a?(InteractionModel::Status)
+
+          @local_config_disabled = decoded
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         else
@@ -396,23 +409,153 @@ module Matter
 
       # Helper: Trigger StartUp event (call when node boots)
       def emit_start_up_event(software_version : UInt32)
-        # TODO: Implement event emission
+        # Encode StartUpEvent structure (tag 0 = softwareVersion)
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.start_structure(nil)
+        writer.put(0_u8, software_version)
+        writer.end_container
+        event_data = io.rewind.to_slice
+
+        # NOTE: Event emission would be handled by the event management system
+        # For now, we just return the encoded event data
+        # In a real implementation, this would be sent to subscribers
+        event_data
       end
 
       # Helper: Trigger ShutDown event (call when node shuts down)
       def emit_shut_down_event
-        # TODO: Implement event emission
+        # ShutDown event has no fields (TlvNoArguments)
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.start_structure(nil)
+        writer.end_container
+        event_data = io.rewind.to_slice
+
+        # NOTE: Event emission would be handled by the event management system
+        event_data
       end
 
       # Helper: Trigger Leave event (call when leaving fabric)
       def emit_leave_event(fabric_index : UInt8)
-        # TODO: Implement event emission
+        # Encode LeaveEvent structure (tag 0 = fabricIndex)
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.start_structure(nil)
+        writer.put(0_u8, fabric_index)
+        writer.end_container
+        event_data = io.rewind.to_slice
+
+        # NOTE: Event emission would be handled by the event management system
+        event_data
       end
 
       # Helper: Trigger ReachableChanged event (call when reachability changes)
       def emit_reachable_changed_event(reachable_new_value : Bool)
         @reachable = reachable_new_value
-        # TODO: Implement event emission
+        increment_version
+
+        # Encode ReachableChangedEvent structure (tag 0 = reachableNewValue)
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.start_structure(nil)
+        writer.put(0_u8, reachable_new_value)
+        writer.end_container
+        event_data = io.rewind.to_slice
+
+        # NOTE: Event emission would be handled by the event management system
+        event_data
+      end
+
+      # TLV encoding helpers
+      private def encode_tlv_string(value : String) : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, value)
+        io.rewind.to_slice
+      end
+
+      private def encode_tlv_uint16(value : UInt16) : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, value)
+        io.rewind.to_slice
+      end
+
+      private def encode_tlv_uint32(value : UInt32) : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, value)
+        io.rewind.to_slice
+      end
+
+      private def encode_tlv_bool(value : Bool) : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, value)
+        io.rewind.to_slice
+      end
+
+      private def encode_capability_minima(capability : CapabilityMinimaStruct) : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.start_structure(nil)
+        writer.put(0_u8, capability.case_sessions_per_fabric) # Tag 0: caseSessionsPerFabric
+        writer.put(1_u8, capability.subscriptions_per_fabric) # Tag 1: subscriptionsPerFabric
+        writer.end_container
+        io.rewind.to_slice
+      end
+
+      private def encode_product_appearance(appearance : ProductAppearanceStruct) : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.start_structure(nil)
+        writer.put(0_u8, appearance.finish.value) # Tag 0: finish (enum as uint8)
+        if color = appearance.primary_color
+          writer.put(1_u8, color.value) # Tag 1: primaryColor (nullable enum)
+        end
+        writer.end_container
+        io.rewind.to_slice
+      end
+
+      # TLV decoding helpers
+      private def decode_tlv_string(value : Bytes) : String | InteractionModel::Status
+        reader = TLV::Reader.new(value)
+        data = reader.get
+
+        # Extract string value
+        if data.is_a?(Hash)
+          # Check for "Any" key (anonymous tag)
+          if data.has_key?("Any")
+            str_val = data["Any"]
+            return str_val.to_s if str_val.responds_to?(:to_s)
+          end
+        elsif data.is_a?(String)
+          return data
+        end
+
+        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+      rescue
+        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+      end
+
+      private def decode_tlv_bool(value : Bytes) : Bool | InteractionModel::Status
+        reader = TLV::Reader.new(value)
+        data = reader.get
+
+        # Extract boolean value
+        if data.is_a?(Hash)
+          if data.has_key?("Any")
+            bool_val = data["Any"]
+            return bool_val.as(Bool) if bool_val.is_a?(Bool)
+          end
+        elsif data.is_a?(Bool)
+          return data
+        end
+
+        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+      rescue
+        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
       end
     end
   end

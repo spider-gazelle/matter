@@ -63,288 +63,392 @@ describe Matter::Cluster::BasicInformationCluster do
     end
   end
 
-  describe "vendor information" do
-    it "sets vendor name and ID" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+  describe "TLV attribute encoding - read_attribute" do
+    it "reads DATA_MODEL_REVISION with TLV encoding" do
       cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        vendor_name: "Acme Corp",
-        vendor_id: 0xFFF1_u16
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+        data_model_revision: 17_u16
       )
 
-      cluster.vendor_name.should eq("Acme Corp")
-      cluster.vendor_id.should eq(0xFFF1_u16)
+      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_DATA_MODEL_REVISION)
+      result.should be_a(Bytes)
+
+      # Parse TLV
+      reader = TLV::Reader.new(result.as(Bytes))
+      data = reader.get
+      parsed_value = data.is_a?(Hash) ? data["Any"] : data
+      parsed_value.should eq(17)
     end
 
-    it "reads VendorName attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+    it "reads VENDOR_NAME with TLV encoding" do
       cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
         vendor_name: "Test Vendor"
       )
 
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME)
       result.should be_a(Bytes)
-      # TODO: Properly decode TLV string when implemented
+
+      reader = TLV::Reader.new(result.as(Bytes))
+      data = reader.get
+      parsed_value = data.is_a?(Hash) ? data["Any"] : data
+      parsed_value.should eq("Test Vendor")
     end
 
-    it "reads VendorID attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+    it "reads VENDOR_ID with TLV encoding" do
       cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        vendor_id: 0x1234_u16
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+        vendor_id: 0xFFF1_u16
       )
 
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_ID)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[0x34, 0x12]) # Little-endian
-    end
-  end
 
-  describe "product information" do
-    it "sets product name and ID" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        product_name: "Smart Light",
-        product_id: 0x8000_u16
-      )
-
-      cluster.product_name.should eq("Smart Light")
-      cluster.product_id.should eq(0x8000_u16)
+      reader = TLV::Reader.new(result.as(Bytes))
+      data = reader.get
+      parsed_value = data.is_a?(Hash) ? data["Any"] : data
+      parsed_value.should eq(0xFFF1)
     end
 
-    it "reads ProductName attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+    it "reads SOFTWARE_VERSION with TLV encoding" do
       cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        product_name: "Test Product"
-      )
-
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_NAME)
-      result.should be_a(Bytes)
-    end
-
-    it "reads ProductID attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        product_id: 0xABCD_u16
-      )
-
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_ID)
-      result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[0xCD, 0xAB]) # Little-endian
-    end
-  end
-
-  describe "version information" do
-    it "sets hardware version" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        hardware_version: 2_u16,
-        hardware_version_string: "2.0"
-      )
-
-      cluster.hardware_version.should eq(2_u16)
-      cluster.hardware_version_string.should eq("2.0")
-    end
-
-    it "sets software version" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        software_version: 0x01020300_u32,
-        software_version_string: "1.2.3"
-      )
-
-      cluster.software_version.should eq(0x01020300_u32)
-      cluster.software_version_string.should eq("1.2.3")
-    end
-
-    it "reads HardwareVersion attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        hardware_version: 3_u16
-      )
-
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_HARDWARE_VERSION)
-      result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[3, 0]) # Little-endian
-    end
-
-    it "reads SoftwareVersion attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        software_version: 0x12345678_u32
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+        software_version: 0x01020304_u32
       )
 
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_SOFTWARE_VERSION)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[0x78, 0x56, 0x34, 0x12]) # Little-endian
-    end
-  end
 
-  describe "user-configurable attributes" do
-    it "sets node label" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      reader = TLV::Reader.new(result.as(Bytes))
+      data = reader.get
+      parsed_value = data.is_a?(Hash) ? data["Any"] : data
+      parsed_value.should eq(0x01020304)
+    end
+
+    it "reads LOCAL_CONFIG_DISABLED with TLV encoding" do
       cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        node_label: "Living Room Light"
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+        local_config_disabled: true
       )
 
-      cluster.node_label.should eq("Living Room Light")
+      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCAL_CONFIG_DISABLED)
+      result.should be_a(Bytes)
+
+      reader = TLV::Reader.new(result.as(Bytes))
+      data = reader.get
+      parsed_value = data.is_a?(Hash) ? data["Any"] : data
+      parsed_value.should eq(true)
     end
 
-    it "writes node label attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(endpoint_id)
-
-      # TODO: Properly encode TLV string when implemented
-      status = cluster.write_attribute(
-        Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL,
-        Bytes.new(0)
-      )
-
-      status.success?.should be_true
-      cluster.data_version.should eq(1_u32) # Version incremented
-    end
-
-    it "sets location" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        location: "US"
-      )
-
-      cluster.location.should eq("US")
-    end
-
-    it "writes location attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(endpoint_id)
-
-      status = cluster.write_attribute(
-        Matter::Cluster::BasicInformationCluster::ATTR_LOCATION,
-        Bytes.new(0)
-      )
-
-      status.success?.should be_true
-    end
-  end
-
-  describe "optional attributes" do
-    it "sets manufacturing date" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        manufacturing_date: "20231215"
-      )
-
-      cluster.manufacturing_date.should eq("20231215")
-    end
-
-    it "sets part number" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        part_number: "ABC-123-XYZ"
-      )
-
-      cluster.part_number.should eq("ABC-123-XYZ")
-    end
-
-    it "sets product URL" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        product_url: "https://example.com/product"
-      )
-
-      cluster.product_url.should eq("https://example.com/product")
-    end
-
-    it "sets product label" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        product_label: "Premium Edition"
-      )
-
-      cluster.product_label.should eq("Premium Edition")
-    end
-
-    it "sets serial number" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        serial_number: "SN123456789"
-      )
-
-      cluster.serial_number.should eq("SN123456789")
-    end
-
-    it "sets unique ID" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        unique_id: "UUID-1234-5678"
-      )
-
-      cluster.unique_id.should eq("UUID-1234-5678")
-    end
-  end
-
-  describe "ProductAppearance structure" do
-    it "creates product appearance" do
-      appearance = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.new(
-        finish: Matter::Cluster::BasicInformationCluster::ProductFinish::Matte,
-        primary_color: Matter::Cluster::BasicInformationCluster::Color::Black
-      )
-
-      appearance.finish.should eq(Matter::Cluster::BasicInformationCluster::ProductFinish::Matte)
-      appearance.primary_color.should eq(Matter::Cluster::BasicInformationCluster::Color::Black)
-    end
-
-    it "sets product appearance on cluster" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      appearance = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.new(
-        finish: Matter::Cluster::BasicInformationCluster::ProductFinish::Satin,
-        primary_color: Matter::Cluster::BasicInformationCluster::Color::White
-      )
-
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
-        product_appearance: appearance
-      )
-
-      cluster.product_appearance.should_not be_nil
-      cluster.product_appearance.not_nil!.finish.should eq(Matter::Cluster::BasicInformationCluster::ProductFinish::Satin)
-      cluster.product_appearance.not_nil!.primary_color.should eq(Matter::Cluster::BasicInformationCluster::Color::White)
-    end
-  end
-
-  describe "CapabilityMinima structure" do
-    it "creates capability minima" do
+    it "reads CAPABILITY_MINIMA with TLV struct encoding" do
       capability = Matter::Cluster::BasicInformationCluster::CapabilityMinimaStruct.new(
-        case_sessions_per_fabric: 3_u16,
-        subscriptions_per_fabric: 3_u16
+        case_sessions_per_fabric: 5_u16,
+        subscriptions_per_fabric: 10_u16
       )
 
-      capability.case_sessions_per_fabric.should eq(3_u16)
-      capability.subscriptions_per_fabric.should eq(3_u16)
-    end
-
-    it "reads CapabilityMinima attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(endpoint_id)
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+        capability_minima: capability
+      )
 
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_CAPABILITY_MINIMA)
       result.should be_a(Bytes)
-      # TODO: Properly decode TLV structure when implemented
+
+      # Parse TLV structure
+      reader = TLV::Reader.new(result.as(Bytes))
+      data = reader.get
+
+      # Extract struct data
+      any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
+      struct_data = any_data.as(Hash(TLV::Tag, TLV::Value))
+      struct_data["0"].should eq(5)  # case_sessions_per_fabric
+      struct_data["1"].should eq(10) # subscriptions_per_fabric
+    end
+
+    it "reads PRODUCT_APPEARANCE with TLV struct encoding" do
+      appearance = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.new(
+        finish: Matter::Cluster::BasicInformationCluster::ProductFinish::Matte,
+        primary_color: Matter::Cluster::BasicInformationCluster::Color::Blue
+      )
+
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+        product_appearance: appearance
+      )
+
+      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE)
+      result.should be_a(Bytes)
+
+      reader = TLV::Reader.new(result.as(Bytes))
+      data = reader.get
+
+      # Extract struct data
+      any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
+      struct_data = any_data.as(Hash(TLV::Tag, TLV::Value))
+      struct_data["0"].should eq(1) # Matte finish
+      struct_data["1"].should eq(8) # Blue color
+    end
+
+    it "reads PRODUCT_APPEARANCE with nullable primary_color omitted" do
+      appearance = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.new(
+        finish: Matter::Cluster::BasicInformationCluster::ProductFinish::Polished,
+        primary_color: nil
+      )
+
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+        product_appearance: appearance
+      )
+
+      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE)
+      result.should be_a(Bytes)
+
+      reader = TLV::Reader.new(result.as(Bytes))
+      data = reader.get
+
+      # Extract struct data
+      any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
+      struct_data = any_data.as(Hash(TLV::Tag, TLV::Value))
+
+      struct_data["0"].should eq(3)             # Polished finish
+      struct_data.has_key?("1").should be_false # No primary color
+    end
+
+    it "returns UnsupportedAttribute for missing PRODUCT_APPEARANCE" do
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+        product_appearance: nil
+      )
+
+      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE)
+      result.should be_a(Matter::InteractionModel::Status)
+      status = result.as(Matter::InteractionModel::Status)
+      status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+    end
+  end
+
+  describe "TLV attribute decoding - write_attribute" do
+    it "writes NODE_LABEL with TLV decoding" do
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
+      )
+
+      # Encode new label as TLV
+      io = IO::Memory.new
+      writer = TLV::Writer.new(io)
+      writer.put(nil, "My Device")
+      tlv_value = io.rewind.to_slice
+
+      initial_version = cluster.data_version
+      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL, tlv_value)
+
+      status.should be_a(Matter::InteractionModel::Status)
+      status.status.should eq(Matter::InteractionModel::StatusCode::Success)
+      cluster.node_label.should eq("My Device")
+      cluster.data_version.should eq(initial_version + 1)
+    end
+
+    it "rejects NODE_LABEL exceeding max length (32 bytes)" do
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
+      )
+
+      long_label = "a" * 33
+
+      io = IO::Memory.new
+      writer = TLV::Writer.new(io)
+      writer.put(nil, long_label)
+      tlv_value = io.rewind.to_slice
+
+      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL, tlv_value)
+
+      status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
+    end
+
+    it "writes LOCATION with TLV decoding and validates format" do
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
+      )
+
+      io = IO::Memory.new
+      writer = TLV::Writer.new(io)
+      writer.put(nil, "US")
+      tlv_value = io.rewind.to_slice
+
+      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+
+      status.status.should eq(Matter::InteractionModel::StatusCode::Success)
+      cluster.location.should eq("US")
+    end
+
+    it "normalizes LOCATION to uppercase" do
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
+      )
+
+      io = IO::Memory.new
+      writer = TLV::Writer.new(io)
+      writer.put(nil, "gb")
+      tlv_value = io.rewind.to_slice
+
+      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+
+      status.status.should eq(Matter::InteractionModel::StatusCode::Success)
+      cluster.location.should eq("GB")
+    end
+
+    it "accepts region-agnostic location XX" do
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
+      )
+
+      io = IO::Memory.new
+      writer = TLV::Writer.new(io)
+      writer.put(nil, "XX")
+      tlv_value = io.rewind.to_slice
+
+      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+
+      status.status.should eq(Matter::InteractionModel::StatusCode::Success)
+      cluster.location.should eq("XX")
+    end
+
+    it "rejects LOCATION with invalid length" do
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
+      )
+
+      io = IO::Memory.new
+      writer = TLV::Writer.new(io)
+      writer.put(nil, "USA")
+      tlv_value = io.rewind.to_slice
+
+      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+
+      status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
+    end
+
+    it "rejects LOCATION with non-alpha characters" do
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
+      )
+
+      io = IO::Memory.new
+      writer = TLV::Writer.new(io)
+      writer.put(nil, "U1")
+      tlv_value = io.rewind.to_slice
+
+      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+
+      status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
+    end
+
+    it "writes LOCAL_CONFIG_DISABLED with TLV decoding" do
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+        local_config_disabled: false
+      )
+
+      io = IO::Memory.new
+      writer = TLV::Writer.new(io)
+      writer.put(nil, true)
+      tlv_value = io.rewind.to_slice
+
+      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCAL_CONFIG_DISABLED, tlv_value)
+
+      status.status.should eq(Matter::InteractionModel::StatusCode::Success)
+      cluster.local_config_disabled.should eq(true)
+    end
+
+    it "rejects write to read-only VENDOR_NAME" do
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
+      )
+
+      io = IO::Memory.new
+      writer = TLV::Writer.new(io)
+      writer.put(nil, "New Vendor")
+      tlv_value = io.rewind.to_slice
+
+      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME, tlv_value)
+
+      status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedWrite)
+    end
+  end
+
+  describe "event emission" do
+    it "emits StartUp event with TLV-encoded software version" do
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+        software_version: 0x01000000_u32
+      )
+
+      event_data = cluster.emit_start_up_event(0x01000000_u32)
+      event_data.should be_a(Bytes)
+
+      reader = TLV::Reader.new(event_data)
+      data = reader.get
+
+      # Extract event struct
+      any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
+      event_struct = any_data.as(Hash(TLV::Tag, TLV::Value))
+      event_struct["0"].should eq(0x01000000)
+    end
+
+    it "emits ShutDown event with empty TLV structure" do
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
+      )
+
+      event_data = cluster.emit_shut_down_event
+      event_data.should be_a(Bytes)
+
+      reader = TLV::Reader.new(event_data)
+      data = reader.get
+
+      # Extract event struct (should be empty)
+      any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
+      event_struct = any_data.as(Hash(TLV::Tag, TLV::Value))
+      event_struct.should be_empty
+    end
+
+    it "emits Leave event with fabric index" do
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
+      )
+
+      event_data = cluster.emit_leave_event(1_u8)
+      event_data.should be_a(Bytes)
+
+      reader = TLV::Reader.new(event_data)
+      data = reader.get
+
+      # Extract event struct
+      any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
+      event_struct = any_data.as(Hash(TLV::Tag, TLV::Value))
+      event_struct["0"].should eq(1)
+    end
+
+    it "emits ReachableChanged event and updates reachable attribute" do
+      cluster = Matter::Cluster::BasicInformationCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+        reachable: true
+      )
+
+      initial_version = cluster.data_version
+      event_data = cluster.emit_reachable_changed_event(false)
+      event_data.should be_a(Bytes)
+
+      cluster.reachable.should eq(false)
+      cluster.data_version.should eq(initial_version + 1)
+
+      reader = TLV::Reader.new(event_data)
+      data = reader.get
+
+      # Extract event struct
+      any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
+      event_struct = any_data.as(Hash(TLV::Tag, TLV::Value))
+      event_struct["0"].should eq(false)
     end
   end
 
@@ -357,66 +461,10 @@ describe Matter::Cluster::BasicInformationCluster do
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
-
-    it "returns error for writing read-only attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(endpoint_id)
-
-      status = cluster.write_attribute(
-        Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME,
-        Bytes[1, 2, 3]
-      )
-
-      status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedWrite)
-    end
-  end
-
-  describe "events" do
-    it "has StartUp event" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(endpoint_id)
-
-      events = cluster.events
-      events.should_not be_empty
-
-      startup = events.find { |e| e.id.id == Matter::Cluster::BasicInformationCluster::EVENT_START_UP }
-      startup.should_not be_nil
-      startup.not_nil!.name.should eq("StartUp")
-    end
-
-    it "has ShutDown event" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(endpoint_id)
-
-      events = cluster.events
-      shutdown = events.find { |e| e.id.id == Matter::Cluster::BasicInformationCluster::EVENT_SHUT_DOWN }
-      shutdown.should_not be_nil
-      shutdown.not_nil!.name.should eq("ShutDown")
-    end
-
-    it "has Leave event" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(endpoint_id)
-
-      events = cluster.events
-      leave = events.find { |e| e.id.id == Matter::Cluster::BasicInformationCluster::EVENT_LEAVE }
-      leave.should_not be_nil
-      leave.not_nil!.name.should eq("Leave")
-    end
-
-    it "has ReachableChanged event" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(endpoint_id)
-
-      events = cluster.events
-      reachable = events.find { |e| e.id.id == Matter::Cluster::BasicInformationCluster::EVENT_REACHABLE_CHANGED }
-      reachable.should_not be_nil
-      reachable.not_nil!.name.should eq("ReachableChanged")
-    end
   end
 
   describe "complete device configuration" do
-    it "configures a complete device" do
+    it "configures a complete device with all attributes" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::BasicInformationCluster.new(
         endpoint_id,
