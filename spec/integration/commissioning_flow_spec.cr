@@ -2,6 +2,7 @@ require "../spec_helper"
 require "../../src/matter/clusters/administrator_commissioning"
 require "../../src/matter/clusters/general_commissioning"
 require "../../src/matter/failsafe_context"
+require "../../src/matter/session_manager"
 
 module Matter
   describe "Commissioning Flow Integration" do
@@ -406,6 +407,242 @@ module Matter
         response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
         general_comm.failsafe_armed?.should be_false
         general_comm.breadcrumb.should eq(100_u64) # Not updated on disarm
+      end
+    end
+
+    describe "callback integration with SessionManager" do
+      it "clears PASE sessions on successful commissioning" do
+        # Create integrated system
+        session_manager = SessionManager.new
+        general_comm = Clusters::GeneralCommissioning.new
+
+        # Wire up callback
+        general_comm.on_clear_pase_sessions = -> : Nil {
+          # Clear all PASE sessions from session manager
+          session_manager.pase_session_ids.each do |session_id|
+            session_manager.remove_pase_session(session_id)
+          end
+        }
+
+        # Simulate commissioning: Create some PASE sessions
+        pase_session1 = SessionManager::PaseSession.new(100_u16, passcode: 12345678_u32)
+        pase_session2 = SessionManager::PaseSession.new(101_u16, passcode: 87654321_u32)
+
+        session_manager.add_pase_session(pase_session1)
+        session_manager.add_pase_session(pase_session2)
+        session_manager.pase_session_ids.size.should eq(2)
+
+        # Complete commissioning
+        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 60_u16,
+          breadcrumb: 100_u64
+        )
+        general_comm.arm_failsafe(arm_request, 1_u8, false)
+
+        response = general_comm.commissioning_complete(1_u8, true)
+        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+
+        # PASE sessions should be cleared
+        session_manager.pase_session_ids.should be_empty
+      end
+
+      it "persists fabric table on successful commissioning" do
+        general_comm = Clusters::GeneralCommissioning.new
+        fabric_persisted = false
+        persisted_fabric_data : String? = nil
+
+        # Wire up persistence callback
+        general_comm.on_persist_fabric_table = -> : Nil {
+          # Simulate persisting fabric table to storage
+          fabric_persisted = true
+          persisted_fabric_data = "fabric_table_v1.json" # Mock filename
+        }
+
+        # Complete commissioning
+        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 60_u16,
+          breadcrumb: 100_u64
+        )
+        general_comm.arm_failsafe(arm_request, 1_u8, false)
+
+        response = general_comm.commissioning_complete(1_u8, true)
+        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+
+        # Fabric table should be persisted
+        fabric_persisted.should be_true
+        persisted_fabric_data.should_not be_nil
+      end
+
+      it "integrates with SessionManager for full commissioning flow" do
+        # Create complete system
+        session_manager = SessionManager.new
+        admin_comm = Clusters::AdministratorCommissioning.new
+        general_comm = Clusters::GeneralCommissioning.new
+
+        admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
+
+        # Track events
+        pase_sessions_cleared = false
+        fabric_table_persisted = false
+
+        # Wire up all callbacks
+        general_comm.on_clear_pase_sessions = -> : Nil {
+          session_manager.pase_session_ids.each do |session_id|
+            session_manager.remove_pase_session(session_id)
+          end
+          pase_sessions_cleared = true
+        }
+
+        general_comm.on_persist_fabric_table = -> : Nil {
+          fabric_table_persisted = true
+        }
+
+        # Step 1: Open commissioning window
+        open_request = Clusters::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+          commissioning_timeout: 5_u16
+        )
+        admin_comm.open_basic_commissioning_window(open_request, 1_u8, 0x1234_u16)
+        general_comm.open_commissioning_window
+
+        # Step 2: Establish PASE session (simulated)
+        pase_session = SessionManager::PaseSession.new(1000_u16, passcode: 12345678_u32)
+        session_manager.add_pase_session(pase_session)
+        session_manager.has_pase_session?(1000_u16).should be_true
+
+        # Step 3: Arm failsafe (PASE session)
+        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 5_u16,
+          breadcrumb: 100_u64
+        )
+        general_comm.arm_failsafe(arm_request, nil, true)
+
+        # Step 4: Add NOC and transition to CASE (simulated)
+        # This would create fabric index 2
+        rearm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 5_u16,
+          breadcrumb: 150_u64
+        )
+        general_comm.arm_failsafe(rearm_request, 2_u8, false)
+
+        # Create CASE session
+        case_session = SessionManager::CaseSession.new(
+          session_id: 3000_u16,
+          fabric_index: 2_u8,
+          peer_node_id: 0x2222222222222222_u64,
+          vendor_id: 0x1234_u16
+        )
+        session_manager.add_case_session(case_session)
+
+        # Step 5: Complete commissioning
+        response = general_comm.commissioning_complete(2_u8, true)
+        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+
+        # Verify callbacks were invoked
+        pase_sessions_cleared.should be_true
+        fabric_table_persisted.should be_true
+
+        # Verify PASE session was cleared
+        session_manager.has_pase_session?(1000_u16).should be_false
+
+        # Verify CASE session still exists (not cleared)
+        session_manager.has_case_session?(3000_u16).should be_true
+
+        admin_comm.close
+      end
+
+      it "enforces Terms & Conditions when enabled" do
+        general_comm = Clusters::GeneralCommissioning.new
+        general_comm.terms_conditions_required = true
+
+        # Try to complete commissioning without accepting TC
+        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 60_u16,
+          breadcrumb: 100_u64
+        )
+        general_comm.arm_failsafe(arm_request, 1_u8, false)
+
+        response = general_comm.commissioning_complete(1_u8, true)
+
+        # Should be blocked
+        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::RequiredTCNotAccepted)
+
+        # Now accept and try again
+        general_comm.accept_terms_conditions
+
+        arm_request2 = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 60_u16,
+          breadcrumb: 200_u64
+        )
+        general_comm.arm_failsafe(arm_request2, 1_u8, false)
+
+        response2 = general_comm.commissioning_complete(1_u8, true)
+        response2.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+      end
+
+      it "uses TC callback to check acceptance" do
+        general_comm = Clusters::GeneralCommissioning.new
+        general_comm.terms_conditions_required = true
+
+        tc_check_count = 0
+        tc_accepted = false
+
+        # Wire up TC check callback
+        general_comm.on_check_terms_conditions = -> : Bool {
+          tc_check_count += 1
+          tc_accepted # Return current state
+        }
+
+        # Try to complete commissioning without accepting TC
+        arm_request = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 60_u16,
+          breadcrumb: 100_u64
+        )
+        general_comm.arm_failsafe(arm_request, 1_u8, false)
+
+        response = general_comm.commissioning_complete(1_u8, true)
+
+        # Should be blocked
+        response.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::RequiredTCNotAccepted)
+        tc_check_count.should eq(1)
+
+        # Now accept (externally)
+        tc_accepted = true
+
+        arm_request2 = Clusters::GeneralCommissioning::ArmFailSafeRequest.new(
+          expiry_length_seconds: 60_u16,
+          breadcrumb: 200_u64
+        )
+        general_comm.arm_failsafe(arm_request2, 1_u8, false)
+
+        response2 = general_comm.commissioning_complete(1_u8, true)
+        response2.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+        tc_check_count.should eq(2)
+      end
+
+      it "validates country codes with whitelist" do
+        general_comm = Clusters::GeneralCommissioning.new
+
+        # Configure whitelist for specific countries
+        general_comm.country_code_whitelist = ["US", "CA", "GB", "DE"]
+
+        # Try to set whitelisted country (should succeed)
+        request_us = Clusters::GeneralCommissioning::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: Clusters::GeneralCommissioning::RegulatoryLocationType::Indoor,
+          country_code: "US",
+          breadcrumb: 100_u64
+        )
+        response_us = general_comm.set_regulatory_config(request_us)
+        response_us.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::OK)
+
+        # Try to set non-whitelisted country (should fail)
+        request_jp = Clusters::GeneralCommissioning::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: Clusters::GeneralCommissioning::RegulatoryLocationType::Indoor,
+          country_code: "JP",
+          breadcrumb: 200_u64
+        )
+        response_jp = general_comm.set_regulatory_config(request_jp)
+        response_jp.error_code.should eq(Clusters::GeneralCommissioning::CommissioningError::ValueOutsideRange)
+        response_jp.debug_text.should contain("not in whitelist")
       end
     end
   end
