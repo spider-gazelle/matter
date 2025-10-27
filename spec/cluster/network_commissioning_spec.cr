@@ -305,49 +305,90 @@ describe Matter::Cluster::NetworkCommissioningCluster do
     end
   end
 
-  describe "commands" do
-    it "handles ScanNetworks command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+  describe "protocol-level TLV command handling" do
+    it "handles ScanNetworks TLV command" do
+      backend = Matter::Network::TestBackend.new
       cluster = Matter::Cluster::NetworkCommissioningCluster.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi
+        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        network_type: Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi,
+        backend: backend
       )
 
-      result = cluster.invoke_command(Matter::Cluster::NetworkCommissioningCluster::CMD_SCAN_NETWORKS, Bytes.new(0))
+      # Create TLV request bytes manually
+      io = IO::Memory.new
+      writer = TLV::Writer.new(io)
+      # Empty structure for ScanNetworks with no parameters
+      writer.put(nil, {} of TLV::Tag => TLV::Value)
+      request_bytes = io.rewind.to_slice
+
+      # Invoke command
+      result = cluster.invoke_command(Matter::Cluster::NetworkCommissioningCluster::CMD_SCAN_NETWORKS, request_bytes)
       result.should be_a(Bytes)
+
+      # Parse response
+      response = Matter::Cluster::Definitions::NetworkCommissioning::ScanNetworksResponse.new(result.as(Bytes))
+      response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::Success)
+      response.wifi_scan_results.should_not be_nil
     end
 
-    it "handles AddOrUpdateWiFiNetwork command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+    it "handles AddOrUpdateWiFiNetwork TLV command" do
+      backend = Matter::Network::TestBackend.new
       cluster = Matter::Cluster::NetworkCommissioningCluster.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi
+        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        network_type: Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi,
+        backend: backend
       )
 
-      result = cluster.invoke_command(Matter::Cluster::NetworkCommissioningCluster::CMD_ADD_OR_UPDATE_WIFI_NETWORK, Bytes.new(0))
+      # Create TLV request bytes manually
+      io = IO::Memory.new
+      writer = TLV::Writer.new(io)
+      fields = {
+        0_u8 => "TestSSID".to_slice, # ssid (tag 0)
+        1_u8 => "password".to_slice, # credentials (tag 1)
+      } of TLV::Tag => TLV::Value
+      writer.put(nil, fields)
+      request_bytes = io.rewind.to_slice
+
+      # Invoke command
+      result = cluster.invoke_command(Matter::Cluster::NetworkCommissioningCluster::CMD_ADD_OR_UPDATE_WIFI_NETWORK, request_bytes)
       result.should be_a(Bytes)
+
+      # Parse response
+      response = Matter::Cluster::Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(result.as(Bytes))
+      response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::Success)
     end
 
-    it "handles RemoveNetwork command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+    it "handles ConnectNetwork TLV command" do
+      backend = Matter::Network::TestBackend.new
       cluster = Matter::Cluster::NetworkCommissioningCluster.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi
+        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        network_type: Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi,
+        backend: backend
       )
 
-      result = cluster.invoke_command(Matter::Cluster::NetworkCommissioningCluster::CMD_REMOVE_NETWORK, Bytes.new(0))
-      result.should be_a(Bytes)
-    end
-
-    it "handles ConnectNetwork command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioningCluster.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi
+      # First add a network
+      add_req = Matter::Cluster::NetworkCommissioningCluster::AddOrUpdateWiFiNetworkRequest.new(
+        ssid: "TestNet".to_slice,
+        credentials: "password".to_slice
       )
+      cluster.handle_add_or_update_wifi_network(add_req, failsafe_armed: true)
 
-      result = cluster.invoke_command(Matter::Cluster::NetworkCommissioningCluster::CMD_CONNECT_NETWORK, Bytes.new(0))
+      # Create TLV connect request bytes manually
+      io = IO::Memory.new
+      writer = TLV::Writer.new(io)
+      fields = {
+        0_u8 => "TestNet".to_slice, # network_id (tag 0)
+      } of TLV::Tag => TLV::Value
+      writer.put(nil, fields)
+      request_bytes = io.rewind.to_slice
+
+      # Invoke command
+      result = cluster.invoke_command(Matter::Cluster::NetworkCommissioningCluster::CMD_CONNECT_NETWORK, request_bytes)
       result.should be_a(Bytes)
+
+      # Parse response
+      response = Matter::Cluster::Definitions::NetworkCommissioning::ConnectNetworkResponse.new(result.as(Bytes))
+      response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::Success)
     end
   end
 end

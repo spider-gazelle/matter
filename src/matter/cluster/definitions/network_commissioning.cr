@@ -235,13 +235,13 @@ module Matter
           property status_code : StatusCode
 
           @[TLV::Field(tag: 1)]
-          property debug_text : String
+          property debug_text : String?
 
           # When the NetworkingStatus is Success, this field shall be present. It shall contain the 0-based index of the
           # entry in the Networks attribute that was last added, updated or removed successfully by the associated
           # request command.
           @[TLV::Field(tag: 2)]
-          property networkIndex : UInt8
+          property networkIndex : UInt8?
         end
 
         # Input to the NetworkCommissioning connectNetwork command
@@ -292,7 +292,7 @@ module Matter
           property status_code : StatusCode
 
           @[TLV::Field(tag: 1)]
-          property debug_text : String
+          property debug_text : String?
 
           #   • ErrorValue interpretation for Wi-Fi association errors:
           #
@@ -370,12 +370,12 @@ module Matter
           # selects a lower security connectivity type if the link quality is deemed to be too low to achieve successful
           # operation, or if all retry attempts fail.
           #
-          # See Section 11.8.7.1.2, “Breadcrumb Field” for usage.
+          # See Section 11.8.7.1.2, "Breadcrumb Field" for usage.
           @[TLV::Field(tag: 1)]
           property credentials : Slice(UInt8)
 
           @[TLV::Field(tag: 2)]
-          property breadcrumb : UInt64
+          property breadcrumb : UInt64?
         end
 
         struct AddOrUpdateThreadNetworkRequest

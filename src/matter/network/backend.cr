@@ -1,0 +1,80 @@
+require "./credentials"
+
+module Matter
+  module Network
+    # WiFi Network Info for adding/updating networks
+    struct WiFiNetworkInfo
+      getter ssid : Bytes
+      getter credentials : WiFiCredentials
+
+      def initialize(@ssid : Bytes, credentials : Bytes)
+        @credentials = WiFiCredentials.new(credentials)
+      end
+
+      # Get SSID as string
+      def ssid_string : String
+        String.new(@ssid)
+      end
+    end
+
+    # Abstract base class for platform-specific network operations
+    #
+    # Implementations of this class provide the actual platform-specific code
+    # for scanning, connecting, and managing WiFi and Thread networks.
+    #
+    # The NetworkCommissioningCluster delegates to this backend for all
+    # actual network operations.
+    abstract class Backend
+      # Scan for available WiFi networks
+      #
+      # @param ssid Optional SSID string for directed scan (nil for broadcast scan)
+      # @return Array of discovered WiFi networks
+      abstract def scan_wifi(ssid : String?) : Array(Cluster::NetworkCommissioningCluster::WiFiInterfaceScanResult)
+
+      # Scan for available Thread networks
+      #
+      # @return Array of discovered Thread networks
+      abstract def scan_thread : Array(Cluster::NetworkCommissioningCluster::ThreadInterfaceScanResult)
+
+      # Add or update a WiFi network configuration
+      #
+      # The WiFiNetworkInfo contains the SSID and parsed credentials with
+      # inferred security type, making it easy to configure the network.
+      #
+      # @param network_info Parsed WiFi network information
+      # @return True if successful
+      abstract def add_wifi_network(network_info : WiFiNetworkInfo) : Bool
+
+      # Add or update a Thread network configuration
+      #
+      # The ThreadCredentials contain the operational dataset and parsed
+      # key parameters like Extended PAN ID, network name, etc.
+      #
+      # @param credentials Parsed Thread network credentials
+      # @return True if successful
+      abstract def add_thread_network(credentials : ThreadCredentials) : Bool
+
+      # Remove a network configuration
+      #
+      # @param network_id Network identifier (SSID for WiFi, XPAN for Thread)
+      # @return True if successful
+      abstract def remove_network(network_id : Bytes) : Bool
+
+      # Connect to a configured network
+      #
+      # @param network_id Network identifier (SSID for WiFi, XPAN for Thread)
+      # @return Tuple of (success, error_value)
+      #         error_value is platform-specific error code (e.g., 802.11 status code for WiFi)
+      abstract def connect_network(network_id : Bytes) : {Bool, Int32?}
+
+      # Disconnect from current network
+      abstract def disconnect_network : Nil
+
+      # Check if a network is currently connected
+      #
+      # @param network_id Network identifier (SSID for WiFi, XPAN for Thread)
+      # @return True if connected
+      abstract def is_connected?(network_id : Bytes) : Bool
+    end
+  end
+end

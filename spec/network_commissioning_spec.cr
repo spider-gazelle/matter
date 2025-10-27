@@ -86,8 +86,10 @@ describe Matter::Cluster::NetworkCommissioningCluster do
     end
 
     it "performs WiFi scan when WiFi feature enabled" do
+      backend = Matter::Network::TestBackend.new
       cluster = Matter::Cluster::NetworkCommissioningCluster.new(
-        features: Matter::Cluster::NetworkCommissioningCluster::Feature::WiFiNetworkInterface
+        features: Matter::Cluster::NetworkCommissioningCluster::Feature::WiFiNetworkInterface,
+        backend: backend
       )
       cmd = Matter::Cluster::NetworkCommissioningCluster::ScanNetworksRequest.new
 
@@ -99,8 +101,10 @@ describe Matter::Cluster::NetworkCommissioningCluster do
     end
 
     it "performs Thread scan when Thread feature enabled" do
+      backend = Matter::Network::TestBackend.new
       cluster = Matter::Cluster::NetworkCommissioningCluster.new(
-        features: Matter::Cluster::NetworkCommissioningCluster::Feature::ThreadNetworkInterface
+        features: Matter::Cluster::NetworkCommissioningCluster::Feature::ThreadNetworkInterface,
+        backend: backend
       )
       cmd = Matter::Cluster::NetworkCommissioningCluster::ScanNetworksRequest.new
 
@@ -112,8 +116,10 @@ describe Matter::Cluster::NetworkCommissioningCluster do
     end
 
     it "performs directed WiFi scan with SSID filter" do
+      backend = Matter::Network::TestBackend.new
       cluster = Matter::Cluster::NetworkCommissioningCluster.new(
-        features: Matter::Cluster::NetworkCommissioningCluster::Feature::WiFiNetworkInterface
+        features: Matter::Cluster::NetworkCommissioningCluster::Feature::WiFiNetworkInterface,
+        backend: backend
       )
       ssid = "TestSSID".to_slice
       cmd = Matter::Cluster::NetworkCommissioningCluster::ScanNetworksRequest.new(ssid: ssid)

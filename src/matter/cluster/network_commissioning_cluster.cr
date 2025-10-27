@@ -1,4 +1,6 @@
 require "./cluster"
+require "./definitions/network_commissioning"
+require "../network/backend"
 require "log"
 require "base64"
 require "json"
@@ -332,11 +334,10 @@ module Matter
       property supported_thread_features : ThreadCapabilitiesBitmap?
       property thread_version : UInt16?
 
-      # Callbacks
-      property on_scan_networks : Proc(NetworkType, Bytes?, Array(WiFiInterfaceScanResult | ThreadInterfaceScanResult))?
-      property on_add_network : Proc(Bytes, Bytes, NetworkCommissioningStatus, Nil)?
-      property on_remove_network : Proc(Bytes, NetworkCommissioningStatus, Nil)?
-      property on_connect_network : Proc(Bytes, NetworkCommissioningStatus, Int32?, Nil)?
+      # Platform backend for network operations (required)
+      property backend : Network::Backend?
+
+      # Callback for breadcrumb updates
       property breadcrumb_callback : Proc(UInt64, Nil)?
 
       # Additional state for connected network tracking
@@ -350,6 +351,7 @@ module Matter
         features : Feature? = nil,
         @scan_max_time_seconds : UInt8 = 30_u8,
         @connect_max_time_seconds : UInt8 = 60_u8,
+        @backend : Network::Backend? = nil,
       )
         # Allow 'features' parameter as alias for 'feature_map' for compatibility
         @feature_map = features if features
@@ -398,10 +400,6 @@ module Matter
           @thread_version = nil
         end
 
-        @on_scan_networks = nil
-        @on_add_network = nil
-        @on_remove_network = nil
-        @on_connect_network = nil
         @breadcrumb_callback = nil
       end
 
@@ -549,20 +547,22 @@ module Matter
         end
       end
 
+      # Protocol-level command handling
+      # Parses TLV-encoded request bytes, calls high-level handlers, and encodes TLV response
       protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Bytes
         case command_id
         when CMD_SCAN_NETWORKS
-          handle_scan_networks_bytes(fields)
+          handle_scan_networks_tlv(fields)
         when CMD_ADD_OR_UPDATE_WIFI_NETWORK
-          handle_add_or_update_wifi_network_bytes(fields)
+          handle_add_or_update_wifi_network_tlv(fields)
         when CMD_ADD_OR_UPDATE_THREAD_NETWORK
-          handle_add_or_update_thread_network_bytes(fields)
+          handle_add_or_update_thread_network_tlv(fields)
         when CMD_REMOVE_NETWORK
-          handle_remove_network_bytes(fields)
+          handle_remove_network_tlv(fields)
         when CMD_CONNECT_NETWORK
-          handle_connect_network_bytes(fields)
+          handle_connect_network_tlv(fields)
         when CMD_REORDER_NETWORK
-          handle_reorder_network_bytes(fields)
+          handle_reorder_network_tlv(fields)
         else
           super
         end
@@ -641,19 +641,34 @@ module Matter
         # Check if network already exists (update) or new (add)
         existing_index = @networks.index { |n| n.network_id == cmd.ssid }
 
+        # Check max networks limit for new additions
+        if !existing_index && @networks.size >= @max_networks
+          return NetworkConfigResponse.new(
+            networking_status: NetworkCommissioningStatus::BoundsExceeded,
+            debug_text: "Max networks limit reached"
+          )
+        end
+
+        # Use backend to add/update network configuration
+        if backend = @backend
+          # Create WiFiNetworkInfo with parsed credentials
+          network_info = Network::WiFiNetworkInfo.new(cmd.ssid, cmd.credentials)
+          success = backend.add_wifi_network(network_info)
+          unless success
+            return NetworkConfigResponse.new(
+              networking_status: NetworkCommissioningStatus::UnknownError,
+              debug_text: "Backend failed to add WiFi network"
+            )
+          end
+        end
+
+        # Update internal state
         if existing_index
           # Update existing network
           @networks[existing_index] = NetworkInfo.new(cmd.ssid, @networks[existing_index].connected)
           network_index = existing_index.to_u8
         else
           # Add new network
-          if @networks.size >= @max_networks
-            return NetworkConfigResponse.new(
-              networking_status: NetworkCommissioningStatus::BoundsExceeded,
-              debug_text: "Max networks limit reached"
-            )
-          end
-
           @networks << NetworkInfo.new(cmd.ssid, false)
           network_index = (@networks.size - 1).to_u8
         end
@@ -665,9 +680,6 @@ module Matter
         @last_networking_status = NetworkCommissioningStatus::Success
         @last_network_id = cmd.ssid
         update_breadcrumb(cmd.breadcrumb)
-
-        # Call callback if set
-        @on_add_network.try &.call(cmd.ssid, cmd.credentials, NetworkCommissioningStatus::Success)
 
         NetworkConfigResponse.new(
           networking_status: NetworkCommissioningStatus::Success,
@@ -696,26 +708,40 @@ module Matter
           )
         end
 
-        # Extract XPAN ID from operational dataset (simplified - real implementation would parse TLV)
-        # For now, use first 8 bytes as network ID
-        network_id = cmd.operational_dataset.size >= 8 ? cmd.operational_dataset[0, 8] : cmd.operational_dataset
+        # Extract XPAN ID from operational dataset
+        network_id = extract_thread_network_id(cmd.operational_dataset)
 
         # Check if network already exists
         existing_index = @networks.index { |n| n.network_id == network_id }
 
+        # Check max networks limit for new additions
+        if !existing_index && @networks.size >= @max_networks
+          return NetworkConfigResponse.new(
+            networking_status: NetworkCommissioningStatus::BoundsExceeded,
+            debug_text: "Max networks limit reached"
+          )
+        end
+
+        # Use backend to add/update network configuration
+        if backend = @backend
+          # Create ThreadCredentials with parsed operational dataset
+          credentials = Network::ThreadCredentials.new(cmd.operational_dataset)
+          success = backend.add_thread_network(credentials)
+          unless success
+            return NetworkConfigResponse.new(
+              networking_status: NetworkCommissioningStatus::UnknownError,
+              debug_text: "Backend failed to add Thread network"
+            )
+          end
+        end
+
+        # Update internal state
         if existing_index
           # Update existing network
           @networks[existing_index] = NetworkInfo.new(network_id, @networks[existing_index].connected)
           network_index = existing_index.to_u8
         else
           # Add new network
-          if @networks.size >= @max_networks
-            return NetworkConfigResponse.new(
-              networking_status: NetworkCommissioningStatus::BoundsExceeded,
-              debug_text: "Max networks limit reached"
-            )
-          end
-
           @networks << NetworkInfo.new(network_id, false)
           network_index = (@networks.size - 1).to_u8
         end
@@ -727,9 +753,6 @@ module Matter
         @last_networking_status = NetworkCommissioningStatus::Success
         @last_network_id = network_id
         update_breadcrumb(cmd.breadcrumb)
-
-        # Call callback if set
-        @on_add_network.try &.call(network_id, cmd.operational_dataset, NetworkCommissioningStatus::Success)
 
         NetworkConfigResponse.new(
           networking_status: NetworkCommissioningStatus::Success,
@@ -760,6 +783,17 @@ module Matter
           )
         end
 
+        # Use backend to remove network configuration
+        if backend = @backend
+          success = backend.remove_network(cmd.network_id)
+          unless success
+            return NetworkConfigResponse.new(
+              networking_status: NetworkCommissioningStatus::UnknownError,
+              debug_text: "Backend failed to remove network"
+            )
+          end
+        end
+
         # Remove network (maintains relative order of remaining entries)
         @networks.delete_at(index)
 
@@ -771,9 +805,6 @@ module Matter
         @last_networking_status = NetworkCommissioningStatus::Success
         @last_network_id = cmd.network_id
         update_breadcrumb(cmd.breadcrumb)
-
-        # Call callback if set
-        @on_remove_network.try &.call(cmd.network_id, NetworkCommissioningStatus::Success)
 
         NetworkConfigResponse.new(
           networking_status: NetworkCommissioningStatus::Success,
@@ -804,7 +835,28 @@ module Matter
           )
         end
 
-        # Simulate connection (real implementation would actually connect)
+        # Use backend to connect to network
+        success = true
+        error_value = nil
+
+        if backend = @backend
+          success, error_value = backend.connect_network(cmd.network_id)
+          unless success
+            # Connection failed - update state and return error
+            @last_networking_status = NetworkCommissioningStatus::OtherConnectionFailure
+            @last_network_id = cmd.network_id
+            @last_connect_error_value = error_value
+            update_breadcrumb(cmd.breadcrumb)
+
+            return ConnectNetworkResponse.new(
+              networking_status: NetworkCommissioningStatus::OtherConnectionFailure,
+              debug_text: "Connection failed",
+              error_value: error_value
+            )
+          end
+        end
+
+        # Connection succeeded - update internal state
         # Set target network as connected, others as disconnected
         @networks = @networks.map_with_index do |network, i|
           NetworkInfo.new(network.network_id, i == index)
@@ -817,9 +869,6 @@ module Matter
         @last_network_id = cmd.network_id
         @last_connect_error_value = nil
         update_breadcrumb(cmd.breadcrumb)
-
-        # Call callback if set
-        @on_connect_network.try &.call(cmd.network_id, NetworkCommissioningStatus::Success, nil)
 
         ConnectNetworkResponse.new(
           networking_status: NetworkCommissioningStatus::Success,
@@ -884,35 +933,212 @@ module Matter
         )
       end
 
-      # Low-level command handlers that parse bytes (called by handle_command)
-      private def handle_scan_networks_bytes(fields : Bytes) : Bytes
-        # Simplified implementation - would need proper TLV parsing
-        Bytes.new(0)
+      # TLV-level command handlers that parse bytes and encode responses
+      # These bridge protocol-level TLV encoding with high-level struct handlers
+
+      private def handle_scan_networks_tlv(fields : Bytes) : Bytes
+        # Parse TLV request
+        tlv_req = Definitions::NetworkCommissioning::ScanAvailableNetworksRequest.new(fields)
+
+        # Convert to simple struct
+        req = ScanNetworksRequest.new(
+          ssid: tlv_req.ssid,
+          breadcrumb: tlv_req.breadcrumb
+        )
+
+        # Call high-level handler (pass true - failsafe checks done at protocol layer)
+        response = handle_scan_networks(req, failsafe_armed: true)
+
+        # Convert internal response to TLV Definitions response
+        # Build response using TLV::Serializable struct .to_h method then encode
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        # Start structure
+        writer.start_structure(nil)
+
+        # status_code (tag 0, required)
+        writer.put(0_u8, response.networking_status.value)
+
+        # debug_text (tag 1, optional)
+        writer.put(1_u8, response.debug_text) if response.debug_text
+
+        # wifi_scan_results (tag 2, optional array)
+        if wifi_results = response.wifi_scan_results
+          if !wifi_results.empty?
+            writer.start_array(2_u8)
+            wifi_results.each do |r|
+              # Skip results with missing required fields
+              next unless r.ssid && r.bssid && r.channel
+
+              # Each array element is an anonymous structure
+              writer.start_structure(nil)
+              writer.put(0_u8, r.security.try(&.value) || 0_u8)         # security
+              writer.put(1_u8, r.ssid.not_nil!)                         # ssid
+              writer.put(2_u8, r.bssid.not_nil!)                        # bssid
+              writer.put(3_u8, r.channel.not_nil!)                      # channel
+              writer.put(4_u8, r.wifi_band.try(&.value)) if r.wifi_band # band (optional)
+              writer.put(5_u8, r.rssi) if r.rssi                        # rssi (optional)
+              writer.end_container                                      # End WiFiInterfaceScanResult structure
+            end
+            writer.end_container # End array
+          end
+        end
+
+        # thread_scan_results (tag 3, optional array)
+        if thread_results = response.thread_scan_results
+          if !thread_results.empty?
+            writer.start_array(3_u8)
+            thread_results.each do |r|
+              writer.start_structure(nil)
+              writer.put(0_u8, r.pan_id) if r.pan_id
+              writer.put(1_u8, r.extended_pan_id) if r.extended_pan_id
+              writer.put(2_u8, r.network_name) if r.network_name
+              writer.put(3_u8, r.channel) if r.channel
+              writer.put(4_u8, r.version) if r.version
+              writer.put(5_u8, r.extended_address) if r.extended_address
+              writer.put(6_u8, r.rssi) if r.rssi
+              writer.put(7_u8, r.lqi) if r.lqi
+              writer.end_container # End ThreadInterfaceScanResult structure
+            end
+            writer.end_container # End array
+          end
+        end
+
+        writer.end_container # End ScanNetworksResponse structure
+        io.rewind.to_slice
       end
 
-      private def handle_add_or_update_wifi_network_bytes(fields : Bytes) : Bytes
-        # Simplified implementation - would need proper TLV parsing
-        Bytes.new(0)
+      private def handle_add_or_update_wifi_network_tlv(fields : Bytes) : Bytes
+        # Parse TLV request
+        tlv_req = Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest.new(fields)
+
+        # Convert to simple struct
+        req = AddOrUpdateWiFiNetworkRequest.new(
+          ssid: tlv_req.ssid,
+          credentials: tlv_req.credentials,
+          breadcrumb: tlv_req.breadcrumb
+        )
+
+        # Call high-level handler (pass true - failsafe checks done at protocol layer)
+        response = handle_add_or_update_wifi_network(req, failsafe_armed: true)
+
+        # Build TLV response hash
+        response_fields = {} of TLV::Tag => TLV::Value
+        response_fields[0_u8] = response.networking_status.value                 # networking_status
+        response_fields[1_u8] = response.debug_text if response.debug_text       # debug_text
+        response_fields[2_u8] = response.network_index if response.network_index # network_index
+
+        # Encode to bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, response_fields)
+        io.rewind.to_slice
       end
 
-      private def handle_add_or_update_thread_network_bytes(fields : Bytes) : Bytes
-        # Simplified implementation - would need proper TLV parsing
-        Bytes.new(0)
+      private def handle_add_or_update_thread_network_tlv(fields : Bytes) : Bytes
+        # Parse TLV request
+        tlv_req = Definitions::NetworkCommissioning::AddOrUpdateThreadNetworkRequest.new(fields)
+
+        # Convert to simple struct
+        req = AddOrUpdateThreadNetworkRequest.new(
+          operational_dataset: tlv_req.operational_dataset,
+          breadcrumb: tlv_req.breadcrumb
+        )
+
+        # Call high-level handler (pass true - failsafe checks done at protocol layer)
+        response = handle_add_or_update_thread_network(req, failsafe_armed: true)
+
+        # Build TLV response hash
+        response_fields = {} of TLV::Tag => TLV::Value
+        response_fields[0_u8] = response.networking_status.value                 # networking_status
+        response_fields[1_u8] = response.debug_text if response.debug_text       # debug_text
+        response_fields[2_u8] = response.network_index if response.network_index # network_index
+
+        # Encode to bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, response_fields)
+        io.rewind.to_slice
       end
 
-      private def handle_remove_network_bytes(fields : Bytes) : Bytes
-        # Simplified implementation - would need proper TLV parsing
-        Bytes.new(0)
+      private def handle_remove_network_tlv(fields : Bytes) : Bytes
+        # Parse TLV request
+        tlv_req = Definitions::NetworkCommissioning::RemoveNetworkRequest.new(fields)
+
+        # Convert to simple struct
+        req = RemoveNetworkRequest.new(
+          network_id: tlv_req.network_id,
+          breadcrumb: tlv_req.breadcrumb
+        )
+
+        # Call high-level handler (pass true - failsafe checks done at protocol layer)
+        response = handle_remove_network(req, failsafe_armed: true)
+
+        # Build TLV response hash
+        response_fields = {} of TLV::Tag => TLV::Value
+        response_fields[0_u8] = response.networking_status.value                 # networking_status
+        response_fields[1_u8] = response.debug_text if response.debug_text       # debug_text
+        response_fields[2_u8] = response.network_index if response.network_index # network_index
+
+        # Encode to bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, response_fields)
+        io.rewind.to_slice
       end
 
-      private def handle_connect_network_bytes(fields : Bytes) : Bytes
-        # Simplified implementation - would need proper TLV parsing
-        Bytes.new(0)
+      private def handle_connect_network_tlv(fields : Bytes) : Bytes
+        # Parse TLV request
+        tlv_req = Definitions::NetworkCommissioning::ConnectNetworkRequest.new(fields)
+
+        # Convert to simple struct
+        req = ConnectNetworkRequest.new(
+          network_id: tlv_req.network_id,
+          breadcrumb: tlv_req.breadcrumb
+        )
+
+        # Call high-level handler (pass true - failsafe checks done at protocol layer)
+        response = handle_connect_network(req, failsafe_armed: true)
+
+        # Build TLV response hash
+        response_fields = {} of TLV::Tag => TLV::Value
+        response_fields[0_u8] = response.networking_status.value           # networking_status (required)
+        response_fields[1_u8] = response.debug_text if response.debug_text # debug_text (optional)
+        response_fields[2_u8] = response.error_value                       # error_value (required nullable - always include even if nil)
+
+        # Encode to bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, response_fields)
+        io.rewind.to_slice
       end
 
-      private def handle_reorder_network_bytes(fields : Bytes) : Bytes
-        # Simplified implementation - would need proper TLV parsing
-        Bytes.new(0)
+      private def handle_reorder_network_tlv(fields : Bytes) : Bytes
+        # Parse TLV request
+        tlv_req = Definitions::NetworkCommissioning::ReorderNetworkRequest.new(fields)
+
+        # Convert to simple struct
+        req = ReorderNetworkRequest.new(
+          network_id: tlv_req.network_id,
+          network_index: tlv_req.networkIndex,
+          breadcrumb: tlv_req.breadcrumb
+        )
+
+        # Call high-level handler (pass true - failsafe checks done at protocol layer)
+        response = handle_reorder_network(req, failsafe_armed: true)
+
+        # Build TLV response hash
+        response_fields = {} of TLV::Tag => TLV::Value
+        response_fields[0_u8] = response.networking_status.value                 # networking_status
+        response_fields[1_u8] = response.debug_text if response.debug_text       # debug_text
+        response_fields[2_u8] = response.network_index if response.network_index # network_index
+
+        # Encode to bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, response_fields)
+        io.rewind.to_slice
       end
 
       # Restore network state from snapshot (used during failsafe rollback)
@@ -978,85 +1204,37 @@ module Matter
       end
 
       private def perform_wifi_scan(ssid : Bytes?) : Array(WiFiInterfaceScanResult)
-        # Simplified WiFi scan simulation
-        # Real implementation would use platform WiFi APIs
-        results = [] of WiFiInterfaceScanResult
-
-        # Call callback if set
-        if callback = @on_scan_networks
-          return callback.call(@network_type, ssid).select(WiFiInterfaceScanResult)
+        backend = @backend
+        unless backend
+          Log.warn { "No network backend configured for WiFi scan - returning empty results" }
+          return [] of WiFiInterfaceScanResult
         end
 
-        # Simulate finding networks
-        if ssid
-          # Directed scan - return single result if found
-          results << WiFiInterfaceScanResult.new(
-            security: WiFiSecurityType::WPA2,
-            ssid: ssid,
-            bssid: Bytes[0x00, 0x11, 0x22, 0x33, 0x44, 0x55],
-            channel: 6_u16,
-            wifi_band: WiFiBandEnum::Band2G4,
-            rssi: -50_i8
-          )
-        else
-          # Full scan - return multiple results
-          results << WiFiInterfaceScanResult.new(
-            security: WiFiSecurityType::WPA3,
-            ssid: "TestNetwork1".to_slice,
-            bssid: Bytes[0x00, 0x11, 0x22, 0x33, 0x44, 0x55],
-            channel: 6_u16,
-            wifi_band: WiFiBandEnum::Band2G4,
-            rssi: -45_i8
-          )
-
-          results << WiFiInterfaceScanResult.new(
-            security: WiFiSecurityType::WPA2,
-            ssid: "TestNetwork2".to_slice,
-            bssid: Bytes[0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF],
-            channel: 11_u16,
-            wifi_band: WiFiBandEnum::Band2G4,
-            rssi: -60_i8
-          )
-        end
-
-        # Sort by RSSI (strongest first)
-        results.sort_by! { |r| -(r.rssi || -100) }
-        results
+        # Convert SSID bytes to string for backend
+        ssid_string = ssid ? String.new(ssid) : nil
+        backend.scan_wifi(ssid_string)
       end
 
       private def perform_thread_scan : Array(ThreadInterfaceScanResult)
-        # Simplified Thread scan simulation
-        # Real implementation would use platform Thread APIs
-        results = [] of ThreadInterfaceScanResult
-
-        # Call callback if set
-        if callback = @on_scan_networks
-          return callback.call(@network_type, nil).select(ThreadInterfaceScanResult)
+        backend = @backend
+        unless backend
+          Log.warn { "No network backend configured for Thread scan - returning empty results" }
+          return [] of ThreadInterfaceScanResult
         end
 
-        results << ThreadInterfaceScanResult.new(
-          pan_id: 0x1234_u16,
-          extended_pan_id: 0x1122334455667788_u64,
-          network_name: "TestThread1",
-          channel: 15_u16,
-          version: 4_u8,
-          rssi: -50_i8,
-          lqi: 200_u8
-        )
+        backend.scan_thread
+      end
 
-        results << ThreadInterfaceScanResult.new(
-          pan_id: 0x5678_u16,
-          extended_pan_id: 0x8877665544332211_u64,
-          network_name: "TestThread2",
-          channel: 20_u16,
-          version: 4_u8,
-          rssi: -65_i8,
-          lqi: 150_u8
-        )
-
-        # Sort by LQI (highest first) - convert to Int32 for negation
-        results.sort_by! { |r| -(r.lqi || 0_u8).to_i32 }
-        results
+      # Extract Extended PAN ID (network ID) from Thread Operational Dataset
+      #
+      # The Operational Dataset is TLV-encoded Thread network parameters.
+      # Extended PAN ID is a 64-bit value (8 bytes) with TLV type 0x02.
+      #
+      # Uses ThreadCredentials to parse the TLV-encoded dataset and extract
+      # the Extended PAN ID field.
+      private def extract_thread_network_id(operational_dataset : Bytes) : Bytes
+        credentials = Network::ThreadCredentials.new(operational_dataset)
+        credentials.network_id
       end
 
       # Helper: Get current connected network
