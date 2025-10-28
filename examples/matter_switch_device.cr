@@ -5,6 +5,7 @@ require "../src/matter/mdns/service_type"
 require "../src/matter/mdns/service_description"
 require "../src/matter/constants/device_types"
 require "../src/matter/fabric"
+require "../src/matter/setup_payload"
 require "../src/matter" # This includes all the required modules including TLV
 
 # Matter Switch Device Example
@@ -28,6 +29,7 @@ module MatterSwitch
     property discriminator : UInt16
     property vendor_id : UInt16
     property product_id : UInt16
+    property setup_pin : UInt32
 
     def initialize(
       @device_name = "Matter Switch",
@@ -37,6 +39,7 @@ module MatterSwitch
       @discriminator = 3840_u16,
       @vendor_id = 0xFFF1_u16,
       @product_id = 0x8001_u16,
+      @setup_pin = Matter::SetupPayload.default_pin,
     )
     end
 
@@ -258,9 +261,9 @@ module MatterSwitch
     end
 
     def generate_setup_code : String
-      # Generate a simple setup code for demo purposes
-      # In a real device, this would be QR code compatible
-      "#{@state.vendor_id.to_s.rjust(4, '0')}-#{@state.product_id.to_s.rjust(4, '0')}-#{@state.discriminator.to_s.rjust(4, '0')}"
+      # Generate Matter manual pairing code using proper encoding
+      # Format: xxxx-xxx-xxxx (11 digits with Verhoeff check digit)
+      Matter::SetupPayload.generate_manual_code(@state.discriminator, @state.setup_pin)
     end
 
     def run_interactive_loop
