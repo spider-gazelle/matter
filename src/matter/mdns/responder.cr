@@ -25,6 +25,11 @@ module Matter
 
       @running : Bool
       @receive_fiber : Fiber?
+      @receive_socket : UDPSocket?
+
+      # Currently advertised services (for responding to queries)
+      # Key: instance name, Value: {service_type, port, txt_records}
+      @advertised_services : Hash(String, {ServiceType, Int32, Hash(String, String)})
 
       # Callback for received queries
       # Signature: (query : DNS::Packet, peer_address : Socket::IPAddress) -> Nil
@@ -37,11 +42,27 @@ module Matter
         @socket.bind("0.0.0.0", 0) # Bind to ephemeral port for sending
         @running = false
         @receive_fiber = nil
+        @receive_socket = nil
+        @advertised_services = Hash(String, {ServiceType, Int32, Hash(String, String)}).new
       end
 
       # Start listening for mDNS queries
       def start : Nil
         return if @running
+
+        # Setup receive socket for multicast
+        @receive_socket = UDPSocket.new
+        @receive_socket.not_nil!.reuse_address = true
+        @receive_socket.not_nil!.reuse_port = true
+        @receive_socket.not_nil!.bind("0.0.0.0", MDNS_PORT)
+        @receive_socket.not_nil!.read_timeout = 100.milliseconds
+
+        # Join multicast group
+        begin
+          @receive_socket.not_nil!.join_group(MDNS_IPV4)
+        rescue ex
+          puts "Warning: Could not join IPv4 multicast group: #{ex.message}"
+        end
 
         @running = true
         @receive_fiber = spawn do
@@ -54,6 +75,12 @@ module Matter
         @running = false
         sleep 200.milliseconds if @receive_fiber
         @receive_fiber = nil
+
+        # Close receive socket
+        if sock = @receive_socket
+          sock.close unless sock.closed?
+          @receive_socket = nil
+        end
       end
 
       # Close responder
@@ -70,6 +97,9 @@ module Matter
       ) : Nil
         service = ServiceNames::COMMISSIONING
         instance = ServiceNames.commissioning_instance(info.device_name)
+
+        # Track this service for query responses
+        @advertised_services[instance] = {ServiceType::Commissioning, port, info.to_txt_records}
 
         records = build_service_records(
           service: service,
@@ -91,6 +121,9 @@ module Matter
         service = ServiceNames::OPERATIONAL
         instance = ServiceNames.operational_instance(info.fabric_id, info.node_id)
 
+        # Track this service for query responses
+        @advertised_services[instance] = {ServiceType::Operational, port, info.to_txt_records}
+
         records = build_service_records(
           service: service,
           instance: instance,
@@ -105,6 +138,9 @@ module Matter
       # Send goodbye announcement (TTL=0) to remove service
       def send_goodbye(service_type : ServiceType, instance : String) : Nil
         service = ServiceNames.service_name(service_type)
+
+        # Remove from advertised services
+        @advertised_services.delete(instance)
 
         # Build PTR record with TTL=0
         ptr = RecordBuilder.build_ptr(service, instance, 0.seconds)
@@ -215,12 +251,110 @@ module Matter
       end
 
       private def receive_loop : Nil
-        # For now, just a placeholder for query handling
-        # The responder can operate in announcement-only mode
-        # Full query handling will be added later
+        return unless sock = @receive_socket
+
+        buffer = Bytes.new(9000) # Max DNS packet size
+
         while @running
-          sleep 1.second
+          begin
+            bytes_read, peer_address = sock.receive(buffer)
+            next if bytes_read == 0
+
+            data = buffer[0, bytes_read]
+            packet = DNS::Packet.from_slice(data)
+
+            # Only process queries (not responses)
+            next if packet.response?
+
+            # Call user callback if set
+            @on_query.try(&.call(packet, peer_address))
+
+            # Process query and respond if it matches our services
+            process_query(packet)
+          rescue IO::TimeoutError
+            # Normal - continue
+          rescue ex : Exception
+            puts "Error receiving mDNS packet: #{ex.message}"
+          end
         end
+      end
+
+      private def process_query(query : DNS::Packet) : Nil
+        # Check if any questions match our advertised services
+        query.questions.each do |question|
+          # Check for service type queries (PTR)
+          if question.type == RecordBuilder::TYPE_PTR
+            check_service_query(question.name)
+            # Check for specific instance queries (SRV, TXT, A, AAAA)
+          elsif question.type.in?(RecordBuilder::TYPE_SRV, RecordBuilder::TYPE_TXT, RecordBuilder::TYPE_A, RecordBuilder::TYPE_AAAA)
+            check_instance_query(question.name)
+            # Check for hostname queries
+          elsif question.name == @hostname
+            send_hostname_response
+          end
+        end
+      end
+
+      private def check_service_query(service_name : String) : Nil
+        # Check if query matches our service types
+        @advertised_services.each do |instance, (service_type, port, txt_records)|
+          expected_service = ServiceNames.service_name(service_type)
+
+          if service_name == expected_service
+            # Respond with our service
+            records = build_service_records(
+              service: expected_service,
+              instance: instance,
+              port: port,
+              txt_records: txt_records,
+              ttl: DEFAULT_TTL
+            )
+            send_announcement(records)
+          end
+        end
+      end
+
+      private def check_instance_query(instance_name : String) : Nil
+        # Check if query matches one of our advertised instances
+        if service_info = @advertised_services[instance_name]?
+          service_type, port, txt_records = service_info
+          service = ServiceNames.service_name(service_type)
+
+          # Respond with our instance
+          records = build_service_records(
+            service: service,
+            instance: instance_name,
+            port: port,
+            txt_records: txt_records,
+            ttl: DEFAULT_TTL
+          )
+          send_announcement(records)
+        end
+      end
+
+      private def send_hostname_response : Nil
+        # Send A/AAAA records for our hostname
+        records = [] of DNS::Packet::ResourceRecord
+
+        @ip_addresses.each do |ip|
+          case ip.family
+          when .inet?
+            records << RecordBuilder.build_a(@hostname, ip, DEFAULT_TTL)
+          when .inet6?
+            records << RecordBuilder.build_aaaa(@hostname, ip, DEFAULT_TTL)
+          end
+        end
+
+        return if records.empty?
+
+        packet = DNS::Packet.new(
+          id: 0_u16,
+          response: true,
+          authoritative_answer: true,
+          answers: records
+        )
+
+        send_multicast(packet)
       end
     end
   end

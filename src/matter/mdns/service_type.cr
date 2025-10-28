@@ -98,7 +98,7 @@ module Matter
       property product_id : UInt16
       property discriminator : UInt16
       property device_type : UInt16
-      property commissioning_mode : UInt8 # 0=basic, 1=enhanced
+      property commissioning_mode : MDNS::CommissioningMode
       property pairing_hint : UInt16?
       property pairing_instruction : String?
 
@@ -108,7 +108,7 @@ module Matter
         @product_id : UInt16,
         @discriminator : UInt16,
         @device_type : UInt16,
-        @commissioning_mode : UInt8 = 0_u8,
+        @commissioning_mode : MDNS::CommissioningMode = MDNS::CommissioningMode::Disabled,
         @pairing_hint : UInt16? = nil,
         @pairing_instruction : String? = nil,
       )
@@ -119,7 +119,7 @@ module Matter
         records = {
           "VP" => "#{@vendor_id}+#{@product_id}",
           "D"  => @discriminator.to_s,
-          "CM" => @commissioning_mode.to_s,
+          "CM" => @commissioning_mode.value.to_s,
           "DT" => @device_type.to_s,
           "DN" => @device_name,
         }

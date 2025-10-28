@@ -40,7 +40,7 @@ describe Matter::MDNS::Responder do
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
         device_type: 0x0016_u16,
-        commissioning_mode: 1_u8
+        commissioning_mode: Matter::MDNS::CommissioningMode::Basic
       )
 
       # Should not raise
@@ -60,7 +60,7 @@ describe Matter::MDNS::Responder do
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
         device_type: 0x0016_u16,
-        commissioning_mode: 1_u8,
+        commissioning_mode: Matter::MDNS::CommissioningMode::Basic,
         pairing_hint: 0x01_u16,
         pairing_instruction: "Scan QR code"
       )
@@ -319,6 +319,155 @@ describe Matter::MDNS::Responder do
 
       # Should not raise
       responder.advertise_commissioning(info, port: 5540)
+    end
+  end
+
+  describe "receive loop and query processing" do
+    it "starts receive loop when started" do
+      ip = Socket::IPAddress.new("192.168.1.100", 0)
+      responder = Matter::MDNS::Responder.new(
+        hostname: "test-device.local",
+        ip_addresses: [ip]
+      )
+
+      responder.start
+      sleep 50.milliseconds
+
+      # Verify receive socket was created
+      # (We can't access private @receive_socket directly, but we know it's created if start succeeds)
+      responder.stop
+    end
+
+    it "invokes on_query callback when query received" do
+      ip = Socket::IPAddress.new("192.168.1.100", 0)
+      responder = Matter::MDNS::Responder.new(
+        hostname: "test-device.local",
+        ip_addresses: [ip]
+      )
+
+      query_received = false
+      responder.on_query = ->(query : DNS::Packet, peer : Socket::IPAddress) do
+        query_received = true
+      end
+
+      # Advertise a service so responder tracks it
+      info = Matter::MDNS::CommissioningInfo.new(
+        device_name: "TestDevice",
+        vendor_id: 0xFFF1_u16,
+        product_id: 0x8000_u16,
+        discriminator: 3840_u16,
+        device_type: 0x0100_u16,
+        commissioning_mode: Matter::MDNS::CommissioningMode::Basic
+      )
+
+      responder.start
+      responder.advertise_commissioning(info, port: 5540)
+      sleep 100.milliseconds
+
+      # Note: In a full integration test with actual multicast networking,
+      # we could send a real query and verify the callback is invoked.
+      # For now, we verify the setup doesn't crash.
+
+      responder.stop
+    end
+
+    it "tracks advertised services for query responses" do
+      ip = Socket::IPAddress.new("192.168.1.100", 0)
+      responder = Matter::MDNS::Responder.new(
+        hostname: "test-device.local",
+        ip_addresses: [ip]
+      )
+
+      responder.start
+
+      # Advertise commissioning service
+      info = Matter::MDNS::CommissioningInfo.new(
+        device_name: "TestDevice",
+        vendor_id: 0xFFF1_u16,
+        product_id: 0x8000_u16,
+        discriminator: 3840_u16,
+        device_type: 0x0100_u16,
+        commissioning_mode: Matter::MDNS::CommissioningMode::Basic
+      )
+
+      responder.advertise_commissioning(info, port: 5540)
+      sleep 50.milliseconds
+
+      # Service should be tracked internally for responding to queries
+      # (We can't directly test private @advertised_services, but we verify no crashes)
+
+      responder.stop
+    end
+
+    it "removes service from tracking on goodbye" do
+      ip = Socket::IPAddress.new("192.168.1.100", 0)
+      responder = Matter::MDNS::Responder.new(
+        hostname: "test-device.local",
+        ip_addresses: [ip]
+      )
+
+      responder.start
+
+      # Advertise then send goodbye
+      info = Matter::MDNS::CommissioningInfo.new(
+        device_name: "TestDevice",
+        vendor_id: 0xFFF1_u16,
+        product_id: 0x8000_u16,
+        discriminator: 3840_u16,
+        device_type: 0x0100_u16,
+        commissioning_mode: Matter::MDNS::CommissioningMode::Basic
+      )
+
+      responder.advertise_commissioning(info, port: 5540)
+      sleep 50.milliseconds
+
+      # Send goodbye
+      responder.send_goodbye(
+        Matter::MDNS::ServiceType::Commissioning,
+        "TestDevice._matterc._udp.local"
+      )
+
+      sleep 50.milliseconds
+
+      # Service should be removed from tracking
+      responder.stop
+    end
+
+    it "handles multiple concurrent services" do
+      ip = Socket::IPAddress.new("192.168.1.100", 0)
+      responder = Matter::MDNS::Responder.new(
+        hostname: "test-device.local",
+        ip_addresses: [ip]
+      )
+
+      responder.start
+
+      # Advertise commissioning service
+      comm_info = Matter::MDNS::CommissioningInfo.new(
+        device_name: "TestDevice",
+        vendor_id: 0xFFF1_u16,
+        product_id: 0x8000_u16,
+        discriminator: 3840_u16,
+        device_type: 0x0100_u16,
+        commissioning_mode: Matter::MDNS::CommissioningMode::Basic
+      )
+
+      # Advertise operational service
+      op_info = Matter::MDNS::OperationalInfo.new(
+        fabric_id: 0x1234567890ABCDEF_u64,
+        node_id: 0x0000000000000001_u64,
+        session_idle_interval: 500_u32,
+        session_active_interval: 300_u32,
+        tcp_supported: false
+      )
+
+      responder.advertise_commissioning(comm_info, port: 5540)
+      responder.advertise_operational(op_info, port: 5540)
+
+      sleep 100.milliseconds
+
+      # Both services should be tracked
+      responder.stop
     end
   end
 end

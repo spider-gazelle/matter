@@ -31,7 +31,7 @@ describe "mDNS Integration" do
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
         device_type: 0x0016_u16,
-        commissioning_mode: 1_u8
+        commissioning_mode: Matter::MDNS::CommissioningMode::Basic
       )
 
       responder.advertise_commissioning(info, port: 5540)
