@@ -37,7 +37,7 @@ module Matter
         @socket = UDPSocket.new(:inet6)
         @socket.reuse_address = true
         @socket.reuse_port = true
-        @socket.bind("::/0", MDNS_PORT)
+        @socket.bind("::", MDNS_PORT)
         @running = false
         @advertised_services = Hash(String, {ServiceType, Int32, Hash(String, String)}).new
       end
