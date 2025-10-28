@@ -147,17 +147,12 @@ module MatterSwitch
     end
 
     def get_local_ip : Socket::IPAddress
-      # Try to get actual local IP, fallback to localhost
-      begin
-        # Create a UDP socket to determine local IP
-        socket = UDPSocket.new
-        socket.connect("8.8.8.8", 80)
-        addr = socket.local_address
-        socket.close
-        Socket::IPAddress.new(addr.address, 0)
-      rescue
-        Socket::IPAddress.new("127.0.0.1", 0)
-      end
+      # Create a UDP socket to determine local IP
+      socket = UDPSocket.new(:inet6)
+      socket.connect("2606:4700:4700::1111", 53)
+      addr = socket.local_address
+      socket.close
+      Socket::IPAddress.new(addr.address, 0)
     end
 
     def handle_state_change(new_state : Bool)

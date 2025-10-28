@@ -24,8 +24,6 @@ module Matter
       getter ip_addresses : Array(Socket::IPAddress)
 
       @running : Bool
-      @receive_fiber : Fiber?
-      @receive_socket : UDPSocket?
 
       # Currently advertised services (for responding to queries)
       # Key: instance name, Value: {service_type, port, txt_records}
@@ -36,13 +34,11 @@ module Matter
       property on_query : Proc(DNS::Packet, Socket::IPAddress, Nil)?
 
       def initialize(@port : Int32 = MDNS_PORT, @hostname : String = "matter-device.local", @ip_addresses : Array(Socket::IPAddress) = [] of Socket::IPAddress)
-        @socket = UDPSocket.new
+        @socket = UDPSocket.new(:inet6)
         @socket.reuse_address = true
         @socket.reuse_port = true
-        @socket.bind("0.0.0.0", 0) # Bind to ephemeral port for sending
+        @socket.bind("::/0", MDNS_PORT)
         @running = false
-        @receive_fiber = nil
-        @receive_socket = nil
         @advertised_services = Hash(String, {ServiceType, Int32, Hash(String, String)}).new
       end
 
@@ -50,22 +46,15 @@ module Matter
       def start : Nil
         return if @running
 
-        # Setup receive socket for multicast
-        @receive_socket = UDPSocket.new
-        @receive_socket.not_nil!.reuse_address = true
-        @receive_socket.not_nil!.reuse_port = true
-        @receive_socket.not_nil!.bind("0.0.0.0", MDNS_PORT)
-        @receive_socket.not_nil!.read_timeout = 100.milliseconds
-
         # Join multicast group
         begin
-          @receive_socket.not_nil!.join_group(MDNS_IPV4)
+          @socket.join_group(MDNS_IPV6)
         rescue ex
-          puts "Warning: Could not join IPv4 multicast group: #{ex.message}"
+          Log.warn(exception: ex) { "Warning: Could not join IPv6 multicast group: #{ex.message}" }
         end
 
         @running = true
-        @receive_fiber = spawn do
+        spawn do
           receive_loop
         end
       end
@@ -73,14 +62,8 @@ module Matter
       # Stop listening
       def stop : Nil
         @running = false
-        sleep 200.milliseconds if @receive_fiber
-        @receive_fiber = nil
-
-        # Close receive socket
-        if sock = @receive_socket
-          sock.close unless sock.closed?
-          @receive_socket = nil
-        end
+        @socket.leave_group(MDNS_IPV6)
+        @socket.close
       end
 
       # Close responder
@@ -231,28 +214,16 @@ module Matter
       private def send_multicast(packet : DNS::Packet) : Nil
         data = packet.to_slice
 
-        # Send to IPv4 multicast
         begin
-          @socket.send(data, MDNS_IPV4)
+          @socket.send(data, MDNS_IPV6)
         rescue ex
           # Log error but continue
-          puts "Error sending IPv4 multicast: #{ex.message}"
-        end
-
-        # Send to IPv6 multicast if we have IPv6 addresses
-        if @ip_addresses.any? { |ip| ip.family.inet6? }
-          begin
-            @socket.send(data, MDNS_IPV6)
-          rescue ex
-            # Log error but continue
-            puts "Error sending IPv6 multicast: #{ex.message}"
-          end
+          Log.error(exception: ex) { "Error sending IPv6 multicast: #{ex.message}" }
         end
       end
 
       private def receive_loop : Nil
-        return unless sock = @receive_socket
-
+        sock = @socket
         buffer = Bytes.new(9000) # Max DNS packet size
 
         while @running
@@ -274,7 +245,7 @@ module Matter
           rescue IO::TimeoutError
             # Normal - continue
           rescue ex : Exception
-            puts "Error receiving mDNS packet: #{ex.message}"
+            Log.error(exception: ex) { "Error receiving mDNS packet: #{ex.message}" } if @running
           end
         end
       end
