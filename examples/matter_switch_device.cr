@@ -431,7 +431,7 @@ puts ""
 device = MatterSwitch::Device.new
 
 # Trap Ctrl+C for clean shutdown
-Signal::INT.trap do
+Process.on_terminate do
   puts "\n\n🛑 Received interrupt signal"
   device.shutdown
   exit(0)
