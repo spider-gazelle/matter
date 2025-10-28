@@ -1,5 +1,6 @@
 require "json"
 require "file_utils"
+require "goban"
 require "../src/matter/mdns/responder"
 require "../src/matter/mdns/service_type"
 require "../src/matter/mdns/service_description"
@@ -228,10 +229,14 @@ module MatterSwitch
       puts "   Port: #{@port}"
       puts "   Discriminator: #{@state.discriminator}"
       puts ""
+
+      # Display QR code
+      print_qr_code
+
       puts "💡 To pair this device:"
       puts "   1. Open your Matter controller app"
       puts "   2. Select 'Add Device' or 'Commission Device'"
-      puts "   3. Use setup code: #{generate_setup_code}"
+      puts "   3. Scan the QR code above, or use manual setup code: #{generate_setup_code}"
       puts ""
     end
 
@@ -264,6 +269,32 @@ module MatterSwitch
       # Generate Matter manual pairing code using proper encoding
       # Format: xxxx-xxx-xxxx (11 digits with Verhoeff check digit)
       Matter::SetupPayload.generate_manual_code(@state.discriminator, @state.setup_pin)
+    end
+
+    def generate_qr_code : String
+      # Generate Matter QR code payload
+      Matter::SetupPayload::QRCode.generate_qr_code(
+        discriminator: @state.discriminator,
+        pin: @state.setup_pin,
+        vendor_id: @state.vendor_id,
+        product_id: @state.product_id,
+        flow: Matter::SetupPayload::QRCode::CommissionFlow::Standard,
+        capabilities: Matter::SetupPayload::QRCode::DiscoveryCapability::BLE
+      )
+    end
+
+    def print_qr_code
+      qr_payload = generate_qr_code
+      begin
+        qr = Goban::QR.encode_string(qr_payload, Goban::ECC::Level::Low)
+        puts ""
+        puts "📱 Scan this QR code with your Matter controller app:"
+        puts ""
+        qr.print_to_console
+        puts ""
+      rescue ex
+        puts "⚠️  Failed to generate QR code: #{ex.message}"
+      end
     end
 
     def run_interactive_loop

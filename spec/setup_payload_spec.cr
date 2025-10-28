@@ -211,4 +211,186 @@ describe Matter::SetupPayload do
       code.should match(/^\d{4}-\d{3}-\d{4}$/)
     end
   end
+
+  describe Matter::SetupPayload::QRCode do
+    describe ".generate_qr_code" do
+      it "generates QR code with MT: prefix" do
+        qr = Matter::SetupPayload::QRCode.generate_qr_code(
+          discriminator: 3840_u16,
+          pin: 20202021_u32,
+          vendor_id: 0xFFF1_u16,
+          product_id: 0x8001_u16
+        )
+
+        qr.should start_with("MT:")
+      end
+
+      it "generates valid base-38 string" do
+        qr = Matter::SetupPayload::QRCode.generate_qr_code(
+          discriminator: 3840_u16,
+          pin: 20202021_u32,
+          vendor_id: 0xFFF1_u16,
+          product_id: 0x8001_u16
+        )
+
+        # Remove prefix and check all characters are valid base-38
+        payload = qr[3..-1]
+        payload.each_char do |char|
+          Matter::SetupPayload::QRCode::BASE38_ALPHABET.includes?(char).should be_true
+        end
+      end
+
+      it "generates different codes for different inputs" do
+        qr1 = Matter::SetupPayload::QRCode.generate_qr_code(
+          discriminator: 100_u16,
+          pin: 20202021_u32,
+          vendor_id: 0xFFF1_u16,
+          product_id: 0x8001_u16
+        )
+
+        qr2 = Matter::SetupPayload::QRCode.generate_qr_code(
+          discriminator: 200_u16,
+          pin: 20202021_u32,
+          vendor_id: 0xFFF1_u16,
+          product_id: 0x8001_u16
+        )
+
+        qr1.should_not eq(qr2)
+      end
+
+      it "validates discriminator range" do
+        expect_raises(ArgumentError, "Discriminator must be 0-4095") do
+          Matter::SetupPayload::QRCode.generate_qr_code(
+            discriminator: 5000_u16,
+            pin: 20202021_u32,
+            vendor_id: 0xFFF1_u16,
+            product_id: 0x8001_u16
+          )
+        end
+      end
+
+      it "validates PIN range" do
+        expect_raises(ArgumentError, "PIN must be 1-99999998") do
+          Matter::SetupPayload::QRCode.generate_qr_code(
+            discriminator: 3840_u16,
+            pin: 0_u32,
+            vendor_id: 0xFFF1_u16,
+            product_id: 0x8001_u16
+          )
+        end
+      end
+
+      it "supports different commission flows" do
+        qr_standard = Matter::SetupPayload::QRCode.generate_qr_code(
+          discriminator: 3840_u16,
+          pin: 20202021_u32,
+          vendor_id: 0xFFF1_u16,
+          product_id: 0x8001_u16,
+          flow: Matter::SetupPayload::QRCode::CommissionFlow::Standard
+        )
+
+        qr_user_action = Matter::SetupPayload::QRCode.generate_qr_code(
+          discriminator: 3840_u16,
+          pin: 20202021_u32,
+          vendor_id: 0xFFF1_u16,
+          product_id: 0x8001_u16,
+          flow: Matter::SetupPayload::QRCode::CommissionFlow::UserActionNeeded
+        )
+
+        qr_standard.should_not eq(qr_user_action)
+      end
+
+      it "supports different discovery capabilities" do
+        qr_ble = Matter::SetupPayload::QRCode.generate_qr_code(
+          discriminator: 3840_u16,
+          pin: 20202021_u32,
+          vendor_id: 0xFFF1_u16,
+          product_id: 0x8001_u16,
+          capabilities: Matter::SetupPayload::QRCode::DiscoveryCapability::BLE
+        )
+
+        qr_softap = Matter::SetupPayload::QRCode.generate_qr_code(
+          discriminator: 3840_u16,
+          pin: 20202021_u32,
+          vendor_id: 0xFFF1_u16,
+          product_id: 0x8001_u16,
+          capabilities: Matter::SetupPayload::QRCode::DiscoveryCapability::SoftAP
+        )
+
+        qr_ble.should_not eq(qr_softap)
+      end
+    end
+
+    describe ".parse_qr_code" do
+      it "parses generated QR code back to original values" do
+        discriminator = 3840_u16
+        pin = 20202021_u32
+        vendor_id = 0xFFF1_u16
+        product_id = 0x8001_u16
+
+        qr = Matter::SetupPayload::QRCode.generate_qr_code(
+          discriminator: discriminator,
+          pin: pin,
+          vendor_id: vendor_id,
+          product_id: product_id
+        )
+
+        parsed = Matter::SetupPayload::QRCode.parse_qr_code(qr)
+        parsed[:discriminator].should eq(discriminator)
+        parsed[:pin].should eq(pin)
+        parsed[:vendor_id].should eq(vendor_id)
+        parsed[:product_id].should eq(product_id)
+      end
+
+      it "handles QR code with MT: prefix" do
+        qr = Matter::SetupPayload::QRCode.generate_qr_code(
+          discriminator: 3840_u16,
+          pin: 20202021_u32,
+          vendor_id: 0xFFF1_u16,
+          product_id: 0x8001_u16
+        )
+
+        # Should parse successfully
+        Matter::SetupPayload::QRCode.parse_qr_code(qr)
+      end
+
+      it "handles QR code without MT: prefix" do
+        qr = Matter::SetupPayload::QRCode.generate_qr_code(
+          discriminator: 3840_u16,
+          pin: 20202021_u32,
+          vendor_id: 0xFFF1_u16,
+          product_id: 0x8001_u16
+        )
+
+        # Remove prefix
+        qr_without_prefix = qr[3..-1]
+
+        # Should still parse successfully
+        Matter::SetupPayload::QRCode.parse_qr_code(qr_without_prefix)
+      end
+
+      it "round-trips all values correctly" do
+        test_cases = [
+          {disc: 0_u16, pin: 1_u32, vid: 0x0001_u16, pid: 0x0001_u16},
+          {disc: 4095_u16, pin: 99999998_u32, vid: 0xFFFF_u16, pid: 0xFFFF_u16},
+          {disc: 2048_u16, pin: 50000000_u32, vid: 0xFFF1_u16, pid: 0x8001_u16},
+        ]
+
+        test_cases.each do |test|
+          qr = Matter::SetupPayload::QRCode.generate_qr_code(
+            discriminator: test[:disc],
+            pin: test[:pin],
+            vendor_id: test[:vid],
+            product_id: test[:pid]
+          )
+
+          parsed = Matter::SetupPayload::QRCode.parse_qr_code(qr)
+          parsed[:discriminator].should eq(test[:disc])
+          parsed[:pin].should eq(test[:pin])
+          parsed[:vendor_id].should eq(test[:vid])
+          parsed[:product_id].should eq(test[:pid])
+        end
+      end
+    end
+  end
 end

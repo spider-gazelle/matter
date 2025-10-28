@@ -162,5 +162,146 @@ module Matter
     def self.default_pin : UInt32
       20202021_u32 # A valid PIN that's not on the blacklist
     end
+
+    # QR Code payload generation for Matter onboarding
+    #
+    # Matter QR codes encode more information than manual codes:
+    # - Vendor ID and Product ID
+    # - Flow type and discovery capabilities
+    # - Discriminator and setup PIN
+    #
+    # The payload uses TLV encoding and base-38 representation with "MT:" prefix
+    #
+    # Matter Core Spec § 5.1.4.2 - QR Code Format
+    module QRCode
+      # Commission flow types
+      enum CommissionFlow : UInt8
+        Standard         = 0 # Device not on IP network, needs commissioning
+        UserActionNeeded = 1 # Device requires user action (e.g., press button)
+        Custom           = 2 # Custom commissioning flow
+        AlreadyOnNetwork = 3 # Device already on IP network
+      end
+
+      # Discovery capability flags
+      @[Flags]
+      enum DiscoveryCapability : UInt8
+        None      = 0x00
+        SoftAP    = 0x01 # WiFi soft access point
+        BLE       = 0x02 # Bluetooth Low Energy
+        OnNetwork = 0x04 # Already on IP network
+      end
+
+      # Base-38 alphabet for Matter QR codes
+      BASE38_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-."
+
+      # Generate Matter QR code payload string
+      #
+      # @param discriminator Device discriminator (12-bit)
+      # @param pin Setup PIN code (27-bit)
+      # @param vendor_id Vendor ID (16-bit)
+      # @param product_id Product ID (16-bit)
+      # @param flow Commission flow type
+      # @param capabilities Discovery capabilities
+      # @return QR code string with "MT:" prefix
+      def self.generate_qr_code(
+        discriminator : UInt16,
+        pin : UInt32,
+        vendor_id : UInt16,
+        product_id : UInt16,
+        flow : CommissionFlow = CommissionFlow::Standard,
+        capabilities : DiscoveryCapability = DiscoveryCapability::BLE,
+      ) : String
+        # Validate inputs
+        raise ArgumentError.new("Discriminator must be 0-4095") if discriminator > 4095
+        raise ArgumentError.new("PIN must be 1-99999998") if pin < 1 || pin > 99999998
+
+        # Encode payload as bit-packed integer
+        # Matter spec defines specific bit layout:
+        # Bits 0-2: Version (3 bits) = 0
+        # Bits 3-18: Vendor ID (16 bits)
+        # Bits 19-34: Product ID (16 bits)
+        # Bits 35-36: Flow (2 bits)
+        # Bits 37-44: Discovery capabilities (8 bits)
+        # Bits 45-56: Discriminator (12 bits)
+        # Bits 57-83: Setup PIN (27 bits)
+        # Total: 84 bits (exceeds 64-bit, need BigInt)
+
+        version = BigInt.new(0)
+        payload = version # Start with version
+
+        payload |= (BigInt.new(vendor_id) << 3)
+        payload |= (BigInt.new(product_id) << 19)
+        payload |= (BigInt.new(flow.value) << 35)
+        payload |= (BigInt.new(capabilities.value) << 37)
+        payload |= (BigInt.new(discriminator) << 45)
+        payload |= (BigInt.new(pin) << 57)
+
+        # Convert to base-38
+        encoded = encode_base38(payload)
+
+        # Add "MT:" prefix per Matter spec
+        "MT:#{encoded}"
+      end
+
+      # Encode an integer as base-38 string
+      private def self.encode_base38(value : BigInt) : String
+        return "0" if value == 0
+
+        result = ""
+        num = value
+
+        while num > 0
+          remainder = (num % 38).to_i
+          result = BASE38_ALPHABET[remainder] + result
+          num //= 38
+        end
+
+        result
+      end
+
+      # Decode base-38 string to integer
+      private def self.decode_base38(encoded : String) : BigInt
+        result = BigInt.new(0)
+
+        encoded.each_char do |char|
+          index = BASE38_ALPHABET.index(char)
+          raise ArgumentError.new("Invalid character in base-38 string: #{char}") unless index
+          result = result * 38 + index
+        end
+
+        result
+      end
+
+      # Parse Matter QR code payload
+      #
+      # @param qr_code QR code string (with or without "MT:" prefix)
+      # @return Hash with decoded values
+      def self.parse_qr_code(qr_code : String) : Hash(Symbol, UInt64 | UInt32 | UInt16 | UInt8)
+        # Remove "MT:" prefix if present
+        code = qr_code.starts_with?("MT:") ? qr_code[3..-1] : qr_code
+
+        # Decode from base-38 (returns BigInt)
+        payload = decode_base38(code)
+
+        # Extract fields using bit masks and convert to appropriate types
+        version = (payload & BigInt.new(0x7)).to_u8
+        vendor_id = ((payload >> 3) & BigInt.new(0xFFFF)).to_u16
+        product_id = ((payload >> 19) & BigInt.new(0xFFFF)).to_u16
+        flow = ((payload >> 35) & BigInt.new(0x3)).to_u8
+        capabilities = ((payload >> 37) & BigInt.new(0xFF)).to_u8
+        discriminator = ((payload >> 45) & BigInt.new(0xFFF)).to_u16
+        pin = ((payload >> 57) & BigInt.new(0x7FFFFFF)).to_u32
+
+        {
+          :version       => version.to_u64,
+          :vendor_id     => vendor_id.as(UInt64 | UInt32 | UInt16 | UInt8),
+          :product_id    => product_id.as(UInt64 | UInt32 | UInt16 | UInt8),
+          :flow          => flow.as(UInt64 | UInt32 | UInt16 | UInt8),
+          :capabilities  => capabilities.as(UInt64 | UInt32 | UInt16 | UInt8),
+          :discriminator => discriminator.as(UInt64 | UInt32 | UInt16 | UInt8),
+          :pin           => pin.as(UInt64 | UInt32 | UInt16 | UInt8),
+        }
+      end
+    end
   end
 end

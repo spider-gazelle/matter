@@ -30,4 +30,7 @@ development_dependencies:
   timecop:
     github: crystal-community/timecop.cr
 
+  goban:
+    github: soya-daizu/goban
+
 license: MIT
