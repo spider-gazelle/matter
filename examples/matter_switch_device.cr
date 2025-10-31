@@ -117,6 +117,7 @@ module MatterSwitch
 
     property state : DeviceState
     property switch : Matter::Cluster::OnOffCluster
+    property basic_info : Matter::Cluster::BasicInformationCluster
     property responder : Matter::MDNS::Responder
     property fabric_storage : FabricStorage
     property hostname : String
@@ -127,7 +128,24 @@ module MatterSwitch
       @state = DeviceState.load(STATE_FILE)
       @ip_address = get_local_ip
 
-      # Create the switch cluster
+      # Create Basic Information cluster on endpoint 0 (required for root node)
+      # This provides device identification information to controllers
+      root_endpoint = Matter::DataType::EndpointNumber.new(0_u16)
+      @basic_info = Matter::Cluster::BasicInformationCluster.new(
+        root_endpoint,
+        data_model_revision: 1_u16,
+        vendor_name: "Spider-Gazelle",
+        vendor_id: @state.vendor_id,
+        product_name: "Matter Switch",
+        product_id: @state.product_id,
+        node_label: @state.device_name, # This is the device name shown in iOS
+        hardware_version: 1_u16,
+        hardware_version_string: "1.0",
+        software_version: 1_u32,
+        software_version_string: "1.0.0"
+      )
+
+      # Create the switch cluster on endpoint 1
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       @switch = Matter::Cluster::OnOffCluster.new(endpoint, on_off: @state.on_off)
 
@@ -147,12 +165,24 @@ module MatterSwitch
     end
 
     def get_local_ip : Socket::IPAddress
-      # Create a UDP socket to determine local IP
-      socket = UDPSocket.new(:inet6)
-      socket.connect("2606:4700:4700::1111", 53)
-      addr = socket.local_address
-      socket.close
-      Socket::IPAddress.new(addr.address, 0)
+      # Try IPv6 first, fallback to IPv4
+      begin
+        socket = UDPSocket.new(:inet6)
+        socket.connect("2606:4700:4700::1111", 53)
+        addr = socket.local_address
+        socket.close
+        return Socket::IPAddress.new(addr.address, 0)
+      rescue
+        # IPv6 failed, try IPv4
+        socket = UDPSocket.new
+        socket.connect("8.8.8.8", 80)
+        addr = socket.local_address
+        socket.close
+        Socket::IPAddress.new(addr.address, 0)
+      end
+    rescue
+      # Fallback to localhost if both fail
+      Socket::IPAddress.new("127.0.0.1", 0)
     end
 
     def handle_state_change(new_state : Bool)
