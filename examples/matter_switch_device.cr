@@ -37,11 +37,36 @@ module MatterSwitch
       @on_off = false,
       @data_version = 0_u32,
       @commissioned = false,
-      @discriminator = 3840_u16,
+      @discriminator = DeviceState.generate_random_discriminator,
       @vendor_id = 0xFFF1_u16,
       @product_id = 0x8001_u16,
-      @setup_pin = Matter::SetupPayload.default_pin,
+      @setup_pin = DeviceState.generate_random_pin,
     )
+    end
+
+    # Generate a random discriminator (12-bit value, 0-4095)
+    # Each device instance should have a unique discriminator
+    def self.generate_random_discriminator : UInt16
+      Random::Secure.rand(4096).to_u16
+    end
+
+    # Generate a random valid PIN that meets Matter requirements
+    # - Must be 1-99999998
+    # - Cannot be all same digit (11111111, etc.)
+    # - Cannot be 12345678 or 87654321
+    def self.generate_random_pin : UInt32
+      loop do
+        pin = Random::Secure.rand(1_u32..99999998_u32)
+        pin_str = pin.to_s.rjust(8, '0')
+
+        # Check if all digits are the same
+        next if pin_str.chars.uniq.size == 1
+
+        # Check blacklisted PINs
+        next if pin == 12345678 || pin == 87654321
+
+        return pin
+      end
     end
 
     def self.load(path : String) : DeviceState
@@ -226,6 +251,8 @@ module MatterSwitch
       puts "   Data Version: #{@state.data_version}"
       puts "   Commissioned: #{@state.commissioned ? "Yes" : "No"}"
       puts "   Fabrics: #{@fabric_storage.size}"
+      puts "   Discriminator: #{@state.discriminator}"
+      puts "   Setup PIN: #{@state.setup_pin}"
       puts ""
     end
 
