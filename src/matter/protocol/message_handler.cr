@@ -40,6 +40,10 @@ module Matter
       property iterations : UInt32
       property salt : Bytes
 
+      # PASE context: store request/response payloads for context hashing
+      property pbkdf_request_payload : Bytes?
+      property pbkdf_response_payload : Bytes?
+
       def initialize(
         @transport : Transport::UDPTransport,
         @setup_pin : UInt32,
@@ -105,6 +109,9 @@ module Matter
         # Debug: dump payload bytes
         Log.debug { "PBKDF Request payload (#{msg.payload.size} bytes): #{msg.payload.hexstring}" }
 
+        # Store request payload for context hashing (needed for SPAKE2+ context)
+        @pbkdf_request_payload = msg.payload.dup
+
         # Decode request (TLV::Serializable provides constructor that takes Bytes)
         request = Session::Pase::Definitions::PbkdfParamRequest.new(msg.payload)
         Log.debug { "  Initiator session ID: #{request.initiator_session_id || "none"}" }
@@ -116,13 +123,6 @@ module Matter
           return
         end
         Log.debug { "  Initiator random: #{initiator_random.size} bytes" }
-
-        # Create PASE responder if not exists
-        unless @pase_responder
-          # Create PBKDF parameters using the salt and iterations from this message handler
-          pbkdf_params = Session::Pase::PbkdfParameters.new(@iterations.to_i32, @salt)
-          @pase_responder = Session::Pase::PaseResponder.new(@setup_pin, pbkdf_params)
-        end
 
         # Generate responder random (32 bytes)
         responder_random = Random::Secure.random_bytes(32)
@@ -139,15 +139,36 @@ module Matter
           salt: @salt
         )
 
+        # Store response payload for context hashing (needed for SPAKE2+ context)
+        @pbkdf_response_payload = response.to_bytes
+
         # Send response
         send_secure_channel_response(
           msg: msg,
           peer: peer,
           message_type: MSG_PBKDF_PARAM_RESPONSE,
-          payload: response.to_bytes
+          payload: @pbkdf_response_payload.not_nil!
         )
 
         Log.info { "Sent PBKDFParamResponse with session ID: #{responder_session_id}" }
+
+        # Compute SPAKE2+ context hash: SHA256(SPAKE_CONTEXT || requestPayload || responsePayload)
+        # This matches matter.js implementation in PasePairingTest.ts line 48
+        spake_context = "CHIP PAKE V1 Commissioning"
+        digest = OpenSSL::Digest.new("SHA256")
+        digest.update(spake_context.to_slice)
+        digest.update(@pbkdf_request_payload.not_nil!)
+        digest.update(@pbkdf_response_payload.not_nil!)
+        context_hash = digest.final
+
+        Log.debug { "  SPAKE2+ context hash: #{context_hash.hexstring}" }
+
+        # Create PBKDF parameters and PaseResponder with proper context
+        pbkdf_params = Session::Pase::PbkdfParameters.new(@iterations.to_i32, @salt)
+        crypto = Crypto::StandardCrypto.new
+        @pase_responder = Session::Pase::PaseResponder.new(@setup_pin, pbkdf_params, crypto, context_hash)
+
+        Log.info { "Created PaseResponder with hashed context" }
       end
 
       # Handle PASE Pake1 (second step of PASE)
@@ -208,9 +229,11 @@ module Matter
         Log.info { "Handling PASE Pake3" }
 
         # Decode Pake3 message (TLV::Serializable provides constructor that takes Bytes)
+        Log.debug { "  Pake3 payload: #{msg.payload.hexstring}" }
         pake3 = Session::Pase::Definitions::Pake3.new(msg.payload)
         c_a = pake3.verifier # Commissioner's confirmation
         Log.debug { "  Received cA: #{c_a.size} bytes" }
+        Log.debug { "  cA hex: #{c_a.hexstring}" }
 
         # Get PASE responder
         responder = @pase_responder
@@ -228,8 +251,11 @@ module Matter
         end
 
         # Verify cA matches our computed h_ay
+        Log.debug { "  Expected h_ay: #{sav.h_ay.hexstring}" }
         if c_a != sav.h_ay
           Log.error { "PASE confirmation failed - cA doesn't match h_ay" }
+          Log.error { "  Expected: #{sav.h_ay.hexstring}" }
+          Log.error { "  Received: #{c_a.hexstring}" }
           # TODO: Send status report with error
           return
         end
