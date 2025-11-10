@@ -76,6 +76,77 @@ module Matter
             io.rewind.to_slice
           end
         end
+
+        # PASE Pake1 message
+        # Sent by commissioner with their public key (pA)
+        struct Pake1
+          include TLV::Serializable
+
+          # Commissioner's public key (X value, pA)
+          @[TLV::Field(tag: 1)]
+          property x : Bytes
+
+          def initialize(@x : Bytes)
+          end
+
+          # Encode to TLV bytes
+          def to_bytes : Bytes
+            io = IO::Memory.new
+            writer = TLV::Writer.new(io)
+            writer.put(nil, {1_u8 => @x} of TLV::Tag => TLV::Value)
+            io.rewind.to_slice
+          end
+        end
+
+        # PASE Pake2 message
+        # Sent by device with their public key (pB) and confirmation (cB)
+        struct Pake2
+          include TLV::Serializable
+
+          # Device's public key (Y value, pB)
+          @[TLV::Field(tag: 1)]
+          property y : Bytes
+
+          # Device's confirmation value (cB, h_bx)
+          @[TLV::Field(tag: 2)]
+          property verifier : Bytes
+
+          def initialize(@y : Bytes, @verifier : Bytes)
+          end
+
+          # Encode to TLV bytes
+          def to_bytes : Bytes
+            io = IO::Memory.new
+            writer = TLV::Writer.new(io)
+            data = {
+              1_u8 => @y,
+              2_u8 => @verifier,
+            } of TLV::Tag => TLV::Value
+            writer.put(nil, data)
+            io.rewind.to_slice
+          end
+        end
+
+        # PASE Pake3 message
+        # Sent by commissioner with their confirmation (cA)
+        struct Pake3
+          include TLV::Serializable
+
+          # Commissioner's confirmation value (cA, h_ay)
+          @[TLV::Field(tag: 1)]
+          property verifier : Bytes
+
+          def initialize(@verifier : Bytes)
+          end
+
+          # Encode to TLV bytes
+          def to_bytes : Bytes
+            io = IO::Memory.new
+            writer = TLV::Writer.new(io)
+            writer.put(nil, {1_u8 => @verifier} of TLV::Tag => TLV::Value)
+            io.rewind.to_slice
+          end
+        end
       end
     end
   end

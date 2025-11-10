@@ -10,6 +10,7 @@ require "../src/matter/setup_payload"
 require "../src/matter"
 require "../src/matter/transport/udp_transport"
 require "../src/matter/codec/message_codec"
+require "../src/matter/protocol/message_handler"
 
 # Matter Device with UDP Transport
 #
@@ -63,6 +64,7 @@ module MatterDevice
     property state : DeviceState
     property responder : Matter::MDNS::Responder
     property transport : Matter::Transport::UDPTransport
+    property message_handler : Matter::Protocol::MessageHandler
     property hostname : String
     property ip_addresses : Array(Socket::IPAddress)
     property port : Int32
@@ -88,10 +90,12 @@ module MatterDevice
       # Create UDP transport
       @transport = Matter::Transport::UDPTransport.new(port: @port)
 
-      # Set up message handler
-      @transport.on_message = ->(msg : Matter::Codec::MessageCodec::Message, peer : Socket::IPAddress) do
-        handle_matter_message(msg, peer)
-      end
+      # Create protocol message handler
+      @message_handler = Matter::Protocol::MessageHandler.new(
+        transport: @transport,
+        setup_pin: @state.setup_pin,
+        discriminator: @state.discriminator
+      )
     end
 
     def get_local_ips : Array(Socket::IPAddress)
@@ -241,138 +245,6 @@ module MatterDevice
       rescue ex
         puts "⚠️  Failed to generate QR code: #{ex.message}"
       end
-    end
-
-    def handle_matter_message(msg : Matter::Codec::MessageCodec::Message, peer : Socket::IPAddress)
-      puts ""
-      puts "═" * 70
-      puts "📨 Received Matter Message from #{peer.address}:#{peer.port}"
-      puts "═" * 70
-      puts ""
-
-      # Packet Header
-      puts "📦 Packet Header:"
-      puts "   Session ID: 0x#{msg.packet_header.session_id.to_s(16).rjust(4, '0')}"
-      puts "   Session Type: #{msg.packet_header.session_type}"
-      puts "   Message ID: 0x#{msg.packet_header.message_id.to_s(16).rjust(8, '0')}"
-      puts "   Source Node: #{msg.packet_header.source_node_id || "none"}"
-      puts "   Dest Node: #{msg.packet_header.destination_node_id || "none"}"
-      puts ""
-
-      # Payload Header
-      puts "📤 Payload Header:"
-      puts "   Exchange ID: 0x#{msg.payload_header.exchange_id.to_s(16).rjust(4, '0')}"
-      puts "   Protocol ID: 0x#{msg.payload_header.protocol_id.to_s(16).rjust(4, '0')} (#{protocol_name(msg.payload_header.protocol_id)})"
-      puts "   Message Type: 0x#{msg.payload_header.message_type.to_s(16).rjust(2, '0')} (#{message_type_name(msg.payload_header.protocol_id, msg.payload_header.message_type)})"
-      puts "   Initiator: #{msg.payload_header.initiator_message?}"
-      puts "   Requires ACK: #{msg.payload_header.requires_acknowledge?}"
-      puts ""
-
-      # Payload
-      puts "📄 Payload: #{msg.payload.size} bytes"
-      if msg.payload.size > 0
-        puts "   Hex: #{msg.payload.hexstring}"
-        if msg.payload.size <= 64
-          puts "   Bytes: #{msg.payload.to_a.inspect}"
-        end
-      end
-      puts ""
-
-      # Try to decode protocol-specific messages
-      decode_protocol_message(msg)
-
-      puts "═" * 70
-      puts ""
-    end
-
-    def protocol_name(protocol_id : UInt16) : String
-      case protocol_id
-      when 0x0000 then "Secure Channel"
-      when 0x0001 then "Interaction Model"
-      when 0x0002 then "BDX"
-      when 0x0003 then "User Directed Commissioning"
-      else             "Unknown"
-      end
-    end
-
-    def message_type_name(protocol_id : UInt16, message_type : UInt8) : String
-      case protocol_id
-      when 0x0000 # Secure Channel
-        case message_type
-        when 0x00 then "MsgCounterSyncReq"
-        when 0x01 then "MsgCounterSyncRsp"
-        when 0x10 then "MRPStandaloneAck"
-        when 0x20 then "PBKDFParamRequest"
-        when 0x21 then "PBKDFParamResponse"
-        when 0x22 then "PASE_Pake1"
-        when 0x23 then "PASE_Pake2"
-        when 0x24 then "PASE_Pake3"
-        when 0x30 then "CASE_Sigma1"
-        when 0x31 then "CASE_Sigma2"
-        when 0x32 then "CASE_Sigma3"
-        when 0x40 then "StatusReport"
-        else           "Unknown (0x#{message_type.to_s(16)})"
-        end
-      when 0x0001 # Interaction Model
-        case message_type
-        when 0x01 then "StatusResponse"
-        when 0x02 then "ReadRequest"
-        when 0x05 then "ReportData"
-        when 0x06 then "WriteRequest"
-        when 0x07 then "WriteResponse"
-        when 0x08 then "InvokeCommandRequest"
-        when 0x09 then "InvokeCommandResponse"
-        when 0x03 then "SubscribeRequest"
-        when 0x04 then "SubscribeResponse"
-        else           "Unknown (0x#{message_type.to_s(16)})"
-        end
-      else
-        "Unknown"
-      end
-    end
-
-    def decode_protocol_message(msg : Matter::Codec::MessageCodec::Message)
-      return if msg.payload.size == 0
-
-      case msg.payload_header.protocol_id
-      when 0x0000 # Secure Channel
-        decode_secure_channel_message(msg)
-      when 0x0001 # Interaction Model
-        decode_interaction_model_message(msg)
-      end
-    end
-
-    def decode_secure_channel_message(msg : Matter::Codec::MessageCodec::Message)
-      puts "🔐 Secure Channel Message:"
-
-      case msg.payload_header.message_type
-      when 0x20 # PBKDFParamRequest
-        puts "   Type: PBKDF Parameter Request (PASE Step 1)"
-        puts "   ⚠️  PASE not yet implemented - cannot respond"
-      when 0x22 # PASE_Pake1
-        puts "   Type: PASE PAKE1 (PASE Step 2)"
-        puts "   ⚠️  PASE not yet implemented - cannot respond"
-      when 0x24 # PASE_Pake3
-        puts "   Type: PASE PAKE3 (PASE Step 3)"
-        puts "   ⚠️  PASE not yet implemented - cannot respond"
-      end
-    end
-
-    def decode_interaction_model_message(msg : Matter::Codec::MessageCodec::Message)
-      puts "💬 Interaction Model Message:"
-
-      case msg.payload_header.message_type
-      when 0x02 # ReadRequest
-        puts "   Type: Read Request"
-      when 0x06 # WriteRequest
-        puts "   Type: Write Request"
-      when 0x08 # InvokeCommandRequest
-        puts "   Type: Invoke Command Request"
-      when 0x03 # SubscribeRequest
-        puts "   Type: Subscribe Request"
-      end
-
-      puts "   ⚠️  IM handler not yet implemented - cannot respond"
     end
 
     def shutdown
