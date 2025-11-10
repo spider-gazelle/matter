@@ -4,6 +4,8 @@ module Matter
   module Session
     module Pase
       module Definitions
+        Log = ::Log.for("matter.pase")
+
         # PBKDF Parameter Request message
         # Sent by commissioner to request PBKDF parameters from the device
         struct PbkdfParamRequest
@@ -207,6 +209,41 @@ module Matter
             writer = TLV::Writer.new(io)
             writer.put(nil, {1_u8 => @verifier} of TLV::Tag => TLV::Value)
             io.rewind.to_slice
+          end
+        end
+
+        # StatusReport message
+        # Sent to indicate success or failure of a protocol operation
+        # Only has 2 fields: generalStatus and protocolStatus
+        struct StatusReport
+          # General status code (SUCCESS = 0)
+          property general_status : UInt16
+
+          # Protocol-specific status code (SUCCESS = 0 for Secure Channel)
+          property protocol_status : UInt16
+
+          def initialize(
+            @general_status : UInt16 = 0_u16,  # 0 = SUCCESS
+            @protocol_status : UInt16 = 0_u16, # 0 = SUCCESS
+          )
+          end
+
+          # Encode to TLV bytes
+          # NOTE: We force UInt16 (2-byte) encoding for both fields.
+          # chip-tool expects UInt16 encoding even for value 0.
+          def to_bytes : Bytes
+            io = IO::Memory.new
+            writer = TLV::Writer.new(io)
+
+            # Build anonymous structure with forced UInt16 encoding
+            writer.start_structure(nil)
+            writer.put_unsigned_int(0_u8, @general_status, force_size: 2)
+            writer.put_unsigned_int(1_u8, @protocol_status, force_size: 2)
+            writer.end_container
+
+            bytes = io.to_slice
+            Log.debug { "StatusReport TLV bytes: #{bytes.hexstring}" }
+            bytes
           end
         end
       end

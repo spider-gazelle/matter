@@ -311,8 +311,10 @@ module Matter
         Log.info { "✅ Secure session established! Session ID: #{session_id}" }
         Log.info { "   Commissioner can now send encrypted Interaction Model messages" }
 
-        # TODO: Send a status report to confirm session establishment
-
+        # Send StatusReport to confirm session establishment
+        # StatusReport is still sent unsecured (session_id=0) as part of the PASE handshake
+        # The secure session only becomes active AFTER StatusReport is acknowledged
+        send_status_report_success(msg, peer)
       rescue ex
         Log.error(exception: ex) { "Error handling PASE Pake3: #{ex.message}" }
       end
@@ -356,6 +358,31 @@ module Matter
         )
 
         @transport.send_message(response, peer)
+      end
+
+      # Send a StatusReport with success status
+      private def send_status_report_success(
+        msg : Codec::MessageCodec::Message,
+        peer : Socket::IPAddress,
+      ) : Nil
+        # Build StatusReport with success status
+        # Only 2 fields: general_status and protocol_status (both 0 for SUCCESS)
+        status_report = Session::Pase::Definitions::StatusReport.new(
+          general_status: 0_u16,  # SUCCESS
+          protocol_status: 0_u16, # SUCCESS
+        )
+
+        Log.info { "Sending StatusReport (SUCCESS) to confirm PASE session" }
+        Log.info { "  StatusReport sent unsecured (session_id=0) as part of PASE handshake" }
+
+        # Send via secure channel protocol
+        # StatusReport uses session_id=0 (unsecured) - secure session becomes active after acknowledgment
+        send_secure_channel_response(
+          msg: msg,
+          peer: peer,
+          message_type: MSG_STATUS_REPORT,
+          payload: status_report.to_bytes
+        )
       end
     end
   end
