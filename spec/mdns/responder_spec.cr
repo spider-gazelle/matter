@@ -209,7 +209,9 @@ describe Matter::MDNS::Responder do
       responder.start
       responder.close
 
-      responder.socket.closed?.should be_true
+      # Both sockets should be closed
+      responder.socket_ipv4.try(&.closed?).should be_true
+      responder.socket_ipv6.try(&.closed?).should be_true
     end
   end
 

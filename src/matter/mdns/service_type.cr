@@ -1,3 +1,5 @@
+require "./service_description"
+
 module Matter
   module MDNS
     # Matter mDNS service types
@@ -98,7 +100,7 @@ module Matter
       property product_id : UInt16
       property discriminator : UInt16
       property device_type : UInt16
-      property commissioning_mode : MDNS::CommissioningMode
+      property commissioning_mode : CommissioningMode
       property pairing_hint : UInt16?
       property pairing_instruction : String?
 
@@ -108,7 +110,7 @@ module Matter
         @product_id : UInt16,
         @discriminator : UInt16,
         @device_type : UInt16,
-        @commissioning_mode : MDNS::CommissioningMode = MDNS::CommissioningMode::Disabled,
+        @commissioning_mode : CommissioningMode = CommissioningMode::Disabled,
         @pairing_hint : UInt16? = nil,
         @pairing_instruction : String? = nil,
       )
