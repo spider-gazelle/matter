@@ -16,7 +16,8 @@ module Matter
       MDNS_IPV4 = Socket::IPAddress.new("224.0.0.251", MDNS_PORT)
       MDNS_IPV6 = Socket::IPAddress.new("ff02::fb", MDNS_PORT)
 
-      DEFAULT_TTL = 120.seconds
+      DEFAULT_TTL           = 120.seconds
+      ANNOUNCEMENT_INTERVAL = 30.seconds # Re-announce services every 30 seconds
 
       getter socket_ipv4 : UDPSocket?
       getter socket_ipv6 : UDPSocket?
@@ -109,6 +110,11 @@ module Matter
             Log.warn(exception: ex) { "Could not join IPv6 multicast group: #{ex.message}" }
           end
         end
+
+        # Start periodic announcement loop
+        spawn do
+          periodic_announcement_loop
+        end
       end
 
       # Stop listening
@@ -139,6 +145,54 @@ module Matter
       # Close responder
       def close : Nil
         stop
+      end
+
+      # Periodic announcement loop - re-announces all services every ANNOUNCEMENT_INTERVAL
+      private def periodic_announcement_loop : Nil
+        while @running
+          sleep ANNOUNCEMENT_INTERVAL
+          reannounce_all_services if @running
+        end
+      rescue ex
+        Log.error(exception: ex) { "Error in periodic announcement loop: #{ex.message}" }
+      end
+
+      # Re-announce all currently advertised services
+      private def reannounce_all_services : Nil
+        return if @advertised_services.empty?
+
+        Log.debug { "Re-announcing #{@advertised_services.size} service(s)" }
+
+        @advertised_services.each do |instance, (service_type, port, txt_records, commissioning_info)|
+          begin
+            if commissioning_info
+              # Commissioning service - need to build full records with subtypes
+              service = ServiceNames::COMMISSIONING
+              records = build_commissioning_records(
+                info: commissioning_info,
+                service: service,
+                instance: instance,
+                port: port,
+                txt_records: txt_records,
+                ttl: DEFAULT_TTL
+              )
+            else
+              # Operational service - simpler records
+              service = ServiceNames.service_name(service_type)
+              records = build_service_records(
+                service: service,
+                instance: instance,
+                port: port,
+                txt_records: txt_records,
+                ttl: DEFAULT_TTL
+              )
+            end
+
+            send_announcement(records)
+          rescue ex
+            Log.warn(exception: ex) { "Failed to re-announce service #{instance}: #{ex.message}" }
+          end
+        end
       end
 
       # Advertise commissioning service
