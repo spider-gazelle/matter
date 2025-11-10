@@ -119,7 +119,9 @@ module Matter
 
         # Create PASE responder if not exists
         unless @pase_responder
-          @pase_responder = Session::Pase::PaseResponder.new(@setup_pin)
+          # Create PBKDF parameters using the salt and iterations from this message handler
+          pbkdf_params = Session::Pase::PbkdfParameters.new(@iterations.to_i32, @salt)
+          @pase_responder = Session::Pase::PaseResponder.new(@setup_pin, pbkdf_params)
         end
 
         # Generate responder random (32 bytes)
@@ -152,10 +154,19 @@ module Matter
       private def handle_pase_pake1(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
         Log.info { "Handling PASE Pake1" }
 
-        # Decode Pake1 message (TLV::Serializable provides constructor that takes Bytes)
-        pake1 = Session::Pase::Definitions::Pake1.new(msg.payload)
-        p_a = pake1.x # Commissioner's public key
+        # Decode Pake1 message - manually parse TLV to extract pA
+        reader = TLV::Reader.new(msg.payload)
+        tlv_data = reader.get
+        Log.debug { "  Pake1 TLV keys: #{tlv_data.as(Hash).keys.inspect}" }
+
+        # Unwrap the structure
+        wrapper = tlv_data.as(Hash(TLV::Tag, TLV::Value))
+        struct_data = wrapper["Any"].as(Hash(TLV::Tag, TLV::Value))
+
+        # Extract pA from tag 1
+        p_a = struct_data[1_u8].as(Bytes)
         Log.debug { "  Received pA: #{p_a.size} bytes" }
+        Log.debug { "  pA hex: #{p_a.hexstring}" }
 
         # Get or create PASE responder
         responder = @pase_responder

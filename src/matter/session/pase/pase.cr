@@ -65,7 +65,7 @@ module Matter
             iterations_value = pbkdf_hash[1_u8]
             iterations = case iterations_value
                          when Int then iterations_value.to_u32
-                         else raise "Invalid iterations type: #{iterations_value.class}"
+                         else          raise "Invalid iterations type: #{iterations_value.class}"
                          end
             salt = pbkdf_hash[2_u8].as(Bytes)
 
