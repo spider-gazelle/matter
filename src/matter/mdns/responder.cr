@@ -318,18 +318,19 @@ module Matter
       private def send_announcement(records : Array(DNS::Packet::ResourceRecord)) : Nil
         # Split records into appropriate sections
         ptr_records = records.select { |r| r.type == RecordBuilder::TYPE_PTR }
-        srv_txt_records = records.select { |r| r.type == RecordBuilder::TYPE_SRV || r.type == RecordBuilder::TYPE_TXT }
-        ip_records = records.select { |r| r.type == RecordBuilder::TYPE_A || r.type == RecordBuilder::TYPE_AAAA }
+        additional_records = records.select { |r| r.type != RecordBuilder::TYPE_PTR }
 
-        # Build mDNS announcement packet
-        # PTR in answers, SRV/TXT in authorities (we're authoritative), A/AAAA in additionals
+        # Build mDNS announcement packet per RFC 6763
+        # PTR records in Answer Section
+        # SRV, TXT, A, AAAA records in Additional Records Section
+        # Authority Section should be empty for mDNS
         packet = DNS::Packet.new(
           id: 0_u16,
           response: true,
           authoritative_answer: true, # Critical: We are authoritative
           answers: ptr_records,
-          authorities: srv_txt_records, # Authority Section for authoritative records
-          additionals: ip_records
+          authorities: [] of DNS::Packet::ResourceRecord, # Empty per RFC 6763
+          additionals: additional_records                 # SRV, TXT, A, AAAA all go here
         )
 
         send_multicast(packet)
