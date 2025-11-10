@@ -57,19 +57,34 @@ module Matter
           # Decode the TLV-encoded response to get PBKDF parameters
           resp = Definitions::PbkdfParamResponse.new(response)
 
-          @pbkdf_params = PbkdfParameters.new(
-            iterations: resp.iterations.to_i32,
-            salt: resp.salt
-          )
+          # Extract iterations and salt from nested pbkdf_parameters
+          pbkdf_params = resp.pbkdf_parameters
+          if pbkdf_params
+            pbkdf_hash = pbkdf_params.as(Hash(TLV::Tag, TLV::Value))
+            # TLV encodes integers using the smallest type that fits, so we need to handle all unsigned integer types
+            iterations_value = pbkdf_hash[1_u8]
+            iterations = case iterations_value
+                         when Int then iterations_value.to_u32
+                         else raise "Invalid iterations type: #{iterations_value.class}"
+                         end
+            salt = pbkdf_hash[2_u8].as(Bytes)
 
-          # Compute w0 and w1 from PIN using PBKDF2
-          @w0_w1 = Crypto::Spake2p.compute_w0_w1(@crypto,
-            Crypto::Spake2p::PbkdfParameters.new(@pbkdf_params.not_nil!.iterations, @pbkdf_params.not_nil!.salt),
-            @pin_code
-          )
+            @pbkdf_params = PbkdfParameters.new(
+              iterations: iterations.to_i32,
+              salt: salt
+            )
 
-          # Create SPAKE2+ instance with w0
-          @spake = Crypto::Spake2p.create(@crypto, @context, @w0_w1.not_nil!.w0)
+            # Compute w0 and w1 from PIN using PBKDF2
+            @w0_w1 = Crypto::Spake2p.compute_w0_w1(@crypto,
+              Crypto::Spake2p::PbkdfParameters.new(@pbkdf_params.not_nil!.iterations, @pbkdf_params.not_nil!.salt),
+              @pin_code
+            )
+
+            # Create SPAKE2+ instance with w0
+            @spake = Crypto::Spake2p.create(@crypto, @context, @w0_w1.not_nil!.w0)
+          else
+            raise "PBKDF parameters not found in response"
+          end
         end
 
         # Step 3: Generate pA (our public value)
@@ -157,13 +172,22 @@ module Matter
         # Step 1: Process PBKDF parameter request and return parameters
         def process_pbkdf_param_request(request : Bytes) : Bytes
           # Parse the TLV-encoded request (if not empty)
-          if request.size > 0
-            req = Definitions::PbkdfParamRequest.new(request)
-            # Could use req.initiator_random, req.initiator_session_id if needed
-          end
+          initiator_random = if request.size > 0
+                               req = Definitions::PbkdfParamRequest.new(request)
+                               req.initiator_random || Random::Secure.random_bytes(32)
+                             else
+                               Random::Secure.random_bytes(32)
+                             end
+
+          # Generate responder random
+          responder_random = Random::Secure.random_bytes(32)
+          responder_session_id = Random::Secure.rand(UInt16)
 
           # Create and encode the PBKDF parameter response
           response = Definitions::PbkdfParamResponse.new(
+            initiator_random: initiator_random,
+            responder_random: responder_random,
+            responder_session_id: responder_session_id,
             iterations: @pbkdf_params.iterations.to_u32,
             salt: @pbkdf_params.salt
           )

@@ -109,17 +109,32 @@ module Matter
         request = Session::Pase::Definitions::PbkdfParamRequest.new(msg.payload)
         Log.debug { "  Initiator session ID: #{request.initiator_session_id || "none"}" }
 
+        # Extract initiator_random from request (32 bytes)
+        initiator_random = request.initiator_random
+        unless initiator_random
+          Log.error { "PBKDFParamRequest missing initiator_random" }
+          return
+        end
+        Log.debug { "  Initiator random: #{initiator_random.size} bytes" }
+
         # Create PASE responder if not exists
         unless @pase_responder
           @pase_responder = Session::Pase::PaseResponder.new(@setup_pin)
         end
 
-        # Build response
+        # Generate responder random (32 bytes)
+        responder_random = Random::Secure.random_bytes(32)
+
+        # Generate responder session ID
         responder_session_id = Random::Secure.rand(UInt16)
+
+        # Build response
         response = Session::Pase::Definitions::PbkdfParamResponse.new(
+          initiator_random: initiator_random,
+          responder_random: responder_random,
+          responder_session_id: responder_session_id,
           iterations: @iterations,
-          salt: @salt,
-          responder_session_id: responder_session_id
+          salt: @salt
         )
 
         # Send response
@@ -127,8 +142,7 @@ module Matter
           msg: msg,
           peer: peer,
           message_type: MSG_PBKDF_PARAM_RESPONSE,
-          payload: response.to_bytes,
-          session_id: responder_session_id
+          payload: response.to_bytes
         )
 
         Log.info { "Sent PBKDFParamResponse with session ID: #{responder_session_id}" }

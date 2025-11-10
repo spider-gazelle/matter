@@ -361,17 +361,17 @@ describe Matter::Cluster::DescriptorCluster do
         device_type_hash = device_types[0].as(Hash(TLV::Tag, TLV::Value))
 
         # Handle TLV encoding integers as smallest size
-        device_type_id = case device_type_hash["0"]
-                         when UInt8  then device_type_hash["0"].as(UInt8).to_u32
-                         when UInt16 then device_type_hash["0"].as(UInt16).to_u32
-                         when UInt32 then device_type_hash["0"].as(UInt32)
+        device_type_id = case device_type_hash[0_u8]
+                         when UInt8  then device_type_hash[0_u8].as(UInt8).to_u32
+                         when UInt16 then device_type_hash[0_u8].as(UInt16).to_u32
+                         when UInt32 then device_type_hash[0_u8].as(UInt32)
                          else             raise "Unexpected type"
                          end
         device_type_id.should eq(0x0100_u32)
 
-        revision = case device_type_hash["1"]
-                   when UInt8  then device_type_hash["1"].as(UInt8).to_u16
-                   when UInt16 then device_type_hash["1"].as(UInt16)
+        revision = case device_type_hash[1_u8]
+                   when UInt8  then device_type_hash[1_u8].as(UInt8).to_u16
+                   when UInt16 then device_type_hash[1_u8].as(UInt16)
                    else             raise "Unexpected type"
                    end
         revision.should eq(2_u16)
@@ -400,34 +400,34 @@ describe Matter::Cluster::DescriptorCluster do
 
         # First device type - handle integer size conversions
         dt1 = device_types[0].as(Hash(TLV::Tag, TLV::Value))
-        dt1_id = case dt1["0"]
-                 when UInt8  then dt1["0"].as(UInt8).to_u32
-                 when UInt16 then dt1["0"].as(UInt16).to_u32
-                 when UInt32 then dt1["0"].as(UInt32)
+        dt1_id = case dt1[0_u8]
+                 when UInt8  then dt1[0_u8].as(UInt8).to_u32
+                 when UInt16 then dt1[0_u8].as(UInt16).to_u32
+                 when UInt32 then dt1[0_u8].as(UInt32)
                  else             raise "Unexpected type"
                  end
         dt1_id.should eq(0x0016_u32)
 
-        dt1_rev = case dt1["1"]
-                  when UInt8  then dt1["1"].as(UInt8).to_u16
-                  when UInt16 then dt1["1"].as(UInt16)
+        dt1_rev = case dt1[1_u8]
+                  when UInt8  then dt1[1_u8].as(UInt8).to_u16
+                  when UInt16 then dt1[1_u8].as(UInt16)
                   else             raise "Unexpected type"
                   end
         dt1_rev.should eq(1_u16)
 
         # Second device type
         dt2 = device_types[1].as(Hash(TLV::Tag, TLV::Value))
-        dt2_id = case dt2["0"]
-                 when UInt8  then dt2["0"].as(UInt8).to_u32
-                 when UInt16 then dt2["0"].as(UInt16).to_u32
-                 when UInt32 then dt2["0"].as(UInt32)
+        dt2_id = case dt2[0_u8]
+                 when UInt8  then dt2[0_u8].as(UInt8).to_u32
+                 when UInt16 then dt2[0_u8].as(UInt16).to_u32
+                 when UInt32 then dt2[0_u8].as(UInt32)
                  else             raise "Unexpected type"
                  end
         dt2_id.should eq(0x000E_u32)
 
-        dt2_rev = case dt2["1"]
-                  when UInt8  then dt2["1"].as(UInt8).to_u16
-                  when UInt16 then dt2["1"].as(UInt16)
+        dt2_rev = case dt2[1_u8]
+                  when UInt8  then dt2[1_u8].as(UInt8).to_u16
+                  when UInt16 then dt2[1_u8].as(UInt16)
                   else             raise "Unexpected type"
                   end
         dt2_rev.should eq(1_u16)

@@ -537,7 +537,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Parse response and check status
         reader = TLV::Reader.new(result.as(Bytes))
         response = reader.get
-        status = response["Any"].as(Hash)["0"]
+        status = response["Any"].as(Hash)[0_u8]
         status.should eq(4_u8) # MissingCsr
       end
 
@@ -578,7 +578,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         result.should be_a(Bytes)
         reader = TLV::Reader.new(result.as(Bytes))
         response = reader.get
-        status = response["Any"].as(Hash)["0"]
+        status = response["Any"].as(Hash)[0_u8]
         status.should eq(3_u8) # InvalidNoc
       end
     end
@@ -661,7 +661,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Parse response to check status
         reader = TLV::Reader.new(result.as(Bytes))
         response = reader.get
-        status = response["Any"].as(Hash)["0"]
+        status = response["Any"].as(Hash)[0_u8]
         status.should eq(0_u8) # Success
 
         # Verify fabric was updated, not added
@@ -752,7 +752,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         result.should be_a(Bytes)
         reader = TLV::Reader.new(result.as(Bytes))
         response = reader.get
-        status = response["Any"].as(Hash)["0"]
+        status = response["Any"].as(Hash)[0_u8]
         status.should eq(3_u8) # InvalidNoc
       end
     end
@@ -810,7 +810,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         reader = TLV::Reader.new(result.as(Bytes))
         response = reader.get
         # Error responses have a structure with tag 0 containing an error message string
-        error_value = response["Any"].as(Hash)["0"]
+        error_value = response["Any"].as(Hash)[0_u8]
         error_value.should be_a(String)
         error_value.as(String).should contain("AddNOC")
       end
@@ -998,7 +998,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         result.should be_a(Bytes)
         reader = TLV::Reader.new(result.as(Bytes))
         response = reader.get
-        status = response["Any"].as(Hash)["0"]
+        status = response["Any"].as(Hash)[0_u8]
         status.should eq(9_u8) # FabricConflict
       end
     end
@@ -1144,7 +1144,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         result.should be_a(Bytes)
         reader = TLV::Reader.new(result.as(Bytes))
         response = reader.get
-        status = response["Any"].as(Hash)["0"]
+        status = response["Any"].as(Hash)[0_u8]
         status.should eq(10_u8) # LabelConflict
       end
     end

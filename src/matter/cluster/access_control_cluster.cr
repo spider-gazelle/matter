@@ -285,11 +285,11 @@ module Matter
           acl_array.each do |entry_value|
             entry_hash = entry_value.as(Hash(TLV::Tag, TLV::Value))
 
-            privilege = entry_hash["1"].as(UInt8)
-            auth_mode = entry_hash["2"].as(UInt8)
+            privilege = entry_hash[1_u8].as(UInt8)
+            auth_mode = entry_hash[2_u8].as(UInt8)
 
             # Parse subjects array
-            subjects_array = entry_hash["3"].as(Array(TLV::Value))
+            subjects_array = entry_hash[3_u8].as(Array(TLV::Value))
             subjects = subjects_array.map do |s|
               # TLV may encode integers as different sizes based on value
               case s
@@ -308,14 +308,14 @@ module Matter
 
             # Parse targets array (optional)
             targets = nil.as(Array(Target)?)
-            if entry_hash.has_key?("4")
-              targets_array = entry_hash["4"].as(Array(TLV::Value))
+            if entry_hash.has_key?(4_u8)
+              targets_array = entry_hash[4_u8].as(Array(TLV::Value))
               targets = targets_array.map do |target_value|
                 target_hash = target_value.as(Hash(TLV::Tag, TLV::Value))
 
                 # Handle TLV encoding integers as different sizes
-                cluster = if target_hash.has_key?("0")
-                            case val = target_hash["0"]
+                cluster = if target_hash.has_key?(0_u8)
+                            case val = target_hash[0_u8]
                             when UInt8  then val.to_u32
                             when UInt16 then val.to_u32
                             when UInt32 then val
@@ -323,16 +323,16 @@ module Matter
                             end
                           end
 
-                endpoint = if target_hash.has_key?("1")
-                             case val = target_hash["1"]
+                endpoint = if target_hash.has_key?(1_u8)
+                             case val = target_hash[1_u8]
                              when UInt8  then val.to_u16
                              when UInt16 then val
                              else             nil
                              end
                            end
 
-                device_type = if target_hash.has_key?("2")
-                                case val = target_hash["2"]
+                device_type = if target_hash.has_key?(2_u8)
+                                case val = target_hash[2_u8]
                                 when UInt8  then val.to_u32
                                 when UInt16 then val.to_u32
                                 when UInt32 then val
@@ -344,7 +344,7 @@ module Matter
               end
             end
 
-            fabric_index = entry_hash["254"].as(UInt8)
+            fabric_index = entry_hash[254_u8].as(UInt8)
 
             new_acl << AccessControlEntry.new(
               AccessControlEntryPrivilege.from_value(privilege),

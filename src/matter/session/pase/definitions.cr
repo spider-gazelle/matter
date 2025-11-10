@@ -71,22 +71,53 @@ module Matter
 
         # PBKDF Parameter Response message
         # Sent by device in response to PbkdfParamRequest
+        # Note: Not using TLV::Serializable due to nested TLV::Value field
         struct PbkdfParamResponse
-          include TLV::Serializable
+          # Initiator random (echo from request)
+          property initiator_random : Bytes
 
-          # PBKDF iterations count
-          @[TLV::Field(tag: 0)]
-          property iterations : UInt32
+          # Responder random (new 32-byte random)
+          property responder_random : Bytes
 
-          # PBKDF salt
-          @[TLV::Field(tag: 1)]
-          property salt : Bytes
+          # Responder session ID
+          property responder_session_id : UInt16
 
-          # Responder session ID (optional)
-          @[TLV::Field(tag: 2, optional: true)]
-          property responder_session_id : UInt16?
+          # PBKDF parameters (nested structure)
+          property pbkdf_parameters : TLV::Value?
 
-          def initialize(@iterations : UInt32, @salt : Bytes, @responder_session_id = nil)
+          def initialize(
+            @initiator_random : Bytes,
+            @responder_random : Bytes,
+            @responder_session_id : UInt16,
+            iterations : UInt32? = nil,
+            salt : Bytes? = nil,
+          )
+            if iterations && salt
+              @pbkdf_parameters = {
+                1_u8 => iterations,
+                2_u8 => salt,
+              } of TLV::Tag => TLV::Value
+            else
+              @pbkdf_parameters = nil
+            end
+          end
+
+          # Constructor from TLV bytes - manual deserialization
+          def initialize(data : Bytes)
+            reader = TLV::Reader.new(data)
+            tlv_data = reader.get
+
+            # Unwrap the anonymous structure (tagged with "Any")
+            wrapper = tlv_data.as(Hash(TLV::Tag, TLV::Value))
+            hash = wrapper["Any"].as(Hash(TLV::Tag, TLV::Value))
+
+            # Extract required fields
+            @initiator_random = hash[1_u8].as(Bytes)
+            @responder_random = hash[2_u8].as(Bytes)
+            @responder_session_id = hash[3_u8].as(UInt16)
+
+            # Extract optional pbkdf_parameters
+            @pbkdf_parameters = hash[4_u8]? if hash.has_key?(4_u8)
           end
 
           # Encode to TLV bytes
@@ -94,12 +125,13 @@ module Matter
             io = IO::Memory.new
             writer = TLV::Writer.new(io)
             data = {
-              0_u8 => @iterations,
-              1_u8 => @salt,
+              1_u8 => @initiator_random,
+              2_u8 => @responder_random,
+              3_u8 => @responder_session_id,
             } of TLV::Tag => TLV::Value
 
-            if session_id = @responder_session_id
-              data[2_u8] = session_id
+            if pbkdf = @pbkdf_parameters
+              data[4_u8] = pbkdf
             end
 
             writer.put(nil, data)

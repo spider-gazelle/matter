@@ -324,7 +324,7 @@ module Matter
         payload_header = Codec::MessageCodec::PayloadHeader.new(
           exchange_id: exchange.exchange_id,
           protocol_id: original_message.payload_header.protocol_id,
-          message_type: original_message.payload_header.message_type,
+          message_type: 0x10_u8, # MRP Standalone Acknowledgement
           initiator_message: !original_message.payload_header.initiator_message?,
           requires_acknowledge: false,
           acknowledged_message_id: original_message.packet_header.message_id

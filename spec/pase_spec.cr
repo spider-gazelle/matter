@@ -36,7 +36,14 @@ describe Matter::Session::Pase do
     it "encodes and decodes PBKDF parameter response" do
       # Create a response with test data
       salt = Bytes.new(32, 0xAB_u8)
+      initiator_random = Random::Secure.random_bytes(32)
+      responder_random = Random::Secure.random_bytes(32)
+      responder_session_id = 1234_u16
+
       response = Matter::Session::Pase::Definitions::PbkdfParamResponse.new(
+        initiator_random: initiator_random,
+        responder_random: responder_random,
+        responder_session_id: responder_session_id,
         iterations: 1000_u32,
         salt: salt
       )
@@ -47,9 +54,16 @@ describe Matter::Session::Pase do
 
       # Decode from TLV bytes
       decoded = Matter::Session::Pase::Definitions::PbkdfParamResponse.new(encoded)
-      decoded.iterations.should eq(1000_u32)
-      decoded.salt.should eq(salt)
-      decoded.responder_session_id.should be_nil
+      decoded.initiator_random.should eq(initiator_random)
+      decoded.responder_random.should eq(responder_random)
+      decoded.responder_session_id.should eq(responder_session_id)
+
+      # Check pbkdf_parameters
+      pbkdf = decoded.pbkdf_parameters
+      pbkdf.should_not be_nil
+      pbkdf_hash = pbkdf.as(Hash(TLV::Tag, TLV::Value))
+      pbkdf_hash[1_u8].should eq(1000_u32)
+      pbkdf_hash[2_u8].as(Bytes).should eq(salt)
     end
 
     it "round-trips PBKDF parameter request and response" do
@@ -102,7 +116,12 @@ describe Matter::Session::Pase do
 
       params = Matter::Session::Pase::PbkdfParameters.default
       # Create a properly encoded PBKDF parameter response
+      initiator_random = Random::Secure.random_bytes(32)
+      responder_random = Random::Secure.random_bytes(32)
       response = Matter::Session::Pase::Definitions::PbkdfParamResponse.new(
+        initiator_random: initiator_random,
+        responder_random: responder_random,
+        responder_session_id: 1000_u16,
         iterations: params.iterations.to_u32,
         salt: params.salt
       )
@@ -119,7 +138,12 @@ describe Matter::Session::Pase do
 
       params = Matter::Session::Pase::PbkdfParameters.default
       # Create a properly encoded PBKDF parameter response
+      initiator_random = Random::Secure.random_bytes(32)
+      responder_random = Random::Secure.random_bytes(32)
       response = Matter::Session::Pase::Definitions::PbkdfParamResponse.new(
+        initiator_random: initiator_random,
+        responder_random: responder_random,
+        responder_session_id: 1000_u16,
         iterations: params.iterations.to_u32,
         salt: params.salt
       )
@@ -166,7 +190,12 @@ describe Matter::Session::Pase do
       )
 
       # Commissioner generates valid pA
+      initiator_random = Random::Secure.random_bytes(32)
+      responder_random = Random::Secure.random_bytes(32)
       response = Matter::Session::Pase::Definitions::PbkdfParamResponse.new(
+        initiator_random: initiator_random,
+        responder_random: responder_random,
+        responder_session_id: 1000_u16,
         iterations: params.iterations.to_u32,
         salt: params.salt
       )
@@ -192,7 +221,12 @@ describe Matter::Session::Pase do
       )
 
       # Go through protocol steps to compute shared secret
+      initiator_random = Random::Secure.random_bytes(32)
+      responder_random = Random::Secure.random_bytes(32)
       response = Matter::Session::Pase::Definitions::PbkdfParamResponse.new(
+        initiator_random: initiator_random,
+        responder_random: responder_random,
+        responder_session_id: 1000_u16,
         iterations: params.iterations.to_u32,
         salt: params.salt
       )

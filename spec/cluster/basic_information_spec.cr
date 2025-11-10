@@ -161,8 +161,8 @@ describe Matter::Cluster::BasicInformationCluster do
       # Extract struct data
       any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
       struct_data = any_data.as(Hash(TLV::Tag, TLV::Value))
-      struct_data["0"].should eq(5)  # case_sessions_per_fabric
-      struct_data["1"].should eq(10) # subscriptions_per_fabric
+      struct_data[0_u8].should eq(5)  # case_sessions_per_fabric
+      struct_data[1_u8].should eq(10) # subscriptions_per_fabric
     end
 
     it "reads PRODUCT_APPEARANCE with TLV struct encoding" do
@@ -185,8 +185,8 @@ describe Matter::Cluster::BasicInformationCluster do
       # Extract struct data
       any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
       struct_data = any_data.as(Hash(TLV::Tag, TLV::Value))
-      struct_data["0"].should eq(1) # Matte finish
-      struct_data["1"].should eq(8) # Blue color
+      struct_data[0_u8].should eq(1) # Matte finish
+      struct_data[1_u8].should eq(8) # Blue color
     end
 
     it "reads PRODUCT_APPEARANCE with nullable primary_color omitted" do
@@ -210,7 +210,7 @@ describe Matter::Cluster::BasicInformationCluster do
       any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
       struct_data = any_data.as(Hash(TLV::Tag, TLV::Value))
 
-      struct_data["0"].should eq(3)             # Polished finish
+      struct_data[0_u8].should eq(3)            # Polished finish
       struct_data.has_key?("1").should be_false # No primary color
     end
 
@@ -392,7 +392,7 @@ describe Matter::Cluster::BasicInformationCluster do
       # Extract event struct
       any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
       event_struct = any_data.as(Hash(TLV::Tag, TLV::Value))
-      event_struct["0"].should eq(0x01000000)
+      event_struct[0_u8].should eq(0x01000000)
     end
 
     it "emits ShutDown event with empty TLV structure" do
@@ -426,7 +426,7 @@ describe Matter::Cluster::BasicInformationCluster do
       # Extract event struct
       any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
       event_struct = any_data.as(Hash(TLV::Tag, TLV::Value))
-      event_struct["0"].should eq(1)
+      event_struct[0_u8].should eq(1)
     end
 
     it "emits ReachableChanged event and updates reachable attribute" do
@@ -448,7 +448,7 @@ describe Matter::Cluster::BasicInformationCluster do
       # Extract event struct
       any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
       event_struct = any_data.as(Hash(TLV::Tag, TLV::Value))
-      event_struct["0"].should eq(false)
+      event_struct[0_u8].should eq(false)
     end
   end
 

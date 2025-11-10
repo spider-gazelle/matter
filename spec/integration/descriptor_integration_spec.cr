@@ -66,10 +66,10 @@ describe "Descriptor Integration" do
 
       # Controller knows this is an On/Off Light
       type_hash = types[0].as(Hash(TLV::Tag, TLV::Value))
-      device_type = case type_hash["0"]
-                    when UInt8  then type_hash["0"].as(UInt8).to_u32
-                    when UInt16 then type_hash["0"].as(UInt16).to_u32
-                    when UInt32 then type_hash["0"].as(UInt32)
+      device_type = case type_hash[0_u8]
+                    when UInt8  then type_hash[0_u8].as(UInt8).to_u32
+                    when UInt16 then type_hash[0_u8].as(UInt16).to_u32
+                    when UInt32 then type_hash[0_u8].as(UInt32)
                     else             0_u32
                     end
       device_type.should eq(0x0100_u32)
@@ -356,10 +356,10 @@ describe "Descriptor Integration" do
       types = data["Any"].as(Array(TLV::Value))
 
       root_type_hash = types[0].as(Hash(TLV::Tag, TLV::Value))
-      root_type = case root_type_hash["0"]
-                  when UInt8  then root_type_hash["0"].as(UInt8).to_u32
-                  when UInt16 then root_type_hash["0"].as(UInt16).to_u32
-                  when UInt32 then root_type_hash["0"].as(UInt32)
+      root_type = case root_type_hash[0_u8]
+                  when UInt8  then root_type_hash[0_u8].as(UInt8).to_u32
+                  when UInt16 then root_type_hash[0_u8].as(UInt16).to_u32
+                  when UInt32 then root_type_hash[0_u8].as(UInt32)
                   else             0_u32
                   end
       root_type.should eq(0x0016_u32) # It's a root node
