@@ -9,15 +9,33 @@ module Matter
         struct PbkdfParamRequest
           include TLV::Serializable
 
-          # Initiator random value (optional)
-          @[TLV::Field(tag: 0, optional: true)]
+          # Initiator random (optional, tag 1)
+          @[TLV::Field(tag: 1, optional: true)]
           property initiator_random : Bytes?
 
-          # Initiator session ID (optional)
-          @[TLV::Field(tag: 1, optional: true)]
+          # Initiator session ID (optional, tag 2)
+          @[TLV::Field(tag: 2, optional: true)]
           property initiator_session_id : UInt16?
 
-          def initialize(@initiator_random = nil, @initiator_session_id = nil)
+          # Passcode ID (optional, tag 3)
+          @[TLV::Field(tag: 3, optional: true)]
+          property passcode_id : UInt16?
+
+          # Has PBKDF parameters (optional, tag 4)
+          @[TLV::Field(tag: 4, optional: true)]
+          property has_pbkdf_parameters : Bool?
+
+          # MRP parameters (optional, tag 5) - we'll store as raw TLV for now
+          @[TLV::Field(tag: 5, optional: true)]
+          property mrp_parameters : Hash(String | Tuple(Int32 | Nil, Int32) | UInt8 | Nil, TLV::Value)?
+
+          def initialize(
+            @initiator_random = nil,
+            @initiator_session_id = nil,
+            @passcode_id = nil,
+            @has_pbkdf_parameters = nil,
+            @mrp_parameters = nil,
+          )
           end
 
           # Encode to TLV bytes
@@ -27,11 +45,23 @@ module Matter
             data = {} of TLV::Tag => TLV::Value
 
             if random = @initiator_random
-              data[0_u8] = random
+              data[1_u8] = random
             end
 
             if session_id = @initiator_session_id
-              data[1_u8] = session_id
+              data[2_u8] = session_id
+            end
+
+            if passcode = @passcode_id
+              data[3_u8] = passcode
+            end
+
+            if has_pbkdf = @has_pbkdf_parameters
+              data[4_u8] = has_pbkdf
+            end
+
+            if mrp = @mrp_parameters
+              data[5_u8] = mrp
             end
 
             writer.put(nil, data)

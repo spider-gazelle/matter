@@ -102,6 +102,9 @@ module Matter
       private def handle_pbkdf_param_request(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
         Log.info { "Handling PBKDFParamRequest" }
 
+        # Debug: dump payload bytes
+        Log.debug { "PBKDF Request payload (#{msg.payload.size} bytes): #{msg.payload.hexstring}" }
+
         # Decode request (TLV::Serializable provides constructor that takes Bytes)
         request = Session::Pase::Definitions::PbkdfParamRequest.new(msg.payload)
         Log.debug { "  Initiator session ID: #{request.initiator_session_id || "none"}" }

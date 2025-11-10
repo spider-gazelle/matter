@@ -16,7 +16,8 @@ module Matter
       # Matter default port
       MATTER_PORT = 5540
 
-      getter socket : UDPSocket
+      getter socket_ipv4 : UDPSocket
+      getter socket_ipv6 : UDPSocket
       getter port : Int32
       getter message_counter : MessageCounter
       getter exchange_manager : ExchangeManager
@@ -26,19 +27,32 @@ module Matter
       property on_message : Proc(Codec::MessageCodec::Message, Socket::IPAddress, Nil)?
 
       @running : Bool
-      @receive_fiber : Fiber?
+      @receive_fiber_ipv4 : Fiber?
+      @receive_fiber_ipv6 : Fiber?
 
-      def initialize(@port : Int32 = MATTER_PORT, @interface : String = "0.0.0.0")
-        @socket = UDPSocket.new
-        @socket.reuse_address = true
-        @socket.reuse_port = true
-        @socket.bind(@interface, @port)
-        @socket.read_timeout = 100.milliseconds # 100ms timeout for receive operations
+      def initialize(@port : Int32 = MATTER_PORT, @interface_ipv4 : String = "0.0.0.0", @interface_ipv6 : String = "::")
+        # Create separate IPv4 and IPv6 sockets for dual-stack support
+        @socket_ipv4 = UDPSocket.new(Socket::Family::INET)
+        @socket_ipv4.reuse_address = true
+        @socket_ipv4.reuse_port = true
+        @socket_ipv4.bind(@interface_ipv4, @port)
+        @socket_ipv4.read_timeout = 100.milliseconds
+
+        @socket_ipv6 = UDPSocket.new(Socket::Family::INET6)
+        @socket_ipv6.reuse_address = true
+        @socket_ipv6.reuse_port = true
+        @socket_ipv6.bind(@interface_ipv6, @port)
+        @socket_ipv6.read_timeout = 100.milliseconds
 
         @message_counter = MessageCounter.new
         @exchange_manager = ExchangeManager.new
         @running = false
-        @receive_fiber = nil
+        @receive_fiber_ipv4 = nil
+        @receive_fiber_ipv6 = nil
+
+        puts "🔌 UDP transport bound to:"
+        puts "   IPv4: [#{@interface_ipv4}]:#{@port}"
+        puts "   IPv6: [#{@interface_ipv6}]:#{@port}"
       end
 
       # Start receiving messages in background
@@ -46,23 +60,28 @@ module Matter
         return if @running
 
         @running = true
-        @receive_fiber = spawn do
-          receive_loop
+        @receive_fiber_ipv4 = spawn do
+          receive_loop_ipv4
+        end
+        @receive_fiber_ipv6 = spawn do
+          receive_loop_ipv6
         end
       end
 
       # Stop receiving messages
       def stop : Nil
         @running = false
-        # Give fiber time to exit on next loop iteration
-        sleep 200.milliseconds if @receive_fiber
-        @receive_fiber = nil
+        # Give fibers time to exit on next loop iteration
+        sleep 200.milliseconds if @receive_fiber_ipv4 || @receive_fiber_ipv6
+        @receive_fiber_ipv4 = nil
+        @receive_fiber_ipv6 = nil
       end
 
       # Close transport and release resources
       def close : Nil
         stop
-        @socket.close unless @socket.closed?
+        @socket_ipv4.close unless @socket_ipv4.closed?
+        @socket_ipv6.close unless @socket_ipv6.closed?
       end
 
       # Send a Matter message
@@ -100,12 +119,17 @@ module Matter
         # Encode and send
         packet = Codec::MessageCodec::Base.encode_payload(message)
         data = Codec::MessageCodec::Base.encode_packet(packet)
-        @socket.send(data, peer_address)
+
+        # Choose socket based on peer address family
+        socket = peer_address.family.inet6? ? @socket_ipv6 : @socket_ipv4
+        socket.send(data, peer_address)
       end
 
       # Send raw packet (for testing)
       def send_raw(data : Bytes | Slice(UInt8), peer_address : Socket::IPAddress) : Nil
-        @socket.send(data, peer_address)
+        # Choose socket based on peer address family
+        socket = peer_address.family.inet6? ? @socket_ipv6 : @socket_ipv4
+        socket.send(data, peer_address)
       end
 
       # Create and send a message on a new exchange
@@ -173,13 +197,18 @@ module Matter
         @exchange_manager.cleanup_stale_exchanges
       end
 
-      private def receive_loop : Nil
+      private def receive_loop_ipv4 : Nil
+        puts "📡 IPv4 UDP receive loop started on port #{@port}"
         buffer = Bytes.new(1280) # Matter MTU
+        packet_count = 0
 
         while @running
           begin
-            bytes_read, peer_address = @socket.receive(buffer)
+            bytes_read, peer_address = @socket_ipv4.receive(buffer)
             next if bytes_read == 0
+
+            packet_count += 1
+            puts "📬 Received IPv4 UDP packet ##{packet_count}: #{bytes_read} bytes from #{peer_address.address}:#{peer_address.port}"
 
             data = buffer[0, bytes_read]
             handle_received_data(data, peer_address)
@@ -187,23 +216,58 @@ module Matter
             # Normal - just continue
           rescue ex : Exception
             # Log error but keep running
-            puts "Transport receive error: #{ex.message}"
+            puts "❌ IPv4 transport receive error: #{ex.message}"
+            puts ex.backtrace.join("\n")
           end
         end
+
+        puts "📡 IPv4 UDP receive loop stopped"
+      end
+
+      private def receive_loop_ipv6 : Nil
+        puts "📡 IPv6 UDP receive loop started on port #{@port}"
+        buffer = Bytes.new(1280) # Matter MTU
+        packet_count = 0
+
+        while @running
+          begin
+            bytes_read, peer_address = @socket_ipv6.receive(buffer)
+            next if bytes_read == 0
+
+            packet_count += 1
+            puts "📬 Received IPv6 UDP packet ##{packet_count}: #{bytes_read} bytes from #{peer_address.address}:#{peer_address.port}"
+
+            data = buffer[0, bytes_read]
+            handle_received_data(data, peer_address)
+          rescue ex : IO::TimeoutError
+            # Normal - just continue
+          rescue ex : Exception
+            # Log error but keep running
+            puts "❌ IPv6 transport receive error: #{ex.message}"
+            puts ex.backtrace.join("\n")
+          end
+        end
+
+        puts "📡 IPv6 UDP receive loop stopped"
       end
 
       private def handle_received_data(data : Bytes, peer_address : Socket::IPAddress) : Nil
+        puts "🔍 Decoding packet: #{data.size} bytes"
+
         # Decode packet
         packet = Codec::MessageCodec::Base.decode_packet(data)
+        puts "✅ Packet decoded: session_id=#{packet.header.session_id}, message_id=#{packet.header.message_id}"
 
         # Check for duplicate messages
         unless @message_counter.valid?(packet.header.message_id)
           # Duplicate message - ignore
+          puts "⚠️  Duplicate message ignored: #{packet.header.message_id}"
           return
         end
 
         # Decode full message
         message = Codec::MessageCodec::Base.decode_payload(packet)
+        puts "✅ Message decoded: protocol=0x#{message.payload_header.protocol_id.to_s(16)}, type=0x#{message.payload_header.message_type.to_s(16)}"
 
         # Get or create exchange
         exchange = @exchange_manager.get_or_create_exchange(
@@ -223,16 +287,21 @@ module Matter
 
         # Send acknowledgment if required
         if message.payload_header.requires_acknowledge?
+          puts "📤 Sending acknowledgment for message #{packet.header.message_id}"
           send_acknowledgment(message, peer_address, exchange)
         end
 
         # Deliver to application
         if callback = @on_message
+          puts "📨 Calling on_message callback"
           callback.call(message, peer_address)
+        else
+          puts "⚠️  No on_message callback registered!"
         end
       rescue ex : Exception
         # Log decode/processing errors
-        puts "Error handling received data: #{ex.message}"
+        puts "❌ Error handling received data: #{ex.message}"
+        puts ex.backtrace.join("\n")
       end
 
       private def send_acknowledgment(

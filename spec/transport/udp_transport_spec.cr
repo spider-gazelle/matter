@@ -206,12 +206,13 @@ describe Matter::Transport::UDPTransport do
   end
 
   describe "#close" do
-    it "closes socket" do
+    it "closes both sockets" do
       transport = Matter::Transport::UDPTransport.new(port: 15550)
 
       transport.close
 
-      transport.socket.closed?.should be_true
+      transport.socket_ipv4.closed?.should be_true
+      transport.socket_ipv6.closed?.should be_true
     end
 
     it "can be called multiple times safely" do
@@ -220,7 +221,8 @@ describe Matter::Transport::UDPTransport do
       transport.close
       transport.close # Should not raise
 
-      transport.socket.closed?.should be_true
+      transport.socket_ipv4.closed?.should be_true
+      transport.socket_ipv6.closed?.should be_true
     end
   end
 end
