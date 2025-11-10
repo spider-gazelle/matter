@@ -44,6 +44,10 @@ module Matter
       property pbkdf_request_payload : Bytes?
       property pbkdf_response_payload : Bytes?
 
+      # PASE session IDs from PBKDF exchange
+      property initiator_session_id : UInt16?
+      property responder_session_id : UInt16?
+
       def initialize(
         @transport : Transport::UDPTransport,
         @setup_pin : UInt32,
@@ -116,6 +120,9 @@ module Matter
         request = Session::Pase::Definitions::PbkdfParamRequest.new(msg.payload)
         Log.debug { "  Initiator session ID: #{request.initiator_session_id || "none"}" }
 
+        # Store initiator session ID for later use in secure session creation
+        @initiator_session_id = request.initiator_session_id
+
         # Extract initiator_random from request (32 bytes)
         initiator_random = request.initiator_random
         unless initiator_random
@@ -129,6 +136,9 @@ module Matter
 
         # Generate responder session ID
         responder_session_id = Random::Secure.rand(UInt16)
+
+        # Store responder session ID for later use in secure session creation
+        @responder_session_id = responder_session_id
 
         # Build response
         response = Session::Pase::Definitions::PbkdfParamResponse.new(
@@ -228,10 +238,18 @@ module Matter
       private def handle_pase_pake3(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
         Log.info { "Handling PASE Pake3" }
 
-        # Decode Pake3 message (TLV::Serializable provides constructor that takes Bytes)
+        # Decode Pake3 message - manually parse TLV to extract verifier (cA)
         Log.debug { "  Pake3 payload: #{msg.payload.hexstring}" }
-        pake3 = Session::Pase::Definitions::Pake3.new(msg.payload)
-        c_a = pake3.verifier # Commissioner's confirmation
+        reader = TLV::Reader.new(msg.payload)
+        tlv_data = reader.get
+        Log.debug { "  Pake3 TLV keys: #{tlv_data.as(Hash).keys.inspect}" }
+
+        # Unwrap the structure (same pattern as Pake1)
+        wrapper = tlv_data.as(Hash(TLV::Tag, TLV::Value))
+        struct_data = wrapper["Any"].as(Hash(TLV::Tag, TLV::Value))
+
+        # Extract cA (verifier) from tag 1
+        c_a = struct_data[1_u8].as(Bytes)
         Log.debug { "  Received cA: #{c_a.size} bytes" }
         Log.debug { "  cA hex: #{c_a.hexstring}" }
 
@@ -267,9 +285,16 @@ module Matter
         Log.debug { "  Derived encryption key: #{keys[:encryption].size} bytes" }
         Log.debug { "  Derived decryption key: #{keys[:decryption].size} bytes" }
 
-        # Create secure session context
-        session_id = msg.packet_header.session_id
-        peer_session_id = msg.packet_header.source_node_id.try(&.id.to_u16) || 0_u16
+        # Create secure session context using stored session IDs from PBKDF exchange
+        # We are the responder, so our session_id is responder_session_id
+        # The peer (initiator) uses initiator_session_id as their session_id
+        session_id = @responder_session_id
+        peer_session_id = @initiator_session_id
+
+        unless session_id && peer_session_id
+          Log.error { "Missing session IDs - PBKDF exchange must complete first" }
+          return
+        end
 
         secure_context = Session::SecureContext.new(
           session_id: session_id,

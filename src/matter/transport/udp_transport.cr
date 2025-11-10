@@ -120,9 +120,15 @@ module Matter
         packet = Codec::MessageCodec::Base.encode_payload(message)
         data = Codec::MessageCodec::Base.encode_packet(packet)
 
+        # Log the outgoing packet
+        puts "📤 Sending UDP packet: #{data.size} bytes to #{peer_address.address}:#{peer_address.port}"
+        puts "   Protocol: 0x#{message.payload_header.protocol_id.to_s(16)}, Type: 0x#{message.payload_header.message_type.to_s(16)}, MsgID: #{message.packet_header.message_id}"
+
         # Choose socket based on peer address family
         socket = peer_address.family.inet6? ? @socket_ipv6 : @socket_ipv4
         socket.send(data, peer_address)
+
+        puts "✅ UDP packet sent successfully"
       end
 
       # Send raw packet (for testing)
