@@ -2,7 +2,7 @@ module Matter
   module Cluster
     module Definitions
       module Groups
-        alias StatusCode = Protocol::Interaction::StatusCode
+        alias StatusCode = InteractionModel::StatusCode
 
         # Input to the Groups addGroup command
         struct AddGroupRequest

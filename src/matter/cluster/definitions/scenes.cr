@@ -2,7 +2,7 @@ module Matter
   module Cluster
     module Definitions
       module Scenes
-        alias StatusCode = Protocol::Interaction::StatusCode
+        alias StatusCode = InteractionModel::StatusCode
 
         # This data type indicates a combination of an identifier and the value of an attribute.
         struct AttributeValuePair
