@@ -103,14 +103,15 @@ describe Matter::Session do
 
       nonce.size.should eq(13)
 
-      # Verify source node ID (little-endian)
-      IO::ByteFormat::LittleEndian.decode(UInt64, nonce[0, 8]).should eq(source_node_id)
+      # Matter spec format: security_flags (1) | message_counter (4) | source_node_id (8)
+      # Verify security flags
+      nonce[0].should eq(security_flags)
 
       # Verify message counter (little-endian)
-      IO::ByteFormat::LittleEndian.decode(UInt32, nonce[8, 4]).should eq(message_counter)
+      IO::ByteFormat::LittleEndian.decode(UInt32, nonce[1, 4]).should eq(message_counter)
 
-      # Verify security flags
-      nonce[12].should eq(security_flags)
+      # Verify source node ID (little-endian)
+      IO::ByteFormat::LittleEndian.decode(UInt64, nonce[5, 8]).should eq(source_node_id)
     end
 
     it "encrypts and decrypts messages" do

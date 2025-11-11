@@ -19,18 +19,18 @@ module Matter
       MIC_LENGTH = 16
 
       # Build nonce for AES-CCM encryption/decryption
-      # Format: source_node_id (8 bytes) | message_counter (4 bytes) | security_flags (1 byte)
+      # Matter spec format: security_flags (1 byte) | message_counter (4 bytes LE) | source_node_id (8 bytes LE)
       def build_nonce(source_node_id : UInt64, message_counter : UInt32, security_flags : UInt8 = 0_u8) : Bytes
         nonce = Bytes.new(NONCE_LENGTH)
 
-        # Write source node ID (8 bytes, little-endian)
-        IO::ByteFormat::LittleEndian.encode(source_node_id, nonce[0, 8])
+        # Write security flags (1 byte)
+        nonce[0] = security_flags
 
         # Write message counter (4 bytes, little-endian)
-        IO::ByteFormat::LittleEndian.encode(message_counter, nonce[8, 4])
+        IO::ByteFormat::LittleEndian.encode(message_counter, nonce[1, 4])
 
-        # Write security flags (1 byte)
-        nonce[12] = security_flags
+        # Write source node ID (8 bytes, little-endian)
+        IO::ByteFormat::LittleEndian.encode(source_node_id, nonce[5, 8])
 
         nonce
       end
@@ -63,8 +63,16 @@ module Matter
         nonce = build_nonce(source_node_id, message_counter, security_flags)
 
         # Build AAD from packet header
-        # For now, we'll use the session_id and message_id as AAD
+        # AAD = flags (1 byte) || session_id (2 bytes LE) || message_counter (4 bytes LE)
         aad_io = IO::Memory.new
+
+        # Reconstruct flags byte from packet header properties
+        flags = 0_u8
+        flags |= 0x04 if packet_header.source_node_id       # HasSourceNodeId
+        flags |= 0x02 if packet_header.destination_group_id # HasDestGroupId
+        flags |= 0x01 if packet_header.destination_node_id  # HasDestNodeId
+
+        aad_io.write_byte(flags)
         IO::ByteFormat::LittleEndian.encode(packet_header.session_id, aad_io)
         IO::ByteFormat::LittleEndian.encode(message_counter, aad_io)
         aad = aad_io.to_slice
@@ -91,19 +99,60 @@ module Matter
         end
 
         # Build nonce from peer node ID and message counter
-        peer_node_id = context.peer_node_id.try(&.id) || 0_u64
+        # Priority order for node ID:
+        # 1. peer_node_id from context (real node ID after commissioning)
+        # 2. source_node_id from packet header (if included in encrypted message)
+        # 3. 0 (during PASE before operational node IDs are assigned per Matter spec)
+        peer_node_id = if context.peer_node_id
+                         context.peer_node_id.not_nil!.id
+                       elsif packet_header.source_node_id
+                         packet_header.source_node_id.not_nil!.id
+                       else
+                         # During PASE, use 0 as node ID per Matter spec
+                         # Before operational credentials are established, node IDs are omitted
+                         0_u64
+                       end
+
+        source = if context.peer_node_id
+                   "context.peer_node_id"
+                 elsif packet_header.source_node_id
+                   "packet header"
+                 else
+                   "peer_session_id (PASE temporary)"
+                 end
+
+        puts "🔐 Decryption details:"
+        puts "   peer_node_id: #{peer_node_id} (from #{source})"
+        puts "   message_counter: #{message_counter}"
+        puts "   session_id: #{packet_header.session_id}"
+        puts "   peer_session_id: #{context.peer_session_id}"
+
         security_flags = 0_u8
         security_flags |= 0x80 if packet_header.privacy_enhancements?
         security_flags |= 0x40 if packet_header.control_message?
         security_flags |= 0x20 if packet_header.message_extensions?
 
         nonce = build_nonce(peer_node_id, message_counter, security_flags)
+        puts "   nonce: #{nonce.hexstring}"
 
         # Build AAD from packet header
+        # AAD = flags (1 byte) || session_id (2 bytes LE) || message_counter (4 bytes LE)
         aad_io = IO::Memory.new
+
+        # Reconstruct flags byte from packet header properties
+        flags = 0_u8
+        flags |= 0x04 if packet_header.source_node_id       # HasSourceNodeId
+        flags |= 0x02 if packet_header.destination_group_id # HasDestGroupId
+        flags |= 0x01 if packet_header.destination_node_id  # HasDestNodeId
+        # Note: Other flags like privacy_enhancements, control_message, message_extensions
+        # are in a different part of the header and not part of the AAD flags byte
+
+        aad_io.write_byte(flags)
         IO::ByteFormat::LittleEndian.encode(packet_header.session_id, aad_io)
         IO::ByteFormat::LittleEndian.encode(message_counter, aad_io)
         aad = aad_io.to_slice
+        puts "   aad (with flags): #{aad.hexstring}"
+        puts "   encrypted_payload size: #{encrypted_payload.size} bytes"
 
         # Decrypt using AES-128-CCM
         decrypted = crypto.decrypt(context.decryption_key, encrypted_payload, nonce, aad)
@@ -119,11 +168,14 @@ module Matter
         message_counter : UInt32,
         session_id : UInt16,
         security_flags : UInt8 = 0_u8,
+        flags : UInt8 = 0_u8,
         crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
       ) : Bytes
         nonce = build_nonce(source_node_id, message_counter, security_flags)
 
+        # AAD = flags (1 byte) || session_id (2 bytes LE) || message_counter (4 bytes LE)
         aad_io = IO::Memory.new
+        aad_io.write_byte(flags)
         IO::ByteFormat::LittleEndian.encode(session_id, aad_io)
         IO::ByteFormat::LittleEndian.encode(message_counter, aad_io)
         aad = aad_io.to_slice
@@ -139,11 +191,14 @@ module Matter
         message_counter : UInt32,
         session_id : UInt16,
         security_flags : UInt8 = 0_u8,
+        flags : UInt8 = 0_u8,
         crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
       ) : Bytes
         nonce = build_nonce(source_node_id, message_counter, security_flags)
 
+        # AAD = flags (1 byte) || session_id (2 bytes LE) || message_counter (4 bytes LE)
         aad_io = IO::Memory.new
+        aad_io.write_byte(flags)
         IO::ByteFormat::LittleEndian.encode(session_id, aad_io)
         IO::ByteFormat::LittleEndian.encode(message_counter, aad_io)
         aad = aad_io.to_slice

@@ -266,9 +266,27 @@ module Matter
       private def handle_received_data(data : Bytes, peer_address : Socket::IPAddress) : Nil
         puts "🔍 Decoding packet: #{data.size} bytes"
 
+        # For encrypted messages, dump packet header bytes to debug source_node_id parsing
+        if data.size > 8
+          session_id_offset = 1 # After flags byte
+          session_id_bytes = data[session_id_offset, 2]
+          session_id = IO::ByteFormat::LittleEndian.decode(UInt16, session_id_bytes)
+
+          if session_id != 0
+            puts "📦 Raw packet hex dump (first 24 bytes):"
+            puts "   #{data[0, [24, data.size].min].hexstring}"
+            puts "   Byte 0 (flags): 0x#{data[0].to_s(16).rjust(2, '0')}"
+            puts "   - HasSourceNodeId flag (0x04): #{(data[0] & 0x04) != 0}"
+            puts "   - HasDestNodeId flag (0x01): #{(data[0] & 0x01) != 0}"
+            puts "   Bytes 1-2 (session_id): #{session_id}"
+          end
+        end
+
         # Decode packet
         packet = Codec::MessageCodec::Base.decode_packet(data)
         puts "✅ Packet decoded: session_id=#{packet.header.session_id}, message_id=#{packet.header.message_id}"
+        puts "   Source node ID: #{packet.header.source_node_id.inspect}"
+        puts "   Destination node ID: #{packet.header.destination_node_id.inspect}"
 
         # Check for duplicate messages using per-session counter
         session_id = packet.header.session_id
@@ -279,30 +297,59 @@ module Matter
           return
         end
 
-        # Decode full message
-        message = Codec::MessageCodec::Base.decode_payload(packet)
-        puts "✅ Message decoded: protocol=0x#{message.payload_header.protocol_id.to_s(16)}, type=0x#{message.payload_header.message_type.to_s(16)}"
+        # For encrypted messages (session_id != 0), do NOT decode the payload yet
+        # The payload is encrypted and needs to be decrypted first by the message handler
+        # For unencrypted messages (session_id == 0), decode the payload normally
+        message = if session_id == 0
+                    # Unencrypted message - decode payload now
+                    decoded = Codec::MessageCodec::Base.decode_payload(packet)
+                    puts "✅ Message decoded: protocol=0x#{decoded.payload_header.protocol_id.to_s(16)}, type=0x#{decoded.payload_header.message_type.to_s(16)}"
+                    decoded
+                  else
+                    # Encrypted message - create Message with raw encrypted payload
+                    # The payload_header will be decoded AFTER decryption by the message handler
+                    puts "🔒 Encrypted message detected (session_id=#{session_id}), payload size=#{packet.payload.size} bytes"
 
-        # Get or create exchange
-        exchange = @exchange_manager.get_or_create_exchange(
-          exchange_id: message.payload_header.exchange_id,
-          protocol_id: message.payload_header.protocol_id,
-          session_id: packet.header.session_id,
-          peer_address: peer_address,
-          peer_node_id: packet.header.source_node_id,
-          initiator: !message.payload_header.initiator_message?
-        )
+                    # Create a dummy payload header - it will be ignored and replaced after decryption
+                    dummy_payload_header = Codec::MessageCodec::PayloadHeader.new(
+                      exchange_id: 0_u16,
+                      protocol_id: 0_u16,
+                      message_type: 0_u8,
+                      initiator_message: false,
+                      requires_acknowledge: false
+                    )
 
-        # Handle acknowledgments
-        if ack_msg_id = message.payload_header.acknowledged_message_id
-          # This message acknowledges a previous message
-          exchange.clear_pending_message
-        end
+                    Codec::MessageCodec::Message.new(
+                      packet_header: packet.header,
+                      payload_header: dummy_payload_header,
+                      payload: packet.payload # Keep the encrypted payload as-is
+                    )
+                  end
 
-        # Send acknowledgment if required
-        if message.payload_header.requires_acknowledge?
-          puts "📤 Sending acknowledgment for message #{packet.header.message_id}"
-          send_acknowledgment(message, peer_address, exchange)
+        # For encrypted messages, skip exchange management - the message handler will do this after decryption
+        # For unencrypted messages, handle exchanges and acknowledgments here
+        if session_id == 0
+          # Get or create exchange
+          exchange = @exchange_manager.get_or_create_exchange(
+            exchange_id: message.payload_header.exchange_id,
+            protocol_id: message.payload_header.protocol_id,
+            session_id: packet.header.session_id,
+            peer_address: peer_address,
+            peer_node_id: packet.header.source_node_id,
+            initiator: !message.payload_header.initiator_message?
+          )
+
+          # Handle acknowledgments
+          if ack_msg_id = message.payload_header.acknowledged_message_id
+            # This message acknowledges a previous message
+            exchange.clear_pending_message
+          end
+
+          # Send acknowledgment if required
+          if message.payload_header.requires_acknowledge?
+            puts "📤 Sending acknowledgment for message #{packet.header.message_id}"
+            send_acknowledgment(message, peer_address, exchange)
+          end
         end
 
         # Deliver to application

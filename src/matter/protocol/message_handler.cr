@@ -487,7 +487,9 @@ module Matter
         # Derive session keys from the shared secret
         keys = responder.derive_session_keys
         Log.debug { "  Derived encryption key: #{keys[:encryption].size} bytes" }
+        Log.debug { "  Encryption key (R2I): #{keys[:encryption].hexstring}" }
         Log.debug { "  Derived decryption key: #{keys[:decryption].size} bytes" }
+        Log.debug { "  Decryption key (I2R): #{keys[:decryption].hexstring}" }
 
         # Create secure session context using stored session IDs from PBKDF exchange
         # We are the responder, so our session_id is responder_session_id

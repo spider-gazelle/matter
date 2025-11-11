@@ -152,17 +152,17 @@ describe "Session Compatibility with matter.js" do
       # Verify nonce is 13 bytes
       nonce.size.should eq(13)
 
-      # Verify nonce format: node_id (8) | counter (4) | flags (1)
-      # First 8 bytes should be node_id in little-endian
-      node_id_bytes = nonce[0, 8]
-      IO::ByteFormat::LittleEndian.decode(UInt64, node_id_bytes).should eq(source_node_id)
+      # Verify nonce format per Matter spec: flags (1) | counter (4) | node_id (8)
+      # First byte should be security flags
+      nonce[0].should eq(security_flags)
 
       # Next 4 bytes should be counter in little-endian
-      counter_bytes = nonce[8, 4]
+      counter_bytes = nonce[1, 4]
       IO::ByteFormat::LittleEndian.decode(UInt32, counter_bytes).should eq(message_counter)
 
-      # Last byte should be security flags
-      nonce[12].should eq(security_flags)
+      # Last 8 bytes should be node_id in little-endian
+      node_id_bytes = nonce[5, 8]
+      IO::ByteFormat::LittleEndian.decode(UInt64, node_id_bytes).should eq(source_node_id)
     end
 
     it "increments message counter correctly" do
