@@ -33,6 +33,7 @@ module Matter
       getter transport : Transport::UDPTransport
       getter pase_responder : Session::Pase::PaseResponder?
       getter sessions : Hash(UInt16, Session::SecureContext)
+      getter clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base)
 
       # Device credentials for PASE
       property setup_pin : UInt32
@@ -98,12 +99,53 @@ module Matter
 
       # Handle Interaction Model protocol (Read, Write, Invoke, etc.)
       private def handle_interaction_model(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
-        Log.info { "Received Interaction Model message (not yet implemented)" }
-        # TODO: Implement IM message handling
-        # - Check if session is secured
-        # - Decrypt payload if needed
-        # - Route to endpoint/cluster based on paths
-        # - Execute operation and send response
+        Log.info { "Received Interaction Model message" }
+
+        # IM messages are always encrypted (session_id != 0)
+        session_id = msg.packet_header.session_id
+        if session_id == 0
+          Log.error { "IM message received on unsecured session" }
+          return
+        end
+
+        # Get secure session context
+        session = @sessions[session_id]?
+        unless session
+          Log.error { "No session found for ID: #{session_id}" }
+          return
+        end
+
+        # Decrypt payload
+        Log.debug { "Decrypting IM payload (#{msg.payload.size} bytes)" }
+        crypto = Crypto::StandardCrypto.new
+        decrypted = Session::SecureMessage.decrypt(
+          session,
+          msg.payload,
+          msg.payload_header.message_counter,
+          msg.packet_header,
+          crypto
+        )
+
+        unless decrypted
+          Log.error { "Failed to decrypt IM message" }
+          return
+        end
+
+        Log.debug { "Decrypted IM payload: #{decrypted.hexstring}" }
+
+        # Parse IM message based on message type
+        case msg.payload_header.message_type
+        when 0x02_u8 # ReadRequest
+          handle_read_request(decrypted, msg, peer, session)
+        when 0x06_u8 # WriteRequest
+          Log.info { "WriteRequest received (not yet implemented)" }
+        when 0x08_u8 # InvokeRequest
+          Log.info { "InvokeRequest received (not yet implemented)" }
+        else
+          Log.warn { "Unknown IM message type: 0x#{msg.payload_header.message_type.to_s(16)}" }
+        end
+      rescue ex
+        Log.error(exception: ex) { "Error handling IM message: #{ex.message}" }
       end
 
       # Handle PBKDF Parameter Request (first step of PASE)
