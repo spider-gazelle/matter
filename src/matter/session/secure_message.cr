@@ -54,7 +54,19 @@ module Matter
         message_counter = context.next_message_counter
 
         # Build nonce from source node ID and message counter
-        source_node_id = context.local_node_id.try(&.id) || 0_u64
+        # Use local_node_id if set, otherwise use PASE temporary node ID
+        source_node_id = if context.local_node_id
+                           context.local_node_id.not_nil!.id
+                         else
+                           # During PASE, use our temporary node ID per Matter spec section 4.11.2.5.1
+                           # Initiator (Commissioner): 0xFFFFFFFB00000001
+                           # Responder (Device): 0xFFFFFFFB00000002
+                           if context.is_initiator
+                             0xFFFFFFFB00000001_u64
+                           else
+                             0xFFFFFFFB00000002_u64
+                           end
+                         end
         security_flags = 0_u8
         security_flags |= 0x80 if packet_header.privacy_enhancements?
         security_flags |= 0x40 if packet_header.control_message?
@@ -66,13 +78,9 @@ module Matter
         # AAD = flags (1 byte) || session_id (2 bytes LE) || message_counter (4 bytes LE)
         aad_io = IO::Memory.new
 
-        # Reconstruct flags byte from packet header properties
-        flags = 0_u8
-        flags |= 0x04 if packet_header.source_node_id       # HasSourceNodeId
-        flags |= 0x02 if packet_header.destination_group_id # HasDestGroupId
-        flags |= 0x01 if packet_header.destination_node_id  # HasDestNodeId
-
-        aad_io.write_byte(flags)
+        # Use the raw flags byte from the packet header (byte 0 from wire)
+        # This MUST match the exact byte used during decryption
+        aad_io.write_byte(packet_header.flags)
         IO::ByteFormat::LittleEndian.encode(packet_header.session_id, aad_io)
         IO::ByteFormat::LittleEndian.encode(message_counter, aad_io)
         aad = aad_io.to_slice
@@ -102,15 +110,23 @@ module Matter
         # Priority order for node ID:
         # 1. peer_node_id from context (real node ID after commissioning)
         # 2. source_node_id from packet header (if included in encrypted message)
-        # 3. 0 (during PASE before operational node IDs are assigned per Matter spec)
+        # 3. PASE temporary node ID (during PASE before operational node IDs are assigned)
         peer_node_id = if context.peer_node_id
                          context.peer_node_id.not_nil!.id
                        elsif packet_header.source_node_id
                          packet_header.source_node_id.not_nil!.id
                        else
-                         # During PASE, use 0 as node ID per Matter spec
-                         # Before operational credentials are established, node IDs are omitted
-                         0_u64
+                         # During PASE, use the peer's temporary node ID per Matter spec section 4.11.2.5.1
+                         # When decrypting, we use the sender's (peer's) node ID in the nonce
+                         # Initiator (Commissioner): 0xFFFFFFFB00000001
+                         # Responder (Device): 0xFFFFFFFB00000002
+                         if context.is_initiator
+                           # We're initiator, so peer is responder
+                           0xFFFFFFFB00000002_u64
+                         else
+                           # We're responder, so peer is initiator
+                           0xFFFFFFFB00000001_u64
+                         end
                        end
 
         source = if context.peer_node_id
@@ -140,15 +156,9 @@ module Matter
         # AAD = flags (1 byte) || session_id (2 bytes LE) || message_counter (4 bytes LE)
         aad_io = IO::Memory.new
 
-        # Reconstruct flags byte from packet header properties
-        flags = 0_u8
-        flags |= 0x04 if packet_header.source_node_id       # HasSourceNodeId
-        flags |= 0x02 if packet_header.destination_group_id # HasDestGroupId
-        flags |= 0x01 if packet_header.destination_node_id  # HasDestNodeId
-        # Note: Other flags like privacy_enhancements, control_message, message_extensions
-        # are in a different part of the header and not part of the AAD flags byte
-
-        aad_io.write_byte(flags)
+        # Use the raw flags byte from the packet header (byte 0 from wire)
+        # This MUST match the exact byte used during encryption
+        aad_io.write_byte(packet_header.flags)
         IO::ByteFormat::LittleEndian.encode(packet_header.session_id, aad_io)
         IO::ByteFormat::LittleEndian.encode(message_counter, aad_io)
         aad = aad_io.to_slice

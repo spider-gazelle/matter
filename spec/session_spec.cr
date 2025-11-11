@@ -238,6 +238,8 @@ describe Matter::Session do
       )
 
       # Create packet header
+      # No source or destination node IDs, so flags is just version bits
+      flags = 0_u8
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 1000_u16,
         session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -245,6 +247,7 @@ describe Matter::Session do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
+        flags: flags,
         security_flags: 0_u8
       )
 
@@ -287,6 +290,8 @@ describe Matter::Session do
         peer_node_id: Matter::DataType::NodeId.new(0xABCDEF0123456789_u64)
       )
 
+      # No source or destination node IDs, so flags is just version bits
+      flags = 0_u8
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 500_u16,
         session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -294,6 +299,7 @@ describe Matter::Session do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
+        flags: flags,
         security_flags: 0_u8
       )
 

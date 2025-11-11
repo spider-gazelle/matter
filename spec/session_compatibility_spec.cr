@@ -36,6 +36,8 @@ describe "Session Compatibility with matter.js" do
       # Using the encrypted_bytes (application payload) directly
 
       # Build a minimal packet header for the AAD
+      # No source or destination node IDs, so flags is just version bits
+      flags = 0_u8
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 0x351d_u16,
         session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -43,6 +45,7 @@ describe "Session Compatibility with matter.js" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
+        flags: flags,
         security_flags: 0_u8
       )
 
@@ -102,6 +105,8 @@ describe "Session Compatibility with matter.js" do
       )
 
       # Create packet header
+      # No source or destination node IDs, so flags is just version bits
+      flags = 0_u8
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 0x351d_u16,
         session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -109,6 +114,7 @@ describe "Session Compatibility with matter.js" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
+        flags: flags,
         security_flags: 0_u8
       )
 

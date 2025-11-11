@@ -105,6 +105,7 @@ module Matter
             privacy_enhancements: message.packet_header.privacy_enhancements?,
             control_message: message.packet_header.control_message?,
             message_extensions: message.packet_header.message_extensions?,
+            flags: message.packet_header.flags,
             security_flags: message.packet_header.security_flags,
             source_node_id: message.packet_header.source_node_id,
             destination_node_id: message.packet_header.destination_node_id,
@@ -168,6 +169,9 @@ module Matter
         security_flags = 0_u8
         security_flags |= Codec::MessageCodec::SessionType::Unicast.value # Bits 1-0
 
+        # Compute the flags byte for the packet header
+        flags = Codec::MessageCodec::Base.compute_flags(source_node_id, peer_node_id, nil)
+
         # Build message
         packet_header = Codec::MessageCodec::PacketHeader.new(
           session_id: session_id,
@@ -176,6 +180,7 @@ module Matter
           privacy_enhancements: false,
           control_message: false,
           message_extensions: false,
+          flags: flags,
           security_flags: security_flags,
           source_node_id: source_node_id,
           destination_node_id: peer_node_id
@@ -379,6 +384,13 @@ module Matter
         # Build security flags byte - copy from original message
         security_flags = original_message.packet_header.security_flags
 
+        # Compute the flags byte for the ACK packet header (swapping source/dest from request)
+        flags = Codec::MessageCodec::Base.compute_flags(
+          original_message.packet_header.destination_node_id, # Will become source in ACK
+          original_message.packet_header.source_node_id,      # Will become destination in ACK
+          nil
+        )
+
         # Build ACK message (empty payload)
         packet_header = Codec::MessageCodec::PacketHeader.new(
           session_id: original_message.packet_header.session_id,
@@ -387,6 +399,7 @@ module Matter
           privacy_enhancements: false,
           control_message: false,
           message_extensions: false,
+          flags: flags,
           security_flags: security_flags,
           source_node_id: original_message.packet_header.destination_node_id,
           destination_node_id: original_message.packet_header.source_node_id

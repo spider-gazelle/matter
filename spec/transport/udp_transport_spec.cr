@@ -32,6 +32,8 @@ describe Matter::Transport::UDPTransport do
     it "assigns message IDs automatically" do
       transport = Matter::Transport::UDPTransport.new(port: 15543)
 
+      # No source or destination node IDs, so flags is just version bits
+      flags = 0_u8
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 100_u16,
         session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -39,6 +41,7 @@ describe Matter::Transport::UDPTransport do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
+        flags: flags,
         security_flags: 0_u8
       )
 
@@ -77,6 +80,8 @@ describe Matter::Transport::UDPTransport do
 
       # Send 3 messages
       3.times do |i|
+        # No source or destination node IDs, so flags is just version bits
+        flags = 0_u8
         packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
           session_id: 100_u16,
           session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -84,6 +89,7 @@ describe Matter::Transport::UDPTransport do
           privacy_enhancements: false,
           control_message: false,
           message_extensions: false,
+          flags: flags,
           security_flags: 0_u8
         )
 

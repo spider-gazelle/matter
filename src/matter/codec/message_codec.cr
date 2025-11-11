@@ -41,9 +41,10 @@ module Matter
         getter? privacy_enhancements : Bool
         getter? control_message : Bool
         getter? message_extensions : Bool
+        getter flags : UInt8          # Raw flags byte from wire (byte 0 of packet header)
         getter security_flags : UInt8 # Raw security flags byte from wire (byte 3 of packet header)
 
-        def initialize(@session_id : UInt16, @session_type : SessionType, @message_id : UInt32, @privacy_enhancements : Bool, @control_message : Bool, @message_extensions : Bool, @security_flags : UInt8, @source_node_id : DataType::NodeId? = nil, @destination_node_id : DataType::NodeId? = nil, @destination_group_id : DataType::GroupId? = nil)
+        def initialize(@session_id : UInt16, @session_type : SessionType, @message_id : UInt32, @privacy_enhancements : Bool, @control_message : Bool, @message_extensions : Bool, @flags : UInt8, @security_flags : UInt8, @source_node_id : DataType::NodeId? = nil, @destination_node_id : DataType::NodeId? = nil, @destination_group_id : DataType::GroupId? = nil)
         end
       end
 
@@ -78,6 +79,20 @@ module Matter
 
       module Base
         extend self
+
+        # Helper method to compute the flags byte from packet header fields
+        # This is used both when encoding and when creating new packet headers
+        def compute_flags(
+          source_node_id : DataType::NodeId?,
+          destination_node_id : DataType::NodeId?,
+          destination_group_id : DataType::GroupId?,
+        ) : UInt8
+          flags = (HEADER_VERSION << 4).to_u8
+          flags |= PacketHeaderFlag::HasSourceNodeId.value unless source_node_id.nil?
+          flags |= PacketHeaderFlag::HasDestNodeId.value unless destination_node_id.nil?
+          flags |= PacketHeaderFlag::HasDestGroupId.value unless destination_group_id.nil?
+          flags
+        end
 
         def decode_packet(data : Slice(UInt8)) : Packet
           io = IO::Memory.new
@@ -114,10 +129,9 @@ module Matter
         end
 
         private def encode_packet_header(packet_header : PacketHeader, io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian)
-          flags = (HEADER_VERSION << 4) | \
-            (packet_header.destination_group_id.nil? ? 0 : PacketHeaderFlag::HasDestGroupId.value) | \
-            (packet_header.destination_node_id.nil? ? 0 : PacketHeaderFlag::HasDestNodeId.value) | \
-            (packet_header.source_node_id.nil? ? 0 : PacketHeaderFlag::HasSourceNodeId.value)
+          # Use the stored flags byte from the packet header
+          # This ensures the encoded flags match exactly what was used for AAD during encryption
+          flags = packet_header.flags
 
           security_flags = packet_header.session_type.value
 
@@ -185,6 +199,7 @@ module Matter
             privacy_enhancements: has_privacy_enhancements,
             control_message: is_control_message,
             message_extensions: has_message_extensions,
+            flags: flags,
             security_flags: security_flags,
             source_node_id: source_node_id,
             destination_node_id: destination_node_id,
