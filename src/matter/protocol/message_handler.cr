@@ -1,7 +1,15 @@
 require "../codec/message_codec"
 require "../session/pase/pase"
 require "../session/context"
+require "../session/secure_message"
 require "../transport/udp_transport"
+require "../cluster/basic_information_cluster"
+require "../cluster/general_commissioning_cluster"
+require "../interaction_model/messages"
+require "../interaction_model/paths"
+require "../interaction_model/status_code"
+require "./im_handler"
+require "tlv"
 
 module Matter
   module Protocol
@@ -59,10 +67,36 @@ module Matter
         @sessions = {} of UInt16 => Session::SecureContext
         @pase_responder = nil
 
+        # Initialize clusters
+        @clusters = {} of Tuple(UInt16, UInt32) => Cluster::Base
+        initialize_clusters
+
         # Set ourselves as the message handler
         @transport.on_message = ->(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) do
           handle_message(msg, peer)
         end
+      end
+
+      # Initialize device clusters (called during construction)
+      private def initialize_clusters : Nil
+        # Endpoint 0 - Root Node endpoint (required)
+        endpoint_0 = DataType::EndpointNumber.new(0_u16)
+
+        # Basic Information cluster (0x0028) - required on endpoint 0
+        basic_info = Cluster::BasicInformationCluster.new(
+          endpoint_id: endpoint_0,
+          vendor_name: "Crystal Matter",
+          vendor_id: 0xFFF1_u16,
+          product_name: "Matter Device",
+          product_id: 0x8000_u16
+        )
+        @clusters[{0_u16, 0x0028_u32}] = basic_info
+
+        # General Commissioning cluster (0x0030) - required on endpoint 0
+        general_commissioning = Cluster::GeneralCommissioningCluster.new(endpoint_0)
+        @clusters[{0_u16, 0x0030_u32}] = general_commissioning
+
+        Log.info { "Initialized #{@clusters.size} clusters" }
       end
 
       # Main message routing entry point
@@ -118,12 +152,18 @@ module Matter
         # Decrypt payload
         Log.debug { "Decrypting IM payload (#{msg.payload.size} bytes)" }
         crypto = Crypto::StandardCrypto.new
+
+        # For incoming messages, use the next expected peer message counter
+        # The decrypt method will validate this counter
+        peer_counter = session.peer_message_counter || 0_u32
+        expected_counter = peer_counter + 1_u32
+
         decrypted = Session::SecureMessage.decrypt(
-          session,
-          msg.payload,
-          msg.payload_header.message_counter,
-          msg.packet_header,
-          crypto
+          context: session,
+          encrypted_payload: msg.payload,
+          message_counter: expected_counter,
+          packet_header: msg.packet_header,
+          crypto: crypto
         )
 
         unless decrypted
@@ -146,6 +186,104 @@ module Matter
         end
       rescue ex
         Log.error(exception: ex) { "Error handling IM message: #{ex.message}" }
+      end
+
+      # Handle ReadRequest - parse, read attributes, encode response, encrypt and send
+      private def handle_read_request(
+        decrypted : Bytes,
+        original_msg : Codec::MessageCodec::Message,
+        peer : Socket::IPAddress,
+        session : Session::SecureContext,
+      ) : Nil
+        Log.info { "Handling ReadRequest" }
+
+        # Parse ReadRequest using IMHandler
+        request = IMHandler.parse_read_request(decrypted)
+        unless request
+          Log.error { "Failed to parse ReadRequest" }
+          return
+        end
+
+        Log.info { "ReadRequest: #{request.attribute_requests.size} attribute(s) requested" }
+
+        # Read attributes from clusters
+        response = IMHandler.read_attributes(request.attribute_requests, @clusters)
+
+        Log.info { "ReadResponse: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
+
+        # Encode ReadResponse as TLV
+        response_tlv = IMHandler.encode_read_response(response)
+        Log.debug { "Encoded ReadResponse TLV (#{response_tlv.size} bytes): #{response_tlv.hexstring}" }
+
+        # Send encrypted IM response
+        send_im_response(
+          original_msg: original_msg,
+          peer: peer,
+          session: session,
+          message_type: 0x05_u8, # ReportData (ReadResponse)
+          payload: response_tlv
+        )
+
+        Log.info { "Sent ReadResponse" }
+      rescue ex
+        Log.error(exception: ex) { "Error handling ReadRequest: #{ex.message}" }
+      end
+
+      # Encrypt and send an Interaction Model response
+      private def send_im_response(
+        original_msg : Codec::MessageCodec::Message,
+        peer : Socket::IPAddress,
+        session : Session::SecureContext,
+        message_type : UInt8,
+        payload : Bytes,
+      ) : Nil
+        # Encrypt the payload using the session's encryption key
+        crypto = Crypto::StandardCrypto.new
+
+        # Build packet header for encrypted response
+        packet_header = Codec::MessageCodec::PacketHeader.new(
+          session_id: session.session_id,
+          session_type: Codec::MessageCodec::SessionType::Unicast,
+          message_id: 0_u32, # Will be set by transport
+          privacy_enhancements: false,
+          control_message: false,
+          message_extensions: false,
+          source_node_id: original_msg.packet_header.destination_node_id,
+          destination_node_id: original_msg.packet_header.source_node_id
+        )
+
+        # Build payload header
+        payload_header = Codec::MessageCodec::PayloadHeader.new(
+          exchange_id: original_msg.payload_header.exchange_id,
+          protocol_id: PROTOCOL_INTERACTION_MODEL,
+          message_type: message_type,
+          initiator_message: !original_msg.payload_header.initiator_message?,
+          requires_acknowledge: false
+        )
+
+        # Encrypt the payload (message counter is auto-incremented inside)
+        encrypted = Session::SecureMessage.encrypt(
+          session,
+          payload,
+          packet_header,
+          crypto
+        )
+
+        unless encrypted
+          Log.error { "Failed to encrypt IM response" }
+          return
+        end
+
+        Log.debug { "Encrypted IM response (#{encrypted.size} bytes): #{encrypted.hexstring}" }
+
+        # Build and send message
+        response = Codec::MessageCodec::Message.new(
+          packet_header: packet_header,
+          payload_header: payload_header,
+          payload: encrypted
+        )
+
+        @transport.send_message(response, peer)
       end
 
       # Handle PBKDF Parameter Request (first step of PASE)
