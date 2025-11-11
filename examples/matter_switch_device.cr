@@ -7,7 +7,10 @@ require "../src/matter/mdns/service_description"
 require "../src/matter/constants/device_types"
 require "../src/matter/fabric"
 require "../src/matter/setup_payload"
-require "../src/matter" # This includes all the required modules including TLV
+require "../src/matter"
+require "../src/matter/transport/udp_transport"
+require "../src/matter/codec/message_codec"
+require "../src/matter/protocol/message_handler"
 
 # Matter Switch Device Example
 #
@@ -17,6 +20,7 @@ require "../src/matter" # This includes all the required modules including TLV
 # - Supports commissioning and operational modes
 # - Can reconnect after restart without recommissioning
 # - Uses terminal UI for interaction
+# - Actually works with real Matter controllers (iPhone, chip-tool, etc.)
 
 module MatterSwitch
   # Device state manager - handles JSON persistence
@@ -39,7 +43,7 @@ module MatterSwitch
       @commissioned = false,
       @discriminator = DeviceState.generate_random_discriminator,
       @vendor_id = 0xFFF1_u16,
-      @product_id = 0x8001_u16,
+      @product_id = 0x8004_u16,
       @setup_pin = DeviceState.generate_random_pin,
     )
     end
@@ -146,28 +150,30 @@ module MatterSwitch
     property responder : Matter::MDNS::Responder
     property fabric_storage : FabricStorage
     property hostname : String
-    property ip_address : Socket::IPAddress
+    property ip_addresses : Array(Socket::IPAddress)
     property port : Int32
+    property transport : Matter::Transport::UDPTransport
+    property message_handler : Matter::Protocol::MessageHandler
 
     def initialize(@hostname = "matter-switch.local", @port = 5540)
       @state = DeviceState.load(STATE_FILE)
-      @ip_address = get_local_ip
+      @ip_addresses = get_local_ips
+      @fabric_storage = FabricStorage.load(FABRIC_FILE)
 
       # Create Basic Information cluster on endpoint 0 (required for root node)
-      # This provides device identification information to controllers
       root_endpoint = Matter::DataType::EndpointNumber.new(0_u16)
       @basic_info = Matter::Cluster::BasicInformationCluster.new(
         root_endpoint,
         data_model_revision: 1_u16,
         vendor_name: "Spider-Gazelle",
         vendor_id: @state.vendor_id,
-        product_name: "Matter Switch",
+        product_name: "Matter Switch 2",
         product_id: @state.product_id,
         node_label: @state.device_name, # This is the device name shown in iOS
         hardware_version: 1_u16,
-        hardware_version_string: "1.0",
+        hardware_version_string: "1.1",
         software_version: 1_u32,
-        software_version_string: "1.0.0"
+        software_version_string: "1.0.1"
       )
 
       # Create the switch cluster on endpoint 1
@@ -179,35 +185,55 @@ module MatterSwitch
         handle_state_change(new_state)
       end
 
-      # Create fabric storage
-      @fabric_storage = FabricStorage.load(FABRIC_FILE)
+      # Create UDP transport
+      @transport = Matter::Transport::UDPTransport.new(port: @port)
+
+      # Create protocol message handler (this handles PASE, IM, etc.)
+      @message_handler = Matter::Protocol::MessageHandler.new(
+        transport: @transport,
+        setup_pin: @state.setup_pin,
+        discriminator: @state.discriminator
+      )
+
+      # Wire up clusters to message handler
+      @message_handler.clusters[{0_u16, 0x0028_u32}] = @basic_info # BasicInformation on endpoint 0
+      @message_handler.clusters[{1_u16, 0x0006_u32}] = @switch     # OnOff on endpoint 1
 
       # Create mDNS responder
       @responder = Matter::MDNS::Responder.new(
         hostname: @hostname,
-        ip_addresses: [@ip_address]
+        ip_addresses: @ip_addresses
       )
     end
 
-    def get_local_ip : Socket::IPAddress
-      # Try IPv6 first, fallback to IPv4
+    def get_local_ips : Array(Socket::IPAddress)
+      ips = [] of Socket::IPAddress
+
+      # Get IPv6 address
       begin
         socket = UDPSocket.new(:inet6)
         socket.connect("2606:4700:4700::1111", 53)
         addr = socket.local_address
         socket.close
-        return Socket::IPAddress.new(addr.address, 0)
+        ips << Socket::IPAddress.new(addr.address, 0)
       rescue
-        # IPv6 failed, try IPv4
-        socket = UDPSocket.new
+        # IPv6 not available
+      end
+
+      # Get IPv4 address
+      begin
+        socket = UDPSocket.new(:inet)
         socket.connect("8.8.8.8", 80)
         addr = socket.local_address
         socket.close
-        Socket::IPAddress.new(addr.address, 0)
+        ips << Socket::IPAddress.new(addr.address, 0)
+      rescue
+        # IPv4 not available
       end
-    rescue
-      # Fallback to localhost if both fail
-      Socket::IPAddress.new("127.0.0.1", 0)
+
+      # Fallback to localhost if nothing worked
+      ips << Socket::IPAddress.new("127.0.0.1", 0) if ips.empty?
+      ips
     end
 
     def handle_state_change(new_state : Bool)
@@ -215,8 +241,9 @@ module MatterSwitch
       @state.data_version += 1
       @state.save(STATE_FILE)
 
-      puts "  💡 Switch is now: #{new_state ? "ON" : "OFF"}"
+      puts "\n  💡 Switch is now: #{new_state ? "🟢 ON" : "⚫ OFF"}"
       puts "  📊 Data version: #{@state.data_version}"
+      print "> "
     end
 
     def start
@@ -231,6 +258,12 @@ module MatterSwitch
 
       # Start mDNS responder
       @responder.start
+
+      # Start UDP transport (handles incoming Matter messages)
+      puts "🔌 Starting UDP transport..."
+      @transport.start
+      puts "   ✅ Listening on all interfaces, port #{@port}"
+      puts ""
 
       # Interactive loop
       run_interactive_loop
@@ -247,12 +280,16 @@ module MatterSwitch
     def load_state
       puts "📁 Loading device state..."
       puts "   Name: #{@state.device_name}"
-      puts "   Switch: #{@state.on_off ? "ON" : "OFF"}"
+      puts "   Switch: #{@state.on_off ? "🟢 ON" : "⚫ OFF"}"
       puts "   Data Version: #{@state.data_version}"
-      puts "   Commissioned: #{@state.commissioned ? "Yes" : "No"}"
+      puts "   Commissioned: #{@state.commissioned ? "✅ Yes" : "❌ No"}"
       puts "   Fabrics: #{@fabric_storage.size}"
       puts "   Discriminator: #{@state.discriminator}"
       puts "   Setup PIN: #{@state.setup_pin}"
+      puts ""
+      @ip_addresses.each do |ip|
+        puts "   IP: #{ip.address} (#{ip.family == Socket::Family::INET ? "IPv4" : "IPv6"})"
+      end
       puts ""
     end
 
@@ -277,7 +314,6 @@ module MatterSwitch
       puts "   Service: _matterc._udp.local"
       puts "   Instance: #{@state.device_name}._matterc._udp.local"
       puts "   Hostname: #{@hostname}"
-      puts "   IP: #{@ip_address.address}"
       puts "   Port: #{@port}"
       puts "   Discriminator: #{@state.discriminator}"
       puts ""
@@ -285,10 +321,16 @@ module MatterSwitch
       # Display QR code
       print_qr_code
 
+      manual_code = generate_setup_code
       puts "💡 To pair this device:"
-      puts "   1. Open your Matter controller app"
+      puts "   1. Open your Matter controller app (iPhone Home app, chip-tool, etc.)"
       puts "   2. Select 'Add Device' or 'Commission Device'"
-      puts "   3. Scan the QR code above, or use manual setup code: #{generate_setup_code}"
+      puts "   3. Scan the QR code above, or use:"
+      puts ""
+      puts "      Manual Code: #{manual_code}"
+      puts ""
+      puts "   With chip-tool:"
+      puts "      chip-tool pairing code 1 #{manual_code}"
       puts ""
     end
 
@@ -315,16 +357,16 @@ module MatterSwitch
         puts "   Node ID: 0x#{fabric.node_id.to_s(16).upcase}"
         puts ""
       end
+
+      puts "✅ Device is ready to receive commands from your controller!"
+      puts ""
     end
 
     def generate_setup_code : String
-      # Generate Matter manual pairing code using proper encoding
-      # Format: xxxx-xxx-xxxx (11 digits with Verhoeff check digit)
       Matter::SetupPayload.generate_manual_code(@state.discriminator, @state.setup_pin)
     end
 
     def generate_qr_code : String
-      # Generate Matter QR code payload
       Matter::SetupPayload::QRCode.generate_qr_code(
         discriminator: @state.discriminator,
         pin: @state.setup_pin,
@@ -358,6 +400,12 @@ module MatterSwitch
       puts "   reset   - Reset to factory defaults"
       puts "   quit    - Exit the application"
       puts ""
+
+      Signal::INT.trap do
+        puts "\n\n🛑 Received interrupt signal"
+        shutdown
+        exit(0)
+      end
 
       loop do
         print "> "
@@ -404,6 +452,7 @@ module MatterSwitch
       puts "   Data Version: #{@state.data_version}"
       puts "   Commissioned: #{@state.commissioned ? "✅ Yes" : "❌ No"}"
       puts "   Fabrics: #{@fabric_storage.size}"
+      puts "   Sessions: #{@message_handler.sessions.size}"
 
       unless @fabric_storage.fabrics.empty?
         puts ""
@@ -440,17 +489,6 @@ module MatterSwitch
         File.delete(STATE_FILE) if File.exists?(STATE_FILE)
         File.delete(FABRIC_FILE) if File.exists?(FABRIC_FILE)
 
-        # Reset state
-        @state = DeviceState.new
-        @fabric_storage = FabricStorage.new
-
-        # Reset switch state
-        endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-        @switch = Matter::Cluster::OnOffCluster.new(endpoint, on_off: false)
-        @switch.on_state_changed do |new_state|
-          handle_state_change(new_state)
-        end
-
         puts "✅ Factory reset complete"
         puts "🔄 Please restart the application"
 
@@ -467,45 +505,13 @@ module MatterSwitch
       @state.save(STATE_FILE)
       @fabric_storage.save(FABRIC_FILE)
 
+      puts "🛑 Stopping transport..."
+      @transport.close
+
       puts "🛑 Stopping mDNS responder..."
       @responder.stop
 
       puts "✅ Shutdown complete"
-    end
-
-    # Mock commissioning method (for testing without full protocol)
-    def mock_commission(fabric_id : UInt64, node_id : UInt64, label : String = "Test Fabric")
-      puts ""
-      puts "🔐 Mock Commissioning (for testing)..."
-
-      # Create a mock fabric
-      key = Matter::Crypto::Key.generate_key_pair
-      ipk = Random::Secure.random_bytes(16)
-      root_pub_key = key.public_key
-
-      fabric = Matter::Fabric.new(
-        fabric_id: fabric_id,
-        fabric_index: 1_u8,
-        node_id: node_id,
-        root_public_key: root_pub_key,
-        operational_cert: Random::Secure.random_bytes(200),
-        operational_key: key,
-        ipk: ipk,
-        vendor_id: @state.vendor_id,
-        label: label
-      )
-
-      @fabric_storage.add_fabric(fabric)
-      @state.commissioned = true
-      @state.save(STATE_FILE)
-      @fabric_storage.save(FABRIC_FILE)
-
-      puts "✅ Device commissioned successfully!"
-      puts "   Fabric: #{label}"
-      puts "   Fabric ID: 0x#{fabric_id.to_s(16).upcase}"
-      puts "   Node ID: 0x#{node_id.to_s(16).upcase}"
-      puts ""
-      puts "🔄 Restart the device to enter operational mode"
     end
   end
 end
@@ -514,6 +520,9 @@ end
 puts "Starting Matter Switch Device..."
 puts ""
 
+# Enable logging for Matter protocol messages
+Log.setup(:info)
+
 device = MatterSwitch::Device.new
 
 # Trap Ctrl+C for clean shutdown
@@ -521,15 +530,6 @@ Process.on_terminate do
   puts "\n\n🛑 Received interrupt signal"
   device.shutdown
   exit(0)
-end
-
-# For demo purposes, allow mock commissioning via environment variable
-if ENV["MOCK_COMMISSION"]? == "true"
-  device.mock_commission(
-    fabric_id: 0x1234567890ABCDEF_u64,
-    node_id: 0x0000000000000001_u64,
-    label: "Demo Controller"
-  )
 end
 
 device.start

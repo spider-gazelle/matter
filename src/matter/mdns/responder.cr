@@ -418,6 +418,7 @@ module Matter
       # IPv4 receive loop
       private def receive_loop_ipv4(sock : UDPSocket) : Nil
         buffer = Bytes.new(9000) # Max DNS packet size
+        data = nil
 
         while @running
           begin
@@ -438,7 +439,7 @@ module Matter
           rescue IO::TimeoutError
             # Normal - continue
           rescue ex : Exception
-            Log.error(exception: ex) { "Error receiving IPv4 mDNS packet: #{ex.message}" } if @running
+            Log.error(exception: ex) { "Error receiving IPv4 mDNS packet: #{ex.message}\npacket data: 0x#{data.try(&.hexstring)}" } if @running
           end
         end
       end
@@ -446,6 +447,7 @@ module Matter
       # IPv6 receive loop
       private def receive_loop_ipv6(sock : UDPSocket) : Nil
         buffer = Bytes.new(9000) # Max DNS packet size
+        data = nil
 
         while @running
           begin
@@ -466,7 +468,7 @@ module Matter
           rescue IO::TimeoutError
             # Normal - continue
           rescue ex : Exception
-            Log.error(exception: ex) { "Error receiving IPv6 mDNS packet: #{ex.message}" } if @running
+            Log.error(exception: ex) { "Error receiving IPv6 mDNS packet: #{ex.message}\npacket data: 0x#{data.try(&.hexstring)}" } if @running
           end
         end
       end
