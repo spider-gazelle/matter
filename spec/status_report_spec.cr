@@ -3,121 +3,129 @@ require "../src/matter/session/pase/definitions"
 
 describe Matter::Session::Pase::Definitions::StatusReport do
   describe "#to_bytes" do
-    it "encodes SUCCESS status with correct TLV format" do
+    it "encodes SUCCESS status with correct raw binary format" do
       status_report = Matter::Session::Pase::Definitions::StatusReport.new(
         general_status: 0_u16,
+        protocol_id: 0x0000_u16, # Secure Channel
+        vendor_id: 0_u16,
         protocol_status: 0_u16
       )
 
       bytes = status_report.to_bytes
 
-      # Expected TLV encoding for StatusReport with SUCCESS (0, 0):
-      # 15              = Anonymous structure
-      # 25 00 00 00     = UInt16, context tag 0, value 0x0000 (general_status)
-      # 25 01 00 00     = UInt16, context tag 1, value 0x0000 (protocol_status)
-      # 18              = End of structure
-      # Total: 10 bytes
+      # Expected raw binary format (little-endian):
+      # 2 bytes: generalStatus = 0x0000
+      # 4 bytes: vendorProtocolId = 0x00000000 (vendor=0, protocol=0x0000)
+      # 2 bytes: protocolStatus = 0x0000
+      # Total: 8 bytes
 
-      expected = Bytes[0x15, 0x25, 0x00, 0x00, 0x00, 0x25, 0x01, 0x00, 0x00, 0x18]
+      expected = Bytes[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
 
       bytes.should eq(expected)
-      bytes.size.should eq(10)
+      bytes.size.should eq(8)
     end
 
     it "encodes non-zero status codes correctly" do
       status_report = Matter::Session::Pase::Definitions::StatusReport.new(
         general_status: 0x01_u16, # FAILURE
+        protocol_id: 0x0000_u16,  # Secure Channel
+        vendor_id: 0_u16,
         protocol_status: 0x02_u16 # Protocol-specific error
       )
 
       bytes = status_report.to_bytes
 
-      # Expected TLV encoding:
-      # 15              = Anonymous structure
-      # 25 00 01 00     = UInt16, context tag 0, value 0x0001
-      # 25 01 02 00     = UInt16, context tag 1, value 0x0002
-      # 18              = End of structure
+      # Expected raw binary:
+      # 2 bytes: generalStatus = 0x0001
+      # 4 bytes: vendorProtocolId = 0x00000000
+      # 2 bytes: protocolStatus = 0x0002
 
-      expected = Bytes[0x15, 0x25, 0x00, 0x01, 0x00, 0x25, 0x01, 0x02, 0x00, 0x18]
+      expected = Bytes[0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00]
 
       bytes.should eq(expected)
-      bytes.size.should eq(10)
+      bytes.size.should eq(8)
     end
 
-    it "uses 2-byte encoding even for small values" do
+    it "correctly combines vendor_id and protocol_id" do
       status_report = Matter::Session::Pase::Definitions::StatusReport.new(
         general_status: 0_u16,
-        protocol_status: 0_u16
-      )
-
-      bytes = status_report.to_bytes
-      hex = bytes.hexstring
-
-      # Should NOT be: 1524000024010018 (8 bytes, using UInt8)
-      # Should BE:     15250000002501000018 (10 bytes, using UInt16)
-
-      hex.should_not eq("1524000024010018") # Wrong: UInt8 encoding
-      hex.should eq("15250000002501000018") # Correct: UInt16 encoding
-    end
-
-    it "has correct TLV structure tags" do
-      status_report = Matter::Session::Pase::Definitions::StatusReport.new(
-        general_status: 0_u16,
+        protocol_id: 0x0000_u16, # Secure Channel protocol
+        vendor_id: 0xFFF1_u16,   # Example vendor ID
         protocol_status: 0_u16
       )
 
       bytes = status_report.to_bytes
 
-      # Bytes: 15 25 00 00 00 25 01 00 00 18
-      # Index:  0  1  2  3  4  5  6  7  8  9
+      # vendorProtocolId should be: (0xFFF1 << 16) | 0x0000 = 0xFFF10000
+      # In little-endian: 00 00 F1 FF
+      expected = Bytes[0x00, 0x00, 0x00, 0x00, 0xF1, 0xFF, 0x00, 0x00]
 
-      # Verify structure markers
-      bytes[0].should eq(0x15)  # Anonymous structure start
-      bytes[-1].should eq(0x18) # End of structure
+      bytes.should eq(expected)
+      bytes.size.should eq(8)
+    end
 
-      # Verify field tags use UInt16 encoding (0x25)
-      bytes[1].should eq(0x25) # general_status uses UInt16
-      bytes[5].should eq(0x25) # protocol_status uses UInt16
+    it "includes optional protocol_data when provided" do
+      protocol_data = Bytes[0x12, 0x34, 0x56, 0x78]
+      status_report = Matter::Session::Pase::Definitions::StatusReport.new(
+        general_status: 0_u16,
+        protocol_id: 0x0000_u16,
+        vendor_id: 0_u16,
+        protocol_status: 0_u16,
+        protocol_data: protocol_data
+      )
 
-      # Verify context tags
-      bytes[2].should eq(0x00) # general_status tag = 0
-      bytes[6].should eq(0x01) # protocol_status tag = 1
+      bytes = status_report.to_bytes
+
+      # 8 bytes (header) + 4 bytes (data) = 12 bytes
+      bytes.size.should eq(12)
+
+      # Verify protocol_data is appended
+      bytes[-4..].should eq(protocol_data)
     end
   end
 
   describe "initialization" do
-    it "defaults to SUCCESS status" do
+    it "defaults to SUCCESS status for Secure Channel" do
       status_report = Matter::Session::Pase::Definitions::StatusReport.new
 
       status_report.general_status.should eq(0_u16)
+      status_report.protocol_id.should eq(0x0000_u16) # Secure Channel
+      status_report.vendor_id.should eq(0_u16)
       status_report.protocol_status.should eq(0_u16)
+      status_report.protocol_data.should be_nil
     end
 
-    it "accepts custom status codes" do
+    it "accepts custom values" do
       status_report = Matter::Session::Pase::Definitions::StatusReport.new(
         general_status: 0x01_u16,
-        protocol_status: 0xFF_u16
+        protocol_id: 0x0001_u16, # Interaction Model
+        vendor_id: 0xFFF1_u16,
+        protocol_status: 0xFF_u16,
+        protocol_data: Bytes[0xAB, 0xCD]
       )
 
       status_report.general_status.should eq(0x01_u16)
+      status_report.protocol_id.should eq(0x0001_u16)
+      status_report.vendor_id.should eq(0xFFF1_u16)
       status_report.protocol_status.should eq(0xFF_u16)
+      status_report.protocol_data.should eq(Bytes[0xAB, 0xCD])
     end
   end
 
   describe "chip-tool compatibility" do
-    it "produces the exact format expected by chip-tool" do
-      # This is the critical test - chip-tool rejected our previous
-      # encoding because we used UInt8 (0x24) instead of UInt16 (0x25)
+    it "produces the exact raw binary format expected by chip-tool" do
+      # chip-tool/matter.js expect raw binary StatusReport, NOT TLV!
+      # For SUCCESS on Secure Channel protocol: all zeros, 8 bytes
 
       status_report = Matter::Session::Pase::Definitions::StatusReport.new
       bytes = status_report.to_bytes
 
       # chip-tool expects exactly this format for SUCCESS StatusReport
-      expected_hex = "15250000002501000018"
+      expected_hex = "0000000000000000" # 8 bytes of zeros
       bytes.hexstring.should eq(expected_hex)
 
-      # Packet size should be 10 bytes (not 8)
-      bytes.size.should eq(10)
+      # Packet size should be 8 bytes (not 10!)
+      bytes.size.should eq(8)
     end
   end
 end

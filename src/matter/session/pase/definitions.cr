@@ -214,35 +214,56 @@ module Matter
 
         # StatusReport message
         # Sent to indicate success or failure of a protocol operation
-        # Only has 2 fields: generalStatus and protocolStatus
+        # NOTE: StatusReport is NOT TLV encoded! It's raw binary format:
+        #   2 bytes: generalStatus (UInt16)
+        #   4 bytes: vendorProtocolId (UInt32) - lower 16 bits = protocol ID, upper 16 bits = vendor ID
+        #   2 bytes: protocolStatus (UInt16)
+        #   N bytes: protocolData (optional)
         struct StatusReport
           # General status code (SUCCESS = 0)
           property general_status : UInt16
 
+          # Protocol ID (lower 16 bits of vendorProtocolId)
+          property protocol_id : UInt16
+
+          # Vendor ID (upper 16 bits of vendorProtocolId)
+          property vendor_id : UInt16
+
           # Protocol-specific status code (SUCCESS = 0 for Secure Channel)
           property protocol_status : UInt16
 
+          # Optional protocol-specific data
+          property protocol_data : Bytes?
+
           def initialize(
-            @general_status : UInt16 = 0_u16,  # 0 = SUCCESS
-            @protocol_status : UInt16 = 0_u16, # 0 = SUCCESS
+            @general_status : UInt16 = 0_u16,   # 0 = SUCCESS
+            @protocol_id : UInt16 = 0x0000_u16, # 0x0000 = Secure Channel
+            @vendor_id : UInt16 = 0_u16,        # 0 = no vendor
+            @protocol_status : UInt16 = 0_u16,  # 0 = SUCCESS
+            @protocol_data : Bytes? = nil,
           )
           end
 
-          # Encode to TLV bytes
-          # NOTE: We force UInt16 (2-byte) encoding for both fields.
-          # chip-tool expects UInt16 encoding even for value 0.
+          # Encode to raw binary bytes (NOT TLV!)
           def to_bytes : Bytes
             io = IO::Memory.new
-            writer = TLV::Writer.new(io)
 
-            # Build anonymous structure with forced UInt16 encoding
-            writer.start_structure(nil)
-            writer.put_unsigned_int(0_u8, @general_status, force_size: 2)
-            writer.put_unsigned_int(1_u8, @protocol_status, force_size: 2)
-            writer.end_container
+            # Write fields in little-endian format
+            io.write_bytes(@general_status, IO::ByteFormat::LittleEndian)
+
+            # Combine vendor ID and protocol ID into vendorProtocolId (UInt32)
+            vendor_protocol_id = (@vendor_id.to_u32 << 16) | @protocol_id.to_u32
+            io.write_bytes(vendor_protocol_id, IO::ByteFormat::LittleEndian)
+
+            io.write_bytes(@protocol_status, IO::ByteFormat::LittleEndian)
+
+            # Write optional protocol data
+            if data = @protocol_data
+              io.write(data)
+            end
 
             bytes = io.to_slice
-            Log.debug { "StatusReport TLV bytes: #{bytes.hexstring}" }
+            Log.debug { "StatusReport raw bytes: #{bytes.hexstring}" }
             bytes
           end
         end
