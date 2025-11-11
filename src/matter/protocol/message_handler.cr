@@ -101,6 +101,23 @@ module Matter
 
       # Main message routing entry point
       def handle_message(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
+        session_id = msg.packet_header.session_id
+
+        # Decrypt encrypted messages (session_id != 0) BEFORE routing
+        if session_id != 0
+          Log.debug { "Message is encrypted (session_id=#{session_id}), decrypting..." }
+
+          # Get secure session context
+          session = @sessions[session_id]?
+          unless session
+            Log.error { "No session found for ID: #{session_id}" }
+            return
+          end
+
+          # Decrypt the payload
+          msg = decrypt_message(msg, session)
+        end
+
         Log.info { "Received message: protocol=0x#{msg.payload_header.protocol_id.to_s(16)}, type=0x#{msg.payload_header.message_type.to_s(16)}" }
 
         case msg.payload_header.protocol_id
@@ -113,6 +130,42 @@ module Matter
         end
       rescue ex
         Log.error(exception: ex) { "Error handling message: #{ex.message}" }
+      end
+
+      # Decrypt an encrypted message and re-parse the payload header
+      private def decrypt_message(
+        msg : Codec::MessageCodec::Message,
+        session : Session::SecureContext,
+      ) : Codec::MessageCodec::Message
+        Log.debug { "Decrypting payload (#{msg.payload.size} bytes)" }
+        crypto = Crypto::StandardCrypto.new
+
+        # Use the actual message_id from the packet header as the message counter
+        # (message_id IS the message counter for encrypted messages)
+        message_counter = msg.packet_header.message_id
+
+        decrypted = Session::SecureMessage.decrypt(
+          context: session,
+          encrypted_payload: msg.payload,
+          message_counter: message_counter,
+          packet_header: msg.packet_header,
+          crypto: crypto
+        )
+
+        unless decrypted
+          raise "Failed to decrypt message"
+        end
+
+        Log.debug { "Decrypted payload: #{decrypted.hexstring}" }
+
+        # Create a packet with decrypted payload and decode it
+        decrypted_packet = Codec::MessageCodec::Packet.new(
+          header: msg.packet_header,
+          payload: decrypted
+        )
+
+        # Decode the payload to get the real protocol_id and message_type
+        Codec::MessageCodec::Base.decode_payload(decrypted_packet)
       end
 
       # Handle Secure Channel protocol (PASE, CASE, etc.)
@@ -133,50 +186,21 @@ module Matter
 
       # Handle Interaction Model protocol (Read, Write, Invoke, etc.)
       private def handle_interaction_model(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
-        Log.info { "Received Interaction Model message" }
+        Log.info { "Received Interaction Model message (already decrypted)" }
 
-        # IM messages are always encrypted (session_id != 0)
+        # Get secure session context (needed for sending response)
         session_id = msg.packet_header.session_id
-        if session_id == 0
-          Log.error { "IM message received on unsecured session" }
-          return
-        end
-
-        # Get secure session context
         session = @sessions[session_id]?
         unless session
           Log.error { "No session found for ID: #{session_id}" }
           return
         end
 
-        # Decrypt payload
-        Log.debug { "Decrypting IM payload (#{msg.payload.size} bytes)" }
-        crypto = Crypto::StandardCrypto.new
-
-        # For incoming messages, use the next expected peer message counter
-        # The decrypt method will validate this counter
-        peer_counter = session.peer_message_counter || 0_u32
-        expected_counter = peer_counter + 1_u32
-
-        decrypted = Session::SecureMessage.decrypt(
-          context: session,
-          encrypted_payload: msg.payload,
-          message_counter: expected_counter,
-          packet_header: msg.packet_header,
-          crypto: crypto
-        )
-
-        unless decrypted
-          Log.error { "Failed to decrypt IM message" }
-          return
-        end
-
-        Log.debug { "Decrypted IM payload: #{decrypted.hexstring}" }
-
+        # Message is already decrypted, payload contains TLV data
         # Parse IM message based on message type
         case msg.payload_header.message_type
         when 0x02_u8 # ReadRequest
-          handle_read_request(decrypted, msg, peer, session)
+          handle_read_request(msg.payload, msg, peer, session)
         when 0x06_u8 # WriteRequest
           Log.info { "WriteRequest received (not yet implemented)" }
         when 0x08_u8 # InvokeRequest

@@ -19,8 +19,11 @@ module Matter
       getter socket_ipv4 : UDPSocket
       getter socket_ipv6 : UDPSocket
       getter port : Int32
-      getter message_counter : MessageCounter
+      getter message_counter : MessageCounter # Kept for backward compatibility (uses session_id=0)
       getter exchange_manager : ExchangeManager
+
+      # Per-session message counters (key = session_id)
+      @session_counters : Hash(UInt16, MessageCounter)
 
       # Callback for received messages
       # Signature: (message : Codec::MessageCodec::Message, peer_address : Socket::IPAddress) -> Nil
@@ -44,7 +47,10 @@ module Matter
         @socket_ipv6.bind(@interface_ipv6, @port)
         @socket_ipv6.read_timeout = 100.milliseconds
 
-        @message_counter = MessageCounter.new
+        # Initialize per-session counters hash
+        @session_counters = Hash(UInt16, MessageCounter).new
+        # For backward compatibility, @message_counter points to session_id=0's counter
+        @message_counter = @session_counters[0_u16] = MessageCounter.new
         @exchange_manager = ExchangeManager.new
         @running = false
         @receive_fiber_ipv4 = nil
@@ -264,10 +270,12 @@ module Matter
         packet = Codec::MessageCodec::Base.decode_packet(data)
         puts "✅ Packet decoded: session_id=#{packet.header.session_id}, message_id=#{packet.header.message_id}"
 
-        # Check for duplicate messages
-        unless @message_counter.valid?(packet.header.message_id)
+        # Check for duplicate messages using per-session counter
+        session_id = packet.header.session_id
+        counter = @session_counters[session_id] ||= MessageCounter.new
+        unless counter.valid?(packet.header.message_id)
           # Duplicate message - ignore
-          puts "⚠️  Duplicate message ignored: #{packet.header.message_id}"
+          puts "⚠️  Duplicate message ignored: session=#{session_id}, message_id=#{packet.header.message_id}"
           return
         end
 
