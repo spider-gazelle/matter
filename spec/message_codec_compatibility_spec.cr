@@ -68,6 +68,7 @@ describe "MessageCodec Compatibility with matter.js" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
+        security_flags: 0_u8,
         source_node_id: Matter::DataType::NodeId.new(0x1122334455667788_u64)
       )
 
@@ -119,6 +120,7 @@ describe "MessageCodec Compatibility with matter.js" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
+        security_flags: 1_u8,
         destination_group_id: Matter::DataType::GroupId.new(0xABCD_u16)
       )
 
@@ -156,7 +158,8 @@ describe "MessageCodec Compatibility with matter.js" do
         message_id: 1_u32,
         privacy_enhancements: false,
         control_message: true, # Control message flag
-        message_extensions: false
+        message_extensions: false,
+        security_flags: 0x40_u8
       )
 
       payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(

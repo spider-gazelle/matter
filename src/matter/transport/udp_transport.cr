@@ -105,6 +105,7 @@ module Matter
             privacy_enhancements: message.packet_header.privacy_enhancements?,
             control_message: message.packet_header.control_message?,
             message_extensions: message.packet_header.message_extensions?,
+            security_flags: message.packet_header.security_flags,
             source_node_id: message.packet_header.source_node_id,
             destination_node_id: message.packet_header.destination_node_id,
             destination_group_id: message.packet_header.destination_group_id
@@ -163,6 +164,10 @@ module Matter
           peer_node_id: peer_node_id
         )
 
+        # Build security flags byte for outgoing message
+        security_flags = 0_u8
+        security_flags |= Codec::MessageCodec::SessionType::Unicast.value # Bits 1-0
+
         # Build message
         packet_header = Codec::MessageCodec::PacketHeader.new(
           session_id: session_id,
@@ -171,6 +176,7 @@ module Matter
           privacy_enhancements: false,
           control_message: false,
           message_extensions: false,
+          security_flags: security_flags,
           source_node_id: source_node_id,
           destination_node_id: peer_node_id
         )
@@ -370,6 +376,9 @@ module Matter
         peer_address : Socket::IPAddress,
         exchange : Exchange,
       ) : Nil
+        # Build security flags byte - copy from original message
+        security_flags = original_message.packet_header.security_flags
+
         # Build ACK message (empty payload)
         packet_header = Codec::MessageCodec::PacketHeader.new(
           session_id: original_message.packet_header.session_id,
@@ -378,6 +387,7 @@ module Matter
           privacy_enhancements: false,
           control_message: false,
           message_extensions: false,
+          security_flags: security_flags,
           source_node_id: original_message.packet_header.destination_node_id,
           destination_node_id: original_message.packet_header.source_node_id
         )

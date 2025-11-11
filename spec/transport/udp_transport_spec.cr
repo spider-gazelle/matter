@@ -38,7 +38,8 @@ describe Matter::Transport::UDPTransport do
         message_id: 0_u32, # Zero - should be assigned
         privacy_enhancements: false,
         control_message: false,
-        message_extensions: false
+        message_extensions: false,
+        security_flags: 0_u8
       )
 
       payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(
@@ -82,7 +83,8 @@ describe Matter::Transport::UDPTransport do
           message_id: 0_u32,
           privacy_enhancements: false,
           control_message: false,
-          message_extensions: false
+          message_extensions: false,
+          security_flags: 0_u8
         )
 
         payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(

@@ -264,6 +264,12 @@ module Matter
         # Encrypt the payload using the session's encryption key
         crypto = Crypto::StandardCrypto.new
 
+        # Build security flags byte for outgoing message
+        # Bits 1-0: Session type (0=Unicast, 1=Group)
+        # Bits 7-5: Control flags (privacy, control msg, extensions)
+        security_flags = 0_u8
+        security_flags |= Codec::MessageCodec::SessionType::Unicast.value # Bits 1-0
+
         # Build packet header for encrypted response
         packet_header = Codec::MessageCodec::PacketHeader.new(
           session_id: session.session_id,
@@ -272,6 +278,7 @@ module Matter
           privacy_enhancements: false,
           control_message: false,
           message_extensions: false,
+          security_flags: security_flags,
           source_node_id: original_msg.packet_header.destination_node_id,
           destination_node_id: original_msg.packet_header.source_node_id
         )
@@ -536,6 +543,12 @@ module Matter
         # Build response packet header
         response_session_id = session_id || msg.packet_header.session_id
 
+        # Build security flags byte for outgoing message
+        # Bits 1-0: Session type (0=Unicast, 1=Group)
+        # Bits 7-5: Control flags (privacy, control msg, extensions)
+        security_flags = 0_u8
+        security_flags |= Codec::MessageCodec::SessionType::Unicast.value # Bits 1-0
+
         packet_header = Codec::MessageCodec::PacketHeader.new(
           session_id: response_session_id,
           session_type: Codec::MessageCodec::SessionType::Unicast,
@@ -543,6 +556,7 @@ module Matter
           privacy_enhancements: false,
           control_message: false,
           message_extensions: false,
+          security_flags: security_flags,
           source_node_id: msg.packet_header.destination_node_id,
           destination_node_id: msg.packet_header.source_node_id
         )

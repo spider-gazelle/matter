@@ -127,12 +127,13 @@ module Matter
         puts "   session_id: #{packet_header.session_id}"
         puts "   peer_session_id: #{context.peer_session_id}"
 
-        security_flags = 0_u8
-        security_flags |= 0x80 if packet_header.privacy_enhancements?
-        security_flags |= 0x40 if packet_header.control_message?
-        security_flags |= 0x20 if packet_header.message_extensions?
+        # Use the raw security_flags byte from the packet header (byte 3)
+        # This is CRITICAL for AES-CCM nonce construction!
+        # matter.js does: const securityFlags = headerBytes[3]
+        security_flags = packet_header.security_flags
 
         nonce = build_nonce(peer_node_id, message_counter, security_flags)
+        puts "   security_flags: 0x#{security_flags.to_s(16).rjust(2, '0')}"
         puts "   nonce: #{nonce.hexstring}"
 
         # Build AAD from packet header

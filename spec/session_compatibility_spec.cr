@@ -42,7 +42,8 @@ describe "Session Compatibility with matter.js" do
         message_id: 12519906_u32,
         privacy_enhancements: false,
         control_message: false,
-        message_extensions: false
+        message_extensions: false,
+        security_flags: 0_u8
       )
 
       # Message counter from the encrypted message (extracted from packet)
@@ -107,7 +108,8 @@ describe "Session Compatibility with matter.js" do
         message_id: 12519906_u32,
         privacy_enhancements: false,
         control_message: false,
-        message_extensions: false
+        message_extensions: false,
+        security_flags: 0_u8
       )
 
       # Test payload

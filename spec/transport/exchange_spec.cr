@@ -66,7 +66,8 @@ describe Matter::Transport::Exchange do
         message_id: 1_u32,
         privacy_enhancements: false,
         control_message: false,
-        message_extensions: false
+        message_extensions: false,
+        security_flags: 0_u8
       )
       payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(
         exchange_id: 1_u16,
@@ -119,7 +120,8 @@ describe Matter::Transport::Exchange do
         message_id: 1_u32,
         privacy_enhancements: false,
         control_message: false,
-        message_extensions: false
+        message_extensions: false,
+        security_flags: 0_u8
       )
       payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(
         exchange_id: 1_u16,
@@ -155,7 +157,8 @@ describe Matter::Transport::Exchange do
         message_id: 1_u32,
         privacy_enhancements: false,
         control_message: false,
-        message_extensions: false
+        message_extensions: false,
+        security_flags: 0_u8
       )
       payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(
         exchange_id: 1_u16,
@@ -196,7 +199,8 @@ describe Matter::Transport::Exchange do
         message_id: 1_u32,
         privacy_enhancements: false,
         control_message: false,
-        message_extensions: false
+        message_extensions: false,
+        security_flags: 0_u8
       )
       payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(
         exchange_id: 1_u16,

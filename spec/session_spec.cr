@@ -244,7 +244,8 @@ describe Matter::Session do
         message_id: 1_u32,
         privacy_enhancements: false,
         control_message: false,
-        message_extensions: false
+        message_extensions: false,
+        security_flags: 0_u8
       )
 
       payload = "Matter secure message".to_slice
@@ -292,7 +293,8 @@ describe Matter::Session do
         message_id: 1_u32,
         privacy_enhancements: false,
         control_message: false,
-        message_extensions: false
+        message_extensions: false,
+        security_flags: 0_u8
       )
 
       payload = "Test message".to_slice

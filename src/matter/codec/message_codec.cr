@@ -41,8 +41,9 @@ module Matter
         getter? privacy_enhancements : Bool
         getter? control_message : Bool
         getter? message_extensions : Bool
+        getter security_flags : UInt8 # Raw security flags byte from wire (byte 3 of packet header)
 
-        def initialize(@session_id : UInt16, @session_type : SessionType, @message_id : UInt32, @privacy_enhancements : Bool, @control_message : Bool, @message_extensions : Bool, @source_node_id : DataType::NodeId? = nil, @destination_node_id : DataType::NodeId? = nil, @destination_group_id : DataType::GroupId? = nil)
+        def initialize(@session_id : UInt16, @session_type : SessionType, @message_id : UInt32, @privacy_enhancements : Bool, @control_message : Bool, @message_extensions : Bool, @security_flags : UInt8, @source_node_id : DataType::NodeId? = nil, @destination_node_id : DataType::NodeId? = nil, @destination_group_id : DataType::GroupId? = nil)
         end
       end
 
@@ -181,12 +182,13 @@ module Matter
           PacketHeader.new(session_id: session_id,
             session_type: SessionType.from_value(session_type),
             message_id: message_id,
-            source_node_id: source_node_id,
-            destination_node_id: destination_node_id,
-            destination_group_id: destination_group_id,
             privacy_enhancements: has_privacy_enhancements,
             control_message: is_control_message,
-            message_extensions: has_message_extensions)
+            message_extensions: has_message_extensions,
+            security_flags: security_flags,
+            source_node_id: source_node_id,
+            destination_node_id: destination_node_id,
+            destination_group_id: destination_group_id)
         end
 
         private def decode_payload_header(io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian) : PayloadHeader
