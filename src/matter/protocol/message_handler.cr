@@ -407,8 +407,9 @@ module Matter
         # Decode Pake1 message using TLV::Serializable constructor
         pake1 = Session::Pase::Definitions::Pake1.new(msg.payload)
         p_a = pake1.x
-        Log.debug { "  Received pA: #{p_a.size} bytes" }
-        Log.debug { "  pA hex: #{p_a.hexstring}" }
+        Log.info { "  Received pA: #{p_a.size} bytes" }
+        Log.info { "  pA hex: #{p_a.hexstring}" }
+        Log.info { "  pA first byte: 0x#{p_a[0].to_s(16).rjust(2, '0')}" } if p_a.size > 0
 
         # Get or create PASE responder
         responder = @pase_responder
