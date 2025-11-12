@@ -150,9 +150,6 @@ module Matter
           @[TLV::Field(tag: 1)]
           property x : Bytes
 
-          def initialize(@x : Bytes)
-          end
-
           # Encode to TLV bytes
           def to_bytes : Bytes
             io = IO::Memory.new
@@ -199,9 +196,6 @@ module Matter
           # Commissioner's confirmation value (cA, h_ay)
           @[TLV::Field(tag: 1)]
           property verifier : Bytes
-
-          def initialize(@verifier : Bytes)
-          end
 
           # Encode to TLV bytes
           def to_bytes : Bytes
