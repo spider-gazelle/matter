@@ -401,12 +401,6 @@ module MatterSwitch
       puts "   quit    - Exit the application"
       puts ""
 
-      Signal::INT.trap do
-        puts "\n\n🛑 Received interrupt signal"
-        shutdown
-        exit(0)
-      end
-
       loop do
         print "> "
         input = gets
