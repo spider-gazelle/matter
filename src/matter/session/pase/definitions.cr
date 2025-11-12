@@ -116,7 +116,13 @@ module Matter
             # Extract required fields
             @initiator_random = hash[1_u8].as(Bytes)
             @responder_random = hash[2_u8].as(Bytes)
-            @responder_session_id = hash[3_u8].as(UInt16)
+
+            # TLV encodes integers using the smallest type that fits, so handle flexible types
+            responder_session_id_value = hash[3_u8]
+            @responder_session_id = case responder_session_id_value
+                                    when Int then responder_session_id_value.to_u16
+                                    else          raise "Invalid responder_session_id type: #{responder_session_id_value.class}"
+                                    end
 
             # Extract optional pbkdf_parameters
             @pbkdf_parameters = hash[4_u8]? if hash.has_key?(4_u8)

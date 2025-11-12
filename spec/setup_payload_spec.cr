@@ -79,8 +79,10 @@ describe Matter::SetupPayload do
     end
 
     it "generates different codes for different discriminators" do
+      # Use discriminators with different short discriminators (top 4 bits)
+      # 100 (0x064) has short_discriminator = 0, 1000 (0x3E8) has short_discriminator = 3
       code1 = Matter::SetupPayload.generate_manual_code(100_u16, 20202021_u32)
-      code2 = Matter::SetupPayload.generate_manual_code(200_u16, 20202021_u32)
+      code2 = Matter::SetupPayload.generate_manual_code(1000_u16, 20202021_u32)
       code1.should_not eq(code2)
     end
 
