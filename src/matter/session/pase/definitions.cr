@@ -244,6 +244,37 @@ module Matter
           )
           end
 
+          # Decode from raw binary bytes (NOT TLV!)
+          def self.from_bytes(data : Bytes) : StatusReport
+            io = IO::Memory.new(data)
+
+            # Read fields in little-endian format
+            general_status = io.read_bytes(UInt16, IO::ByteFormat::LittleEndian)
+
+            # Read vendorProtocolId (UInt32) and split into vendor_id and protocol_id
+            vendor_protocol_id = io.read_bytes(UInt32, IO::ByteFormat::LittleEndian)
+            protocol_id = (vendor_protocol_id & 0xFFFF).to_u16
+            vendor_id = ((vendor_protocol_id >> 16) & 0xFFFF).to_u16
+
+            protocol_status = io.read_bytes(UInt16, IO::ByteFormat::LittleEndian)
+
+            # Read remaining bytes as optional protocol data
+            protocol_data = if io.pos < data.size
+                              remaining = data[io.pos..]
+                              remaining.size > 0 ? remaining : nil
+                            else
+                              nil
+                            end
+
+            StatusReport.new(
+              general_status: general_status,
+              protocol_id: protocol_id,
+              vendor_id: vendor_id,
+              protocol_status: protocol_status,
+              protocol_data: protocol_data
+            )
+          end
+
           # Encode to raw binary bytes (NOT TLV!)
           def to_bytes : Bytes
             io = IO::Memory.new

@@ -177,6 +177,8 @@ module Matter
           handle_pase_pake1(msg, peer)
         when MSG_PASE_PAKE3
           handle_pase_pake3(msg, peer)
+        when MSG_STATUS_REPORT
+          handle_status_report(msg, peer)
         when MSG_CASE_SIGMA1
           Log.info { "Received CASE Sigma1 (not yet implemented)" }
         else
@@ -591,6 +593,49 @@ module Matter
       end
 
       # Send a StatusReport with success status
+      # Handle StatusReport messages (sent by controllers to indicate errors or status)
+      private def handle_status_report(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
+        Log.info { "📨 Received StatusReport" }
+
+        begin
+          # Parse StatusReport from binary payload (NOT TLV!)
+          status_report = Session::Pase::Definitions::StatusReport.from_bytes(msg.payload)
+
+          # Log the status details
+          Log.info { "  General Status: 0x#{status_report.general_status.to_s(16).rjust(4, '0')}" }
+          Log.info { "  Protocol Status: 0x#{status_report.protocol_status.to_s(16).rjust(4, '0')}" }
+
+          # Interpret common status codes
+          case status_report.general_status
+          when 0
+            Log.info { "  ✅ SUCCESS" }
+          when 1
+            Log.error { "  ❌ FAILURE" }
+          when 2
+            Log.error { "  ❌ BUSY - Device is busy, try again later" }
+          else
+            Log.warn { "  ⚠️  Unknown general status" }
+          end
+
+          # Log protocol-specific status if non-zero
+          if status_report.protocol_status != 0
+            Log.warn { "  Protocol-specific error code: #{status_report.protocol_status}" }
+          end
+
+          # If this is an error during PASE, the handshake failed
+          if status_report.general_status != 0
+            Log.error { "PASE handshake rejected by controller - commissioning failed" }
+            Log.error { "This usually means:" }
+            Log.error { "  - Incorrect PIN code" }
+            Log.error { "  - SPAKE2+ computation mismatch" }
+            Log.error { "  - Invalid crypto parameters" }
+          end
+        rescue ex
+          Log.error(exception: ex) { "Failed to parse StatusReport: #{ex.message}" }
+          Log.debug { "  Payload hex: #{msg.payload.hexstring}" }
+        end
+      end
+
       private def send_status_report_success(
         msg : Codec::MessageCodec::Message,
         peer : Socket::IPAddress,
