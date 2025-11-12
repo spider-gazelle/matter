@@ -515,7 +515,7 @@ puts "Starting Matter Switch Device..."
 puts ""
 
 # Enable logging for Matter protocol messages
-Log.setup(:info)
+Log.setup(:debug)
 
 device = MatterSwitch::Device.new
 
