@@ -6,6 +6,8 @@ require "./definitions"
 module Matter
   module Session
     module Pase
+      Log = ::Log.for("matter.pase")
+
       # PBKDF parameters for PASE
       struct PbkdfParameters
         property iterations : Int32
@@ -208,6 +210,10 @@ module Matter
 
         # Step 3: Process pA (initiator's public value) and generate pB
         def process_pake1(p_a : Bytes) : Bytes
+          Log.debug { "PaseResponder: Processing Pake1 (pA from iPhone)" }
+          Log.debug { "  pA size: #{p_a.size} bytes" }
+          Log.debug { "  pA (first 16 bytes): #{p_a[0, [16, p_a.size].min].hexstring}" }
+
           initialize_spake unless @spake
 
           spake = @spake
@@ -216,6 +222,8 @@ module Matter
 
           # Compute Y (responder/verifier's public value)
           @p_b = spake.compute_y
+          Log.debug { "  Generated pB: #{@p_b.not_nil!.size} bytes" }
+          Log.debug { "  pB (first 16 bytes): #{@p_b.not_nil![0, 16].hexstring}" }
 
           # Compute shared secret and verifiers from X (initiator's public value)
           @secret_and_verifiers = spake.compute_secret_and_verifiers_from_x(
@@ -223,6 +231,9 @@ module Matter
             p_a,
             @p_b.not_nil!
           )
+
+          Log.debug { "  Computed shared secret Ke and confirmations" }
+          Log.debug { "  h_bx (cB) to send to iPhone (first 16 bytes): #{@secret_and_verifiers.not_nil!.h_bx[0, 16].hexstring}" }
 
           @p_b.not_nil!
         end

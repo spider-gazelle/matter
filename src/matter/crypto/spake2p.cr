@@ -10,6 +10,7 @@ module Matter
     # SPAKE2+ is a password-authenticated key exchange protocol used during Matter commissioning
     # This is a wrapper around the spake2_plus library configured for Matter's requirements
     class Spake2p
+      Log = ::Log.for("matter.spake2p")
       # Delegate to the underlying SPAKE2Plus::Protocol instance
       @protocol : SPAKE2Plus::Protocol
       # M and N constants for P-256 curve
@@ -59,6 +60,11 @@ module Matter
 
       # Compute w0 and w1 from PIN using PBKDF2
       def self.compute_w0_w1(crypto : CryptoBase, params : PbkdfParameters, pin : UInt32) : W0W1
+        Log.debug { "Computing w0/w1 from PIN" }
+        Log.debug { "  PIN: #{pin}" }
+        Log.debug { "  PBKDF2 iterations: #{params.iterations}" }
+        Log.debug { "  PBKDF2 salt: #{params.salt.hexstring}" }
+
         # Encode PIN as little-endian 32-bit integer
         pin_bytes = IO::Memory.new
         pin_bytes.write_bytes(pin, IO::ByteFormat::LittleEndian)
@@ -82,6 +88,9 @@ module Matter
         w0 = BigInt.new(w0_bytes.hexstring, 16) % curve_order
         w1 = BigInt.new(w1_bytes.hexstring, 16) % curve_order
 
+        Log.debug { "  w0 (first 16 bytes): #{w0_bytes[0, 16].hexstring}" }
+        Log.debug { "  w1 (first 16 bytes): #{w1_bytes[0, 16].hexstring}" }
+
         W0W1.new(w0, w1)
       end
 
@@ -93,6 +102,8 @@ module Matter
         # Compute L = w1 * G using the SPAKE2Plus library
         algorithm = SPAKE2Plus::MATTER_DEFAULT
         l = algorithm.generator_point.mul(w0_w1.w1).to_slice
+
+        Log.debug { "  L (first 16 bytes): #{l[0, 16].hexstring}" }
 
         W0L.new(w0_w1.w0, l)
       end
@@ -138,7 +149,17 @@ module Matter
 
       # Compute shared secret and verifiers from X (verifier side)
       def compute_secret_and_verifiers_from_x(l : Bytes, x : Bytes, y : Bytes) : SecretAndVerifiers
+        Log.debug { "Computing shared secret and verifiers from X (verifier side)" }
+        Log.debug { "  X (pA) size: #{x.size} bytes" }
+        Log.debug { "  Y (pB) size: #{y.size} bytes" }
+        Log.debug { "  L size: #{l.size} bytes" }
+
         ke, h_ay, h_bx = @protocol.compute_secret_and_verifiers_from_x(l, x, y)
+
+        Log.debug { "  Shared secret Ke (first 16 bytes): #{ke[0, 16].hexstring}" }
+        Log.debug { "  Confirmation h_ay (cA, first 16 bytes): #{h_ay[0, 16].hexstring}" }
+        Log.debug { "  Confirmation h_bx (cB, first 16 bytes): #{h_bx[0, 16].hexstring}" }
+
         SecretAndVerifiers.new(ke, h_ay, h_bx)
       end
     end
