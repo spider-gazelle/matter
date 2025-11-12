@@ -404,38 +404,11 @@ module Matter
       private def handle_pase_pake1(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
         Log.info { "Handling PASE Pake1" }
 
-        # Decode Pake1 message using TLV::Serializable constructor
+        # Decode Pake1 message - TLV library now correctly extracts the EC point
         pake1 = Session::Pase::Definitions::Pake1.new(msg.payload)
-        p_a_tlv = pake1.x
-        Log.info { "  Received pA TLV: #{p_a_tlv.size} bytes" }
-        Log.info { "  pA TLV hex: #{p_a_tlv.hexstring}" }
+        p_a = pake1.x # Now correctly contains just the 65-byte EC point
 
-        # Extract the actual EC point from TLV structure
-        # The TLV structure is: 15 30 01 41 [65-byte EC point] 18
-        # We need to extract just the 65 bytes starting with 0x04
-        # Parse the TLV to get the actual byte string
-        reader = TLV::Reader.new(p_a_tlv)
-        tlv_data = reader.get
-
-        # The structure should be: Anonymous Structure { Tag 1: ByteString }
-        # Extract the ByteString from tag 1
-        p_a = if tlv_data.is_a?(Hash)
-                # Look for tag 1
-                tag_1 = tlv_data[1_u8]? || tlv_data["Any"]?.try(&.as(Hash)[1_u8]?)
-                if tag_1.is_a?(Bytes)
-                  tag_1
-                else
-                  # Fallback: if TLV parsing doesn't work, manually extract bytes 4-68
-                  Log.warn { "TLV parsing didn't return expected structure, using manual extraction" }
-                  p_a_tlv[4, 65]
-                end
-              else
-                # Fallback: manually extract the EC point from known positions
-                Log.warn { "TLV parsing returned unexpected type, using manual extraction" }
-                p_a_tlv[4, 65]
-              end
-
-        Log.info { "  Extracted EC point pA: #{p_a.size} bytes" }
+        Log.info { "  Received pA: #{p_a.size} bytes" }
         Log.info { "  pA hex: #{p_a.hexstring}" }
         Log.info { "  pA first byte: 0x#{p_a[0].to_s(16).rjust(2, '0')}" } if p_a.size > 0
 
