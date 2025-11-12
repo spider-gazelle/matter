@@ -70,50 +70,63 @@ module Matter
     #
     # @param discriminator Device discriminator (12-bit value, 0-4095)
     # @param pin Setup PIN code (27-bit value, 1-99999998, excluding invalid PINs)
+    # @param validate Whether to validate PIN security requirements (default: true)
     # @return 11-digit manual pairing code string (formatted as xxxx-xxx-xxxx)
-    def self.generate_manual_code(discriminator : UInt16, pin : UInt32) : String
+    #
+    # Algorithm from matter.js PairingCodeSchema.ts (Matter Core Spec § 5.1.4.1)
+    def self.generate_manual_code(discriminator : UInt16, pin : UInt32, validate : Bool = true) : String
       # Validate discriminator (12 bits = 0-4095)
       raise ArgumentError.new("Discriminator must be 0-4095") if discriminator > 4095
 
-      # Validate PIN (27 bits, but Matter has specific restrictions)
-      # PIN must be 1-99999998 and cannot be:
-      # - 00000000, 11111111, 22222222, ..., 99999999
-      # - 12345678, 87654321
-      raise ArgumentError.new("PIN must be 1-99999998") if pin < 1 || pin > 99999998
+      if validate
+        # Validate PIN (27 bits, but Matter has specific restrictions)
+        # PIN must be 1-99999998 and cannot be:
+        # - 00000000, 11111111, 22222222, ..., 99999999
+        # - 12345678, 87654321
+        raise ArgumentError.new("PIN must be 1-99999998") if pin < 1 || pin > 99999998
 
-      # Check for invalid repeating digit PINs
-      pin_str = pin.to_s.rjust(8, '0')
-      if pin_str.chars.uniq.size == 1
-        raise ArgumentError.new("PIN cannot be all the same digit")
+        # Check for invalid repeating digit PINs
+        pin_str = pin.to_s.rjust(8, '0')
+        if pin_str.chars.uniq.size == 1
+          raise ArgumentError.new("PIN cannot be all the same digit")
+        end
+
+        # Check for specific invalid PINs
+        if pin == 12345678 || pin == 87654321
+          raise ArgumentError.new("PIN cannot be 12345678 or 87654321")
+        end
+      else
+        # Minimal validation even when validate=false
+        raise ArgumentError.new("PIN must be 1-99999998") if pin < 1 || pin > 99999998
       end
 
-      # Check for specific invalid PINs
-      if pin == 12345678 || pin == 87654321
-        raise ArgumentError.new("PIN cannot be 12345678 or 87654321")
-      end
+      # Encode using matter.js algorithm (matches Matter Core Spec § 5.1.4.1)
+      # This encodes 10 digits before the check digit:
+      # - Digit 1: Top 2 bits of discriminator (bits 10-11)
+      # - Digits 2-6: Mixed discriminator (bits 8-9) and passcode (bits 0-13)
+      # - Digits 7-10: Top bits of passcode (bits 14-27)
 
-      # Encode per Matter spec:  (discriminator << 27) | PIN
-      # This creates a 39-bit value that must fit in 10 decimal digits
-      # Max value for 10 digits: 9,999,999,999 (about 33.2 bits)
-      # Max actual value: (4095 << 27) | 99,999,998 = 549,755,813,886 (exceeds 10 digits!)
-      #
-      # The Matter spec uses a chunked encoding to fit this into 10 digits.
-      # For simplicity in this implementation, we'll use a different approach:
-      # Treat the first 10 digits of the payload as the code
-      payload = (discriminator.to_u64 << 27) | pin.to_u64
+      result = ""
 
-      # Take modulo to ensure we fit in 10 digits (max 9999999999)
-      # This loses some entropy but ensures valid 11-digit codes
-      code_value = payload % 10000000000_u64
+      # Digit 1: Top 2 bits of discriminator
+      result += (discriminator >> 10).to_s
 
-      # Convert to 10-digit string with leading zeros
-      code_str = code_value.to_s.rjust(10, '0')
+      # Digits 2-6: ((discriminator & 0x300) << 6) | (passcode & 0x3fff)
+      # - discriminator & 0x300 isolates bits 8-9 of discriminator
+      # - << 6 shifts left by 6 positions
+      # - passcode & 0x3fff gets bottom 14 bits of passcode
+      part2 = ((discriminator & 0x300) << 6) | (pin & 0x3fff)
+      result += part2.to_s.rjust(5, '0')
+
+      # Digits 7-10: Top bits of passcode (passcode >> 14)
+      part3 = pin >> 14
+      result += part3.to_s.rjust(4, '0')
 
       # Compute Verhoeff check digit
-      check_digit = Verhoeff.compute(code_str)
+      check_digit = Verhoeff.compute(result)
 
       # Append check digit to get 11-digit code
-      full_code = code_str + check_digit.to_s
+      full_code = result + check_digit.to_s
 
       # Format as xxxx-xxx-xxxx
       format_manual_code(full_code)
@@ -127,17 +140,15 @@ module Matter
 
     # Parse a formatted manual code back to discriminator and PIN
     #
-    # Note: Due to the simplified encoding (using modulo to fit in 10 digits),
-    # parsing may not perfectly round-trip for all discriminator/PIN combinations.
-    # This is sufficient for device commissioning where the code is generated
-    # and used immediately, but a full implementation should use the Matter spec's
-    # chunked encoding for perfect round-trip capability.
-    #
-    # @param formatted_code Manual code in xxxx-xxx-xxxx format
+    # @param formatted_code Manual code in xxxx-xxx-xxxx format (or with spaces/dashes stripped)
     # @return Tuple of {discriminator, pin}
+    #
+    # Note: Manual pairing codes only encode the SHORT discriminator (top 4 bits of the full 12-bit discriminator).
+    # This function reconstructs the full discriminator from those 4 bits by assuming the lower 8 bits are zero.
+    # Algorithm from matter.js PairingCodeSchema.ts
     def self.parse_manual_code(formatted_code : String) : {UInt16, UInt32}
-      # Remove dashes
-      code = formatted_code.gsub("-", "")
+      # Remove non-digit characters (dashes, spaces)
+      code = formatted_code.gsub(/\D/, "")
       raise ArgumentError.new("Code must be 11 digits") if code.size != 11
 
       # Validate check digit
@@ -145,22 +156,43 @@ module Matter
         raise ArgumentError.new("Invalid check digit")
       end
 
-      # Remove check digit
-      payload_str = code[0..9]
-      payload = payload_str.to_u64
+      # Decode using matter.js algorithm (reverse of encoding)
+      # Digit 1: Contains top 2 bits of short discriminator + optional vendor/product flag
+      digit1 = code[0].to_i
 
-      # Decode: discriminator is top 12 bits, PIN is bottom 27 bits
-      # Note: This assumes the payload wasn't truncated by modulo during encoding
-      discriminator = ((payload >> 27) & 0xFFF).to_u16
-      pin = (payload & 0x7FFFFFF).to_u32
+      # Digits 2-6: Contains bottom 2 bits of short discriminator (in high bits) + bottom 14 bits of passcode
+      digits_2_6 = code[1..5].to_i
 
-      {discriminator, pin}
+      # Digits 7-10: Contains top 14 bits of passcode (passcode >> 14)
+      digits_7_10 = code[6..9].to_i
+
+      # Extract short discriminator (4 bits)
+      # Top 2 bits from digit 1 (bits 0-1, since bit 2 is vendor/product flag)
+      # Bottom 2 bits from high bits of digits_2_6
+      short_discriminator = ((digit1 & 0x03) << 2) | ((digits_2_6 >> 14) & 0x3)
+
+      # Extract passcode (27 bits)
+      # Bottom 14 bits from digits_2_6, top 14 bits from digits_7_10
+      passcode = (digits_2_6 & 0x3fff) | (digits_7_10 << 14)
+
+      # Convert short discriminator (4 bits) back to full discriminator (12 bits)
+      # The short discriminator is the top 4 bits (bits 8-11) of the full discriminator
+      # So shift left by 8 to position them correctly
+      discriminator = (short_discriminator << 8).to_u16
+
+      {discriminator, passcode.to_u32}
     end
 
     # Generate a default PIN for testing/examples
     # Returns a valid PIN that's easy to remember
     def self.default_pin : UInt32
       20202021_u32 # A valid PIN that's not on the blacklist
+    end
+
+    # Compute the short discriminator (4 bits: bits 8-11 of the full 12-bit discriminator)
+    # This is what gets encoded in manual pairing codes
+    def self.short_discriminator(discriminator : UInt16) : UInt16
+      (discriminator >> 8).to_u16
     end
 
     # QR Code payload generation for Matter onboarding
