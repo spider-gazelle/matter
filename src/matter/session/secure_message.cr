@@ -75,13 +75,17 @@ module Matter
         nonce = build_nonce(source_node_id, message_counter, security_flags)
 
         # Build AAD from packet header
-        # AAD = flags (1 byte) || session_id (2 bytes LE) || message_counter (4 bytes LE)
+        # AAD = flags (1 byte) || session_id (2 bytes LE) || security_flags (1 byte) || message_counter (4 bytes LE)
+        # Per matter.js: AAD is the entire packet header (bytes 0-7 for PASE without node IDs)
         aad_io = IO::Memory.new
 
-        # Use the raw flags byte from the packet header (byte 0 from wire)
-        # This MUST match the exact byte used during decryption
+        # Byte 0: flags
         aad_io.write_byte(packet_header.flags)
+        # Bytes 1-2: session_id (LE)
         IO::ByteFormat::LittleEndian.encode(packet_header.session_id, aad_io)
+        # Byte 3: security_flags
+        aad_io.write_byte(security_flags)
+        # Bytes 4-7: message_counter (LE)
         IO::ByteFormat::LittleEndian.encode(message_counter, aad_io)
         aad = aad_io.to_slice
 
@@ -153,16 +157,20 @@ module Matter
         puts "   nonce: #{nonce.hexstring}"
 
         # Build AAD from packet header
-        # AAD = flags (1 byte) || session_id (2 bytes LE) || message_counter (4 bytes LE)
+        # AAD = flags (1 byte) || session_id (2 bytes LE) || security_flags (1 byte) || message_counter (4 bytes LE)
+        # Per matter.js: AAD is the entire packet header (bytes 0-7 for PASE without node IDs)
         aad_io = IO::Memory.new
 
-        # Use the raw flags byte from the packet header (byte 0 from wire)
-        # This MUST match the exact byte used during encryption
+        # Byte 0: flags
         aad_io.write_byte(packet_header.flags)
+        # Bytes 1-2: session_id (LE)
         IO::ByteFormat::LittleEndian.encode(packet_header.session_id, aad_io)
+        # Byte 3: security_flags
+        aad_io.write_byte(security_flags)
+        # Bytes 4-7: message_counter (LE)
         IO::ByteFormat::LittleEndian.encode(message_counter, aad_io)
         aad = aad_io.to_slice
-        puts "   aad (with flags): #{aad.hexstring}"
+        puts "   aad (full packet header): #{aad.hexstring}"
         puts "   encrypted_payload size: #{encrypted_payload.size} bytes"
 
         # Decrypt using AES-128-CCM
@@ -184,10 +192,11 @@ module Matter
       ) : Bytes
         nonce = build_nonce(source_node_id, message_counter, security_flags)
 
-        # AAD = flags (1 byte) || session_id (2 bytes LE) || message_counter (4 bytes LE)
+        # AAD = flags (1 byte) || session_id (2 bytes LE) || security_flags (1 byte) || message_counter (4 bytes LE)
         aad_io = IO::Memory.new
         aad_io.write_byte(flags)
         IO::ByteFormat::LittleEndian.encode(session_id, aad_io)
+        aad_io.write_byte(security_flags)
         IO::ByteFormat::LittleEndian.encode(message_counter, aad_io)
         aad = aad_io.to_slice
 
@@ -207,10 +216,11 @@ module Matter
       ) : Bytes
         nonce = build_nonce(source_node_id, message_counter, security_flags)
 
-        # AAD = flags (1 byte) || session_id (2 bytes LE) || message_counter (4 bytes LE)
+        # AAD = flags (1 byte) || session_id (2 bytes LE) || security_flags (1 byte) || message_counter (4 bytes LE)
         aad_io = IO::Memory.new
         aad_io.write_byte(flags)
         IO::ByteFormat::LittleEndian.encode(session_id, aad_io)
+        aad_io.write_byte(security_flags)
         IO::ByteFormat::LittleEndian.encode(message_counter, aad_io)
         aad = aad_io.to_slice
 
