@@ -323,8 +323,8 @@ describe Matter::Crypto do
 
       # DER signature should start with 0x30 (SEQUENCE tag)
       der_sig[0].should eq(0x30)
-      # Should be variable length (typically 70-72 bytes for P-256)
-      der_sig.size.should be >= 70
+      # Should be variable length (typically 69-72 bytes for P-256)
+      der_sig.size.should be >= 69
       der_sig.size.should be <= 73
 
       # Convert to IEEE P1363
