@@ -292,4 +292,152 @@ describe Matter::SetupPayload, tags: "compatibility" do
       pin.should eq(10_u32)
     end
   end
+
+  # QR Code compatibility tests based on matter.js
+  # Source: matter.js/packages/types/test/schema/PairingCodeSchemaTest.ts (lines 20-115)
+  describe "QR Code generation and parsing" do
+    it "encodes and decodes basic QR code MT:YNJV7VSC00CMVH7SR00" do
+      # matter.js test vector (lines 20-33)
+      qr_code = "MT:YNJV7VSC00CMVH7SR00"
+
+      # Generate QR code with matter.js test data
+      generated = Matter::SetupPayload::QRCode.generate_qr_code(
+        discriminator: 2976_u16,
+        pin: 34567890_u32,
+        vendor_id: 9050_u16,
+        product_id: 65279_u16,
+        flow: Matter::SetupPayload::QRCode::CommissionFlow::Standard,
+        capabilities: Matter::SetupPayload::QRCode::DiscoveryCapability::BLE
+      )
+
+      generated.should eq(qr_code)
+
+      # Parse it back and verify all fields
+      parsed = Matter::SetupPayload::QRCode.parse_qr_code(qr_code)
+
+      parsed[:version].should eq(0_u64)
+      parsed[:vendor_id].should eq(9050_u16)
+      parsed[:product_id].should eq(65279_u16)
+      parsed[:flow].should eq(0_u8)         # Standard = 0
+      parsed[:capabilities].should eq(2_u8) # BLE = 0x02
+      parsed[:discriminator].should eq(2976_u16)
+      parsed[:pin].should eq(34567890_u32)
+    end
+
+    it "round-trips QR code encoding and decoding" do
+      # Generate a QR code with specific values
+      generated = Matter::SetupPayload::QRCode.generate_qr_code(
+        discriminator: 2976_u16,
+        pin: 34567890_u32,
+        vendor_id: 9050_u16,
+        product_id: 65279_u16,
+        flow: Matter::SetupPayload::QRCode::CommissionFlow::Standard,
+        capabilities: Matter::SetupPayload::QRCode::DiscoveryCapability::BLE
+      )
+
+      # Parse it back
+      parsed = Matter::SetupPayload::QRCode.parse_qr_code(generated)
+
+      # All fields should match the input
+      parsed[:discriminator].should eq(2976_u16)
+      parsed[:pin].should eq(34567890_u32)
+      parsed[:vendor_id].should eq(9050_u16)
+      parsed[:product_id].should eq(65279_u16)
+      parsed[:flow].should eq(0_u8)
+      parsed[:capabilities].should eq(2_u8)
+    end
+
+    it "encodes QR code with different discovery capabilities" do
+      # Test with BLE + SoftAP capabilities (0x02 | 0x01 = 0x03)
+      qr_code = Matter::SetupPayload::QRCode.generate_qr_code(
+        discriminator: 100_u16,
+        pin: 20202021_u32,
+        vendor_id: 0xFFF1_u16,
+        product_id: 0x8000_u16,
+        flow: Matter::SetupPayload::QRCode::CommissionFlow::Standard,
+        capabilities: Matter::SetupPayload::QRCode::DiscoveryCapability.flags(
+          SoftAP, BLE
+        )
+      )
+
+      # Parse and verify
+      parsed = Matter::SetupPayload::QRCode.parse_qr_code(qr_code)
+      parsed[:discriminator].should eq(100_u16)
+      parsed[:pin].should eq(20202021_u32)
+      parsed[:vendor_id].should eq(0xFFF1_u16)
+      parsed[:product_id].should eq(0x8000_u16)
+      parsed[:capabilities].should eq(3_u8) # SoftAP | BLE
+    end
+
+    it "encodes QR code with OnNetwork discovery capability" do
+      # Test with OnNetwork capability (0x04)
+      qr_code = Matter::SetupPayload::QRCode.generate_qr_code(
+        discriminator: 3840_u16,
+        pin: 20202021_u32,
+        vendor_id: 0xFFF1_u16,
+        product_id: 0x8001_u16,
+        flow: Matter::SetupPayload::QRCode::CommissionFlow::Standard,
+        capabilities: Matter::SetupPayload::QRCode::DiscoveryCapability::OnNetwork
+      )
+
+      # Parse and verify
+      parsed = Matter::SetupPayload::QRCode.parse_qr_code(qr_code)
+      parsed[:discriminator].should eq(3840_u16)
+      parsed[:capabilities].should eq(4_u8) # OnNetwork
+    end
+
+    it "encodes QR code with Custom flow type" do
+      # Test with Custom commissioning flow (0x02)
+      qr_code = Matter::SetupPayload::QRCode.generate_qr_code(
+        discriminator: 1234_u16,
+        pin: 12345679_u32,
+        vendor_id: 0xFFF1_u16,
+        product_id: 0x8002_u16,
+        flow: Matter::SetupPayload::QRCode::CommissionFlow::Custom,
+        capabilities: Matter::SetupPayload::QRCode::DiscoveryCapability::BLE
+      )
+
+      # Parse and verify
+      parsed = Matter::SetupPayload::QRCode.parse_qr_code(qr_code)
+      parsed[:flow].should eq(2_u8) # Custom
+      parsed[:discriminator].should eq(1234_u16)
+      parsed[:pin].should eq(12345679_u32)
+    end
+
+    it "handles vendor/product ID edge cases" do
+      # Test with maximum vendor/product IDs (0xFFFF)
+      qr_code = Matter::SetupPayload::QRCode.generate_qr_code(
+        discriminator: 4095_u16,
+        pin: 99999998_u32,
+        vendor_id: 0xFFFF_u16,
+        product_id: 0xFFFF_u16,
+        flow: Matter::SetupPayload::QRCode::CommissionFlow::Standard,
+        capabilities: Matter::SetupPayload::QRCode::DiscoveryCapability::BLE
+      )
+
+      parsed = Matter::SetupPayload::QRCode.parse_qr_code(qr_code)
+      parsed[:vendor_id].should eq(0xFFFF_u16)
+      parsed[:product_id].should eq(0xFFFF_u16)
+      parsed[:discriminator].should eq(4095_u16)
+      parsed[:pin].should eq(99999998_u32)
+    end
+
+    it "handles minimum values" do
+      # Test with minimum values
+      qr_code = Matter::SetupPayload::QRCode.generate_qr_code(
+        discriminator: 0_u16,
+        pin: 1_u32,
+        vendor_id: 0_u16,
+        product_id: 0_u16,
+        flow: Matter::SetupPayload::QRCode::CommissionFlow::Standard,
+        capabilities: Matter::SetupPayload::QRCode::DiscoveryCapability::BLE
+      )
+
+      parsed = Matter::SetupPayload::QRCode.parse_qr_code(qr_code)
+      parsed[:vendor_id].should eq(0_u16)
+      parsed[:product_id].should eq(0_u16)
+      parsed[:discriminator].should eq(0_u16)
+      parsed[:pin].should eq(1_u32)
+    end
+  end
 end

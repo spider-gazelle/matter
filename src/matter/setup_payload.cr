@@ -1,3 +1,5 @@
+require "big"
+
 module Matter
   # SetupPayload handles encoding and decoding of Matter onboarding payloads
   #
@@ -247,7 +249,7 @@ module Matter
         raise ArgumentError.new("Discriminator must be 0-4095") if discriminator > 4095
         raise ArgumentError.new("PIN must be 1-99999998") if pin < 1 || pin > 99999998
 
-        # Encode payload as bit-packed integer
+        # Encode payload as byte array with bit-packed fields
         # Matter spec defines specific bit layout:
         # Bits 0-2: Version (3 bits) = 0
         # Bits 3-18: Vendor ID (16 bits)
@@ -256,49 +258,160 @@ module Matter
         # Bits 37-44: Discovery capabilities (8 bits)
         # Bits 45-56: Discriminator (12 bits)
         # Bits 57-83: Setup PIN (27 bits)
-        # Total: 84 bits (exceeds 64-bit, need BigInt)
+        # Total: 84 bits = 11 bytes (rounded up from 10.5)
 
-        version = BigInt.new(0)
-        payload = version # Start with version
+        # Create byte array (84 bits / 8 = 10.5 bytes, round up to 11)
+        bytes = Bytes.new(11, 0_u8)
 
-        payload |= (BigInt.new(vendor_id) << 3)
-        payload |= (BigInt.new(product_id) << 19)
-        payload |= (BigInt.new(flow.value) << 35)
-        payload |= (BigInt.new(capabilities.value) << 37)
-        payload |= (BigInt.new(discriminator) << 45)
-        payload |= (BigInt.new(pin) << 57)
+        # Pack bits into bytes using matter.js's byte-level bit packing
+        # Version (bits 0-2, 3 bits)
+        pack_bits(bytes, 0, 0_u64, 3)
 
-        # Convert to base-38
-        encoded = encode_base38(payload)
+        # Vendor ID (bits 3-18, 16 bits)
+        pack_bits(bytes, 3, vendor_id.to_u64, 16)
+
+        # Product ID (bits 19-34, 16 bits)
+        pack_bits(bytes, 19, product_id.to_u64, 16)
+
+        # Flow (bits 35-36, 2 bits)
+        pack_bits(bytes, 35, flow.value.to_u64, 2)
+
+        # Capabilities (bits 37-44, 8 bits)
+        pack_bits(bytes, 37, capabilities.value.to_u64, 8)
+
+        # Discriminator (bits 45-56, 12 bits)
+        pack_bits(bytes, 45, discriminator.to_u64, 12)
+
+        # PIN (bits 57-83, 27 bits)
+        pack_bits(bytes, 57, pin.to_u64, 27)
+
+        # Convert byte array to base-38 using matter.js's chunking algorithm
+        encoded = encode_base38_from_bytes(bytes)
 
         # Add "MT:" prefix per Matter spec
         "MT:#{encoded}"
       end
 
-      # Encode an integer as base-38 string
-      private def self.encode_base38(value : BigInt) : String
-        return "0" if value == 0
+      # Pack bits into a byte array at the specified bit offset
+      # Implements matter.js ByteArrayBitmapSchema encoding logic
+      private def self.pack_bits(bytes : Bytes, bit_offset : Int32, value : UInt64, bit_length : Int32)
+        byte_offset = bit_offset // 8
+        bit_offset_in_byte = bit_offset % 8
+        mask = (1_u64 << bit_length) - 1
+        num_value = value & mask
 
+        while num_value != 0
+          bytes[byte_offset] |= ((num_value << bit_offset_in_byte) & 0xFF).to_u8
+          bits_written = 8 - bit_offset_in_byte
+          bit_offset_in_byte = 0
+          num_value >>= bits_written
+          byte_offset += 1
+        end
+      end
+
+      # Encode byte array to base-38 using matter.js's chunking algorithm
+      # Processes bytes in 3-byte chunks (little-endian)
+      # Each 3-byte chunk (24 bits) encodes to 5 base-38 characters
+      # (since 38^5 = 79,235,168 > 2^24 = 16,777,216)
+      private def self.encode_base38_from_bytes(bytes : Bytes) : String
+        result = [] of String
+        offset = 0
+        length = bytes.size
+
+        while offset < length
+          remaining = length - offset
+
+          if remaining > 2
+            # 3 bytes -> 5 base-38 characters
+            value = bytes[offset].to_u32 | (bytes[offset + 1].to_u32 << 8) | (bytes[offset + 2].to_u32 << 16)
+            result << encode_base38_chunk(value, 5)
+            offset += 3
+          elsif remaining == 2
+            # 2 bytes -> 4 base-38 characters
+            value = bytes[offset].to_u32 | (bytes[offset + 1].to_u32 << 8)
+            result << encode_base38_chunk(value, 4)
+            break
+          else
+            # 1 byte -> 2 base-38 characters
+            value = bytes[offset].to_u32
+            result << encode_base38_chunk(value, 2)
+            break
+          end
+        end
+
+        result.join("")
+      end
+
+      # Encode a value to a fixed number of base-38 characters
+      # Characters are emitted least-significant first (little-endian)
+      private def self.encode_base38_chunk(value : UInt32, char_count : Int32) : String
         result = ""
-        num = value
+        val = value
 
-        while num > 0
-          remainder = (num % 38).to_i
-          result = BASE38_ALPHABET[remainder] + result
-          num //= 38
+        char_count.times do
+          remainder = val % 38
+          result += BASE38_ALPHABET[remainder.to_i]
+          val = (val - remainder) // 38
         end
 
         result
       end
 
-      # Decode base-38 string to integer
-      private def self.decode_base38(encoded : String) : BigInt
-        result = BigInt.new(0)
+      # Decode base-38 string to byte array using matter.js's chunking algorithm
+      # Reverses the encode_base38_from_bytes process
+      private def self.decode_base38_to_bytes(encoded : String) : Bytes
+        encoded_length = encoded.size
+        remainder_encoded_length = encoded_length % 5
 
-        encoded.each_char do |char|
-          index = BASE38_ALPHABET.index(char)
-          raise ArgumentError.new("Invalid character in base-38 string: #{char}") unless index
-          result = result * 38 + index
+        # Calculate decoded byte length
+        decode_length = ((encoded_length - remainder_encoded_length) // 5) * 3
+        decode_length += 2 if remainder_encoded_length == 4
+        decode_length += 1 if remainder_encoded_length == 2
+
+        raise ArgumentError.new("Invalid base38 encoded string length: #{encoded_length}") unless [0, 2, 4].includes?(remainder_encoded_length)
+
+        result = Bytes.new(decode_length, 0_u8)
+        decoded_offset = 0
+        encoded_offset = 0
+
+        while encoded_offset < encoded_length
+          remaining = encoded_length - encoded_offset
+
+          if remaining > 5
+            # 5 characters -> 3 bytes
+            value = decode_base38_chunk(encoded, encoded_offset, 5)
+            result[decoded_offset] = (value & 0xFF).to_u8
+            result[decoded_offset + 1] = ((value >> 8) & 0xFF).to_u8
+            result[decoded_offset + 2] = ((value >> 16) & 0xFF).to_u8
+            decoded_offset += 3
+            encoded_offset += 5
+          elsif remaining == 4
+            # 4 characters -> 2 bytes
+            value = decode_base38_chunk(encoded, encoded_offset, 4)
+            result[decoded_offset] = (value & 0xFF).to_u8
+            result[decoded_offset + 1] = ((value >> 8) & 0xFF).to_u8
+            break
+          else
+            # 2 characters -> 1 byte
+            value = decode_base38_chunk(encoded, encoded_offset, 2)
+            result[decoded_offset] = (value & 0xFF).to_u8
+            break
+          end
+        end
+
+        result
+      end
+
+      # Decode a chunk of base-38 characters to a value
+      # Characters are read in little-endian order (least-significant first)
+      private def self.decode_base38_chunk(encoded : String, offset : Int32, char_count : Int32) : UInt32
+        result = 0_u32
+
+        (char_count - 1).downto(0) do |i|
+          char = encoded[offset + i]
+          code = BASE38_ALPHABET.index(char)
+          raise ArgumentError.new("Unexpected character #{char} at #{offset + i}") unless code
+          result = result * 38 + code
         end
 
         result
@@ -312,17 +425,17 @@ module Matter
         # Remove "MT:" prefix if present
         code = qr_code.starts_with?("MT:") ? qr_code[3..-1] : qr_code
 
-        # Decode from base-38 (returns BigInt)
-        payload = decode_base38(code)
+        # Decode from base-38 to byte array
+        bytes = decode_base38_to_bytes(code)
 
-        # Extract fields using bit masks and convert to appropriate types
-        version = (payload & BigInt.new(0x7)).to_u8
-        vendor_id = ((payload >> 3) & BigInt.new(0xFFFF)).to_u16
-        product_id = ((payload >> 19) & BigInt.new(0xFFFF)).to_u16
-        flow = ((payload >> 35) & BigInt.new(0x3)).to_u8
-        capabilities = ((payload >> 37) & BigInt.new(0xFF)).to_u8
-        discriminator = ((payload >> 45) & BigInt.new(0xFFF)).to_u16
-        pin = ((payload >> 57) & BigInt.new(0x7FFFFFF)).to_u32
+        # Extract fields from byte array using bit unpacking
+        version = unpack_bits(bytes, 0, 3).to_u8
+        vendor_id = unpack_bits(bytes, 3, 16).to_u16
+        product_id = unpack_bits(bytes, 19, 16).to_u16
+        flow = unpack_bits(bytes, 35, 2).to_u8
+        capabilities = unpack_bits(bytes, 37, 8).to_u8
+        discriminator = unpack_bits(bytes, 45, 12).to_u16
+        pin = unpack_bits(bytes, 57, 27).to_u32
 
         {
           :version       => version.to_u64,
@@ -333,6 +446,29 @@ module Matter
           :discriminator => discriminator.as(UInt64 | UInt32 | UInt16 | UInt8),
           :pin           => pin.as(UInt64 | UInt32 | UInt16 | UInt8),
         }
+      end
+
+      # Unpack bits from a byte array at the specified bit offset
+      # Implements matter.js ByteArrayBitmapSchema decoding logic
+      private def self.unpack_bits(bytes : Bytes, bit_offset : Int32, bit_length : Int32) : UInt64
+        byte_offset = bit_offset // 8
+        bit_offset_in_byte = bit_offset % 8
+        mask = (1_u64 << bit_length) - 1
+
+        value = 0_u64
+        value_bit_offset = 0
+
+        temp_mask = mask
+        while temp_mask != 0 && byte_offset < bytes.size
+          value |= ((bytes[byte_offset].to_u64 >> bit_offset_in_byte) & temp_mask) << value_bit_offset
+          bits_read = 8 - bit_offset_in_byte
+          bit_offset_in_byte = 0
+          value_bit_offset += bits_read
+          temp_mask >>= bits_read
+          byte_offset += 1
+        end
+
+        value & mask
       end
     end
   end
