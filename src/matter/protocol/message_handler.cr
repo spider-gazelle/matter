@@ -230,41 +230,17 @@ module Matter
       end
 
       # Send standalone ACK for encrypted message
+      # NOTE: ACKs for encrypted messages can be sent as payload header fields
+      # in the response itself, so we don't need a separate encrypted ACK.
+      # The ReadResponse with acknowledged_message_id serves as the ACK.
+      # Skipping standalone ACK - will embed acknowledgment in ReadResponse instead.
       private def send_encrypted_ack(
         original_msg : Codec::MessageCodec::Message,
         peer : Socket::IPAddress,
         session : Session::SecureContext,
       ) : Nil
-        # Build ACK packet header (use session's session_id)
-        packet_header = Codec::MessageCodec::PacketHeader.new(
-          session_id: session.session_id,
-          session_type: Codec::MessageCodec::SessionType::Unicast,
-          message_id: 0_u32, # Will be set by transport
-          privacy_enhancements: false,
-          control_message: false,
-          message_extensions: false,
-          flags: 0_u8,
-          security_flags: 0_u8
-        )
-
-        # Build ACK payload header
-        payload_header = Codec::MessageCodec::PayloadHeader.new(
-          exchange_id: original_msg.payload_header.exchange_id,
-          protocol_id: original_msg.payload_header.protocol_id,
-          message_type: 0x10_u8, # StandaloneAck
-          initiator_message: !original_msg.payload_header.initiator_message?,
-          requires_acknowledge: false,
-          acknowledged_message_id: original_msg.packet_header.message_id
-        )
-
-        # Build and send ACK message (no payload for standalone ACK)
-        ack = Codec::MessageCodec::Message.new(
-          packet_header: packet_header,
-          payload_header: payload_header,
-          payload: Bytes.new(0)
-        )
-
-        @transport.send_message(ack, peer)
+        Log.debug { "ACK will be embedded in ReadResponse (acknowledged_message_id field)" }
+        # No-op: The ReadResponse itself will acknowledge the request
       end
 
       # Handle ReadRequest - parse, read attributes, encode response, encrypt and send
@@ -347,12 +323,20 @@ module Matter
         )
 
         # Build payload header
+        # If the original message required acknowledgment, embed the ACK in our response
+        ack_msg_id = if original_msg.payload_header.requires_acknowledge?
+                       original_msg.packet_header.message_id
+                     else
+                       nil
+                     end
+
         payload_header = Codec::MessageCodec::PayloadHeader.new(
           exchange_id: original_msg.payload_header.exchange_id,
           protocol_id: PROTOCOL_INTERACTION_MODEL,
           message_type: message_type,
           initiator_message: !original_msg.payload_header.initiator_message?,
-          requires_acknowledge: false
+          requires_acknowledge: false,
+          acknowledged_message_id: ack_msg_id
         )
 
         # Encrypt the payload (message counter is auto-incremented inside)

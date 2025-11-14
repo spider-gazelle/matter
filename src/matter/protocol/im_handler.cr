@@ -220,6 +220,10 @@ module Matter
           writer.put(4_u8, true)
         end
 
+        # Tag 0xFF: InteractionModelRevision (REQUIRED!)
+        # Per Matter spec and matter.js - this is a required field
+        writer.put(0xFF_u8, 12_u8) # IM revision 12 (Matter 1.3)
+
         writer.end_container # End ReadResponse
         io.rewind.to_slice
       end
