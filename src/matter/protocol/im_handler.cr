@@ -1,6 +1,7 @@
 require "../interaction_model/messages"
 require "../interaction_model/paths"
 require "../interaction_model/status_code"
+require "../interaction_model/tlv_messages"
 require "../cluster/cluster"
 require "tlv"
 
@@ -128,8 +129,57 @@ module Matter
         )
       end
 
-      # Encode ReadResponse as TLV
+      # Encode ReadResponse as TLV using TLV::Serializable structs
       def self.encode_read_response(response : InteractionModel::ReadResponse) : Bytes
+        # Build attribute reports as TLV::Value array
+        attr_reports = [] of TLV::Value
+        response.attribute_reports.each do |report|
+          # Parse the pre-encoded attribute value
+          reader = TLV::Reader.new(report.value)
+          value_data = reader.get
+
+          # Unwrap "Any" if present
+          actual_value = if value_data.is_a?(Hash) && value_data.has_key?("Any")
+                           value_data["Any"]
+                         else
+                           value_data
+                         end
+
+          # Create AttributeDataIB
+          data_ib = InteractionModel::AttributeDataIB.new(
+            path: report.path,
+            data: actual_value,
+            data_version: report.data_version
+          )
+
+          # Wrap in AttributeReportIB
+          report_ib = InteractionModel::AttributeReportIB.new(
+            attribute_data: data_ib
+          )
+
+          # Convert to TLV::Value (encode and decode)
+          io = IO::Memory.new
+          writer = TLV::Writer.new(io)
+          writer.put(nil, report_ib.to_h)
+          reader2 = TLV::Reader.new(io.rewind.to_slice)
+          attr_reports << reader2.get["Any"]
+        end
+
+        # Build ReportDataMessage
+        reports = attr_reports.empty? ? nil : attr_reports.as(Array(TLV::Value))
+
+        report_msg = InteractionModel::ReportDataMessage.new
+        report_msg.attribute_reports = reports
+        report_msg.more_chunked_messages = response.more_chunks ? true : nil
+        report_msg.suppress_response = response.suppress_response ? true : nil
+        report_msg.interaction_model_revision = 12_u8
+
+        # Encode to bytes
+        report_msg.to_slice
+      end
+
+      # OLD manual encoding (keeping as reference)
+      def self.encode_read_response_manual(response : InteractionModel::ReadResponse) : Bytes
         io = IO::Memory.new
         writer = TLV::Writer.new(io)
 
