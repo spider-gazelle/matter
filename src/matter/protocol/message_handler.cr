@@ -205,13 +205,9 @@ module Matter
           return
         end
 
-        # Send acknowledgment if the message requires it
-        # Note: For ReadRequest, the ReadResponse itself typically serves as the ACK
-        # so requires_acknowledge is usually false
-        if msg.payload_header.requires_acknowledge?
-          Log.info { "Sending standalone ACK for encrypted message #{msg.packet_header.message_id}" }
-          send_encrypted_ack(msg, peer, session)
-        end
+        # Per Matter spec 4.11.8: Don't send standalone ACK if we respond immediately
+        # The ReadResponse with acknowledged_message_id serves as the ACK
+        # (Standalone ACKs are only sent if response takes longer than MRP_STANDALONE_ACK_TIMEOUT)
 
         # Message is already decrypted, payload contains TLV data
         # Parse IM message based on message type
@@ -227,20 +223,6 @@ module Matter
         end
       rescue ex
         Log.error(exception: ex) { "Error handling IM message: #{ex.message}" }
-      end
-
-      # Send standalone ACK for encrypted message
-      # NOTE: ACKs for encrypted messages can be sent as payload header fields
-      # in the response itself, so we don't need a separate encrypted ACK.
-      # The ReadResponse with acknowledged_message_id serves as the ACK.
-      # Skipping standalone ACK - will embed acknowledgment in ReadResponse instead.
-      private def send_encrypted_ack(
-        original_msg : Codec::MessageCodec::Message,
-        peer : Socket::IPAddress,
-        session : Session::SecureContext,
-      ) : Nil
-        Log.debug { "ACK will be embedded in ReadResponse (acknowledged_message_id field)" }
-        # No-op: The ReadResponse itself will acknowledge the request
       end
 
       # Handle ReadRequest - parse, read attributes, encode response, encrypt and send
@@ -338,6 +320,8 @@ module Matter
           requires_acknowledge: false,
           acknowledged_message_id: ack_msg_id
         )
+
+        Log.debug { "Response payload header: exchange=#{payload_header.exchange_id}, ack_msg=#{ack_msg_id}, initiator=#{payload_header.initiator_message?}" }
 
         # Encrypt the payload (message counter is auto-incremented inside)
         encrypted = Session::SecureMessage.encrypt(
