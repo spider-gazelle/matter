@@ -172,6 +172,8 @@ module Matter
         aad = aad_io.to_slice
         puts "   aad (full packet header): #{aad.hexstring}"
         puts "   encrypted_payload size: #{encrypted_payload.size} bytes"
+        puts "   encrypted_payload (first 32 bytes): #{encrypted_payload[0, [32, encrypted_payload.size].min].hexstring}"
+        puts "   decryption_key: #{context.decryption_key.hexstring}"
 
         # Decrypt using AES-128-CCM
         decrypted = crypto.decrypt(context.decryption_key, encrypted_payload, nonce, aad)
