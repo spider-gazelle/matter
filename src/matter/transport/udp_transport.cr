@@ -320,6 +320,7 @@ module Matter
                     # Encrypted message - create Message with raw encrypted payload
                     # The payload_header will be decoded AFTER decryption by the message handler
                     puts "🔒 Encrypted message detected (session_id=#{session_id}), payload size=#{packet.payload.size} bytes"
+        puts "🔒 Full encrypted payload hex: #{packet.payload.hexstring}"
 
                     # Create a dummy payload header - it will be ignored and replaced after decryption
                     dummy_payload_header = Codec::MessageCodec::PayloadHeader.new(
