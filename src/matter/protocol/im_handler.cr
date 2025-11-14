@@ -133,36 +133,50 @@ module Matter
       def self.encode_read_response(response : InteractionModel::ReadResponse) : Bytes
         # Build attribute reports as TLV::Value array
         attr_reports = [] of TLV::Value
-        response.attribute_reports.each do |report|
-          # Parse the pre-encoded attribute value
-          reader = TLV::Reader.new(report.value)
-          value_data = reader.get
+        response.attribute_reports.each_with_index do |report, idx|
+          begin
+            # Validate attribute value is not empty
+            if report.value.empty?
+              Log.warn { "Skipping report #{idx}: empty TLV value for endpoint=#{report.path.endpoint}, cluster=0x#{report.path.cluster.try(&.to_s(16))}, attribute=#{report.path.attribute}" }
+              next
+            end
 
-          # Unwrap "Any" if present
-          actual_value = if value_data.is_a?(Hash) && value_data.has_key?("Any")
-                           value_data["Any"]
-                         else
-                           value_data
-                         end
+            # Parse the pre-encoded attribute value
+            reader = TLV::Reader.new(report.value)
+            value_data = reader.get
 
-          # Create AttributeDataIB
-          data_ib = InteractionModel::AttributeDataIB.new(
-            path: report.path,
-            data: actual_value,
-            data_version: report.data_version
-          )
+            # Unwrap "Any" if present
+            actual_value = if value_data.is_a?(Hash) && value_data.has_key?("Any")
+                             value_data["Any"]
+                           else
+                             value_data
+                           end
 
-          # Wrap in AttributeReportIB
-          report_ib = InteractionModel::AttributeReportIB.new(
-            attribute_data: data_ib
-          )
+            # Create AttributeDataIB
+            data_ib = InteractionModel::AttributeDataIB.new(
+              path: report.path,
+              data: actual_value,
+              data_version: report.data_version
+            )
 
-          # Convert to TLV::Value (encode and decode)
-          io = IO::Memory.new
-          writer = TLV::Writer.new(io)
-          writer.put(nil, report_ib.to_h)
-          reader2 = TLV::Reader.new(io.rewind.to_slice)
-          attr_reports << reader2.get["Any"]
+            # Wrap in AttributeReportIB
+            report_ib = InteractionModel::AttributeReportIB.new(
+              attribute_data: data_ib
+            )
+
+            # Convert to TLV::Value (encode and decode)
+            io = IO::Memory.new
+            writer = TLV::Writer.new(io)
+            writer.put(nil, report_ib.to_h)
+            reader2 = TLV::Reader.new(io.rewind.to_slice)
+            attr_reports << reader2.get["Any"]
+
+            Log.debug { "Encoded attribute report #{idx}: endpoint=#{report.path.endpoint}, cluster=0x#{report.path.cluster.try(&.to_s(16))}, attr=#{report.path.attribute}" }
+          rescue ex
+            Log.error { "Failed to encode attribute report #{idx} (endpoint=#{report.path.endpoint}, cluster=0x#{report.path.cluster.try(&.to_s(16))}, attr=#{report.path.attribute}): #{ex.message}" }
+            Log.error { "Attribute value bytes (#{report.value.size}): #{report.value.hexstring}" }
+            # Skip this report and continue with others
+          end
         end
 
         # Build ReportDataMessage

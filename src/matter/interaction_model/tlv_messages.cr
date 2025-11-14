@@ -109,7 +109,7 @@ module Matter
         @event_reports = nil,
         @more_chunked_messages = nil,
         @suppress_response = nil,
-        @interaction_model_revision = 12_u8
+        @interaction_model_revision = 12_u8,
       )
       end
     end
