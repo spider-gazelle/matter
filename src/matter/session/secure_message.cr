@@ -54,18 +54,15 @@ module Matter
         message_counter = context.next_message_counter
 
         # Build nonce from source node ID and message counter
-        # Use local_node_id if set, otherwise use PASE temporary node ID
+        # Use local_node_id if set, otherwise use node_id=0 for PASE
         source_node_id = if context.local_node_id
                            context.local_node_id.not_nil!.id
                          else
-                           # During PASE, use our temporary node ID per Matter spec section 4.11.2.5.1
-                           # Initiator (Commissioner): 0xFFFFFFFB00000001
-                           # Responder (Device): 0xFFFFFFFB00000002
-                           if context.is_initiator
-                             0xFFFFFFFB00000001_u64
-                           else
-                             0xFFFFFFFB00000002_u64
-                           end
+                           # During PASE, use node_id=0 (UNSPECIFIED) in nonce
+                           # This matches matter.js behavior (NodeId.UNSPECIFIED_NODE_ID)
+                           # The PASE temporary IDs (0xFFFFFFFB00000001/0xFFFFFFFB00000002)
+                           # are only used in packet headers, not in AES-CCM nonces
+                           0_u64
                          end
         security_flags = 0_u8
         security_flags |= 0x80 if packet_header.privacy_enhancements?
@@ -114,23 +111,19 @@ module Matter
         # Priority order for node ID:
         # 1. peer_node_id from context (real node ID after commissioning)
         # 2. source_node_id from packet header (if included in encrypted message)
-        # 3. PASE temporary node ID (during PASE before operational node IDs are assigned)
+        # 3. Node ID = 0 (UNSPECIFIED) for PASE sessions
+        #
+        # Note: Per matter.js implementation and testing, PASE encrypted messages use
+        # node_id=0 (UNSPECIFIED_NODE_ID) in the nonce, NOT the PASE temporary IDs
+        # (0xFFFFFFFB00000001/0xFFFFFFFB00000002) which are only used in packet headers
         peer_node_id = if context.peer_node_id
                          context.peer_node_id.not_nil!.id
                        elsif packet_header.source_node_id
                          packet_header.source_node_id.not_nil!.id
                        else
-                         # During PASE, use the peer's temporary node ID per Matter spec section 4.11.2.5.1
-                         # When decrypting, we use the sender's (peer's) node ID in the nonce
-                         # Initiator (Commissioner): 0xFFFFFFFB00000001
-                         # Responder (Device): 0xFFFFFFFB00000002
-                         if context.is_initiator
-                           # We're initiator, so peer is responder
-                           0xFFFFFFFB00000002_u64
-                         else
-                           # We're responder, so peer is initiator
-                           0xFFFFFFFB00000001_u64
-                         end
+                         # During PASE, use node_id=0 (UNSPECIFIED) in nonce
+                         # This matches matter.js behavior (NodeId.UNSPECIFIED_NODE_ID)
+                         0_u64
                        end
 
         source = if context.peer_node_id
@@ -138,7 +131,7 @@ module Matter
                  elsif packet_header.source_node_id
                    "packet header"
                  else
-                   "peer_session_id (PASE temporary)"
+                   "node_id=0 (PASE UNSPECIFIED)"
                  end
 
         puts "🔐 Decryption details:"

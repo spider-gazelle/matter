@@ -68,7 +68,6 @@ describe "Matter.js Decryption Test Vector" do
       end
 
       decrypted.should eq(expected_decrypted)
-
     rescue ex
       puts "  ❌ Decryption FAILED: #{ex.message}"
       puts ""
