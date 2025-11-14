@@ -21,18 +21,18 @@ module Matter
       # Build nonce for AES-CCM encryption/decryption
       # Matter spec format: security_flags (1 byte) | message_counter (4 bytes LE) | source_node_id (8 bytes LE)
       def build_nonce(source_node_id : UInt64, message_counter : UInt32, security_flags : UInt8 = 0_u8) : Bytes
-        nonce = Bytes.new(NONCE_LENGTH)
+        io = IO::Memory.new(NONCE_LENGTH)
 
         # Write security flags (1 byte)
-        nonce[0] = security_flags
+        io.write_byte(security_flags)
 
         # Write message counter (4 bytes, little-endian)
-        IO::ByteFormat::LittleEndian.encode(message_counter, nonce[1, 4])
+        IO::ByteFormat::LittleEndian.encode(message_counter, io)
 
         # Write source node ID (8 bytes, little-endian)
-        IO::ByteFormat::LittleEndian.encode(source_node_id, nonce[5, 8])
+        IO::ByteFormat::LittleEndian.encode(source_node_id, io)
 
-        nonce
+        io.to_slice
       end
 
       # Build Additional Authenticated Data (AAD) for AES-CCM

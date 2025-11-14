@@ -150,11 +150,6 @@ module MatterDevice
       puts "⌨️  Press Ctrl+C to stop"
       puts ""
 
-      Signal::INT.trap do
-        shutdown
-        exit(0)
-      end
-
       # Keep alive
       loop do
         sleep 1.second
