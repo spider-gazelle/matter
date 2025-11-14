@@ -1,10 +1,21 @@
 module Matter
   module InteractionModel
     # Attribute path identifying a specific attribute
+    # Supports both list-form [endpoint, cluster, attribute] and structure-form {2=>endpoint, 3=>cluster, 4=>attribute}
+    @[TLV::ListForm]
     struct AttributePath
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 2)]
       property endpoint : UInt16?
+
+      @[TLV::Field(tag: 3)]
       property cluster : UInt32?
+
+      @[TLV::Field(tag: 4)]
       property attribute : UInt32?
+
+      @[TLV::Field(tag: 5)]
       property list_index : UInt16?
 
       def initialize(
@@ -43,9 +54,18 @@ module Matter
     end
 
     # Command path identifying a specific command
+    # Supports both list-form [endpoint, cluster, command] and structure-form {0=>endpoint, 1=>cluster, 2=>command}
+    @[TLV::ListForm]
     struct CommandPath
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
       property endpoint : UInt16
+
+      @[TLV::Field(tag: 1)]
       property cluster : UInt32
+
+      @[TLV::Field(tag: 2)]
       property command : UInt32
 
       def initialize(@endpoint : UInt16, @cluster : UInt32, @command : UInt32)
@@ -63,11 +83,22 @@ module Matter
     end
 
     # Event path identifying a specific event
+    # Supports both list-form [endpoint, cluster, event, is_urgent] and structure-form
+    @[TLV::ListForm]
     struct EventPath
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 2)]
       property endpoint : UInt16?
+
+      @[TLV::Field(tag: 3)]
       property cluster : UInt32?
+
+      @[TLV::Field(tag: 4)]
       property event : UInt32?
-      property is_urgent : Bool
+
+      @[TLV::Field(tag: 5)]
+      property is_urgent : Bool = false
 
       def initialize(
         @endpoint : UInt16? = nil,

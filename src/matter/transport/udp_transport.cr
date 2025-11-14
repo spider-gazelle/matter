@@ -275,6 +275,13 @@ module Matter
       end
 
       private def handle_received_data(data : Bytes, peer_address : Socket::IPAddress) : Nil
+        # Validate minimum packet size
+        # Minimum Matter packet: 8 bytes (flags + session_id + security_flags + message_id)
+        if data.size < 8
+          puts "⚠️  Packet too small (#{data.size} bytes, minimum 8) - ignoring malformed packet"
+          return
+        end
+
         puts "🔍 Decoding packet: #{data.size} bytes"
 
         # For encrypted messages, dump packet header bytes to debug source_node_id parsing

@@ -33,57 +33,27 @@ module Matter
         Log.debug { "ReadRequest TLV structure: #{request_data.keys.inspect}" }
 
         # Extract attribute requests (tag 0, array)
+        # Each request is an AttributePath that automatically handles both:
+        # - List-form: [endpoint, cluster, attribute]  (compact, positional)
+        # - Structure-form: {2 => endpoint, 3 => cluster, 4 => attribute}  (tagged)
         attribute_requests = [] of InteractionModel::AttributePath
         if attr_req_array = request_data[0_u8]?.as?(Array)
           Log.debug { "Found #{attr_req_array.size} attribute request(s)" }
+
           attr_req_array.each_with_index do |attr_req, idx|
-            Log.debug { "  Attribute request #{idx}: type=#{attr_req.class}, value=#{attr_req.inspect[0, 100]}" }
+            # Re-encode this individual request as TLV bytes
+            # Then AttributePath.new(bytes) automatically detects and parses both forms!
+            io = IO::Memory.new
+            writer = TLV::Writer.new(io)
+            writer.put(nil, attr_req)
+            attr_req_bytes = io.rewind.to_slice
 
-            # attr_req can be either:
-            # 1. Array (list-form path): [endpoint, cluster, attribute] - compact encoding used by iPhone
-            # 2. Hash (structure-form path): {2 => endpoint, 3 => cluster, 4 => attribute}
+            # Parse using @[TLV::ListForm] AttributePath - handles both forms automatically
+            path = InteractionModel::AttributePath.new(attr_req_bytes)
 
-            endpoint : UInt16? = nil
-            cluster : UInt32? = nil
-            attribute : UInt32? = nil
+            Log.debug { "  Request #{idx}: endpoint=#{path.endpoint}, cluster=0x#{path.cluster.try(&.to_s(16)) || "?"}, attribute=#{path.attribute}" }
 
-            if attr_req.is_a?(Array)
-              # List-form: [endpoint, cluster, attribute, ...]
-              arr = attr_req.as(Array)
-              Log.debug { "    List-form path: #{arr.inspect}" }
-
-              # Extract by position, handling different integer types
-              if ep = arr[0]?
-                endpoint = ep.is_a?(Int32) ? ep.to_u16 : ep.as?(UInt16)
-              end
-
-              if cl = arr[1]?
-                cluster = cl.is_a?(Int32) ? cl.to_u32 : cl.as?(UInt32)
-              end
-
-              if at = arr[2]?
-                attribute = at.is_a?(Int32) ? at.to_u32 : at.as?(UInt32)
-              end
-            elsif attr_req.is_a?(Hash)
-              # Structure-form with tags
-              path_data = attr_req.as(Hash(TLV::Tag, TLV::Value))
-              Log.debug { "    Structure-form path with tags: #{path_data.keys.inspect}" }
-
-              endpoint = path_data[2_u8]?.as?(UInt16)
-              cluster = path_data[3_u8]?.as?(UInt32)
-              attribute = path_data[4_u8]?.as?(UInt32)
-            else
-              Log.warn { "    Unknown attribute request type: #{attr_req.class}" }
-              next
-            end
-
-            Log.debug { "    Parsed path: endpoint=#{endpoint}, cluster=#{cluster}, attribute=#{attribute}" }
-
-            attribute_requests << InteractionModel::AttributePath.new(
-              endpoint: endpoint,
-              cluster: cluster,
-              attribute: attribute
-            )
+            attribute_requests << path
           end
         end
 
