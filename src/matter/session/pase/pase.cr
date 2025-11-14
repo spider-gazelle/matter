@@ -133,15 +133,18 @@ module Matter
           raise "Shared secret not computed" if sav.nil?
 
           # Derive session keys from shared secret (ke) using HKDF
-          # Matter Spec: SessionKeys = HKDF(ke, salt, "SessionKeys", 32)
+          # Per matter.js: SessionKeys = HKDF(ke, salt="", info="SessionKeys", length=48)
+          # Returns 48 bytes: I2R (0-15) | R2I (16-31) | AttestationChallenge (32-47)
           session_keys = @crypto.create_hkdf_key(
             sav.ke,
             Bytes.new(0), # Empty salt
             "SessionKeys".to_slice,
-            32 # Derive 32 bytes total (16 for each key)
+            48 # Derive 48 bytes: I2R + R2I + AttestationChallenge
           )
 
-          # Split into initiator-to-responder and responder-to-initiator keys
+          # Split keys - initiator (commissioner) uses:
+          # - I2R (bytes 0-15) for encryption (initiator-to-responder)
+          # - R2I (bytes 16-31) for decryption (responder-to-initiator)
           {
             encryption: session_keys[0, 16],  # I2R key
             decryption: session_keys[16, 16], # R2I key
@@ -253,16 +256,18 @@ module Matter
           raise "Shared secret not computed" if sav.nil?
 
           # Derive session keys from shared secret (ke) using HKDF
-          # Matter Spec: SessionKeys = HKDF(ke, salt, "SessionKeys", 32)
+          # Per matter.js: SessionKeys = HKDF(ke, salt="", info="SessionKeys", length=48)
+          # Returns 48 bytes: I2R (0-15) | R2I (16-31) | AttestationChallenge (32-47)
           session_keys = @crypto.create_hkdf_key(
             sav.ke,
             Bytes.new(0), # Empty salt
             "SessionKeys".to_slice,
-            32 # Derive 32 bytes total (16 for each key)
+            48 # Derive 48 bytes: I2R + R2I + AttestationChallenge
           )
 
-          # Split into responder-to-initiator and initiator-to-responder keys
-          # Note: Responder's encryption is I2R, decryption is R2I (opposite of initiator)
+          # Split keys - responder uses:
+          # - R2I (bytes 16-31) for encryption (responder-to-initiator)
+          # - I2R (bytes 0-15) for decryption (initiator-to-responder)
           {
             encryption: session_keys[16, 16], # R2I key
             decryption: session_keys[0, 16],  # I2R key

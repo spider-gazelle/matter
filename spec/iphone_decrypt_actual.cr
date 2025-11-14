@@ -9,26 +9,23 @@ describe "iPhone Message Decryption - Actual Data" do
   it "decrypts actual iPhone message from real commissioning" do
     crypto = Matter::Crypto::StandardCrypto.new
 
-    # From logs
-    session_id = 20701_u16         # 0x50DD
-    peer_session_id = 59584_u16    # 0xE8C0
-    message_counter = 224604559_u32 # 0x0D63318F
+    # From logs (latest run)
+    session_id = 35329_u16          # 0x8A01
+    peer_session_id = 59585_u16     # 0xE8C1
+    message_counter = 180049233_u32 # 0x0ABB5551
 
     # Keys derived during PASE
-    decryption_key = "89d1b2d39c42654e93135bb5f37cf25e".hexbytes
-    encryption_key = "b10bf8872c03ca61d3a703edc5232c48".hexbytes
+    decryption_key = "3da75aff02ed62359a8e6f4ef34cc5f8".hexbytes
+    encryption_key = "df62a4b6885cf9f6809a3008468ef3ea".hexbytes
 
     # Full raw packet (51 bytes) from logs: 00dd50008f31630d304039f58ab16961f944fd347811d9df...
     # Breaking it down:
     # Bytes 0-7: packet header = 00dd50008f31630d
     # Bytes 8-50: encrypted payload (43 bytes)
 
-    # From the hex dump, the encrypted payload (first 32 bytes shown):
-    # 304039f58ab16961f944fd347811d9df32873ec1a6fa295c30ac1b074c065cf4
-    # Plus remaining 11 bytes to make 43 total (not shown in truncated output)
-    # For now, let's use what we have and pad to test the structure
-
-    encrypted_payload = "304039f58ab16961f944fd347811d9df32873ec1a6fa295c30ac1b074c065cf4c5656c5cd7a0a2d78b6".hexbytes
+    # Full encrypted payload from actual iPhone commissioning (latest run):
+    # Session: 35329, Message Counter: 180049233
+    encrypted_payload = "b834e9935d0fc1f8fbb2ff22cc3786ff4db90dcaa7116425d2ccbb288e011631a3af32abab73ed5df364d1".hexbytes
     # This is 43 bytes: 27 bytes ciphertext + 16 bytes MIC/tag
 
     # Build packet header
@@ -68,11 +65,11 @@ describe "iPhone Message Decryption - Actual Data" do
     puts "  Decryption Key: #{decryption_key.hexstring}"
     puts ""
     puts "  Nonce (computed): #{nonce.hexstring}"
-    puts "  Nonce (expected): 008f31630d01000000fbffffff"
-    puts "  Match: #{nonce.hexstring == "008f31630d01000000fbffffff"}"
+    puts "  Nonce (expected): 005155bb0a01000000fbffffff"
+    puts "  Match: #{nonce.hexstring == "005155bb0a01000000fbffffff"}"
 
     # Verify nonce matches logs
-    nonce.hexstring.should eq("008f31630d01000000fbffffff")
+    nonce.hexstring.should eq("005155bb0a01000000fbffffff")
 
     # Test AAD construction
     aad_io = IO::Memory.new
@@ -84,11 +81,11 @@ describe "iPhone Message Decryption - Actual Data" do
 
     puts ""
     puts "  AAD (computed): #{aad.hexstring}"
-    puts "  AAD (expected): 00dd50008f31630d"
-    puts "  Match: #{aad.hexstring == "00dd50008f31630d"}"
+    puts "  AAD (expected): 00018a005155bb0a"
+    puts "  Match: #{aad.hexstring == "00018a005155bb0a"}"
 
     # Verify AAD matches logs
-    aad.hexstring.should eq("00dd50008f31630d")
+    aad.hexstring.should eq("00018a005155bb0a")
 
     puts ""
     puts "  Encrypted payload: #{encrypted_payload.hexstring}"
@@ -114,7 +111,6 @@ describe "iPhone Message Decryption - Actual Data" do
       # The decrypted payload should be a valid IM message
       # First byte should be exchange flags
       decrypted.size.should be > 0
-
     rescue ex : Exception
       puts "  ❌ Decryption failed: #{ex.message}"
       puts ""
