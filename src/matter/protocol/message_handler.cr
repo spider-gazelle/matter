@@ -82,6 +82,10 @@ module Matter
         # Endpoint 0 - Root Node endpoint (required)
         endpoint_0 = DataType::EndpointNumber.new(0_u16)
 
+        # Descriptor cluster (0x001D) - REQUIRED on all endpoints per Matter spec
+        descriptor = Cluster::DescriptorCluster.new(endpoint_0)
+        @clusters[{0_u16, 0x001D_u32}] = descriptor
+
         # Basic Information cluster (0x0028) - required on endpoint 0
         basic_info = Cluster::BasicInformationCluster.new(
           endpoint_id: endpoint_0,
