@@ -162,12 +162,18 @@ module Matter
             writer.end_container # End Path
 
             # Tag 2: Data (TLV value - already encoded)
-            # We need to write the raw TLV bytes directly
-            # For now, write as byte string tag
-            io2 = IO::Memory.new(report.value)
+            # Parse and unwrap the "Any" wrapper from reader.get
             reader = TLV::Reader.new(report.value)
             value_data = reader.get
-            writer.put(2_u8, value_data)
+
+            # Unwrap "Any" key if present (reader.get wraps values in {"Any" => value})
+            actual_value = if value_data.is_a?(Hash) && value_data.has_key?("Any")
+                             value_data["Any"]
+                           else
+                             value_data
+                           end
+
+            writer.put(2_u8, actual_value)
 
             writer.end_container # End AttributeDataIB
             writer.end_container # End array element
