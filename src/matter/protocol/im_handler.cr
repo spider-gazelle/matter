@@ -152,21 +152,32 @@ module Matter
                              value_data
                            end
 
-            # Create AttributeDataIB directly as TLV hash
-            # Per matter.js TlvDataReportForSend, array elements are TlvAny (raw AttributeDataIB)
-            # NO AttributeReportIB wrapper!
-            data_ib = InteractionModel::AttributeDataIB.new(
-              path: report.path,
-              data: actual_value,
-              data_version: report.data_version
-            )
+            # Build path using PATH container (0x17) with tagged elements
+            # Per matter.js: PATH container with tags 2 (endpoint), 3 (cluster), 4 (attribute)
+            path_io = IO::Memory.new
+            path_writer = TLV::Writer.new(path_io)
+            path_writer.start_path(nil)
+            path_writer.put(2_u8, report.path.endpoint.not_nil!) if report.path.endpoint
+            path_writer.put(3_u8, report.path.cluster.not_nil!) if report.path.cluster
+            path_writer.put(4_u8, report.path.attribute.not_nil!) if report.path.attribute
+            path_writer.end_container
+            path_bytes = path_io.rewind.to_slice
+            path_reader = TLV::Reader.new(path_bytes)
+            path_value = path_reader.get["Any"]
 
-            # Convert AttributeDataIB.to_h directly to TLV::Value
-            io = IO::Memory.new
-            writer = TLV::Writer.new(io)
-            writer.put(nil, data_ib.to_h)
-            reader2 = TLV::Reader.new(io.rewind.to_slice)
-            attr_reports << reader2.get["Any"]
+            # Build AttributeDataIB
+            attr_data_ib = {
+              0_u8 => report.data_version,
+              1_u8 => path_value,
+              2_u8 => actual_value,
+            } of TLV::Tag => TLV::Value
+
+            # Wrap in AttributeReportIB (tag 1)
+            attr_report_ib = {
+              1_u8 => attr_data_ib
+            } of TLV::Tag => TLV::Value
+
+            attr_reports << attr_report_ib.as(TLV::Value)
 
             Log.debug { "Encoded attribute report #{idx}: endpoint=#{report.path.endpoint}, cluster=0x#{report.path.cluster.try(&.to_s(16))}, attr=#{report.path.attribute}" }
           rescue ex
