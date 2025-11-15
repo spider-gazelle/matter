@@ -291,8 +291,10 @@ module Matter
         )
 
         # Build packet header for encrypted response
+        # CRITICAL: Use peer_session_id (their session ID), not our session_id!
+        # The recipient expects messages on THEIR session ID
         packet_header = Codec::MessageCodec::PacketHeader.new(
-          session_id: session.session_id,
+          session_id: session.peer_session_id,
           session_type: Codec::MessageCodec::SessionType::Unicast,
           message_id: 0_u32, # Will be set by transport
           privacy_enhancements: false,
@@ -303,6 +305,8 @@ module Matter
           source_node_id: original_msg.packet_header.destination_node_id,
           destination_node_id: original_msg.packet_header.source_node_id
         )
+
+        Log.debug { "Sending response on peer_session_id=#{session.peer_session_id} (received on our session_id=#{session.session_id})" }
 
         # Build payload header
         # If the original message required acknowledgment, embed the ACK in our response

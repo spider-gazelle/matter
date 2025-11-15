@@ -146,23 +146,31 @@ module Matter
 
       # Helper methods for encoding simple values
       protected def encode_uint8(value : UInt8) : Bytes
-        Bytes[value]
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, value)
+        io.rewind.to_slice
       end
 
       protected def encode_uint16(value : UInt16) : Bytes
         io = IO::Memory.new
-        IO::ByteFormat::LittleEndian.encode(value, io)
-        io.to_slice
+        writer = TLV::Writer.new(io)
+        writer.put(nil, value)
+        io.rewind.to_slice
       end
 
       protected def encode_uint32(value : UInt32) : Bytes
         io = IO::Memory.new
-        IO::ByteFormat::LittleEndian.encode(value, io)
-        io.to_slice
+        writer = TLV::Writer.new(io)
+        writer.put(nil, value)
+        io.rewind.to_slice
       end
 
       protected def encode_bool(value : Bool) : Bytes
-        Bytes[value ? 1_u8 : 0_u8]
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, value)
+        io.rewind.to_slice
       end
     end
   end

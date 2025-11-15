@@ -152,22 +152,19 @@ module Matter
                              value_data
                            end
 
-            # Create AttributeDataIB
+            # Create AttributeDataIB directly as TLV hash
+            # Per matter.js TlvDataReportForSend, array elements are TlvAny (raw AttributeDataIB)
+            # NO AttributeReportIB wrapper!
             data_ib = InteractionModel::AttributeDataIB.new(
               path: report.path,
               data: actual_value,
               data_version: report.data_version
             )
 
-            # Wrap in AttributeReportIB
-            report_ib = InteractionModel::AttributeReportIB.new(
-              attribute_data: data_ib
-            )
-
-            # Convert to TLV::Value (encode and decode)
+            # Convert AttributeDataIB.to_h directly to TLV::Value
             io = IO::Memory.new
             writer = TLV::Writer.new(io)
-            writer.put(nil, report_ib.to_h)
+            writer.put(nil, data_ib.to_h)
             reader2 = TLV::Reader.new(io.rewind.to_slice)
             attr_reports << reader2.get["Any"]
 
