@@ -41,32 +41,36 @@ describe "ReadResponse matter.js Compatibility" do
     attr_reports = root[1_u8].as(Array(TLV::Value))
     attr_reports.size.should eq(1)
 
-    # Each report should be AttributeDataIB: {0: dataVersion, 1: path, 2: data}
+    # Each report is AttributeReport: {1: AttributeData}
     report = attr_reports[0].as(Hash(TLV::Tag, TLV::Value))
 
-    puts "Report structure: #{report.inspect[0, 100]}"
+    # AttributeReport contains AttributeData at tag 1
+    report.has_key?(1_u8).should be_true
+    attr_data = report[1_u8].as(Hash(TLV::Tag, TLV::Value))
 
-    # Per matter.js TlvAttributeReportData:
+    puts "AttributeData structure: #{attr_data.inspect[0, 150]}"
+
+    # Per matter.js TlvAttributeData:
     # Tag 0: dataVersion (optional)
     # Tag 1: path
     # Tag 2: data
 
     # Verify all expected tags present
-    report.has_key?(0_u8).should be_true # dataVersion
-    report.has_key?(1_u8).should be_true # path
-    report.has_key?(2_u8).should be_true # data
+    attr_data.has_key?(0_u8).should be_true # dataVersion
+    attr_data.has_key?(1_u8).should be_true # path
+    attr_data.has_key?(2_u8).should be_true # data
 
     # Verify dataVersion value
-    report[0_u8].should eq(0_u32)
+    attr_data[0_u8].should eq(0_u32)
 
     # Verify path structure
-    path_data = report[1_u8].as(Hash(TLV::Tag, TLV::Value))
+    path_data = attr_data[1_u8].as(TLV::PathContainer)
     path_data[2_u8].should eq(0_u16)      # endpoint
     path_data[3_u8].should eq(0x0028_u32) # cluster
     path_data[4_u8].should eq(0x0002_u32) # attribute
 
     # Verify data value
-    report[2_u8].should eq(0xFFF1_u16)
+    attr_data[2_u8].should eq(0xFFF1_u16)
 
     # Tag 0xFF: interactionModelRevision
     root[0xFF_u8].should eq(12_u8)

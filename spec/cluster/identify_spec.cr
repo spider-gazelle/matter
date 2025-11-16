@@ -51,7 +51,7 @@ describe Matter::Cluster::IdentifyCluster do
 
       result = cluster.read_attribute(Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[0, 0]) # 0 in little-endian
+      decode_tlv_value(result.as(Bytes)).should eq(0_u16)
     end
 
     it "reads IdentifyType attribute" do
@@ -63,7 +63,7 @@ describe Matter::Cluster::IdentifyCluster do
 
       result = cluster.read_attribute(Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TYPE)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[Matter::Cluster::IdentifyCluster::IdentifyType::AudibleBeep.value])
+      decode_tlv_value(result.as(Bytes)).should eq(Matter::Cluster::IdentifyCluster::IdentifyType::AudibleBeep.value)
     end
 
     it "writes IdentifyTime attribute" do

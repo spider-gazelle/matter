@@ -1,6 +1,7 @@
 require "../crypto/crypto"
 require "../codec/message_codec"
 require "./context"
+require "log"
 
 module Matter
   module Session
@@ -8,6 +9,8 @@ module Matter
     # Uses AES-128-CCM for authenticated encryption
     module SecureMessage
       extend self
+
+      Log = ::Log.for("matter.session.secure")
 
       # Nonce size for AES-CCM in Matter (13 bytes)
       NONCE_LENGTH = 13
@@ -54,14 +57,15 @@ module Matter
         message_counter = context.next_message_counter
 
         # Build nonce from source node ID and message counter
-        # Use local_node_id if set, otherwise use node_id=0 for PASE
-        source_node_id = if context.local_node_id
+        # CRITICAL: The node_id in the nonce MUST match the source_node_id in the packet header!
+        # Use packet_header.source_node_id if present, otherwise fall back to context.local_node_id or 0
+        source_node_id = if packet_header.source_node_id
+                           packet_header.source_node_id.not_nil!.id
+                         elsif context.local_node_id
                            context.local_node_id.not_nil!.id
                          else
-                           # During PASE, use node_id=0 (UNSPECIFIED) in nonce
+                           # During PASE without source_node_id in header, use node_id=0 (UNSPECIFIED)
                            # This matches matter.js behavior (NodeId.UNSPECIFIED_NODE_ID)
-                           # The PASE temporary IDs (0xFFFFFFFB00000001/0xFFFFFFFB00000002)
-                           # are only used in packet headers, not in AES-CCM nonces
                            0_u64
                          end
         security_flags = 0_u8
@@ -86,8 +90,22 @@ module Matter
         IO::ByteFormat::LittleEndian.encode(message_counter, aad_io)
         aad = aad_io.to_slice
 
+        # Debug: Show encryption details
+        Log.debug { "🔐 Encryption details:" }
+        Log.debug { "   source_node_id: #{source_node_id}" }
+        Log.debug { "   message_counter: #{message_counter}" }
+        Log.debug { "   session_id: #{packet_header.session_id}" }
+        Log.debug { "   security_flags: 0x#{security_flags.to_s(16).rjust(2, '0')}" }
+        Log.debug { "   nonce: #{nonce.hexstring}" }
+        Log.debug { "   aad: #{aad.hexstring}" }
+        Log.debug { "   encryption_key: #{context.encryption_key.hexstring}" }
+        Log.debug { "   payload size: #{payload.size} bytes" }
+
         # Encrypt using AES-128-CCM
         encrypted = crypto.encrypt(context.encryption_key, payload, nonce, aad)
+
+        Log.debug { "   encrypted size: #{encrypted.size} bytes (payload + 16-byte MIC)" }
+        Log.debug { "   encrypted (first 32 bytes): #{encrypted[0, [32, encrypted.size].min].hexstring}" }
 
         encrypted
       end

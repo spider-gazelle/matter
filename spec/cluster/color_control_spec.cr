@@ -567,7 +567,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       result = cluster.read_attribute(Matter::Cluster::ColorControlCluster::ATTR_CURRENT_HUE)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[127])
+      decode_tlv_value(result.as(Bytes)).should eq(127_u8)
     end
 
     it "reads CurrentSaturation attribute" do
@@ -576,7 +576,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       result = cluster.read_attribute(Matter::Cluster::ColorControlCluster::ATTR_CURRENT_SATURATION)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[200])
+      decode_tlv_value(result.as(Bytes)).should eq(200_u8)
     end
 
     it "reads ColorTemperatureMireds attribute" do
@@ -585,8 +585,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       result = cluster.read_attribute(Matter::Cluster::ColorControlCluster::ATTR_COLOR_TEMPERATURE_MIREDS)
       result.should be_a(Bytes)
-      mireds = IO::ByteFormat::LittleEndian.decode(UInt16, result.as(Bytes))
-      mireds.should eq(350_u16)
+      decode_tlv_value(result.as(Bytes)).should eq(350_u16)
     end
 
     it "reads ColorMode attribute" do
@@ -595,7 +594,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       result = cluster.read_attribute(Matter::Cluster::ColorControlCluster::ATTR_COLOR_MODE)
       result.should be_a(Bytes)
-      result.as(Bytes)[0].should eq(Matter::Cluster::Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation.value)
+      decode_tlv_value(result.as(Bytes)).should eq(Matter::Cluster::Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation.value)
     end
   end
 

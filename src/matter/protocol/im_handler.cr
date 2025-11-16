@@ -129,75 +129,67 @@ module Matter
         )
       end
 
-      # Encode ReadResponse as TLV using TLV::Serializable structs
+      # Encode ReadResponse manually to preserve PATH container types
+      # TLV::Serializable loses container type metadata, so we build manually
       def self.encode_read_response(response : InteractionModel::ReadResponse) : Bytes
-        # Build attribute reports as TLV::Value array
-        attr_reports = [] of TLV::Value
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        # Start root structure (anonymous)
+        writer.start_structure(nil)
+
+        # Tag 1: attributeReports (array)
+        writer.start_array(1_u8)
+
         response.attribute_reports.each_with_index do |report, idx|
           begin
-            # Validate attribute value is not empty
+            # Validate attribute value
             if report.value.empty?
-              Log.warn { "Skipping report #{idx}: empty TLV value for endpoint=#{report.path.endpoint}, cluster=0x#{report.path.cluster.try(&.to_s(16))}, attribute=#{report.path.attribute}" }
+              Log.warn { "Skipping empty report #{idx}" }
               next
             end
 
-            # Parse the pre-encoded attribute value
+            # Parse attribute value
             reader = TLV::Reader.new(report.value)
             value_data = reader.get
+            actual_value = value_data.is_a?(Hash) && value_data.has_key?("Any") ? value_data["Any"] : value_data
 
-            # Unwrap "Any" if present
-            actual_value = if value_data.is_a?(Hash) && value_data.has_key?("Any")
-                             value_data["Any"]
-                           else
-                             value_data
-                           end
+            # Start AttributeReportIB
+            writer.start_structure(nil)
 
-            # Build path using PATH container (0x17) with tagged elements
-            # Per matter.js: PATH container with tags 2 (endpoint), 3 (cluster), 4 (attribute)
-            path_io = IO::Memory.new
-            path_writer = TLV::Writer.new(path_io)
-            path_writer.start_path(nil)
-            path_writer.put(2_u8, report.path.endpoint.not_nil!) if report.path.endpoint
-            path_writer.put(3_u8, report.path.cluster.not_nil!) if report.path.cluster
-            path_writer.put(4_u8, report.path.attribute.not_nil!) if report.path.attribute
-            path_writer.end_container
-            path_bytes = path_io.rewind.to_slice
-            path_reader = TLV::Reader.new(path_bytes)
-            path_value = path_reader.get["Any"]
+            # Tag 1: AttributeDataIB
+            writer.start_structure(1_u8)
 
-            # Build AttributeDataIB
-            attr_data_ib = {
-              0_u8 => report.data_version,
-              1_u8 => path_value,
-              2_u8 => actual_value,
-            } of TLV::Tag => TLV::Value
+            # Tag 0: dataVersion
+            writer.put(0_u8, report.data_version)
 
-            # Wrap in AttributeReportIB (tag 1)
-            attr_report_ib = {
-              1_u8 => attr_data_ib
-            } of TLV::Tag => TLV::Value
+            # Tag 1: path (using PATH container!)
+            writer.start_path(1_u8)
+            writer.put(2_u8, report.path.endpoint.not_nil!) if report.path.endpoint
+            writer.put(3_u8, report.path.cluster.not_nil!) if report.path.cluster
+            writer.put(4_u8, report.path.attribute.not_nil!) if report.path.attribute
+            writer.end_container # End path
 
-            attr_reports << attr_report_ib.as(TLV::Value)
+            # Tag 2: data
+            writer.put(2_u8, actual_value)
+
+            writer.end_container # End AttributeDataIB
+            writer.end_container # End AttributeReportIB
 
             Log.debug { "Encoded attribute report #{idx}: endpoint=#{report.path.endpoint}, cluster=0x#{report.path.cluster.try(&.to_s(16))}, attr=#{report.path.attribute}" }
           rescue ex
-            Log.error { "Failed to encode attribute report #{idx} (endpoint=#{report.path.endpoint}, cluster=0x#{report.path.cluster.try(&.to_s(16))}, attr=#{report.path.attribute}): #{ex.message}" }
-            Log.error { "Attribute value bytes (#{report.value.size}): #{report.value.hexstring}" }
-            # Skip this report and continue with others
+            Log.error { "Failed to encode report #{idx}: #{ex.message}" }
           end
         end
 
-        # Build ReportDataMessage
-        reports = attr_reports.empty? ? nil : attr_reports.as(Array(TLV::Value))
+        writer.end_container # End attributeReports array
 
-        report_msg = InteractionModel::ReportDataMessage.new
-        report_msg.attribute_reports = reports
-        report_msg.more_chunked_messages = response.more_chunks ? true : nil
-        report_msg.suppress_response = response.suppress_response ? true : nil
-        report_msg.interaction_model_revision = 12_u8
+        # Tag 0xFF: interactionModelRevision (REQUIRED)
+        writer.put(0xFF_u8, 12_u8)
 
-        # Encode to bytes
-        report_msg.to_slice
+        writer.end_container # End root structure
+
+        io.rewind.to_slice
       end
 
       # OLD manual encoding (keeping as reference)

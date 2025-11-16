@@ -62,7 +62,7 @@ describe Matter::Cluster::LevelControlCluster do
 
       result = cluster.read_attribute(Matter::Cluster::LevelControlCluster::ATTR_CURRENT_LEVEL)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[100])
+      decode_tlv_value(result.as(Bytes)).should eq(100_u8)
     end
 
     it "reads MinLevel attribute" do
@@ -71,7 +71,7 @@ describe Matter::Cluster::LevelControlCluster do
 
       result = cluster.read_attribute(Matter::Cluster::LevelControlCluster::ATTR_MIN_LEVEL)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[5])
+      decode_tlv_value(result.as(Bytes)).should eq(5_u8)
     end
 
     it "reads MaxLevel attribute" do
@@ -80,7 +80,7 @@ describe Matter::Cluster::LevelControlCluster do
 
       result = cluster.read_attribute(Matter::Cluster::LevelControlCluster::ATTR_MAX_LEVEL)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[200])
+      decode_tlv_value(result.as(Bytes)).should eq(200_u8)
     end
 
     it "reads RemainingTime attribute" do
@@ -89,7 +89,7 @@ describe Matter::Cluster::LevelControlCluster do
 
       result = cluster.read_attribute(Matter::Cluster::LevelControlCluster::ATTR_REMAINING_TIME)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[0, 0]) # 0 in little-endian UInt16
+      decode_tlv_value(result.as(Bytes)).should eq(0_u16)
     end
   end
 

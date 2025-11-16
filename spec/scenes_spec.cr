@@ -61,7 +61,7 @@ describe Matter::Cluster::ScenesCluster do
 
       result = cluster.read_attribute(Matter::Cluster::ScenesCluster::SCENE_COUNT)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[0]) # Initially 0
+      decode_tlv_value(result.as(Bytes)).should eq(0_u8)
     end
 
     it "reads CurrentScene attribute" do
@@ -70,7 +70,7 @@ describe Matter::Cluster::ScenesCluster do
 
       result = cluster.read_attribute(Matter::Cluster::ScenesCluster::CURRENT_SCENE)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[0])
+      decode_tlv_value(result.as(Bytes)).should eq(0_u8)
     end
 
     it "reads SceneValid attribute" do
@@ -79,7 +79,7 @@ describe Matter::Cluster::ScenesCluster do
 
       result = cluster.read_attribute(Matter::Cluster::ScenesCluster::SCENE_VALID)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[0]) # false
+      decode_tlv_value(result.as(Bytes)).should eq(false)
     end
 
     it "reads NameSupport attribute" do
@@ -88,7 +88,7 @@ describe Matter::Cluster::ScenesCluster do
 
       result = cluster.read_attribute(Matter::Cluster::ScenesCluster::NAME_SUPPORT)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[0x80]) # Bit 7 set
+      decode_tlv_value(result.as(Bytes)).should eq(0x80_u8) # Bit 7 set
     end
   end
 

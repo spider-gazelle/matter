@@ -12,19 +12,19 @@ describe "Exact matter.js Vector Reproduction" do
     # Build AttributeDataIB
     attr_data_ib = {
       0_u8 => 926954325_u32, # dataVersion
-      1_u8 => path_list,      # path
-      2_u8 => true,           # data
+      1_u8 => path_list,     # path
+      2_u8 => true,          # data
     } of TLV::Tag => TLV::Value
 
     # Wrap in AttributeReportIB
     attr_report_ib = {
-      1_u8 => attr_data_ib
+      1_u8 => attr_data_ib,
     } of TLV::Tag => TLV::Value
 
     # Build DataReport
     data_report = {
-      1_u8 => [attr_report_ib] of TLV::Value, # attributeReports
-      0xFF_u8 => 1_u8,                         # interactionModelRevision
+         1_u8 => [attr_report_ib] of TLV::Value, # attributeReports
+      0xFF_u8 => 1_u8,                           # interactionModelRevision
     } of TLV::Tag => TLV::Value
 
     # Encode

@@ -60,7 +60,7 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
 
       value = cluster.read_attribute(Matter::Cluster::AdministratorCommissioningCluster::ATTR_WINDOW_STATUS)
       value.should be_a(Bytes)
-      value.as(Bytes).should eq(Bytes[0]) # WindowNotOpen
+      decode_tlv_value(value.as(Bytes)).should eq(0_u8) # WindowNotOpen
     end
 
     it "reads AdminFabricIndex attribute when nil" do

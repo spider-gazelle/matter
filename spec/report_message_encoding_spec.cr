@@ -9,8 +9,8 @@ describe "ReportDataMessage Encoding" do
 
     attr_data = {
       0_u8 => 12345678_u32, # dataVersion
-      1_u8 => path_list,     # path as list
-      2_u8 => true,          # data
+      1_u8 => path_list,    # path as list
+      2_u8 => true,         # data
     } of TLV::Tag => TLV::Value
 
     # Create ReportDataMessage

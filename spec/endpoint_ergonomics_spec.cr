@@ -131,7 +131,7 @@ describe "Endpoint Ergonomics" do
         Matter::Cluster::LevelControlCluster::ATTR_CURRENT_LEVEL
       )
       result.should be_a(Bytes)
-      result.as(Bytes)[0].should eq(0_u8) # Still at initial value
+      decode_tlv_value(result.as(Bytes)).should eq(0_u8) # Still at initial value
     end
 
     it "demonstrates multi-endpoint device control" do

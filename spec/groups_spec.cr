@@ -48,7 +48,7 @@ describe Matter::Cluster::GroupsCluster do
 
       result = cluster.read_attribute(Matter::Cluster::GroupsCluster::NAME_SUPPORT)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[0x80]) # Bit 7 set
+      decode_tlv_value(result.as(Bytes)).should eq(0x80_u8) # Bit 7 set
     end
 
     it "reads NameSupport attribute when disabled" do
@@ -57,7 +57,7 @@ describe Matter::Cluster::GroupsCluster do
 
       result = cluster.read_attribute(Matter::Cluster::GroupsCluster::NAME_SUPPORT)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[0x00])
+      decode_tlv_value(result.as(Bytes)).should eq(0x00_u8)
     end
   end
 

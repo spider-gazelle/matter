@@ -6,7 +6,7 @@ describe "TLV Array Encoding in Hash" do
   it "encodes array as list-form when inside hash" do
     # Create hash with array value
     hash = {
-      1_u8 => [0, 40, 9] of TLV::Value
+      1_u8 => [0, 40, 9] of TLV::Value,
     } of TLV::Tag => TLV::Value
 
     # Encode

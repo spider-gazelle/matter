@@ -41,7 +41,7 @@ describe Matter::Cluster::OnOffCluster do
 
       result = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[0]) # false
+      decode_tlv_value(result.as(Bytes)).should eq(false)
     end
 
     it "reads OnOff attribute when on" do
@@ -50,7 +50,7 @@ describe Matter::Cluster::OnOffCluster do
 
       result = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[1]) # true
+      decode_tlv_value(result.as(Bytes)).should eq(true)
     end
 
     it "rejects writing to read-only OnOff attribute" do
@@ -118,7 +118,7 @@ describe Matter::Cluster::OnOffCluster do
         cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF, Bytes.new(0))
 
         attr_value = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
-        attr_value.as(Bytes).should eq(Bytes[0]) # false
+        decode_tlv_value(attr_value.as(Bytes)).should eq(false)
       end
     end
 
@@ -152,7 +152,7 @@ describe Matter::Cluster::OnOffCluster do
         cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
 
         attr_value = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
-        attr_value.as(Bytes).should eq(Bytes[1]) # true
+        decode_tlv_value(attr_value.as(Bytes)).should eq(true)
       end
     end
 

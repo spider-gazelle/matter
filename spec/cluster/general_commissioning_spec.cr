@@ -101,7 +101,7 @@ describe Matter::Cluster::GeneralCommissioningCluster do
 
       value = cluster.read_attribute(Matter::Cluster::GeneralCommissioningCluster::ATTR_SUPPORTS_CONCURRENT_CONNECTION)
       value.should be_a(Bytes)
-      value.as(Bytes).should eq(Bytes[1]) # true by default
+      decode_tlv_value(value.as(Bytes)).should eq(true)
     end
 
     it "returns status for unsupported attribute write" do

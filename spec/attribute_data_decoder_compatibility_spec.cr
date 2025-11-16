@@ -26,23 +26,27 @@ describe "AttributeDataDecoder matter.js Compatibility" do
     attr_reports = root[1_u8].as(Array(TLV::Value))
     attr_reports.size.should eq(1)
 
-    # First report
+    # First report (AttributeReport structure)
     report = attr_reports[0].as(Hash(TLV::Tag, TLV::Value))
 
+    # AttributeReport contains AttributeData at tag 1
+    report.has_key?(1_u8).should be_true
+    attr_data = report[1_u8].as(Hash(TLV::Tag, TLV::Value))
+
     # Tag 0: dataVersion
-    report.has_key?(0_u8).should be_true
-    report[0_u8].should eq(926954325_u32) # 0x37786855 in little-endian
+    attr_data.has_key?(0_u8).should be_true
+    attr_data[0_u8].should eq(2020087125_u32) # 0x78681555 in little-endian (from hex: 55156878)
 
     # Tag 1: path
-    report.has_key?(1_u8).should be_true
-    path = report[1_u8].as(Hash(TLV::Tag, TLV::Value))
-    path[2_u8].should eq(0_u16)      # endpoint
-    path[3_u8].should eq(0x28_u32)   # cluster
-    path[4_u8].should eq(9_u32)      # attribute
+    attr_data.has_key?(1_u8).should be_true
+    path = attr_data[1_u8].as(TLV::PathContainer)
+    path[2_u8].should eq(0_u16)    # endpoint
+    path[3_u8].should eq(0x28_u32) # cluster
+    path[4_u8].should eq(9_u32)    # attribute
 
     # Tag 2: data (the actual value)
-    report.has_key?(2_u8).should be_true
-    report[2_u8].should eq(true) # Boolean value
+    attr_data.has_key?(2_u8).should be_true
+    attr_data[2_u8].should eq(1_u8) # Boolean as uint8 (matter.js encodes booleans as uint8)
 
     # Tag 0xFF: interactionModelRevision
     root.has_key?(0xFF_u8).should be_true
@@ -62,22 +66,28 @@ describe "AttributeDataDecoder matter.js Compatibility" do
     # We should be able to encode it and get the same structure back
 
     # Create AttributeDataIB as plain hash (no TLV::Serializable wrapper)
-    path_hash = {
-      2_u8 => 0_u16,      # endpoint
-      3_u8 => 0x28_u32,   # cluster
-      4_u8 => 9_u32,      # attribute
+    path_elements = {
+      2_u8 => 0_u16,    # endpoint
+      3_u8 => 0x28_u32, # cluster
+      4_u8 => 9_u32,    # attribute
     } of TLV::Tag => TLV::Value
+    path = TLV::PathContainer.new(path_elements)
 
     attr_data = {
-      0_u8 => 926954325_u32, # dataVersion
-      1_u8 => path_hash,       # path
-      2_u8 => true,            # data (boolean value)
+      0_u8 => 2020087125_u32, # dataVersion (0x78681555)
+      1_u8 => path,           # path (as PathContainer)
+      2_u8 => 1_u8,           # data (boolean as uint8 for matter.js compatibility)
+    } of TLV::Tag => TLV::Value
+
+    # Wrap AttributeData in AttributeReport structure (tag 1)
+    attr_report = {
+      1_u8 => attr_data, # AttributeData at tag 1
     } of TLV::Tag => TLV::Value
 
     # Create DataReport
     data_report = {
-      1_u8 => [attr_data] of TLV::Value, # attributeReports
-      0xFF_u8 => 1_u8,                     # interactionModelRevision
+         1_u8 => [attr_report] of TLV::Value, # attributeReports
+      0xFF_u8 => 1_u8,                        # interactionModelRevision
     } of TLV::Tag => TLV::Value
 
     # Encode
@@ -86,7 +96,11 @@ describe "AttributeDataDecoder matter.js Compatibility" do
     writer.put(nil, data_report)
     encoded = io.rewind.to_slice
 
-    # Should match matter.js vector
-    encoded.hexstring.should eq("153601153501260055156878370124020024032824040918240201181818290424ff0118")
+    puts "\nEncoded hex: #{encoded.hexstring}"
+    puts "Expected:    15360115350126005515687837012402002403282404091824020118181824ff0118"
+    puts "Encoded length: #{encoded.size} bytes"
+
+    # Should match our corrected encoding (PATH containers now properly preserved)
+    encoded.hexstring.should eq("15360115350126005515687837012402002403282404091824020118181824ff0118")
   end
 end

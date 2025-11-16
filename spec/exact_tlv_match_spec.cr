@@ -29,10 +29,10 @@ describe "Exact TLV Match with matter.js" do
     # PATH is TLV type 0x17
     # Elements use tags 2, 3, 4 (not anonymous!)
     writer.start_container(tag: 1_u8, container_type: 0x17_u8) # PATH type
-    writer.put(2_u8, 0_u16)  # Tag 2: endpoint
-    writer.put(3_u8, 40_u32) # Tag 3: cluster
-    writer.put(4_u8, 9_u32)  # Tag 4: attribute
-    writer.end_container # End path
+    writer.put(2_u8, 0_u16)                                    # Tag 2: endpoint
+    writer.put(3_u8, 40_u32)                                   # Tag 3: cluster
+    writer.put(4_u8, 9_u32)                                    # Tag 4: attribute
+    writer.end_container                                       # End path
 
     # Tag 2: data
     # matter.js encodes boolean as UInt8 value 1/0, not Bool type!

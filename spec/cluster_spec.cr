@@ -115,7 +115,7 @@ describe Matter::Cluster do
 
       result = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[1]) # true
+      decode_tlv_value(result.as(Bytes)).should eq(true)
     end
 
     it "executes Off command" do
@@ -132,7 +132,7 @@ describe Matter::Cluster do
 
       # Check attribute value updated
       attr_value = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
-      attr_value.as(Bytes).should eq(Bytes[0]) # false
+      decode_tlv_value(attr_value.as(Bytes)).should eq(false)
     end
 
     it "executes On command" do

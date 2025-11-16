@@ -143,7 +143,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_SUPPORTED_FABRICS)
       value.should be_a(Bytes)
-      value.as(Bytes).should eq(Bytes[16])
+      decode_tlv_value(value.as(Bytes)).should eq(16_u8)
     end
 
     it "reads CommissionedFabrics attribute" do
@@ -152,7 +152,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_COMMISSIONED_FABRICS)
       value.should be_a(Bytes)
-      value.as(Bytes).should eq(Bytes[0])
+      decode_tlv_value(value.as(Bytes)).should eq(0_u8)
     end
 
     it "reads TrustedRootCertificates attribute" do
@@ -169,7 +169,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_CURRENT_FABRIC_INDEX)
       value.should be_a(Bytes)
-      value.as(Bytes).should eq(Bytes[0])
+      decode_tlv_value(value.as(Bytes)).should eq(0_u8)
     end
 
     it "returns status for unsupported attribute write" do
