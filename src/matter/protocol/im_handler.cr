@@ -83,8 +83,58 @@ module Matter
 
           # Handle wildcard reads (endpoint/cluster/attribute can be nil)
           if path.wildcard?
-            # TODO: Implement wildcard reads
-            Log.warn { "Wildcard reads not yet implemented" }
+            Log.debug { "Handling wildcard read" }
+
+            # Expand wildcards into concrete paths
+            expanded_paths = [] of Tuple(UInt16, UInt32, UInt32)
+
+            clusters.each do |(endpoint_id, cluster_id), cluster|
+              # Check if this endpoint matches (or is wildcard)
+              next if path.endpoint && path.endpoint != endpoint_id
+
+              # Check if this cluster matches (or is wildcard)
+              next if path.cluster && path.cluster != cluster_id
+
+              # If attribute is wildcard, read all attributes from this cluster
+              if path.attribute.nil?
+                # Get all attribute IDs from cluster metadata
+                cluster.attributes.each do |attr_meta|
+                  expanded_paths << {endpoint_id, cluster_id, attr_meta.id.id}
+                end
+              else
+                # Specific attribute on wildcard endpoint/cluster
+                expanded_paths << {endpoint_id, cluster_id, path.attribute.not_nil!}
+              end
+            end
+
+            Log.debug { "Expanded wildcard to #{expanded_paths.size} concrete paths" }
+
+            # Read each expanded path
+            expanded_paths.each do |(endpoint_id, cluster_id, attribute_id)|
+              cluster = clusters[{endpoint_id, cluster_id}]
+              next unless cluster
+
+              result = cluster.read_attribute(attribute_id)
+              concrete_path = InteractionModel::AttributePath.new(
+                endpoint: endpoint_id,
+                cluster: cluster_id,
+                attribute: attribute_id
+              )
+
+              if result.is_a?(InteractionModel::Status)
+                attribute_status << InteractionModel::AttributeStatus.new(
+                  path: concrete_path,
+                  status: result
+                )
+              else
+                attribute_reports << InteractionModel::AttributeData.new(
+                  path: concrete_path,
+                  data_version: cluster.data_version,
+                  value: result.as(Bytes)
+                )
+              end
+            end
+
             next
           end
 

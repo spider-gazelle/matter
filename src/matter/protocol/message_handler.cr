@@ -327,29 +327,87 @@ module Matter
 
         Log.debug { "Response payload header: exchange=#{payload_header.exchange_id}, ack_msg=#{ack_msg_id}, initiator=#{payload_header.initiator_message?}" }
 
-        # Encrypt the payload (message counter is auto-incremented inside)
-        encrypted = Session::SecureMessage.encrypt(
-          session,
-          payload,
-          packet_header,
-          crypto
+        # Encode the payload header to bytes
+        payload_header_io = IO::Memory.new
+        Codec::MessageCodec::Base.encode_payload_header(payload_header, payload_header_io)
+        payload_header_bytes = payload_header_io.rewind.to_slice
+
+        # Concatenate payload header + TLV payload (this is the "application payload" that gets encrypted)
+        application_payload = Slice.join([payload_header_bytes, payload])
+
+        Log.debug { "Application payload to encrypt: #{application_payload.size} bytes (#{payload_header_bytes.size} header + #{payload.size} TLV)" }
+
+        # CRITICAL: Must encode packet header BEFORE encrypting to get the correct AAD!
+        # Update packet header with the actual message counter we'll use
+        message_counter = session.next_message_counter
+        packet_header = Codec::MessageCodec::PacketHeader.new(
+          session_id: packet_header.session_id,
+          session_type: packet_header.session_type,
+          message_id: message_counter, # Use the actual counter!
+          privacy_enhancements: packet_header.privacy_enhancements?,
+          control_message: packet_header.control_message?,
+          message_extensions: packet_header.message_extensions?,
+          flags: packet_header.flags,
+          security_flags: packet_header.security_flags,
+          source_node_id: packet_header.source_node_id,
+          destination_node_id: packet_header.destination_node_id,
+          destination_group_id: packet_header.destination_group_id
         )
+
+        # Encode packet header to get the exact bytes that will be sent (and used as AAD)
+        packet_header_io = IO::Memory.new
+        Codec::MessageCodec::Base.encode_packet_header(packet_header, packet_header_io)
+        packet_header_bytes = packet_header_io.rewind.to_slice
+
+        # Extract security_flags from the encoded header (byte 3) - like matter.js does
+        security_flags = packet_header_bytes[3]
+
+        # Determine node_id for nonce (must match source_node_id in header)
+        source_node_id = if packet_header.source_node_id
+                           packet_header.source_node_id.not_nil!.id
+                         elsif session.local_node_id
+                           session.local_node_id.not_nil!.id
+                         else
+                           0_u64 # PASE uses node_id=0
+                         end
+
+        # Build nonce: security_flags (1) + message_counter (4) + source_node_id (8)
+        nonce = Session::SecureMessage.build_nonce(source_node_id, message_counter, security_flags)
+
+        Log.info { "═══ ENCRYPTION TEST VECTOR ═══" }
+        Log.info { "encryption_key: #{session.encryption_key.hexstring}" }
+        Log.info { "application_payload (first 64 bytes): #{application_payload[0, [64, application_payload.size].min].hexstring}" }
+        Log.info { "nonce (13 bytes): #{nonce.hexstring}" }
+        Log.info { "aad (packet_header_bytes): #{packet_header_bytes.hexstring}" }
+        Log.info { "Breakdown:" }
+        Log.info { "  security_flags: 0x#{security_flags.to_s(16).rjust(2, '0')}" }
+        Log.info { "  message_counter: #{message_counter}" }
+        Log.info { "  source_node_id: #{source_node_id}" }
+        Log.info { "  session_id: #{packet_header.session_id}" }
+
+        # Encrypt using the ACTUAL packet header bytes as AAD (exactly like matter.js!)
+        encrypted = crypto.encrypt(session.encryption_key, application_payload, nonce, packet_header_bytes)
+
+        Log.info { "encrypted (first 64 bytes): #{encrypted[0, [64, encrypted.size].min].hexstring}" }
+        Log.info { "═══════════════════════════════" }
 
         unless encrypted
           Log.error { "Failed to encrypt IM response" }
           return
         end
 
-        Log.debug { "Encrypted IM response (#{encrypted.size} bytes): #{encrypted.hexstring}" }
+        Log.debug { "Encrypted application payload (#{encrypted.size} bytes)" }
 
-        # Build and send message
-        response = Codec::MessageCodec::Message.new(
-          packet_header: packet_header,
-          payload_header: payload_header,
-          payload: encrypted
-        )
+        # Final UDP packet: packet_header_bytes + encrypted_application_payload
+        udp_packet = Slice.join([packet_header_bytes, encrypted])
 
-        @transport.send_message(response, peer)
+        # VERIFY: Log the actual bytes being sent on the wire
+        Log.info { "📤 Sending UDP packet (#{udp_packet.size} bytes):" }
+        Log.info { "   Header (AAD, 8 bytes): #{packet_header_bytes.hexstring}" }
+        Log.info { "   Encrypted (first 64): #{encrypted[0, [64, encrypted.size].min].hexstring}" }
+
+        # Send raw UDP packet
+        @transport.send_raw(udp_packet, peer)
       end
 
       # Handle PBKDF Parameter Request (first step of PASE)

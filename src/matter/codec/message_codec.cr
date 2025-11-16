@@ -128,7 +128,7 @@ module Matter
           Slice.join([io.rewind.to_slice, packet.payload])
         end
 
-        private def encode_packet_header(packet_header : PacketHeader, io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian)
+        def encode_packet_header(packet_header : PacketHeader, io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian)
           # Use the stored flags byte from the packet header
           # This ensures the encoded flags match exactly what was used for AAD during encryption
           flags = packet_header.flags
@@ -145,7 +145,7 @@ module Matter
           byte_format.encode(UInt32.new(packet_header.destination_group_id.not_nil!.id), io) unless packet_header.destination_group_id.nil?
         end
 
-        private def encode_payload_header(payload_header : PayloadHeader, io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian)
+        def encode_payload_header(payload_header : PayloadHeader, io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian)
           vendor_id = (payload_header.protocol_id & 0xffff0000) >> 16
 
           flags = (payload_header.initiator_message? ? PayloadHeaderFlag::IsInitiatorMessage.value : 0) | \
