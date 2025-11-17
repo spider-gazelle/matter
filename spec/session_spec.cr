@@ -22,7 +22,8 @@ describe Matter::Session do
       context.peer_session_id.should eq(2000_u16)
       context.session_type.should eq(Matter::Session::SessionType::Unicast)
       context.is_initiator.should be_true
-      context.local_message_counter.should eq(0_u32)
+      # Counter should be initialized to a random value (not 0)
+      context.local_message_counter.should be_a(UInt32)
       context.peer_message_counter.should be_nil
     end
 
@@ -39,10 +40,10 @@ describe Matter::Session do
       counter2 = context.next_message_counter
       counter3 = context.next_message_counter
 
-      counter1.should eq(0_u32)
-      counter2.should eq(1_u32)
-      counter3.should eq(2_u32)
-      context.local_message_counter.should eq(3_u32)
+      # Counter should increment by 1 each time (starts at random value)
+      counter2.should eq(counter1 + 1)
+      counter3.should eq(counter2 + 1)
+      context.local_message_counter.should eq(counter3 + 1)
     end
 
     it "validates message counters for replay protection" do
@@ -254,6 +255,8 @@ describe Matter::Session do
       payload = "Matter secure message".to_slice
 
       # Encrypt from initiator
+      # Capture the counter before encryption
+      counter_before = initiator_context.local_message_counter
       encrypted = Matter::Session::SecureMessage.encrypt(
         initiator_context,
         payload,
@@ -263,8 +266,8 @@ describe Matter::Session do
 
       encrypted.size.should eq(payload.size + 16) # Payload + MIC
 
-      # Decrypt at responder
-      message_counter = 0_u32 # First message
+      # Decrypt at responder using the actual counter that was used
+      message_counter = counter_before # The counter used for encryption
       decrypted = Matter::Session::SecureMessage.decrypt(
         responder_context,
         encrypted,

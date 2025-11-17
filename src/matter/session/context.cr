@@ -67,7 +67,9 @@ module Matter
         @local_node_id : DataType::NodeId? = nil,
         @attestation_challenge : Bytes? = nil,
       )
-        @local_message_counter = 0_u32
+        # Matter spec requires message counter to start at a random value
+        # to prevent replay attacks across session resumptions
+        @local_message_counter = Random::Secure.rand(UInt32)
         @peer_message_counter = nil
         @max_message_counter = UInt32::MAX
         @creation_time = Time.utc

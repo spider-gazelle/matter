@@ -122,6 +122,8 @@ describe "Session Compatibility with matter.js" do
       payload = "Test Matter Protocol Message".to_slice
 
       # Encrypt from initiator
+      # Capture the counter before encryption
+      counter_before = initiator_context.local_message_counter
       encrypted = Matter::Session::SecureMessage.encrypt(
         initiator_context,
         payload,
@@ -131,8 +133,8 @@ describe "Session Compatibility with matter.js" do
 
       encrypted.size.should eq(payload.size + 16) # Payload + MIC
 
-      # Decrypt at responder
-      message_counter = 0_u32 # First message
+      # Decrypt at responder using the actual counter that was used
+      message_counter = counter_before # The counter used for encryption
       decrypted = Matter::Session::SecureMessage.decrypt(
         responder_context,
         encrypted,
@@ -186,9 +188,11 @@ describe "Session Compatibility with matter.js" do
         counters << context.next_message_counter
       end
 
-      # Verify they increment sequentially
-      counters.should eq([0_u32, 1_u32, 2_u32, 3_u32, 4_u32])
-      context.local_message_counter.should eq(5_u32)
+      # Verify they increment sequentially (starts at random value)
+      4.times do |i|
+        counters[i + 1].should eq(counters[i] + 1)
+      end
+      context.local_message_counter.should eq(counters.last + 1)
     end
   end
 end
