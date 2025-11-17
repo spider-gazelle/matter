@@ -283,12 +283,25 @@ module Matter
         security_flags = 0_u8
         security_flags |= Codec::MessageCodec::SessionType::Unicast.value # Bits 1-0
 
+        # For PASE sessions, we must explicitly set source_node_id to NodeId(0)
+        # matter.js always includes source_node_id in packet headers, using UNSPECIFIED_NODE_ID (0) for PASE
+        # If we leave it as nil, the HasSourceNodeId flag won't be set and the 8-byte field won't be encoded,
+        # creating a mismatch between AAD and nonce that causes chip-tool's decryption to fail
+        response_source_node_id = if original_msg.packet_header.destination_node_id
+                                    original_msg.packet_header.destination_node_id
+                                  elsif session.local_node_id
+                                    session.local_node_id
+                                  else
+                                    DataType::NodeId.new(0_u64) # PASE uses UNSPECIFIED_NODE_ID
+                                  end
+
         # Compute the flags byte for the packet header (swapping source/dest from request)
         flags = Codec::MessageCodec::Base.compute_flags(
-          original_msg.packet_header.destination_node_id, # Will become source in response
-          original_msg.packet_header.source_node_id,      # Will become destination in response
+          response_source_node_id,                   # Will become source in response
+          original_msg.packet_header.source_node_id, # Will become destination in response
           nil
         )
+        Log.debug { "compute_flags returned: 0x#{flags.to_s(16)}, response_source_node_id=#{response_source_node_id.inspect}" }
 
         # Build packet header for encrypted response
         # CRITICAL: Use peer_session_id so recipient can find the session!
@@ -303,7 +316,7 @@ module Matter
           message_extensions: false,
           flags: flags,
           security_flags: security_flags,
-          source_node_id: original_msg.packet_header.destination_node_id,
+          source_node_id: response_source_node_id,
           destination_node_id: original_msg.packet_header.source_node_id
         )
 
@@ -350,8 +363,8 @@ module Matter
           message_extensions: packet_header.message_extensions?,
           flags: packet_header.flags,
           security_flags: packet_header.security_flags,
-          source_node_id: packet_header.source_node_id,
-          destination_node_id: packet_header.destination_node_id,
+          source_node_id: response_source_node_id,                        # Use the computed value!
+          destination_node_id: original_msg.packet_header.source_node_id, # Use the original source as destination
           destination_group_id: packet_header.destination_group_id
         )
 

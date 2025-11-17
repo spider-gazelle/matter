@@ -34,25 +34,83 @@ module Matter
         Log.debug { "ReadRequest TLV structure: #{request_data.keys.inspect}" }
 
         # Extract attribute requests (tag 0, array)
-        # Each request is an AttributePath that automatically handles both:
-        # - List-form: [endpoint, cluster, attribute]  (compact, positional)
-        # - Structure-form: {2 => endpoint, 3 => cluster, 4 => attribute}  (tagged)
+        # Each request is a PathContainer with tags: 2=endpoint, 3=cluster, 4=attribute
+        # Missing tags indicate wildcards
         attribute_requests = [] of InteractionModel::AttributePath
         if attr_req_array = request_data[0_u8]?.as?(Array)
           Log.debug { "Found #{attr_req_array.size} attribute request(s)" }
 
           attr_req_array.each_with_index do |attr_req, idx|
-            # Re-encode this individual request as TLV bytes
-            # Then AttributePath.new(bytes) automatically detects and parses both forms!
-            io = IO::Memory.new
-            writer = TLV::Writer.new(io)
-            writer.put(nil, attr_req)
-            attr_req_bytes = io.rewind.to_slice
+            # Extract from PathContainer - values are stored as Int32
+            # PathContainer is a wrapper with []? method
+            endpoint_raw = case attr_req
+                           when TLV::PathContainer
+                             attr_req[2_u8]?
+                           when Hash
+                             attr_req.as(Hash(TLV::Tag, TLV::Value))[2_u8]?
+                           else
+                             nil
+                           end
 
-            # Parse using @[TLV::ListForm] AttributePath - handles both forms automatically
-            path = InteractionModel::AttributePath.new(attr_req_bytes)
+            cluster_raw = case attr_req
+                          when TLV::PathContainer
+                            attr_req[3_u8]?
+                          when Hash
+                            attr_req.as(Hash(TLV::Tag, TLV::Value))[3_u8]?
+                          else
+                            nil
+                          end
 
-            Log.debug { "  Request #{idx}: endpoint=#{path.endpoint}, cluster=0x#{path.cluster.try(&.to_s(16)) || "?"}, attribute=#{path.attribute}" }
+            attribute_raw = case attr_req
+                            when TLV::PathContainer
+                              attr_req[4_u8]?
+                            when Hash
+                              attr_req.as(Hash(TLV::Tag, TLV::Value))[4_u8]?
+                            else
+                              nil
+                            end
+
+            # Convert to proper types - TLV may store as Int32
+            endpoint = if endpoint_raw
+                         case endpoint_raw
+                         when Int
+                           endpoint_raw.to_u16
+                         when UInt8, UInt16, UInt32
+                           endpoint_raw.to_u16
+                         else
+                           nil
+                         end
+                       end
+
+            cluster = if cluster_raw
+                        case cluster_raw
+                        when Int
+                          cluster_raw.to_u32
+                        when UInt8, UInt16, UInt32
+                          cluster_raw.to_u32
+                        else
+                          nil
+                        end
+                      end
+
+            attribute = if attribute_raw
+                          case attribute_raw
+                          when Int
+                            attribute_raw.to_u32
+                          when UInt8, UInt16, UInt32
+                            attribute_raw.to_u32
+                          else
+                            nil
+                          end
+                        end
+
+            path = InteractionModel::AttributePath.new(
+              endpoint: endpoint,
+              cluster: cluster,
+              attribute: attribute
+            )
+
+            Log.debug { "  Request #{idx}: endpoint=#{path.endpoint || "nil"}, cluster=0x#{path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}" }
 
             attribute_requests << path
           end
@@ -193,10 +251,10 @@ module Matter
           writer.put(1_u8, true)
         end
 
-        # Tag 2: subscriptionId (optional) - not implemented yet
+        # Tag 1: subscriptionId (optional) - not implemented yet
 
-        # Tag 3: attributeReports (array) - FIXED: was tag 1, should be tag 3!
-        writer.start_array(3_u8)
+        # Tag 1: attributeReports (array) - matches matter.js structure
+        writer.start_array(1_u8)
 
         response.attribute_reports.each_with_index do |report, idx|
           begin
@@ -253,84 +311,6 @@ module Matter
 
         writer.end_container # End root structure
 
-        io.rewind.to_slice
-      end
-
-      # OLD manual encoding (keeping as reference)
-      def self.encode_read_response_manual(response : InteractionModel::ReadResponse) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        # ReadResponse/ReportData structure (anonymous)
-        writer.start_structure(nil)
-
-        # Tag 1: suppressResponse (optional, defaults to false)
-        if response.suppress_response
-          writer.put(1_u8, true)
-        end
-
-        # Tag 2: subscriptionId (optional) - not implemented yet
-        # if subscription_id = response.subscription_id
-        #   writer.put(2_u8, subscription_id)
-        # end
-
-        # Tag 3: AttributeReports (array)
-        if response.attribute_reports.size > 0
-          writer.start_array(3_u8)
-          response.attribute_reports.each do |report|
-            writer.start_structure(nil)
-
-            # Tag 0: AttributeDataIB
-            writer.start_structure(0_u8)
-
-            # Tag 0: DataVersion
-            writer.put(0_u8, report.data_version)
-
-            # Tag 1: Path (AttributePathIB)
-            writer.start_structure(1_u8)
-            if endpoint = report.path.endpoint
-              writer.put(2_u8, endpoint)
-            end
-            if cluster = report.path.cluster
-              writer.put(3_u8, cluster)
-            end
-            if attribute = report.path.attribute
-              writer.put(4_u8, attribute)
-            end
-            writer.end_container # End Path
-
-            # Tag 2: Data (TLV value - already encoded)
-            # Parse and unwrap the "Any" wrapper from reader.get
-            reader = TLV::Reader.new(report.value)
-            value_data = reader.get
-
-            # Unwrap "Any" key if present (reader.get wraps values in {"Any" => value})
-            actual_value = if value_data.is_a?(Hash) && value_data.has_key?("Any")
-                             value_data["Any"]
-                           else
-                             value_data
-                           end
-
-            writer.put(2_u8, actual_value)
-
-            writer.end_container # End AttributeDataIB
-            writer.end_container # End array element
-          end
-          writer.end_container # End array
-        end
-
-        # Tag 4: EventReports (array, optional) - not implemented, would go here
-
-        # Tag 5: MoreChunkedMessages (optional, defaults to false)
-        if response.more_chunks
-          writer.put(5_u8, true)
-        end
-
-        # Tag 0xFF: InteractionModelRevision (REQUIRED!)
-        # Per Matter spec and matter.js - this is a required field
-        writer.put(0xFF_u8, 12_u8) # IM revision 12 (Matter 1.3)
-
-        writer.end_container # End ReadResponse
         io.rewind.to_slice
       end
     end

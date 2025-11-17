@@ -265,6 +265,10 @@ module Matter
             48 # Derive 48 bytes: I2R + R2I + AttestationChallenge
           )
 
+          Log.debug { "  Full HKDF output (48 bytes): #{session_keys.hexstring}" }
+          Log.debug { "  I2R (bytes 0-15):  #{session_keys[0, 16].hexstring}" }
+          Log.debug { "  R2I (bytes 16-31): #{session_keys[16, 16].hexstring}" }
+
           # Split keys - responder uses:
           # - R2I (bytes 16-31) for encryption (responder-to-initiator)
           # - I2R (bytes 0-15) for decryption (initiator-to-responder)

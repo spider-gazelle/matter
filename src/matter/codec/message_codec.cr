@@ -87,10 +87,12 @@ module Matter
           destination_node_id : DataType::NodeId?,
           destination_group_id : DataType::GroupId?,
         ) : UInt8
+          Log.debug { "compute_flags called: source=#{source_node_id.inspect}, dest=#{destination_node_id.inspect}, group=#{destination_group_id.inspect}" }
           flags = (HEADER_VERSION << 4).to_u8
           flags |= PacketHeaderFlag::HasSourceNodeId.value unless source_node_id.nil?
           flags |= PacketHeaderFlag::HasDestNodeId.value unless destination_node_id.nil?
           flags |= PacketHeaderFlag::HasDestGroupId.value unless destination_group_id.nil?
+          Log.debug { "compute_flags result: 0x#{flags.to_s(16)}, source_nil?=#{source_node_id.nil?}, dest_nil?=#{destination_node_id.nil?}" }
           flags
         end
 
@@ -144,6 +146,7 @@ module Matter
           byte_format.encode(UInt8.new(security_flags), io)
           byte_format.encode(UInt32.new(packet_header.message_id), io)
 
+          Log.debug { "encode_packet_header: source_node_id=#{packet_header.source_node_id.inspect}, nil?=#{packet_header.source_node_id.nil?}" }
           byte_format.encode(UInt64.new(packet_header.source_node_id.not_nil!.id), io) unless packet_header.source_node_id.nil?
           byte_format.encode(UInt64.new(packet_header.destination_node_id.not_nil!.id), io) unless packet_header.destination_node_id.nil?
           byte_format.encode(UInt32.new(packet_header.destination_group_id.not_nil!.id), io) unless packet_header.destination_group_id.nil?
