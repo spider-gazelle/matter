@@ -758,11 +758,12 @@ module Matter
       # TLV Encoding Helpers
       # ========================================================================
 
-      # Helper: Encode UInt64 as bytes
+      # Helper: Encode UInt64 as TLV bytes
       private def encode_uint64(value : UInt64) : Bytes
         io = IO::Memory.new
-        io.write_bytes(value, IO::ByteFormat::LittleEndian)
-        io.to_slice
+        writer = TLV::Writer.new(io)
+        writer.put(nil, value)
+        io.rewind.to_slice
       end
 
       # Helper: Encode BasicCommissioningInfo as TLV structure

@@ -297,6 +297,37 @@ module Matter
           end
         end
 
+        # Add AttributeStatus entries to the same array
+        response.attribute_status.each_with_index do |status, idx|
+          begin
+            # Start AttributeReportIB
+            writer.start_structure(nil)
+
+            # Tag 0: AttributeStatusIB (for errors)
+            writer.start_structure(0_u8)
+
+            # Tag 0: path (using PATH container!)
+            writer.start_path(0_u8)
+            writer.put(2_u8, status.path.endpoint.not_nil!) if status.path.endpoint
+            writer.put(3_u8, status.path.cluster.not_nil!) if status.path.cluster
+            writer.put(4_u8, status.path.attribute.not_nil!) if status.path.attribute
+            writer.end_container # End path
+
+            # Tag 1: status (StatusIB structure)
+            writer.start_structure(1_u8)
+            writer.put(0_u8, status.status.status.value) # Tag 0: status code
+            # Tag 1: cluster-status (optional) - not implemented
+            writer.end_container # End StatusIB
+
+            writer.end_container # End AttributeStatusIB
+            writer.end_container # End AttributeReportIB
+
+            Log.debug { "Encoded attribute status #{idx}: endpoint=#{status.path.endpoint}, cluster=0x#{status.path.cluster.try(&.to_s(16))}, attr=#{status.path.attribute}, status=#{status.status.status}" }
+          rescue ex
+            Log.error { "Failed to encode status #{idx}: #{ex.message}" }
+          end
+        end
+
         writer.end_container # End attributeReports array
 
         # Tag 4: eventReports (array, optional) - not implemented yet
