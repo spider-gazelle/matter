@@ -112,7 +112,7 @@ module Matter
         end
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Bytes
+      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_ADD_GROUP
           # Simplified: extract group_id from first 2 bytes, group_name from rest
@@ -124,7 +124,7 @@ module Matter
             status = add_group(group_id, group_name)
 
             # Return AddGroupResponse
-            encode_add_group_response(status, group_id)
+            Cluster::CommandResponse.new(CMD_ADD_GROUP_RESPONSE, encode_add_group_response(status, group_id))
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
           end
@@ -132,13 +132,13 @@ module Matter
           # Extract group_id
           if fields.size >= 2
             group_id = IO::ByteFormat::LittleEndian.decode(UInt16, fields[0, 2])
-            view_group(group_id)
+            Cluster::CommandResponse.new(CMD_VIEW_GROUP_RESPONSE, view_group(group_id))
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
           end
         when CMD_GET_GROUP_MEMBERSHIP
           # Simplified: return all groups
-          get_group_membership
+          Cluster::CommandResponse.new(CMD_GET_GROUP_MEMBERSHIP_RESPONSE, get_group_membership)
         when CMD_REMOVE_GROUP
           # Extract group_id
           if fields.size >= 2
@@ -146,7 +146,7 @@ module Matter
             status = remove_group(group_id)
 
             # Return RemoveGroupResponse
-            encode_remove_group_response(status, group_id)
+            Cluster::CommandResponse.new(CMD_REMOVE_GROUP_RESPONSE, encode_remove_group_response(status, group_id))
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
           end

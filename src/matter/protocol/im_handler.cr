@@ -344,6 +344,291 @@ module Matter
 
         io.rewind.to_slice
       end
+
+      # Parse InvokeRequest from decrypted TLV payload
+      def self.parse_invoke_request(payload : Bytes) : InteractionModel::InvokeRequest?
+        reader = TLV::Reader.new(payload)
+        data = reader.get.as(Hash(TLV::Tag, TLV::Value))
+
+        # InvokeRequest structure (TLV anonymous)
+        request_data = data["Any"].as(Hash(TLV::Tag, TLV::Value))
+
+        Log.debug { "InvokeRequest TLV structure: #{request_data.keys.inspect}" }
+
+        # Extract suppressResponse (tag 0, optional, defaults to false)
+        suppress_response = request_data[0_u8]?.as?(Bool) || false
+
+        # Extract timedRequest (tag 1, optional, defaults to false)
+        timed_request = request_data[1_u8]?.as?(Bool) || false
+
+        # Extract invokeRequests (tag 2, array)
+        invoke_requests = [] of InteractionModel::CommandDataIB
+        if invoke_req_array = request_data[2_u8]?.as?(Array)
+          Log.debug { "Found #{invoke_req_array.size} invoke request(s)" }
+
+          invoke_req_array.each_with_index do |invoke_req, idx|
+            # Extract CommandDataIB structure
+            cmd_data = case invoke_req
+                       when Hash
+                         invoke_req.as(Hash(TLV::Tag, TLV::Value))
+                       else
+                         next
+                       end
+
+            # Extract commandPath (tag 0, LIST container with endpoint/cluster/command)
+            cmd_path_raw = cmd_data[0_u8]?
+            unless cmd_path_raw
+              Log.warn { "Invoke request #{idx} missing commandPath" }
+              next
+            end
+
+            cmd_path_data = case cmd_path_raw
+                            when TLV::PathContainer
+                              # PathContainer wrapper
+                              {
+                                endpoint: cmd_path_raw[0_u8]?,
+                                cluster:  cmd_path_raw[1_u8]?,
+                                command:  cmd_path_raw[2_u8]?,
+                              }
+                            when Hash
+                              # Direct hash
+                              hash = cmd_path_raw.as(Hash(TLV::Tag, TLV::Value))
+                              {
+                                endpoint: hash[0_u8]?,
+                                cluster:  hash[1_u8]?,
+                                command:  hash[2_u8]?,
+                              }
+                            else
+                              Log.warn { "Invoke request #{idx} has unexpected commandPath type: #{cmd_path_raw.class}" }
+                              next
+                            end
+
+            # Convert to proper types
+            endpoint = if ep = cmd_path_data[:endpoint]
+                         case ep
+                         when Int
+                           ep.to_u16
+                         when UInt16
+                           ep
+                         else
+                           nil
+                         end
+                       end
+
+            cluster = if cl = cmd_path_data[:cluster]
+                        case cl
+                        when Int
+                          cl.to_u32
+                        when UInt32
+                          cl
+                        else
+                          nil
+                        end
+                      end
+
+            command = if cm = cmd_path_data[:command]
+                        case cm
+                        when Int
+                          cm.to_u32
+                        when UInt32
+                          cm
+                        else
+                          nil
+                        end
+                      end
+
+            unless cluster && command
+              Log.warn { "Invoke request #{idx} missing cluster or command" }
+              next
+            end
+
+            command_path = InteractionModel::CommandPath.new(
+              endpoint: endpoint || 0_u16, # Default to endpoint 0 if not specified
+              cluster: cluster,
+              command: command
+            )
+
+            # Extract commandFields (tag 1, optional)
+            command_fields = if fields = cmd_data[1_u8]?
+                               # Encode the TLV value back to bytes for cluster processing
+                               io = IO::Memory.new
+                               writer = TLV::Writer.new(io)
+                               writer.put(nil, fields)
+                               io.rewind.to_slice
+                             else
+                               Bytes.empty
+                             end
+
+            Log.debug { "  Invoke #{idx}: endpoint=#{endpoint || "nil"}, cluster=0x#{cluster.to_s(16)}, command=0x#{command.to_s(16)}, fields=#{command_fields.size} bytes" }
+
+            invoke_requests << InteractionModel::CommandDataIB.new(
+              path: command_path,
+              fields: command_fields
+            )
+          end
+        end
+
+        InteractionModel::InvokeRequest.new(
+          invoke_requests: invoke_requests,
+          timed_request: timed_request,
+          suppress_response: suppress_response
+        )
+      rescue ex
+        Log.error(exception: ex) { "Failed to parse InvokeRequest: #{ex.message}" }
+        nil
+      end
+
+      # Execute commands from invoke requests
+      def self.invoke_commands(
+        invoke_requests : Array(InteractionModel::CommandDataIB),
+        clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
+      ) : InteractionModel::InvokeResponse
+        invoke_responses = [] of InteractionModel::CommandResponse
+        invoke_status = [] of InteractionModel::CommandStatus
+
+        invoke_requests.each do |cmd_data|
+          path = cmd_data.path
+          Log.debug { "Invoking command: endpoint=#{path.endpoint}, cluster=0x#{path.cluster.to_s(16)}, command=0x#{path.command.to_s(16)}" }
+
+          # Find cluster
+          endpoint_id = path.endpoint || 0_u16 # Default to endpoint 0 if not specified
+          cluster = clusters[{endpoint_id, path.cluster}]?
+
+          unless cluster
+            # Cluster not found
+            Log.warn { "Cluster not found: endpoint=#{endpoint_id}, cluster=0x#{path.cluster.to_s(16)}" }
+            invoke_status << InteractionModel::CommandStatus.new(
+              path: path,
+              status: InteractionModel::Status.new(InteractionModel::StatusCode::NotFound)
+            )
+            next
+          end
+
+          # Invoke command on cluster
+          result = cluster.invoke_command(path.command, cmd_data.fields)
+
+          if result.is_a?(InteractionModel::Status)
+            # Error status
+            invoke_status << InteractionModel::CommandStatus.new(
+              path: path,
+              status: result
+            )
+          elsif result.is_a?(Cluster::CommandResponse)
+            # Success - command response data with response command ID
+            response_path = InteractionModel::CommandPath.new(
+              endpoint: path.endpoint,
+              cluster: path.cluster,
+              command: result.command_id # Use response command ID from cluster
+            )
+            invoke_responses << InteractionModel::CommandResponse.new(
+              path: response_path,
+              fields: result.data
+            )
+          end
+        end
+
+        InteractionModel::InvokeResponse.new(
+          invoke_responses: invoke_responses,
+          invoke_status: invoke_status,
+          suppress_response: false,
+          more_chunked_messages: false
+        )
+      end
+
+      # Encode InvokeResponse manually to preserve PATH container types
+      def self.encode_invoke_response(response : InteractionModel::InvokeResponse) : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        # Start root structure (anonymous) - InvokeResponseMessage
+        writer.start_structure(nil)
+
+        # Tag 0: suppressResponse (required, even though deprecated)
+        writer.put(0_u8, response.suppress_response)
+
+        # Tag 1: invokeResponses (array)
+        writer.start_array(1_u8)
+
+        # Add command response data
+        response.invoke_responses.each_with_index do |cmd_response, idx|
+          begin
+            # Parse command response fields
+            reader = TLV::Reader.new(cmd_response.fields)
+            fields_data = reader.get
+            actual_fields = fields_data.is_a?(Hash) && fields_data.has_key?("Any") ? fields_data["Any"] : fields_data
+
+            # Start InvokeResponseIB
+            writer.start_structure(nil)
+
+            # Tag 0: CommandDataIB
+            writer.start_structure(0_u8)
+
+            # Tag 0: commandPath (using PATH container!)
+            writer.start_path(0_u8)
+            writer.put(0_u8, cmd_response.path.endpoint) if cmd_response.path.endpoint
+            writer.put(1_u8, cmd_response.path.cluster)
+            writer.put(2_u8, cmd_response.path.command)
+            writer.end_container # End commandPath
+
+            # Tag 1: commandFields (optional)
+            unless cmd_response.fields.empty?
+              writer.put(1_u8, actual_fields)
+            end
+
+            writer.end_container # End CommandDataIB
+            writer.end_container # End InvokeResponseIB
+
+            Log.debug { "Encoded command response #{idx}: endpoint=#{cmd_response.path.endpoint}, cluster=0x#{cmd_response.path.cluster.to_s(16)}, command=0x#{cmd_response.path.command.to_s(16)}" }
+          rescue ex
+            Log.error { "Failed to encode response #{idx}: #{ex.message}" }
+          end
+        end
+
+        # Add command status entries
+        response.invoke_status.each_with_index do |cmd_status, idx|
+          begin
+            # Start InvokeResponseIB
+            writer.start_structure(nil)
+
+            # Tag 1: CommandStatusIB (for errors)
+            writer.start_structure(1_u8)
+
+            # Tag 0: commandPath (using PATH container!)
+            writer.start_path(0_u8)
+            writer.put(0_u8, cmd_status.path.endpoint) if cmd_status.path.endpoint
+            writer.put(1_u8, cmd_status.path.cluster)
+            writer.put(2_u8, cmd_status.path.command)
+            writer.end_container # End commandPath
+
+            # Tag 1: status (StatusIB structure)
+            writer.start_structure(1_u8)
+            writer.put(0_u8, cmd_status.status.status.value) # Tag 0: status code
+            # Tag 1: cluster-status (optional) - not implemented
+            writer.end_container # End StatusIB
+
+            writer.end_container # End CommandStatusIB
+            writer.end_container # End InvokeResponseIB
+
+            Log.debug { "Encoded command status #{idx}: endpoint=#{cmd_status.path.endpoint}, cluster=0x#{cmd_status.path.cluster.to_s(16)}, command=0x#{cmd_status.path.command.to_s(16)}, status=#{cmd_status.status.status}" }
+          rescue ex
+            Log.error { "Failed to encode status #{idx}: #{ex.message}" }
+          end
+        end
+
+        writer.end_container # End invokeResponses array
+
+        # Tag 2: moreChunkedMessages (optional)
+        if response.more_chunked_messages
+          writer.put(2_u8, true)
+        end
+
+        # Tag 0xFF: interactionModelRevision (REQUIRED, Matter 1.3 = revision 12)
+        writer.put(0xFF_u8, 12_u8)
+
+        writer.end_container # End root structure
+
+        io.rewind.to_slice
+      end
     end
   end
 end

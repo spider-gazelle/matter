@@ -307,7 +307,7 @@ module Matter
         super
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Bytes
+      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_OPEN_COMMISSIONING_WINDOW
           handle_open_commissioning_window(fields)
@@ -461,7 +461,7 @@ module Matter
       # Internal Command Handlers (cluster/ version style)
       # ========================================================================
 
-      private def handle_open_commissioning_window(fields : Bytes) : Bytes
+      private def handle_open_commissioning_window(fields : Bytes) : InteractionModel::Status
         # Parse TLV-encoded command using the TLV library
         begin
           request = OpenCommissioningWindowRequest.new(fields)
@@ -471,43 +471,43 @@ module Matter
           vendor_id = @session_vendor_id
 
           # Try backward compatibility callback first
-          status = if callback = @on_open_commissioning_window
-                     callback.call(
-                       request.commissioning_timeout,
-                       request.pake_passcode_verifier,
-                       request.discriminator,
-                       request.salt,
-                       request.iterations,
-                       fabric_index || 1_u8,
-                       vendor_id || 0xFFF1_u16
-                     )
-                   else
-                     # Use new handler
-                     begin
-                       open_commissioning_window(request, fabric_index, vendor_id)
-                       StatusCode.new(0) # Success
-                     rescue ex : BusyError
-                       StatusCode::Busy
-                     rescue ex : PAKEParameterError
-                       StatusCode::PAKEParameterError
-                     rescue ex
-                       StatusCode::PAKEParameterError
-                     end
-                   end
+          status_code = if callback = @on_open_commissioning_window
+                          callback.call(
+                            request.commissioning_timeout,
+                            request.pake_passcode_verifier,
+                            request.discriminator,
+                            request.salt,
+                            request.iterations,
+                            fabric_index || 1_u8,
+                            vendor_id || 0xFFF1_u16
+                          )
+                        else
+                          # Use new handler
+                          begin
+                            open_commissioning_window(request, fabric_index, vendor_id)
+                            StatusCode.new(0) # Success
+                          rescue ex : BusyError
+                            StatusCode::Busy
+                          rescue ex : PAKEParameterError
+                            StatusCode::PAKEParameterError
+                          rescue ex
+                            StatusCode::PAKEParameterError
+                          end
+                        end
 
-          # Encode response (status code only for now)
-          response = IO::Memory.new
-          response.write_bytes(status.value, IO::ByteFormat::LittleEndian)
-          response.to_slice
+          # Map StatusCode to InteractionModel::StatusCode
+          im_status_code = case status_code.value
+                           when 0                      then InteractionModel::StatusCode::Success
+                           when StatusCode::Busy.value then InteractionModel::StatusCode::Busy
+                           else                             InteractionModel::StatusCode::Failure
+                           end
+          InteractionModel::Status.new(im_status_code)
         rescue ex
-          # Return error response
-          response = IO::Memory.new
-          response.write_bytes(StatusCode::PAKEParameterError.value, IO::ByteFormat::LittleEndian)
-          response.to_slice
+          InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
         end
       end
 
-      private def handle_open_basic_commissioning_window(fields : Bytes) : Bytes
+      private def handle_open_basic_commissioning_window(fields : Bytes) : InteractionModel::Status
         # Parse TLV-encoded command using the TLV library
         begin
           request = OpenBasicCommissioningWindowRequest.new(fields)
@@ -517,62 +517,64 @@ module Matter
           vendor_id = @session_vendor_id
 
           # Try backward compatibility callback first
-          status = if callback = @on_open_basic_commissioning_window
-                     callback.call(
-                       request.commissioning_timeout,
-                       fabric_index || 1_u8,
-                       vendor_id || 0xFFF1_u16
-                     )
-                   else
-                     # Use new handler
-                     begin
-                       open_basic_commissioning_window(request, fabric_index, vendor_id)
-                       StatusCode.new(0) # Success
-                     rescue ex : BusyError
-                       StatusCode::Busy
-                     rescue ex
-                       StatusCode::Busy
-                     end
-                   end
+          status_code = if callback = @on_open_basic_commissioning_window
+                          callback.call(
+                            request.commissioning_timeout,
+                            fabric_index || 1_u8,
+                            vendor_id || 0xFFF1_u16
+                          )
+                        else
+                          # Use new handler
+                          begin
+                            open_basic_commissioning_window(request, fabric_index, vendor_id)
+                            StatusCode.new(0) # Success
+                          rescue ex : BusyError
+                            StatusCode::Busy
+                          rescue ex
+                            StatusCode::Busy
+                          end
+                        end
 
-          # Encode response (status code only for now)
-          response = IO::Memory.new
-          response.write_bytes(status.value, IO::ByteFormat::LittleEndian)
-          response.to_slice
+          # Map StatusCode to InteractionModel::StatusCode
+          im_status_code = case status_code.value
+                           when 0                      then InteractionModel::StatusCode::Success
+                           when StatusCode::Busy.value then InteractionModel::StatusCode::Busy
+                           else                             InteractionModel::StatusCode::Failure
+                           end
+          InteractionModel::Status.new(im_status_code)
         rescue ex
-          # Return error response
-          response = IO::Memory.new
-          response.write_bytes(StatusCode::Busy.value, IO::ByteFormat::LittleEndian)
-          response.to_slice
+          InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
         end
       end
 
-      private def handle_revoke_commissioning(fields : Bytes) : Bytes
+      private def handle_revoke_commissioning(fields : Bytes) : InteractionModel::Status
         # RevokeCommissioning command has no parameters
 
         # Try backward compatibility callback first
-        status = if callback = @on_revoke_commissioning
-                   callback.call
-                 else
-                   # Use new handler
-                   begin
-                     revoke_commissioning
-                     StatusCode.new(0) # Success
-                   rescue ex : WindowNotOpenError
-                     StatusCode::WindowNotOpen
-                   rescue ex
-                     StatusCode::WindowNotOpen
-                   end
-                 end
+        status_code = if callback = @on_revoke_commissioning
+                        callback.call
+                      else
+                        # Use new handler
+                        begin
+                          revoke_commissioning
+                          StatusCode.new(0) # Success
+                        rescue ex : WindowNotOpenError
+                          StatusCode::WindowNotOpen
+                        rescue ex
+                          StatusCode::WindowNotOpen
+                        end
+                      end
 
-        # Encode response (status code only for now)
-        response = IO::Memory.new
-        if status.is_a?(StatusCode)
-          response.write_bytes(status.value, IO::ByteFormat::LittleEndian)
-        else
-          response.write_bytes(0_u8, IO::ByteFormat::LittleEndian) # Success
-        end
-        response.to_slice
+        # Map StatusCode to InteractionModel::StatusCode
+        im_status_code = if status_code.is_a?(StatusCode)
+                           case status_code.value
+                           when 0 then InteractionModel::StatusCode::Success
+                           else        InteractionModel::StatusCode::Failure
+                           end
+                         else
+                           InteractionModel::StatusCode::Success
+                         end
+        InteractionModel::Status.new(im_status_code)
       end
 
       # ========================================================================

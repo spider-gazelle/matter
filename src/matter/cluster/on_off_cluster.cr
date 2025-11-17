@@ -92,7 +92,7 @@ module Matter
         ]
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Bytes
+      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_OFF
           set_on_off(false)

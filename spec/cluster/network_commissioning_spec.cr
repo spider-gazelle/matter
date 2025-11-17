@@ -323,10 +323,10 @@ describe Matter::Cluster::NetworkCommissioningCluster do
 
       # Invoke command
       result = cluster.invoke_command(Matter::Cluster::NetworkCommissioningCluster::CMD_SCAN_NETWORKS, request_bytes)
-      result.should be_a(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
 
       # Parse response
-      response = Matter::Cluster::Definitions::NetworkCommissioning::ScanNetworksResponse.new(result.as(Bytes))
+      response = Matter::Cluster::Definitions::NetworkCommissioning::ScanNetworksResponse.new(result.as(Matter::Cluster::CommandResponse).data)
       response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::Success)
       response.wifi_scan_results.should_not be_nil
     end
@@ -351,10 +351,10 @@ describe Matter::Cluster::NetworkCommissioningCluster do
 
       # Invoke command
       result = cluster.invoke_command(Matter::Cluster::NetworkCommissioningCluster::CMD_ADD_OR_UPDATE_WIFI_NETWORK, request_bytes)
-      result.should be_a(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
 
       # Parse response
-      response = Matter::Cluster::Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(result.as(Bytes))
+      response = Matter::Cluster::Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(result.as(Matter::Cluster::CommandResponse).data)
       response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::Success)
     end
 
@@ -384,10 +384,10 @@ describe Matter::Cluster::NetworkCommissioningCluster do
 
       # Invoke command
       result = cluster.invoke_command(Matter::Cluster::NetworkCommissioningCluster::CMD_CONNECT_NETWORK, request_bytes)
-      result.should be_a(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
 
       # Parse response
-      response = Matter::Cluster::Definitions::NetworkCommissioning::ConnectNetworkResponse.new(result.as(Bytes))
+      response = Matter::Cluster::Definitions::NetworkCommissioning::ConnectNetworkResponse.new(result.as(Matter::Cluster::CommandResponse).data)
       response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::Success)
     end
   end

@@ -509,24 +509,26 @@ module Matter
         super
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Bytes
+      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_ATTESTATION_REQUEST
-          handle_attestation_request(fields)
+          Cluster::CommandResponse.new(CMD_ATTESTATION_RESPONSE, handle_attestation_request(fields))
         when CMD_CERTIFICATE_CHAIN_REQUEST
-          handle_certificate_chain_request(fields)
+          Cluster::CommandResponse.new(CMD_CERTIFICATE_CHAIN_RESPONSE, handle_certificate_chain_request(fields))
         when CMD_CSR_REQUEST
-          handle_csr_request(fields)
+          Cluster::CommandResponse.new(CMD_CSR_RESPONSE, handle_csr_request(fields))
         when CMD_ADD_NOC
-          handle_add_noc(fields)
+          Cluster::CommandResponse.new(CMD_NOC_RESPONSE, handle_add_noc(fields))
         when CMD_UPDATE_NOC
-          handle_update_noc(fields)
+          Cluster::CommandResponse.new(CMD_NOC_RESPONSE, handle_update_noc(fields))
         when CMD_UPDATE_FABRIC_LABEL
-          handle_update_fabric_label(fields)
+          Cluster::CommandResponse.new(CMD_NOC_RESPONSE, handle_update_fabric_label(fields))
         when CMD_REMOVE_FABRIC
-          handle_remove_fabric(fields)
+          Cluster::CommandResponse.new(CMD_NOC_RESPONSE, handle_remove_fabric(fields))
         when CMD_ADD_TRUSTED_ROOT_CERTIFICATE
+          # AddTrustedRootCertificate has no response - return success status
           handle_add_trusted_root_certificate(fields)
+          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         else
           super
         end

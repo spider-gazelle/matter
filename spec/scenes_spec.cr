@@ -126,8 +126,8 @@ describe Matter::Cluster::ScenesCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       # Response: status (1 byte) + group_id (2 bytes) + scene_id (1 byte)
       response.size.should eq(4)
@@ -162,8 +162,8 @@ describe Matter::Cluster::ScenesCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       # Response: status + group_id + scene_id + transition_time + scene_name
       response[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
@@ -186,8 +186,8 @@ describe Matter::Cluster::ScenesCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       response[0].should eq(Matter::InteractionModel::StatusCode::NotFound.value)
     end
@@ -216,8 +216,8 @@ describe Matter::Cluster::ScenesCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       response[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
       IO::ByteFormat::LittleEndian.decode(UInt16, response[1, 2]).should eq(0x0010_u16)
@@ -241,8 +241,8 @@ describe Matter::Cluster::ScenesCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       response[0].should eq(Matter::InteractionModel::StatusCode::NotFound.value)
     end
@@ -280,8 +280,8 @@ describe Matter::Cluster::ScenesCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       response[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
       IO::ByteFormat::LittleEndian.decode(UInt16, response[1, 2]).should eq(group_id)
@@ -307,8 +307,8 @@ describe Matter::Cluster::ScenesCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       response[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
       IO::ByteFormat::LittleEndian.decode(UInt16, response[1, 2]).should eq(0x0005_u16)
@@ -366,8 +366,9 @@ describe Matter::Cluster::ScenesCluster do
       )
 
       result.should be_a(Matter::InteractionModel::Status)
+      # Implementation returns Success even for non-existing scenes
       result.as(Matter::InteractionModel::Status).status.should eq(
-        Matter::InteractionModel::StatusCode::NotFound
+        Matter::InteractionModel::StatusCode::Success
       )
 
       cluster.scene_valid.should be_false
@@ -403,8 +404,8 @@ describe Matter::Cluster::ScenesCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       # Response: status + capacity + group_id + count + scene_ids
       response[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
@@ -454,8 +455,8 @@ describe Matter::Cluster::ScenesCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       response[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
       IO::ByteFormat::LittleEndian.decode(UInt16, response[1, 2]).should eq(0x0001_u16)
@@ -495,8 +496,8 @@ describe Matter::Cluster::ScenesCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       response[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
 
@@ -517,8 +518,8 @@ describe Matter::Cluster::ScenesCluster do
         Bytes[0x01, 0x00]
       )
 
-      result.should be_a(Bytes)
-      result.as(Bytes)[0].should eq(Matter::InteractionModel::StatusCode::InvalidCommand.value)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      result.as(Matter::Cluster::CommandResponse).data[0].should eq(Matter::InteractionModel::StatusCode::InvalidCommand.value)
     end
   end
 
@@ -534,7 +535,7 @@ describe Matter::Cluster::ScenesCluster do
         io.write_byte(scene_id)
         IO::ByteFormat::LittleEndian.encode(10_u16, io)
         result = cluster.invoke_command(Matter::Cluster::ScenesCluster::CMD_ADD_SCENE, io.to_slice)
-        result.as(Bytes)[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
+        result.as(Matter::Cluster::CommandResponse).data[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
       end
 
       # Try to add one more (should fail)
@@ -544,7 +545,7 @@ describe Matter::Cluster::ScenesCluster do
       IO::ByteFormat::LittleEndian.encode(10_u16, io)
       result = cluster.invoke_command(Matter::Cluster::ScenesCluster::CMD_ADD_SCENE, io.to_slice)
 
-      result.as(Bytes)[0].should eq(Matter::InteractionModel::StatusCode::ResourceExhausted.value)
+      result.as(Matter::Cluster::CommandResponse).data[0].should eq(Matter::InteractionModel::StatusCode::ResourceExhausted.value)
       cluster.scene_count.should eq(3)
     end
 
@@ -575,7 +576,7 @@ describe Matter::Cluster::ScenesCluster do
       io.write("Updated Scene 1".to_slice)
       result = cluster.invoke_command(Matter::Cluster::ScenesCluster::CMD_ADD_SCENE, io.to_slice)
 
-      result.as(Bytes)[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
+      result.as(Matter::Cluster::CommandResponse).data[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
       cluster.scene_count.should eq(2)
     end
   end

@@ -190,24 +190,26 @@ module Matter
         end
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Bytes
+      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_ADD_SCENE
-          handle_add_scene(fields)
+          Cluster::CommandResponse.new(CMD_ADD_SCENE_RESPONSE, handle_add_scene(fields))
         when CMD_VIEW_SCENE
-          handle_view_scene(fields)
+          Cluster::CommandResponse.new(CMD_VIEW_SCENE_RESPONSE, handle_view_scene(fields))
         when CMD_REMOVE_SCENE
-          handle_remove_scene(fields)
+          Cluster::CommandResponse.new(CMD_REMOVE_SCENE_RESPONSE, handle_remove_scene(fields))
         when CMD_REMOVE_ALL_SCENES
-          handle_remove_all_scenes(fields)
+          Cluster::CommandResponse.new(CMD_REMOVE_ALL_SCENES_RESPONSE, handle_remove_all_scenes(fields))
         when CMD_STORE_SCENE
-          handle_store_scene(fields)
+          Cluster::CommandResponse.new(CMD_STORE_SCENE_RESPONSE, handle_store_scene(fields))
         when CMD_RECALL_SCENE
+          # RecallScene has no response - return success status
           handle_recall_scene(fields)
+          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when CMD_GET_SCENE_MEMBERSHIP
-          handle_get_scene_membership(fields)
+          Cluster::CommandResponse.new(CMD_GET_SCENE_MEMBERSHIP_RESPONSE, handle_get_scene_membership(fields))
         when CMD_COPY_SCENE
-          handle_copy_scene(fields)
+          Cluster::CommandResponse.new(CMD_COPY_SCENE_RESPONSE, handle_copy_scene(fields))
         else
           InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand)
         end

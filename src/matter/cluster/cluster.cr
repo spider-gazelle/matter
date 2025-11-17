@@ -43,6 +43,15 @@ module Matter
       end
     end
 
+    # Command response - returned by invoke_command
+    struct CommandResponse
+      property command_id : UInt32
+      property data : Bytes
+
+      def initialize(@command_id : UInt32, @data : Bytes)
+      end
+    end
+
     # Event metadata
     struct EventMetadata
       property id : DataType::EventId
@@ -116,7 +125,7 @@ module Matter
       end
 
       # Invoke a command
-      def invoke_command(command_id : UInt32, fields : Bytes = Bytes.new(0)) : InteractionModel::Status | Bytes
+      def invoke_command(command_id : UInt32, fields : Bytes = Bytes.new(0)) : InteractionModel::Status | CommandResponse
         metadata = commands.find { |c| c.id.id == command_id }
         return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand) unless metadata
 
@@ -125,7 +134,7 @@ module Matter
       end
 
       # Handle command implementation (to be overridden)
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Bytes
+      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | CommandResponse
         InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand)
       end
 

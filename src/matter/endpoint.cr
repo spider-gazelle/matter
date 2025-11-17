@@ -122,7 +122,14 @@ module Matter
       cluster = get_cluster(cluster_id)
       return InteractionModel::Status.new(InteractionModel::StatusCode::Failure) unless cluster
 
-      cluster.invoke_command(command_id, fields)
+      result = cluster.invoke_command(command_id, fields)
+
+      # Extract data from CommandResponse for backward compatibility
+      if result.is_a?(Cluster::CommandResponse)
+        result.data
+      else
+        result
+      end
     end
 
     # Get a typed cluster by class

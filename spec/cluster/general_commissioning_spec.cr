@@ -49,8 +49,8 @@ describe Matter::Cluster::GeneralCommissioningCluster do
 
       value = cluster.read_attribute(Matter::Cluster::GeneralCommissioningCluster::ATTR_BREADCRUMB)
       value.should be_a(Bytes)
-      # UInt64 encoded as 8 bytes
-      value.as(Bytes).size.should eq(8)
+      # UInt64 value 0 is TLV-encoded as 2 bytes (tag + value)
+      value.as(Bytes).size.should eq(2)
     end
 
     it "writes Breadcrumb attribute" do
@@ -183,7 +183,7 @@ describe Matter::Cluster::GeneralCommissioningCluster do
 
       command_data = create_arm_failsafe_request_tlv(60_u16, 0x1234_u64)
       result = cluster.invoke_command(Matter::Cluster::GeneralCommissioningCluster::CMD_ARM_FAIL_SAFE, command_data)
-      result.should be_a(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
     end
 
     it "handles SetRegulatoryConfig command" do
@@ -192,7 +192,7 @@ describe Matter::Cluster::GeneralCommissioningCluster do
 
       command_data = create_set_regulatory_config_request_tlv(2_u8, "US", 0x5678_u64) # IndoorOutdoor
       result = cluster.invoke_command(Matter::Cluster::GeneralCommissioningCluster::CMD_SET_REGULATORY_CONFIG, command_data)
-      result.should be_a(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
     end
 
     it "handles CommissioningComplete command" do
@@ -201,7 +201,7 @@ describe Matter::Cluster::GeneralCommissioningCluster do
 
       # CommissioningComplete has no request parameters, but still needs empty TLV structure
       result = cluster.invoke_command(Matter::Cluster::GeneralCommissioningCluster::CMD_COMMISSIONING_COMPLETE, Bytes.new(0))
-      result.should be_a(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
     end
   end
 

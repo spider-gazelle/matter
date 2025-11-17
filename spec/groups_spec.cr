@@ -90,8 +90,8 @@ describe Matter::Cluster::GroupsCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       # Response: status (1 byte) + group_id (2 bytes)
       response.size.should eq(3)
@@ -122,8 +122,8 @@ describe Matter::Cluster::GroupsCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       # Response: status (1 byte) + group_id (2 bytes) + group_name
       response[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
@@ -143,8 +143,8 @@ describe Matter::Cluster::GroupsCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       response[0].should eq(Matter::InteractionModel::StatusCode::NotFound.value)
       IO::ByteFormat::LittleEndian.decode(UInt16, response[1, 2]).should eq(0x9999_u16)
@@ -167,8 +167,8 @@ describe Matter::Cluster::GroupsCluster do
         Bytes.new(0)
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       # Response: capacity (1 byte) + count (1 byte) + group_ids (2 bytes each)
       capacity = response[0]
@@ -211,8 +211,8 @@ describe Matter::Cluster::GroupsCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       response[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
       IO::ByteFormat::LittleEndian.decode(UInt16, response[1, 2]).should eq(0x0010_u16)
@@ -234,8 +234,8 @@ describe Matter::Cluster::GroupsCluster do
         io.to_slice
       )
 
-      result.should be_a(Bytes)
-      response = result.as(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
+      response = result.as(Matter::Cluster::CommandResponse).data
 
       response[0].should eq(Matter::InteractionModel::StatusCode::NotFound.value)
     end
@@ -312,7 +312,7 @@ describe Matter::Cluster::GroupsCluster do
         io = IO::Memory.new
         IO::ByteFormat::LittleEndian.encode(group_id, io)
         result = cluster.invoke_command(Matter::Cluster::GroupsCluster::CMD_ADD_GROUP, io.to_slice)
-        result.as(Bytes)[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
+        result.as(Matter::Cluster::CommandResponse).data[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
       end
 
       # Try to add one more (should fail)
@@ -320,7 +320,7 @@ describe Matter::Cluster::GroupsCluster do
       IO::ByteFormat::LittleEndian.encode(0x0004_u16, io)
       result = cluster.invoke_command(Matter::Cluster::GroupsCluster::CMD_ADD_GROUP, io.to_slice)
 
-      result.as(Bytes)[0].should eq(Matter::InteractionModel::StatusCode::ResourceExhausted.value)
+      result.as(Matter::Cluster::CommandResponse).data[0].should eq(Matter::InteractionModel::StatusCode::ResourceExhausted.value)
       cluster.group_count.should eq(3)
     end
 
@@ -345,7 +345,7 @@ describe Matter::Cluster::GroupsCluster do
       io.write("Updated Group 1".to_slice)
       result = cluster.invoke_command(Matter::Cluster::GroupsCluster::CMD_ADD_GROUP, io.to_slice)
 
-      result.as(Bytes)[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
+      result.as(Matter::Cluster::CommandResponse).data[0].should eq(Matter::InteractionModel::StatusCode::Success.value)
       cluster.group_count.should eq(2)
     end
   end

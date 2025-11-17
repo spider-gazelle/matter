@@ -217,7 +217,7 @@ module Matter
         when 0x06_u8 # WriteRequest
           Log.info { "WriteRequest received (not yet implemented)" }
         when 0x08_u8 # InvokeRequest
-          Log.info { "InvokeRequest received (not yet implemented)" }
+          handle_invoke_request(msg.payload, msg, peer, session)
         else
           Log.warn { "Unknown IM message type: 0x#{msg.payload_header.message_type.to_s(16)}" }
         end
@@ -264,6 +264,53 @@ module Matter
         Log.info { "Sent ReadResponse" }
       rescue ex
         Log.error(exception: ex) { "Error handling ReadRequest: #{ex.message}" }
+      end
+
+      # Handle InvokeRequest - parse, execute commands, encode response, encrypt and send
+      private def handle_invoke_request(
+        decrypted : Bytes,
+        original_msg : Codec::MessageCodec::Message,
+        peer : Socket::IPAddress,
+        session : Session::SecureContext,
+      ) : Nil
+        Log.info { "Handling InvokeRequest" }
+
+        # Parse InvokeRequest using IMHandler
+        request = IMHandler.parse_invoke_request(decrypted)
+        unless request
+          Log.error { "Failed to parse InvokeRequest" }
+          return
+        end
+
+        Log.info { "InvokeRequest: #{request.invoke_requests.size} command(s) requested" }
+
+        # Execute commands on clusters
+        response = IMHandler.invoke_commands(request.invoke_requests, @clusters)
+
+        Log.info { "InvokeResponse: #{response.invoke_responses.size} response(s), #{response.invoke_status.size} status(es)" }
+
+        # Check if response should be suppressed
+        if request.suppress_response && response.invoke_status.empty?
+          Log.info { "Response suppressed per suppressResponse flag" }
+          return
+        end
+
+        # Encode InvokeResponse as TLV
+        response_tlv = IMHandler.encode_invoke_response(response)
+        Log.debug { "Encoded InvokeResponse TLV (#{response_tlv.size} bytes): #{response_tlv.hexstring}" }
+
+        # Send encrypted IM response
+        send_im_response(
+          original_msg: original_msg,
+          peer: peer,
+          session: session,
+          message_type: 0x09_u8, # InvokeResponse
+          payload: response_tlv
+        )
+
+        Log.info { "Sent InvokeResponse" }
+      rescue ex
+        Log.error(exception: ex) { "Error handling InvokeRequest: #{ex.message}" }
       end
 
       # Encrypt and send an Interaction Model response

@@ -532,20 +532,20 @@ module Matter
 
       # Protocol-level command handling
       # Parses TLV-encoded request bytes, calls high-level handlers, and encodes TLV response
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Bytes
+      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_SCAN_NETWORKS
-          handle_scan_networks_tlv(fields)
+          Cluster::CommandResponse.new(CMD_SCAN_NETWORKS_RESPONSE, handle_scan_networks_tlv(fields))
         when CMD_ADD_OR_UPDATE_WIFI_NETWORK
-          handle_add_or_update_wifi_network_tlv(fields)
+          Cluster::CommandResponse.new(CMD_NETWORK_CONFIG_RESPONSE, handle_add_or_update_wifi_network_tlv(fields))
         when CMD_ADD_OR_UPDATE_THREAD_NETWORK
-          handle_add_or_update_thread_network_tlv(fields)
+          Cluster::CommandResponse.new(CMD_NETWORK_CONFIG_RESPONSE, handle_add_or_update_thread_network_tlv(fields))
         when CMD_REMOVE_NETWORK
-          handle_remove_network_tlv(fields)
+          Cluster::CommandResponse.new(CMD_NETWORK_CONFIG_RESPONSE, handle_remove_network_tlv(fields))
         when CMD_CONNECT_NETWORK
-          handle_connect_network_tlv(fields)
+          Cluster::CommandResponse.new(CMD_CONNECT_NETWORK_RESPONSE, handle_connect_network_tlv(fields))
         when CMD_REORDER_NETWORK
-          handle_reorder_network_tlv(fields)
+          Cluster::CommandResponse.new(CMD_NETWORK_CONFIG_RESPONSE, handle_reorder_network_tlv(fields))
         else
           super
         end

@@ -280,7 +280,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       nonce = Bytes.new(32, 0x42_u8)
       command_data = create_attestation_request_tlv(nonce)
       result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_ATTESTATION_REQUEST, command_data)
-      result.should be_a(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
     end
 
     it "handles CertificateChainRequest command" do
@@ -289,7 +289,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       command_data = create_certificate_chain_request_tlv(1_u8) # DACCertificate
       result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_CERTIFICATE_CHAIN_REQUEST, command_data)
-      result.should be_a(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
     end
 
     it "handles CSRRequest command" do
@@ -299,7 +299,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       nonce = Bytes.new(32, 0x42_u8)
       command_data = create_csr_request_tlv(nonce)
       result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST, command_data)
-      result.should be_a(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
     end
 
     it "handles AddNOC command" do
@@ -310,7 +310,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       ipk = Bytes.new(16, 0x02_u8)
       command_data = create_add_noc_request_tlv(noc, nil, ipk, 0x1234567890_u64, 0xFFF1_u16)
       result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC, command_data)
-      result.should be_a(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
     end
 
     it "handles UpdateNOC command" do
@@ -320,7 +320,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       noc = Bytes.new(100, 0x01_u8)
       command_data = create_update_noc_request_tlv(noc, nil, 1_u8)
       result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_NOC, command_data)
-      result.should be_a(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
     end
 
     it "handles AddTrustedRootCertificate command" do
@@ -330,7 +330,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       cert = Bytes.new(100, 0x01_u8)
       command_data = create_add_trusted_root_cert_request_tlv(cert)
       result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE, command_data)
-      result.should be_a(Bytes)
+      result.should be_a(Matter::InteractionModel::Status)
     end
 
     it "handles RemoveFabric command" do
@@ -339,7 +339,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       command_data = create_remove_fabric_request_tlv(1_u8)
       result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_REMOVE_FABRIC, command_data)
-      result.should be_a(Bytes)
+      result.should be_a(Matter::Cluster::CommandResponse)
     end
   end
 
@@ -446,8 +446,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           csr_request_tlv
         )
-        csr_result.should be_a(Bytes)
-        csr_result.as(Bytes).size.should be > 0
+        csr_result.should be_a(Matter::Cluster::CommandResponse)
+        csr_result.as(Matter::Cluster::CommandResponse).data.size.should be > 0
 
         # Step 2: Add trusted root certificate
         root_cert = Bytes.new(100, 0x30_u8) # Mock DER cert starting with SEQUENCE
@@ -456,7 +456,9 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           add_root_tlv
         )
-        root_result.should be_a(Bytes)
+        # AddTrustedRootCertificate returns Status, not CommandResponse
+        root_result.should be_a(Matter::InteractionModel::Status)
+        root_result.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::Success)
 
         # Verify root cert was added
         cluster.trusted_root_certificates.size.should eq(1)
@@ -485,7 +487,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           add_noc_tlv
         )
-        noc_result.should be_a(Bytes)
+        noc_result.should be_a(Matter::Cluster::CommandResponse)
 
         # Verify fabric was added
         cluster.commissioned_fabrics.should eq(1_u8)
@@ -533,9 +535,9 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         )
 
         # Should return error response (MissingCsr)
-        result.should be_a(Bytes)
+        result.should be_a(Matter::Cluster::CommandResponse)
         # Parse response and check status
-        reader = TLV::Reader.new(result.as(Bytes))
+        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
         response = reader.get
         status = response["Any"].as(Hash)[0_u8]
         status.should eq(4_u8) # MissingCsr
@@ -575,8 +577,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         )
 
         # Should return error response (InvalidNoc - root cert not set)
-        result.should be_a(Bytes)
-        reader = TLV::Reader.new(result.as(Bytes))
+        result.should be_a(Matter::Cluster::CommandResponse)
+        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
         response = reader.get
         status = response["Any"].as(Hash)[0_u8]
         status.should eq(3_u8) # InvalidNoc
@@ -656,10 +658,10 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           update_noc_tlv
         )
 
-        result.should be_a(Bytes)
+        result.should be_a(Matter::Cluster::CommandResponse)
 
         # Parse response to check status
-        reader = TLV::Reader.new(result.as(Bytes))
+        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
         response = reader.get
         status = response["Any"].as(Hash)[0_u8]
         status.should eq(0_u8) # Success
@@ -749,8 +751,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         )
 
         # Should return InvalidNoc error (root cert cannot be set for updates)
-        result.should be_a(Bytes)
-        reader = TLV::Reader.new(result.as(Bytes))
+        result.should be_a(Matter::Cluster::CommandResponse)
+        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
         response = reader.get
         status = response["Any"].as(Hash)[0_u8]
         status.should eq(3_u8) # InvalidNoc
@@ -806,8 +808,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Should return error response
         # Parse the response - error responses have tag 0 with a string message
-        result.should be_a(Bytes)
-        reader = TLV::Reader.new(result.as(Bytes))
+        result.should be_a(Matter::Cluster::CommandResponse)
+        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
         response = reader.get
         # Error responses have a structure with tag 0 containing an error message string
         error_value = response["Any"].as(Hash)[0_u8]
@@ -829,7 +831,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           csr_request_tlv
         )
-        result1.should be_a(Bytes)
+        result1.should be_a(Matter::Cluster::CommandResponse)
 
         # Expire failsafe
         cluster.on_failsafe_expired
@@ -844,8 +846,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           new_csr_request_tlv
         )
 
-        result2.should be_a(Bytes)
-        result2.as(Bytes).size.should be > 20 # Valid CSR response
+        result2.should be_a(Matter::Cluster::CommandResponse)
+        result2.as(Matter::Cluster::CommandResponse).data.size.should be > 20 # Valid CSR response
       end
     end
 
@@ -995,8 +997,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         )
 
         # Should return FabricConflict error
-        result.should be_a(Bytes)
-        reader = TLV::Reader.new(result.as(Bytes))
+        result.should be_a(Matter::Cluster::CommandResponse)
+        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
         response = reader.get
         status = response["Any"].as(Hash)[0_u8]
         status.should eq(9_u8) # FabricConflict
@@ -1059,7 +1061,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           update_label_tlv
         )
 
-        result.should be_a(Bytes)
+        result.should be_a(Matter::Cluster::CommandResponse)
 
         # Verify label was updated
         fabric = cluster.fabrics[0]
@@ -1141,8 +1143,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         )
 
         # Should return LabelConflict error
-        result.should be_a(Bytes)
-        reader = TLV::Reader.new(result.as(Bytes))
+        result.should be_a(Matter::Cluster::CommandResponse)
+        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
         response = reader.get
         status = response["Any"].as(Hash)[0_u8]
         status.should eq(10_u8) # LabelConflict
