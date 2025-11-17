@@ -291,10 +291,11 @@ module Matter
         )
 
         # Build packet header for encrypted response
-        # CRITICAL: Use peer_session_id (their session ID), not our session_id!
-        # The recipient expects messages on THEIR session ID
+        # CRITICAL: Use peer_session_id so recipient can find the session!
+        # When chip-tool receives, it looks up by its own local session_id
+        # which is our peer_session_id
         packet_header = Codec::MessageCodec::PacketHeader.new(
-          session_id: session.peer_session_id,
+          session_id: session.peer_session_id, # Use peer's session ID so they can look it up!
           session_type: Codec::MessageCodec::SessionType::Unicast,
           message_id: 0_u32, # Will be set by transport
           privacy_enhancements: false,
@@ -321,7 +322,7 @@ module Matter
           protocol_id: PROTOCOL_INTERACTION_MODEL,
           message_type: message_type,
           initiator_message: !original_msg.payload_header.initiator_message?,
-          requires_acknowledge: false,
+          requires_acknowledge: true, # Set to true like matter.js does
           acknowledged_message_id: ack_msg_id
         )
 

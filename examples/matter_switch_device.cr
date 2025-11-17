@@ -147,6 +147,7 @@ module MatterSwitch
     property state : DeviceState
     property switch : Matter::Cluster::OnOffCluster
     property basic_info : Matter::Cluster::BasicInformationCluster
+    property general_commissioning : Matter::Cluster::GeneralCommissioningCluster
     property responder : Matter::MDNS::Responder
     property fabric_storage : FabricStorage
     property hostname : String
@@ -176,6 +177,9 @@ module MatterSwitch
         software_version_string: "1.0.1"
       )
 
+      # Create General Commissioning cluster on endpoint 0 (required for commissioning)
+      @general_commissioning = Matter::Cluster::GeneralCommissioningCluster.new(root_endpoint)
+
       # Create the switch cluster on endpoint 1
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       @switch = Matter::Cluster::OnOffCluster.new(endpoint, on_off: @state.on_off)
@@ -196,8 +200,9 @@ module MatterSwitch
       )
 
       # Wire up clusters to message handler
-      @message_handler.clusters[{0_u16, 0x0028_u32}] = @basic_info # BasicInformation on endpoint 0
-      @message_handler.clusters[{1_u16, 0x0006_u32}] = @switch     # OnOff on endpoint 1
+      @message_handler.clusters[{0_u16, 0x0028_u32}] = @basic_info            # BasicInformation on endpoint 0
+      @message_handler.clusters[{0_u16, 0x0030_u32}] = @general_commissioning # GeneralCommissioning on endpoint 0 (required!)
+      @message_handler.clusters[{1_u16, 0x0006_u32}] = @switch                # OnOff on endpoint 1
 
       # Create mDNS responder
       @responder = Matter::MDNS::Responder.new(
@@ -265,8 +270,19 @@ module MatterSwitch
       puts "   ✅ Listening on all interfaces, port #{@port}"
       puts ""
 
-      # Interactive loop
-      run_interactive_loop
+      # Interactive loop (unless --no-interactive flag)
+      interactive = !ARGV.includes?("--no-interactive")
+      if interactive
+        run_interactive_loop
+      else
+        puts "⏸️  Running in non-interactive mode (--no-interactive)"
+        puts "   Press Ctrl+C to stop"
+        puts ""
+        # Just sleep forever
+        loop do
+          sleep 1.second
+        end
+      end
     end
 
     def print_header

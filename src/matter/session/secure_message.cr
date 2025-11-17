@@ -68,10 +68,11 @@ module Matter
                            # This matches matter.js behavior (NodeId.UNSPECIFIED_NODE_ID)
                            0_u64
                          end
-        security_flags = 0_u8
-        security_flags |= 0x80 if packet_header.privacy_enhancements?
-        security_flags |= 0x40 if packet_header.control_message?
-        security_flags |= 0x20 if packet_header.message_extensions?
+
+        # CRITICAL: Use the security_flags from packet_header, NOT rebuilt from individual flags
+        # The security_flags byte includes session_type (bottom 2 bits) which we were missing!
+        # This was causing AAD mismatch - the AAD had 0x00 but the packet header had 0x00 (Unicast) or 0x01 (Group)
+        security_flags = packet_header.security_flags
 
         nonce = build_nonce(source_node_id, message_counter, security_flags)
 

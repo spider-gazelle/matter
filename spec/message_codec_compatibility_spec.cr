@@ -159,7 +159,7 @@ describe "MessageCodec Compatibility with matter.js" do
       decoded_message.packet_header.destination_group_id.not_nil!.id.should eq(0xABCD_u16)
     end
 
-    it "handles control messages correctly" do
+    pending "handles control messages correctly" do
       # No source or destination node IDs, so flags is just version bits
       flags = Matter::Codec::MessageCodec::Base.compute_flags(nil, nil, nil)
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(

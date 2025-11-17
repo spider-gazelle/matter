@@ -133,7 +133,11 @@ module Matter
           # This ensures the encoded flags match exactly what was used for AAD during encryption
           flags = packet_header.flags
 
-          security_flags = packet_header.session_type.value
+          # CRITICAL: Use the full security_flags byte, not just session_type
+          # The security_flags byte contains: [privacy(1) | control(1) | ext(1) | reserved(3) | session_type(2)]
+          # When encrypting, we use this exact byte in the AAD, so we must encode the same byte
+          # Otherwise chip-tool will fail to decrypt because AAD won't match
+          security_flags = packet_header.security_flags
 
           byte_format.encode(UInt8.new(flags), io)
           byte_format.encode(UInt16.new(packet_header.session_id), io)

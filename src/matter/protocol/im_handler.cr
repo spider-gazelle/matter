@@ -247,12 +247,22 @@ module Matter
         io = IO::Memory.new
         writer = TLV::Writer.new(io)
 
-        # ReadResponse structure (anonymous)
+        # ReadResponse/ReportData structure (anonymous)
         writer.start_structure(nil)
 
-        # Tag 1: AttributeReports (array)
+        # Tag 1: suppressResponse (optional, defaults to false)
+        if response.suppress_response
+          writer.put(1_u8, true)
+        end
+
+        # Tag 2: subscriptionId (optional) - not implemented yet
+        # if subscription_id = response.subscription_id
+        #   writer.put(2_u8, subscription_id)
+        # end
+
+        # Tag 3: AttributeReports (array)
         if response.attribute_reports.size > 0
-          writer.start_array(1_u8)
+          writer.start_array(3_u8)
           response.attribute_reports.each do |report|
             writer.start_structure(nil)
 
@@ -295,43 +305,11 @@ module Matter
           writer.end_container # End array
         end
 
-        # Tag 2: AttributeStatusIB (array, optional)
-        if response.attribute_status.size > 0
-          writer.start_array(2_u8)
-          response.attribute_status.each do |status_report|
-            writer.start_structure(nil)
+        # Tag 4: EventReports (array, optional) - not implemented, would go here
 
-            # Tag 0: Path
-            writer.start_structure(0_u8)
-            if endpoint = status_report.path.endpoint
-              writer.put(2_u8, endpoint)
-            end
-            if cluster = status_report.path.cluster
-              writer.put(3_u8, cluster)
-            end
-            if attribute = status_report.path.attribute
-              writer.put(4_u8, attribute)
-            end
-            writer.end_container # End Path
-
-            # Tag 1: StatusIB
-            writer.start_structure(1_u8)
-            writer.put(0_u8, status_report.status.status.value.to_u8) # Status code
-            writer.end_container                                      # End StatusIB
-
-            writer.end_container # End array element
-          end
-          writer.end_container # End array
-        end
-
-        # Tag 3: MoreChunkedMessages (optional, defaults to false)
+        # Tag 5: MoreChunkedMessages (optional, defaults to false)
         if response.more_chunks
-          writer.put(3_u8, true)
-        end
-
-        # Tag 4: SuppressResponse (optional, defaults to false)
-        if response.suppress_response
-          writer.put(4_u8, true)
+          writer.put(5_u8, true)
         end
 
         # Tag 0xFF: InteractionModelRevision (REQUIRED!)
