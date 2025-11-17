@@ -185,11 +185,18 @@ module Matter
         io = IO::Memory.new
         writer = TLV::Writer.new(io)
 
-        # Start root structure (anonymous)
+        # Start root structure (anonymous) - ReportData/ReadResponse
         writer.start_structure(nil)
 
-        # Tag 1: attributeReports (array)
-        writer.start_array(1_u8)
+        # Tag 1: suppressResponse (optional, defaults to false)
+        if response.suppress_response
+          writer.put(1_u8, true)
+        end
+
+        # Tag 2: subscriptionId (optional) - not implemented yet
+
+        # Tag 3: attributeReports (array) - FIXED: was tag 1, should be tag 3!
+        writer.start_array(3_u8)
 
         response.attribute_reports.each_with_index do |report, idx|
           begin
@@ -234,7 +241,14 @@ module Matter
 
         writer.end_container # End attributeReports array
 
-        # Tag 0xFF: interactionModelRevision (REQUIRED)
+        # Tag 4: eventReports (array, optional) - not implemented yet
+
+        # Tag 5: moreChunkedMessages (optional, defaults to false)
+        if response.more_chunks
+          writer.put(5_u8, true)
+        end
+
+        # Tag 0xFF: interactionModelRevision (REQUIRED, Matter 1.3 = revision 12)
         writer.put(0xFF_u8, 12_u8)
 
         writer.end_container # End root structure

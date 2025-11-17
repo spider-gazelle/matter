@@ -456,6 +456,7 @@ module Matter
 
         # Store response payload for context hashing (needed for SPAKE2+ context)
         @pbkdf_response_payload = response.to_bytes
+        Log.debug { "PBKDF Response payload (#{@pbkdf_response_payload.not_nil!.size} bytes): #{@pbkdf_response_payload.not_nil!.hexstring}" }
 
         # Send response
         send_secure_channel_response(
