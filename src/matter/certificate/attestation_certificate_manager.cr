@@ -1,6 +1,7 @@
 require "openssl"
 require "../crypto/crypto"
 require "../crypto/key"
+require "../codec/der_codec"
 
 module Matter
   module Certificate
@@ -83,8 +84,12 @@ module Matter
         # Key Usage: keyCertSign, cRLSign (critical)
         cert.add_extension(create_extension("keyUsage", "critical,keyCertSign,cRLSign"))
 
-        # TODO: Add Subject Key Identifier and Authority Key Identifier
-        # These require proper DER encoding which we'll add in a future iteration
+        # Subject Key Identifier (SKI) - hash of public key
+        ski = compute_subject_key_identifier(key.public_key)
+        cert.add_extension(create_ski_extension(ski))
+
+        # Authority Key Identifier (AKI) - same as SKI for self-signed root
+        cert.add_extension(create_aki_extension(ski))
 
         # Sign with own private key
         private_key = build_ec_private_key(key.private_key)
@@ -120,8 +125,13 @@ module Matter
         # Key Usage: keyCertSign, cRLSign (critical)
         cert.add_extension(create_extension("keyUsage", "critical,keyCertSign,cRLSign"))
 
-        # TODO: Add Subject Key Identifier and Authority Key Identifier
-        # These require proper DER encoding which we'll add in a future iteration
+        # Subject Key Identifier (SKI) - hash of this certificate's public key
+        ski = compute_subject_key_identifier(key.public_key)
+        cert.add_extension(create_ski_extension(ski))
+
+        # Authority Key Identifier (AKI) - references PAA's public key
+        paa_ski = compute_subject_key_identifier(@paa_key_pair.public_key)
+        cert.add_extension(create_aki_extension(paa_ski))
 
         # Sign with PAA private key
         paa_private_key = build_ec_private_key(@paa_key_pair.private_key)
@@ -158,8 +168,13 @@ module Matter
         # Key Usage: digitalSignature (critical)
         cert.add_extension(create_extension("keyUsage", "critical,digitalSignature"))
 
-        # TODO: Add Subject Key Identifier and Authority Key Identifier
-        # These require proper DER encoding which we'll add in a future iteration
+        # Subject Key Identifier (SKI) - hash of this certificate's public key
+        ski = compute_subject_key_identifier(key.public_key)
+        cert.add_extension(create_ski_extension(ski))
+
+        # Authority Key Identifier (AKI) - references PAI's public key
+        pai_ski = compute_subject_key_identifier(@pai_key_pair.public_key)
+        cert.add_extension(create_aki_extension(pai_ski))
 
         # Sign with PAI private key
         pai_private_key = build_ec_private_key(@pai_key_pair.private_key)
@@ -193,6 +208,34 @@ module Matter
         digest = OpenSSL::Digest.new("SHA1")
         digest.update(public_key)
         digest.final[0, 20]
+      end
+
+      # Create Subject Key Identifier extension with manual DER encoding
+      # SKI OID: 2.5.29.14
+      private def create_ski_extension(key_id : Bytes) : OpenSSL::X509::Extension
+        # DER encode the key identifier as OCTET STRING
+        der_value = Codec::DERCodec::Base.encode_octet_string(key_id)
+
+        # Create extension with hex-encoded DER value
+        OpenSSL::X509::Extension.new("subjectKeyIdentifier", "DER:#{der_value.hexstring}")
+      end
+
+      # Create Authority Key Identifier extension with manual DER encoding
+      # AKI OID: 2.5.29.35
+      private def create_aki_extension(key_id : Bytes) : OpenSSL::X509::Extension
+        # DER encode as SEQUENCE { [0] IMPLICIT keyIdentifier }
+        # Tag [0] = 0x80 (context-specific, primitive, tag 0)
+        io = IO::Memory.new
+        io.write_byte 0x80_u8 # [0] IMPLICIT tag
+        io.write_byte key_id.size.to_u8
+        io.write key_id
+
+        # Wrap in SEQUENCE
+        tagged_value = io.to_slice
+        der_value = Codec::DERCodec::Base.encode_sequence(tagged_value)
+
+        # Create extension with hex-encoded DER value
+        OpenSSL::X509::Extension.new("authorityKeyIdentifier", "DER:#{der_value.hexstring}")
       end
 
       # Build EC public key from raw bytes
