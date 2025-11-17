@@ -233,7 +233,6 @@ module Matter
       end
 
       # Extract 32-byte private key from DER format
-      # TODO: Make private after testing
       def self.extract_private_key_from_der(der : Bytes) : Bytes
         # EC private key DER format has the 32-byte key embedded as an OCTET STRING
         # Look for tag 0x04 (OCTET STRING) followed by length 0x20 (32 bytes)
@@ -249,7 +248,6 @@ module Matter
       end
 
       # Extract 65-byte uncompressed public key from DER format
-      # TODO: Make private after testing
       def self.extract_public_key_from_der(der : Bytes) : Bytes
         # Public key DER format has the 65-byte uncompressed key (0x04 || x || y) at the end
         # Scan backwards for 0x04 marker

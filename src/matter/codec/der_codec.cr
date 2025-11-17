@@ -278,9 +278,9 @@ module Matter
       class ContextTaggedSlice
         getter value : Hash(String, Value) = {} of String => Value
 
-        def initialize(tag_id : UInt8, value : Slice(UInt8))
+        def initialize(tag_id : UInt8, data : Slice(UInt8))
           value[TAG_ID_KEY] = tag_id | Class::ContextSpecific.value
-          value[BYTES_KEY] = value
+          value[BYTES_KEY] = data
         end
       end
 

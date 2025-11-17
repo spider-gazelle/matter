@@ -1,0 +1,209 @@
+require "openssl"
+require "../crypto/crypto"
+require "../crypto/key"
+
+module Matter
+  module Certificate
+    # Manages generation of attestation certificates (PAA, PAI, DAC)
+    # Based on matter.js AttestationCertificateManager
+    #
+    # Creates a complete attestation certificate chain for testing:
+    # - PAA (Product Attestation Authority) - self-signed root CA
+    # - PAI (Product Attestation Intermediate) - intermediate CA
+    # - DAC (Device Attestation Certificate) - device certificate
+    class AttestationCertificateManager
+      # PAA key pair (persisted across instances for same vendor)
+      getter paa_key_pair : Crypto::Key
+
+      # PAI key pair (persisted across instances)
+      getter pai_key_pair : Crypto::Key
+
+      # PAA certificate (DER encoded)
+      getter paa_cert : Bytes
+
+      # PAI certificate (DER encoded)
+      getter pai_cert : Bytes
+
+      # Vendor ID for this certificate chain
+      getter vendor_id : UInt16
+
+      # Product ID (optional, for PAI scoping)
+      getter product_id : UInt16?
+
+      # Certificate serial number counter
+      @next_cert_id : UInt64
+
+      def initialize(@vendor_id : UInt16, @product_id : UInt16? = nil)
+        @next_cert_id = 1_u64
+
+        # Generate PAA (root CA)
+        @paa_key_pair = Crypto::Key.generate_key_pair
+        @paa_cert = generate_paa_certificate(@paa_key_pair)
+
+        # Generate PAI (intermediate CA)
+        @pai_key_pair = Crypto::Key.generate_key_pair
+        @pai_cert = generate_pai_certificate(@pai_key_pair, @vendor_id, @product_id)
+      end
+
+      # Get PAI certificate
+      def get_pai_cert : Bytes
+        @pai_cert
+      end
+
+      # Generate DAC for a specific product
+      # Returns both the certificate and the key pair
+      def get_dac_cert(product_id : UInt16) : {Bytes, Crypto::Key}
+        dac_key_pair = Crypto::Key.generate_key_pair
+        dac_cert = generate_dac_certificate(dac_key_pair, @vendor_id, product_id)
+        {dac_cert, dac_key_pair}
+      end
+
+      private def generate_paa_certificate(key : Crypto::Key) : Bytes
+        cert = OpenSSL::X509::Certificate.new
+        cert.version = 2 # X.509 v3 (version numbers are 0-indexed)
+        cert.serial = OpenSSL::BN.new(@next_cert_id)
+        @next_cert_id += 1
+
+        # Validity period
+        cert.not_before = OpenSSL::ASN1::Time.days_from_now(-365)    # 1 year ago
+        cert.not_after = OpenSSL::ASN1::Time.days_from_now(365 * 10) # 10 years from now
+
+        # Subject and Issuer (self-signed)
+        subject = build_subject_name("Matter Test PAA")
+        cert.subject = subject
+        cert.issuer = subject # Self-signed
+
+        # Public key
+        cert.public_key = build_ec_public_key(key.public_key)
+
+        # Extensions
+        # Basic Constraints: CA=TRUE (critical)
+        cert.add_extension(create_extension("basicConstraints", "critical,CA:TRUE"))
+
+        # Key Usage: keyCertSign, cRLSign (critical)
+        cert.add_extension(create_extension("keyUsage", "critical,keyCertSign,cRLSign"))
+
+        # TODO: Add Subject Key Identifier and Authority Key Identifier
+        # These require proper DER encoding which we'll add in a future iteration
+
+        # Sign with own private key
+        private_key = build_ec_private_key(key.private_key)
+        cert.sign(private_key, OpenSSL::Digest.new("SHA256"))
+
+        cert.to_der
+      end
+
+      private def generate_pai_certificate(key : Crypto::Key, vendor_id : UInt16, product_id : UInt16?) : Bytes
+        cert = OpenSSL::X509::Certificate.new
+        cert.version = 2
+        cert.serial = OpenSSL::BN.new(@next_cert_id)
+        @next_cert_id += 1
+
+        # Validity period
+        cert.not_before = OpenSSL::ASN1::Time.days_from_now(-365)    # 1 year ago
+        cert.not_after = OpenSSL::ASN1::Time.days_from_now(365 * 10) # 10 years from now
+
+        # Issuer = PAA
+        cert.issuer = build_subject_name("Matter Test PAA")
+
+        # Subject with vendor ID
+        cn = product_id ? "Matter Test PAI 0x#{vendor_id.to_s(16).upcase}/0x#{product_id.to_s(16).upcase}" : "Matter Test PAI 0x#{vendor_id.to_s(16).upcase}"
+        cert.subject = build_subject_name(cn, vendor_id, product_id)
+
+        # Public key
+        cert.public_key = build_ec_public_key(key.public_key)
+
+        # Extensions
+        # Basic Constraints: CA=TRUE, pathlen=0 (critical)
+        cert.add_extension(create_extension("basicConstraints", "critical,CA:TRUE,pathlen:0"))
+
+        # Key Usage: keyCertSign, cRLSign (critical)
+        cert.add_extension(create_extension("keyUsage", "critical,keyCertSign,cRLSign"))
+
+        # TODO: Add Subject Key Identifier and Authority Key Identifier
+        # These require proper DER encoding which we'll add in a future iteration
+
+        # Sign with PAA private key
+        paa_private_key = build_ec_private_key(@paa_key_pair.private_key)
+        cert.sign(paa_private_key, OpenSSL::Digest.new("SHA256"))
+
+        cert.to_der
+      end
+
+      private def generate_dac_certificate(key : Crypto::Key, vendor_id : UInt16, product_id : UInt16) : Bytes
+        cert = OpenSSL::X509::Certificate.new
+        cert.version = 2
+        cert.serial = OpenSSL::BN.new(@next_cert_id)
+        @next_cert_id += 1
+
+        # Validity period
+        cert.not_before = OpenSSL::ASN1::Time.days_from_now(-365)    # 1 year ago
+        cert.not_after = OpenSSL::ASN1::Time.days_from_now(365 * 10) # 10 years from now
+
+        # Issuer = PAI
+        pai_cn = @product_id ? "Matter Test PAI 0x#{vendor_id.to_s(16).upcase}/0x#{@product_id.not_nil!.to_s(16).upcase}" : "Matter Test PAI 0x#{vendor_id.to_s(16).upcase}"
+        cert.issuer = build_subject_name(pai_cn, vendor_id, @product_id)
+
+        # Subject with vendor ID and product ID
+        cn = "Matter Test DAC 0x#{vendor_id.to_s(16).upcase}/0x#{product_id.to_s(16).upcase}"
+        cert.subject = build_subject_name(cn, vendor_id, product_id)
+
+        # Public key
+        cert.public_key = build_ec_public_key(key.public_key)
+
+        # Extensions
+        # Basic Constraints: CA=FALSE (critical)
+        cert.add_extension(create_extension("basicConstraints", "critical,CA:FALSE"))
+
+        # Key Usage: digitalSignature (critical)
+        cert.add_extension(create_extension("keyUsage", "critical,digitalSignature"))
+
+        # TODO: Add Subject Key Identifier and Authority Key Identifier
+        # These require proper DER encoding which we'll add in a future iteration
+
+        # Sign with PAI private key
+        pai_private_key = build_ec_private_key(@pai_key_pair.private_key)
+        cert.sign(pai_private_key, OpenSSL::Digest.new("SHA256"))
+
+        cert.to_der
+      end
+
+      # Build X.509 Name (subject/issuer) with optional Matter OIDs
+      private def build_subject_name(cn : String, vendor_id : UInt16? = nil, product_id : UInt16? = nil) : OpenSSL::X509::Name
+        name = OpenSSL::X509::Name.new
+        name.add_entry("CN", cn)
+
+        # TODO: Add Matter-specific OID extensions for vendorId and productId
+        # Matter OIDs:
+        # - VendorId: 1.3.6.1.4.1.37244.1.1
+        # - ProductId: 1.3.6.1.4.1.37244.1.5
+        # These require custom OID support which may not be available in Crystal's OpenSSL bindings
+
+        name
+      end
+
+      # Create OpenSSL extension
+      private def create_extension(name : String, value : String) : OpenSSL::X509::Extension
+        OpenSSL::X509::Extension.new(name, value)
+      end
+
+      # Compute Subject Key Identifier (SHA-1 hash of public key)
+      private def compute_subject_key_identifier(public_key : Bytes) : Bytes
+        # SKI is SHA-1 hash of the public key (first 20 bytes)
+        digest = OpenSSL::Digest.new("SHA1")
+        digest.update(public_key)
+        digest.final[0, 20]
+      end
+
+      # Build EC public key from raw bytes
+      private def build_ec_public_key(public_key_bytes : Bytes) : OpenSSL::PKey::EC
+        OpenSSL::PKey::EC.from_public_bytes(public_key_bytes, "P-256")
+      end
+
+      # Build EC private key from raw bytes
+      private def build_ec_private_key(private_key_bytes : Bytes) : OpenSSL::PKey::EC
+        OpenSSL::PKey::EC.from_private_bytes(private_key_bytes, "P-256")
+      end
+    end
+  end
+end
