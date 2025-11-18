@@ -482,6 +482,7 @@ module Matter
       def self.invoke_commands(
         invoke_requests : Array(InteractionModel::CommandDataIB),
         clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
+        session_id : UInt64? = nil,
       ) : InteractionModel::InvokeResponse
         invoke_responses = [] of InteractionModel::CommandResponse
         invoke_status = [] of InteractionModel::CommandStatus
@@ -504,8 +505,8 @@ module Matter
             next
           end
 
-          # Invoke command on cluster
-          result = cluster.invoke_command(path.command, cmd_data.fields)
+          # Invoke command on cluster (pass session_id for attestation)
+          result = cluster.invoke_command(path.command, cmd_data.fields, session_id)
 
           if result.is_a?(InteractionModel::Status)
             # Error status

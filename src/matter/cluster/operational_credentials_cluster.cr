@@ -285,11 +285,16 @@ module Matter
       @session_fabric_index : UInt8? = nil
       @failsafe_armed : Bool = true # Default to true for testing
 
+      # Callback to get session's attestation challenge
+      # This is set by the protocol layer to allow the cluster to access session data
+      @session_lookup : Proc(UInt64, Bytes?)? = nil
+
       getter fabric_table : FabricTable
       property current_fabric_index : UInt8
       property session_id : UInt64?
       property session_fabric_index : UInt8?
       property failsafe_armed : Bool
+      property session_lookup : Proc(UInt64, Bytes?)?
 
       # CurrentFabricIndex helper method (returns passed value or stored value)
       def current_fabric_index(session_fabric_index : UInt8?) : UInt8
@@ -454,6 +459,8 @@ module Matter
         @dac = dac_cert
         @pai = pai_cert
         @attestation_key = dac_key
+        Log.debug { "set_attestation_from_manager: Set attestation_key to DAC key" }
+        Log.debug { "  Public key (full 65 bytes): #{dac_key.public_key.hexstring}" }
       end
 
       # Attribute accessors using fabric_table
@@ -578,8 +585,8 @@ module Matter
         # Build attestation elements (TLV structure containing certification declaration, nonce, timestamp)
         attestation_elements = build_attestation_elements(request.attestation_nonce)
 
-        # Sign with attestation key
-        attestation_signature = sign_attestation(attestation_elements)
+        # Sign with attestation key (pass session_id for attestation challenge)
+        attestation_signature = sign_attestation(attestation_elements, @session_id)
 
         # Encode response as TLV
         io = IO::Memory.new
@@ -936,8 +943,8 @@ module Matter
         # Build attestation elements (TLV structure containing certification declaration, nonce, timestamp)
         attestation_elements = build_attestation_elements(cmd.attestation_nonce)
 
-        # Sign with attestation key
-        attestation_signature = sign_attestation(attestation_elements)
+        # Sign with attestation key (includes session's attestation challenge if available)
+        attestation_signature = sign_attestation(attestation_elements, session_id)
 
         AttestationResponse.new(
           attestation_elements: attestation_elements,
@@ -1310,7 +1317,9 @@ module Matter
 
         # Generate Certification Declaration using our certificate manager
         declaration = Certificate::CertificationDeclaration.generate(@vendor_id, @product_id)
-        timestamp = Time.utc.to_unix.to_u32
+        # Note: timestamp is set to 0 to match matter.js implementation
+        # The Matter spec allows this field to be 0
+        timestamp = 0_u32
 
         data = {
           1_u8 => declaration,
@@ -1322,14 +1331,46 @@ module Matter
         io.rewind.to_slice
       end
 
-      private def sign_attestation(data : Bytes) : Bytes
+      private def sign_attestation(data : Bytes, session_id : UInt64? = nil) : Bytes
         # Sign with attestation key using ECDSA
         unless key = @attestation_key
           raise "Attestation key not configured"
         end
 
+        Log.debug { "Signing attestation with key:" }
+        Log.debug { "  Public key (full 65 bytes): #{key.public_key.hexstring}" }
+
+        # Get attestation challenge from session if available
+        # Per Matter spec: signature is over (attestation_elements || attestation_challenge)
+        attestation_challenge = if session_id && @session_lookup
+                                  @session_lookup.not_nil!.call(session_id)
+                                else
+                                  nil
+                                end
+
+        Log.debug { "Attestation challenge: #{attestation_challenge ? attestation_challenge.hexstring : "nil"}" }
+
+        # Concatenate data with attestation challenge (like matter.js does)
+        data_to_sign = if attestation_challenge
+                         io = IO::Memory.new
+                         io.write(data)
+                         io.write(attestation_challenge)
+                         io.to_slice
+                       else
+                         data
+                       end
+
+        Log.debug { "Data to sign: #{data_to_sign.size} bytes" }
+        Log.debug { "  First 32 bytes: #{data_to_sign[0, [32, data_to_sign.size].min].hexstring}" }
+        if data_to_sign.size > 32
+          Log.debug { "  Last 32 bytes: #{data_to_sign[-32, 32].hexstring}" }
+        end
+
         # Sign with ECDSA in IEEE P1363 format (r||s, 64 bytes for P-256)
-        Crypto.sign_ecdsa(key, data, "ieee-p1363")
+        signature = Crypto.sign_ecdsa(key, data_to_sign, "ieee-p1363")
+        Log.debug { "Generated signature: #{signature.size} bytes" }
+        Log.debug { "  Signature: #{signature.hexstring}" }
+        signature
       end
 
       private def build_csr_elements(nonce : Bytes, key : Crypto::Key) : Bytes

@@ -128,7 +128,7 @@ module Matter
         end
 
         # Derive session keys after successful PASE
-        def derive_session_keys : {encryption: Bytes, decryption: Bytes}
+        def derive_session_keys : {encryption: Bytes, decryption: Bytes, attestation_challenge: Bytes}
           sav = @secret_and_verifiers
           raise "Shared secret not computed" if sav.nil?
 
@@ -145,9 +145,11 @@ module Matter
           # Split keys - initiator (commissioner) uses:
           # - I2R (bytes 0-15) for encryption (initiator-to-responder)
           # - R2I (bytes 16-31) for decryption (responder-to-initiator)
+          # - AttestationChallenge (bytes 32-47) for attestation signature verification
           {
-            encryption: session_keys[0, 16],  # I2R key
-            decryption: session_keys[16, 16], # R2I key
+            encryption:            session_keys[0, 16],  # I2R key
+            decryption:            session_keys[16, 16], # R2I key
+            attestation_challenge: session_keys[32, 16], # AttestationChallenge
           }
         end
       end
@@ -251,7 +253,7 @@ module Matter
         end
 
         # Derive session keys after successful PASE
-        def derive_session_keys : {encryption: Bytes, decryption: Bytes}
+        def derive_session_keys : {encryption: Bytes, decryption: Bytes, attestation_challenge: Bytes}
           sav = @secret_and_verifiers
           raise "Shared secret not computed" if sav.nil?
 
@@ -268,13 +270,16 @@ module Matter
           Log.debug { "  Full HKDF output (48 bytes): #{session_keys.hexstring}" }
           Log.debug { "  I2R (bytes 0-15):  #{session_keys[0, 16].hexstring}" }
           Log.debug { "  R2I (bytes 16-31): #{session_keys[16, 16].hexstring}" }
+          Log.debug { "  AttestationChallenge (bytes 32-47): #{session_keys[32, 16].hexstring}" }
 
           # Split keys - responder uses:
           # - R2I (bytes 16-31) for encryption (responder-to-initiator)
           # - I2R (bytes 0-15) for decryption (initiator-to-responder)
+          # - AttestationChallenge (bytes 32-47) for attestation signature generation
           {
-            encryption: session_keys[16, 16], # R2I key
-            decryption: session_keys[0, 16],  # I2R key
+            encryption:            session_keys[16, 16], # R2I key
+            decryption:            session_keys[0, 16],  # I2R key
+            attestation_challenge: session_keys[32, 16], # AttestationChallenge
           }
         end
       end

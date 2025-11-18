@@ -284,8 +284,8 @@ module Matter
 
         Log.info { "InvokeRequest: #{request.invoke_requests.size} command(s) requested" }
 
-        # Execute commands on clusters
-        response = IMHandler.invoke_commands(request.invoke_requests, @clusters)
+        # Execute commands on clusters (pass session_id for attestation)
+        response = IMHandler.invoke_commands(request.invoke_requests, @clusters, session.session_id)
 
         Log.info { "InvokeResponse: #{response.invoke_responses.size} response(s), #{response.invoke_status.size} status(es)" }
 
@@ -646,6 +646,8 @@ module Matter
         Log.debug { "  Encryption key (R2I): #{keys[:encryption].hexstring}" }
         Log.debug { "  Derived decryption key: #{keys[:decryption].size} bytes" }
         Log.debug { "  Decryption key (I2R): #{keys[:decryption].hexstring}" }
+        Log.debug { "  Attestation challenge: #{keys[:attestation_challenge].size} bytes" }
+        Log.debug { "  Attestation challenge: #{keys[:attestation_challenge].hexstring}" }
 
         # Create secure session context using stored session IDs from PBKDF exchange
         # We are the responder, so our session_id is responder_session_id
@@ -664,6 +666,7 @@ module Matter
           session_type: Session::SessionType::Unicast,
           encryption_key: keys[:encryption],
           decryption_key: keys[:decryption],
+          attestation_challenge: keys[:attestation_challenge],
           is_initiator: false # We're the responder
         )
 

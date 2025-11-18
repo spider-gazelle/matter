@@ -212,6 +212,16 @@ module MatterSwitch
       @message_handler.clusters[{0_u16, 0x003E_u32}] = @operational_credentials # OperationalCredentials on endpoint 0 (required!)
       @message_handler.clusters[{1_u16, 0x0006_u32}] = @switch                  # OnOff on endpoint 1
 
+      # Configure session lookup callback for attestation signature generation
+      # This allows the OperationalCredentials cluster to access the session's attestation_challenge
+      @operational_credentials.session_lookup = ->(session_id : UInt64) {
+        if session = @message_handler.sessions[session_id]?
+          session.attestation_challenge
+        else
+          nil
+        end
+      }
+
       # Create mDNS responder
       @responder = Matter::MDNS::Responder.new(
         hostname: @hostname,
@@ -222,37 +232,11 @@ module MatterSwitch
     # Generate test attestation credentials (DAC, PAI, attestation key)
     # In production, these would be pre-installed during manufacturing
     def setup_attestation_credentials
-      # Generate attestation key pair
-      attestation_key = Matter::Crypto::Key.generate_key_pair
-
-      # Create mock DAC (Device Attestation Certificate) - simplified test certificate
-      dac = create_test_certificate
-
-      # Create mock PAI (Product Attestation Intermediate) - simplified test certificate
-      pai = create_test_certificate
-
-      # Configure the operational credentials cluster with these test credentials
-      @operational_credentials.set_attestation_credentials(dac, pai, attestation_key)
-    end
-
-    # Create a minimal test certificate in DER format (X.509)
-    # In production, use proper certificates from manufacturing
-    def create_test_certificate : Bytes
-      # Create a simplified DER-encoded certificate structure
-      # This is sufficient for testing the CertificateChainRequest command
-      io = IO::Memory.new
-
-      # SEQUENCE tag (0x30) followed by length
-      io.write_byte(0x30_u8)
-      io.write_byte(0x82_u8) # Long form length (2 bytes follow)
-      io.write_byte(0x01_u8) # High byte
-      io.write_byte(0x50_u8) # Low byte (~336 bytes total)
-
-      # Fill with valid DER structure elements
-      # This creates a minimal but syntactically valid certificate
-      336.times { io.write_byte(0x00_u8) }
-
-      io.to_slice
+      # Use the AttestationCertificateManager helper to generate proper certificates
+      @operational_credentials.set_attestation_from_manager(
+        vendor_id: @state.vendor_id,
+        product_id: @state.product_id
+      )
     end
 
     def get_local_ips : Array(Socket::IPAddress)
