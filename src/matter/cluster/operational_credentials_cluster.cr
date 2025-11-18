@@ -1409,10 +1409,14 @@ module Matter
         # Version (INTEGER 0)
         csr_info_io.write Bytes[0x02, 0x01, 0x00]
 
-        # Subject (empty SEQUENCE for CSR)
-        # SEQUENCE { SET { SEQUENCE { OID, UTF8String "CSR" } } }
-        # Simplified: just use empty subject
-        csr_info_io.write Bytes[0x30, 0x00] # Empty SEQUENCE
+        # Subject - MUST match matter.js format:
+        # SEQUENCE { SET { SEQUENCE { OID(organizationName), UTF8String("CSR") } } }
+        # DER: 30 0e (SEQUENCE len=14)
+        #        31 0c (SET len=12)
+        #          30 0a (SEQUENCE len=10)
+        #            06 03 55 04 0a (OID organizationName = 2.5.4.10)
+        #            0c 03 43 53 52 (UTF8String "CSR")
+        csr_info_io.write Bytes[0x30, 0x0e, 0x31, 0x0c, 0x30, 0x0a, 0x06, 0x03, 0x55, 0x04, 0x0a, 0x0c, 0x03, 0x43, 0x53, 0x52]
 
         # SubjectPublicKeyInfo (SPKI format)
         # Use the crypto module's DER building capability
@@ -1422,20 +1426,25 @@ module Matter
         # Context tag [0] for attributes (empty)
         csr_info_io.write Bytes[0xa0, 0x00]
 
-        csr_info = csr_info_io.to_slice
+        # Wrap the CertificationRequestInfo content in a SEQUENCE
+        # This is REQUIRED by PKCS#10: CertificationRequestInfo is a SEQUENCE
+        csr_info_content = csr_info_io.to_slice
+        csr_info_seq = IO::Memory.new
+        csr_info_seq.write_byte 0x30_u8 # SEQUENCE tag
+        write_der_length(csr_info_seq, csr_info_content.size)
+        csr_info_seq.write csr_info_content
 
-        # Sign the CSR info with the key
-        unless attestation_key = @attestation_key
-          raise "Attestation key required for CSR"
-        end
-        signature = Crypto.sign_ecdsa(attestation_key, csr_info, "der")
+        csr_info = csr_info_seq.to_slice
 
-        # Build final CSR: SEQUENCE { csrInfo, signAlgorithm, signature }
+        # Sign the complete CertificationRequestInfo SEQUENCE
+        # The CSR signature must be made with the private key corresponding to
+        # the public key in the CSR to prove possession of the key pair
+        signature = Crypto.sign_ecdsa(key, csr_info, "der")
+
+        # Build final CSR: SEQUENCE { certificationRequestInfo, signAlgorithm, signature }
         csr_io = IO::Memory.new
 
-        # CSR info
-        csr_io.write_byte 0x30_u8 # SEQUENCE tag
-        write_der_length(csr_io, csr_info.size)
+        # Write the complete CertificationRequestInfo (already wrapped in SEQUENCE)
         csr_io.write csr_info
 
         # Signature algorithm (ECDSA with SHA-256)
@@ -1449,7 +1458,7 @@ module Matter
         csr_io.write_byte 0x00_u8 # No unused bits
         csr_io.write signature
 
-        # Wrap in final SEQUENCE
+        # Wrap everything in final SEQUENCE
         csr_content = csr_io.to_slice
         result = IO::Memory.new
         result.write_byte 0x30_u8 # SEQUENCE tag
