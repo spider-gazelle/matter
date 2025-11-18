@@ -42,6 +42,25 @@ describe Matter::Crypto do
       key2.private_bits.should eq(key1.private_bits)
       key2.public_bits.should eq(key1.public_bits)
     end
+
+    it "zero-pads private keys less than 32 bytes" do
+      # Simulate a key with leading zeros (less than 32 bytes)
+      # This can happen when the high bits are 0 and get stripped
+      key = Matter::Crypto::Key.new(Matter::Crypto::KeyType::EC, Matter::Crypto::CurveType::P256)
+      short_key = Bytes[0x01, 0x02, 0x03, 0x04, 0x05] # Only 5 bytes
+
+      key.private_bits = short_key
+
+      # Should be padded to exactly 32 bytes
+      private_key = key.private_key
+      private_key.size.should eq(32)
+
+      # Last 5 bytes should match original key
+      private_key[-5, 5].should eq(short_key)
+
+      # First 27 bytes should be zeros
+      private_key[0, 27].all? { |b| b == 0 }.should be_true
+    end
   end
 
   describe "StandardCrypto" do

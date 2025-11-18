@@ -60,7 +60,15 @@ module Matter
       end
 
       def private_bits=(value : Bytes?)
-        @private_bits = value
+        # For EC keys, ensure private key is exactly 32 bytes (zero-padded if needed)
+        # This handles cases where leading zeros are stripped from the big integer
+        if value && @type == KeyType::EC && value.size < CRYPTO_EC_KEY_BYTES
+          padded = Bytes.new(CRYPTO_EC_KEY_BYTES, 0_u8)
+          padded[CRYPTO_EC_KEY_BYTES - value.size, value.size].copy_from(value)
+          @private_bits = padded
+        else
+          @private_bits = value
+        end
         # If we have a private key and EC type, compute public key
         derive_public_from_private if value && @type == KeyType::EC && !@x_bits
       end

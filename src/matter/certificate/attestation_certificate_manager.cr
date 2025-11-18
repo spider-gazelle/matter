@@ -2,6 +2,7 @@ require "openssl"
 require "../crypto/crypto"
 require "../crypto/key"
 require "../codec/der_codec"
+require "./chip_paa_authorities"
 
 # Additional LibCrypto bindings for custom OID support
 lib LibCrypto
@@ -42,9 +43,12 @@ module Matter
       def initialize(@vendor_id : UInt16, @product_id : UInt16? = nil)
         @next_cert_id = 1_u64
 
-        # Generate PAA (root CA)
-        @paa_key_pair = Crypto::Key.generate_key_pair
-        @paa_cert = generate_paa_certificate(@paa_key_pair)
+        # Use official Matter Test PAA (pre-loaded in chip-tool's trust store)
+        # We cannot generate our own PAA because chip-tool only trusts the official test PAAs
+        @paa_key_pair = Crypto::Key.new(Crypto::KeyType::EC, Crypto::CurveType::P256)
+        @paa_key_pair.private_bits = ChipPAAuthorities::TestCert_PAA_NoVID_PrivateKey
+        @paa_key_pair.public_bits = ChipPAAuthorities::TestCert_PAA_NoVID_PublicKey
+        @paa_cert = ChipPAAuthorities::TestCert_PAA_NoVID_Cert
 
         # Generate PAI (intermediate CA)
         @pai_key_pair = Crypto::Key.generate_key_pair
@@ -134,9 +138,9 @@ module Matter
         ski = compute_subject_key_identifier(key.public_key)
         cert.add_extension(create_ski_extension(ski))
 
-        # Authority Key Identifier (AKI) - references PAA's public key
-        paa_ski = compute_subject_key_identifier(@paa_key_pair.public_key)
-        cert.add_extension(create_aki_extension(paa_ski))
+        # Authority Key Identifier (AKI) - references PAA's SKI
+        # Use the official test PAA's SKID
+        cert.add_extension(create_aki_extension(ChipPAAuthorities::TestCert_PAA_NoVID_SKID))
 
         # Note: Matter vendor/product IDs are automatically added as subject DN attributes
         # by build_subject_name() using custom OID entries per Matter spec section 6.3.5:
