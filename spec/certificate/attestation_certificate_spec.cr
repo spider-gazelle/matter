@@ -162,4 +162,86 @@ describe Matter::Certificate::AttestationCertificateManager do
     pai_cert.should_not be_nil
     pai_cert.size.should be > 0
   end
+
+  it "encodes Matter vendor ID in PAI subject DN per spec" do
+    vendor_id = 0xFFF1_u16
+    product_id = 0x8000_u16
+    manager = Matter::Certificate::AttestationCertificateManager.new(vendor_id, product_id)
+
+    # Parse PAI certificate
+    pai_cert = OpenSSL::X509::Certificate.from_der(manager.pai_cert)
+    entries = pai_cert.subject.to_a
+
+    # Per Matter spec: vendor/product IDs should be 4-character uppercase hex
+    # VendorId OID: 1.3.6.1.4.1.37244.2.1
+    # ProductId OID: 1.3.6.1.4.1.37244.2.2
+    # Expected format: "FFF1", "8000" (zero-padded to 4 chars)
+
+    # Find vendor ID entry
+    vid_entry = entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.1") }
+    vid_entry.should_not be_nil
+    vid_entry.not_nil![1].should eq("FFF1")
+
+    # Find product ID entry
+    pid_entry = entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.2") }
+    pid_entry.should_not be_nil
+    pid_entry.not_nil![1].should eq("8000")
+  end
+
+  it "encodes Matter vendor/product ID in DAC subject DN per spec" do
+    vendor_id = 0xFFF1_u16
+    product_id = 0x8000_u16
+    manager = Matter::Certificate::AttestationCertificateManager.new(vendor_id, product_id)
+
+    # Get and parse DAC certificate
+    dac_cert_der, _key = manager.get_dac_cert(product_id)
+    dac_cert = OpenSSL::X509::Certificate.from_der(dac_cert_der)
+    entries = dac_cert.subject.to_a
+
+    # Per Matter spec: vendor/product IDs should be 4-character uppercase hex
+    # VendorId OID: 1.3.6.1.4.1.37244.2.1
+    # ProductId OID: 1.3.6.1.4.1.37244.2.2
+
+    # Find vendor ID entry
+    vid_entry = entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.1") }
+    vid_entry.should_not be_nil
+    vid_entry.not_nil![1].should eq("FFF1")
+
+    # Find product ID entry
+    pid_entry = entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.2") }
+    pid_entry.should_not be_nil
+    pid_entry.not_nil![1].should eq("8000")
+  end
+
+  it "properly zero-pads vendor/product IDs in subject DN" do
+    # Test with small values that require zero-padding
+    vendor_id = 0x00AB_u16  # Should encode as "00AB"
+    product_id = 0x0012_u16 # Should encode as "0012"
+    manager = Matter::Certificate::AttestationCertificateManager.new(vendor_id, product_id)
+
+    # Check PAI
+    pai_cert = OpenSSL::X509::Certificate.from_der(manager.pai_cert)
+    pai_entries = pai_cert.subject.to_a
+
+    vid_entry = pai_entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.1") }
+    vid_entry.should_not be_nil
+    vid_entry.not_nil![1].should eq("00AB")
+
+    pid_entry = pai_entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.2") }
+    pid_entry.should_not be_nil
+    pid_entry.not_nil![1].should eq("0012")
+
+    # Check DAC
+    dac_cert_der, _key = manager.get_dac_cert(product_id)
+    dac_cert = OpenSSL::X509::Certificate.from_der(dac_cert_der)
+    dac_entries = dac_cert.subject.to_a
+
+    vid_entry = dac_entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.1") }
+    vid_entry.should_not be_nil
+    vid_entry.not_nil![1].should eq("00AB")
+
+    pid_entry = dac_entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.2") }
+    pid_entry.should_not be_nil
+    pid_entry.not_nil![1].should eq("0012")
+  end
 end

@@ -3,6 +3,11 @@ require "../crypto/crypto"
 require "../crypto/key"
 require "../codec/der_codec"
 
+# Additional LibCrypto bindings for custom OID support
+lib LibCrypto
+  fun x509_name_add_entry_by_obj = X509_NAME_add_entry_by_OBJ(name : LibCrypto::X509_NAME, obj : LibCrypto::ASN1_OBJECT, type : Int32, bytes : UInt8*, len : Int32, loc : Int32, set : Int32) : Int32
+end
+
 module Matter
   module Certificate
     # Manages generation of attestation certificates (PAA, PAI, DAC)
@@ -133,6 +138,11 @@ module Matter
         paa_ski = compute_subject_key_identifier(@paa_key_pair.public_key)
         cert.add_extension(create_aki_extension(paa_ski))
 
+        # Note: Matter vendor/product IDs are automatically added as subject DN attributes
+        # by build_subject_name() using custom OID entries per Matter spec section 6.3.5:
+        # - VendorId: 1.3.6.1.4.1.37244.2.1 (encoded as 4-char hex string)
+        # - ProductId: 1.3.6.1.4.1.37244.2.2 (encoded as 4-char hex string)
+
         # Sign with PAA private key
         paa_private_key = build_ec_private_key(@paa_key_pair.private_key)
         cert.sign(paa_private_key, OpenSSL::Digest.new("SHA256"))
@@ -176,6 +186,11 @@ module Matter
         pai_ski = compute_subject_key_identifier(@pai_key_pair.public_key)
         cert.add_extension(create_aki_extension(pai_ski))
 
+        # Note: Matter vendor/product IDs are automatically added as subject DN attributes
+        # by build_subject_name() using custom OID entries per Matter spec section 6.3.5:
+        # - VendorId: 1.3.6.1.4.1.37244.2.1 (encoded as 4-char hex string)
+        # - ProductId: 1.3.6.1.4.1.37244.2.2 (encoded as 4-char hex string)
+
         # Sign with PAI private key
         pai_private_key = build_ec_private_key(@pai_key_pair.private_key)
         cert.sign(pai_private_key, OpenSSL::Digest.new("SHA256"))
@@ -183,18 +198,56 @@ module Matter
         cert.to_der
       end
 
-      # Build X.509 Name (subject/issuer) with optional Matter OIDs
+      # Build X.509 Name (subject/issuer) with Matter-specific DN attributes
+      # Per Matter spec section 6.3.5, vendor/product IDs are encoded as:
+      # - UTF8String or PrintableString
+      # - Uppercase hex, zero-padded to exactly 4 characters (2 octets * 2)
+      # - Added as custom OID attributes in subject DN
       private def build_subject_name(cn : String, vendor_id : UInt16? = nil, product_id : UInt16? = nil) : OpenSSL::X509::Name
         name = OpenSSL::X509::Name.new
         name.add_entry("CN", cn)
 
-        # TODO: Add Matter-specific OID extensions for vendorId and productId
-        # Matter OIDs:
-        # - VendorId: 1.3.6.1.4.1.37244.1.1
-        # - ProductId: 1.3.6.1.4.1.37244.1.5
-        # These require custom OID support which may not be available in Crystal's OpenSSL bindings
+        # Add Matter-specific OID attributes if provided
+        if vendor_id
+          # VendorId OID: 1.3.6.1.4.1.37244.2.1
+          # Encode as 4-character uppercase hex string
+          vid_str = vendor_id.to_s(16).upcase.rjust(4, '0')
+          add_custom_oid_entry(name, "1.3.6.1.4.1.37244.2.1", vid_str)
+        end
+
+        if product_id
+          # ProductId OID: 1.3.6.1.4.1.37244.2.2
+          # Encode as 4-character uppercase hex string
+          pid_str = product_id.to_s(16).upcase.rjust(4, '0')
+          add_custom_oid_entry(name, "1.3.6.1.4.1.37244.2.2", pid_str)
+        end
 
         name
+      end
+
+      # Add a custom OID entry to an X509::Name using low-level LibSSL API
+      # This is needed because OpenSSL's high-level API doesn't support custom OIDs
+      private def add_custom_oid_entry(name : OpenSSL::X509::Name, oid : String, value : String)
+        # Create ASN1_OBJECT from OID string
+        obj = LibCrypto.obj_txt2obj(oid, 0)
+        raise OpenSSL::Error.new("Failed to create ASN1_OBJECT for OID #{oid}") if obj.null?
+
+        # Add entry to X509_NAME with UTF8String encoding
+        # MBSTRING_UTF8 = 0x1000 | 0x0001 = 0x1001
+        ret = LibCrypto.x509_name_add_entry_by_obj(
+          name.to_unsafe,
+          obj,
+          LibCrypto::MBSTRING_UTF8,
+          value.to_unsafe,
+          value.bytesize,
+          -1, # location (-1 = append)
+          0   # set (0 = new RDN)
+        )
+
+        # Free the ASN1_OBJECT
+        LibCrypto.asn1_object_free(obj)
+
+        raise OpenSSL::Error.new("Failed to add OID entry to X509_NAME") if ret == 0
       end
 
       # Create OpenSSL extension
