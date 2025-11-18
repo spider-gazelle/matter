@@ -5,6 +5,8 @@ require "../fabric_table"
 require "../crypto/key"
 require "../crypto/crypto"
 require "../storage/memory_backend"
+require "../certificate/attestation_certificate_manager"
+require "../certificate/certification_declaration"
 
 module Matter
   module Cluster
@@ -265,10 +267,13 @@ module Matter
       # Instance variables
       @fabric_table : FabricTable
       @failsafe_context : FailsafeContext
-      @dac : Bytes?                   # Device Attestation Certificate
-      @pai : Bytes?                   # Product Attestation Intermediate
-      @attestation_key : Crypto::Key? # Device Attestation private key
-      @pending_noc_key : Crypto::Key? # Pending operational key from CSR
+      @dac : Bytes?                                                           # Device Attestation Certificate
+      @pai : Bytes?                                                           # Product Attestation Intermediate
+      @attestation_key : Crypto::Key?                                         # Device Attestation private key
+      @pending_noc_key : Crypto::Key?                                         # Pending operational key from CSR
+      @vendor_id : UInt16                                                     # Vendor ID for attestation
+      @product_id : UInt16                                                    # Product ID for attestation
+      @attestation_cert_manager : Certificate::AttestationCertificateManager? # Certificate manager
       @trusted_root_certs : Array(Bytes)
       @access_control_cluster : AccessControlCluster? # Optional ACL cluster reference
       @current_fabric_index_value : UInt8 = 0_u8
@@ -306,6 +311,10 @@ module Matter
         @pending_noc_key = nil
         @trusted_root_certs = [] of Bytes
         @current_fabric_index = 0_u8
+        # Default test vendor/product IDs (typically set via set_attestation_credentials)
+        @vendor_id = 0xFFF1_u16  # Test vendor ID
+        @product_id = 0x8000_u16 # Test product ID
+        @attestation_cert_manager = nil
       end
 
       # Overload for tests that pass fabric_table and acl_cluster directly
@@ -419,6 +428,32 @@ module Matter
         @dac = dac
         @pai = pai
         @attestation_key = attestation_key
+      end
+
+      # Initialize attestation from certificate manager
+      # Generates DAC and PAI certificates for the specified vendor/product
+      def set_attestation_from_manager(
+        vendor_id : UInt16,
+        product_id : UInt16,
+      )
+        # Create or reuse certificate manager
+        @vendor_id = vendor_id
+        @product_id = product_id
+
+        # Generate certificate manager if not already present
+        cert_manager = @attestation_cert_manager || Certificate::AttestationCertificateManager.new(vendor_id, product_id)
+        @attestation_cert_manager = cert_manager
+
+        # Get DAC certificate and key
+        dac_cert, dac_key = cert_manager.get_dac_cert(product_id)
+
+        # Get PAI certificate
+        pai_cert = cert_manager.get_pai_cert
+
+        # Set the credentials
+        @dac = dac_cert
+        @pai = pai_cert
+        @attestation_key = dac_key
       end
 
       # Attribute accessors using fabric_table
@@ -1266,17 +1301,15 @@ module Matter
       private def build_attestation_elements(nonce : Bytes) : Bytes
         # Build TLV structure for attestation elements
         # TLV structure: {
-        #   1 => declaration (bytes)
+        #   1 => declaration (bytes - PKCS#7 SignedData)
         #   2 => attestationNonce (32 bytes)
         #   3 => timestamp (UInt32)
         # }
         io = IO::Memory.new
         writer = TLV::Writer.new(io)
 
-        # Use empty declaration bytes for now
-        # NOTE: Full certification declaration implementation requires device-specific
-        # attestation credentials and is typically provided by the device manufacturer
-        declaration = Bytes.new(0)
+        # Generate Certification Declaration using our certificate manager
+        declaration = Certificate::CertificationDeclaration.generate(@vendor_id, @product_id)
         timestamp = Time.utc.to_unix.to_u32
 
         data = {
