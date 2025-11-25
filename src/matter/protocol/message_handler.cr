@@ -28,6 +28,7 @@ module Matter
       PROTOCOL_USER_DIRECTED_COMM = 0x0003_u16
 
       # Secure Channel Message Types
+      MSG_STANDALONE_ACK       = 0x10_u8
       MSG_PBKDF_PARAM_REQUEST  = 0x20_u8
       MSG_PBKDF_PARAM_RESPONSE = 0x21_u8
       MSG_PASE_PAKE1           = 0x22_u8
@@ -175,6 +176,8 @@ module Matter
       # Handle Secure Channel protocol (PASE, CASE, etc.)
       private def handle_secure_channel(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
         case msg.payload_header.message_type
+        when MSG_STANDALONE_ACK
+          handle_standalone_ack(msg, peer)
         when MSG_PBKDF_PARAM_REQUEST
           handle_pbkdf_param_request(msg, peer)
         when MSG_PASE_PAKE1
@@ -741,6 +744,20 @@ module Matter
       end
 
       # Send a StatusReport with success status
+      # Handle Standalone ACK messages
+      # These are sent when a peer wants to acknowledge a message but has no other data to send
+      private def handle_standalone_ack(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
+        Log.info { "✅ Received StandaloneAck" }
+
+        # If the ACK includes an acknowledged message ID, log it
+        if ack_msg_id = msg.payload_header.acknowledged_message_id
+          Log.debug { "  Acknowledging message ID: #{ack_msg_id}" }
+        end
+
+        # StandaloneAck doesn't require any processing - it just confirms receipt
+        # The exchange is complete
+      end
+
       # Handle StatusReport messages (sent by controllers to indicate errors or status)
       private def handle_status_report(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
         Log.info { "📨 Received StatusReport" }

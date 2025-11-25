@@ -125,9 +125,9 @@ module Matter
         # Issuer = PAA
         cert.issuer = build_subject_name("Matter Test PAA")
 
-        # Subject with vendor ID
-        cn = product_id ? "Matter Test PAI 0x#{vendor_id.to_s(16).upcase}/0x#{product_id.to_s(16).upcase}" : "Matter Test PAI 0x#{vendor_id.to_s(16).upcase}"
-        cert.subject = build_subject_name(cn, vendor_id, product_id)
+        # Subject with vendor ID (PAI should NOT include productId - it's reusable across products)
+        cn = "Matter Test PAI 0x#{vendor_id.to_s(16).upcase}"
+        cert.subject = build_subject_name(cn, vendor_id, nil)
 
         # Public key
         cert.public_key = build_ec_public_key(key.public_key)
@@ -169,9 +169,9 @@ module Matter
         cert.not_before = OpenSSL::ASN1::Time.days_from_now(-365)    # 1 year ago
         cert.not_after = OpenSSL::ASN1::Time.days_from_now(365 * 10) # 10 years from now
 
-        # Issuer = PAI
-        pai_cn = @product_id ? "Matter Test PAI 0x#{vendor_id.to_s(16).upcase}/0x#{@product_id.not_nil!.to_s(16).upcase}" : "Matter Test PAI 0x#{vendor_id.to_s(16).upcase}"
-        cert.issuer = build_subject_name(pai_cn, vendor_id, @product_id)
+        # Issuer = PAI (PAI never includes productId in its subject)
+        pai_cn = "Matter Test PAI 0x#{vendor_id.to_s(16).upcase}"
+        cert.issuer = build_subject_name(pai_cn, vendor_id, nil)
 
         # Subject with vendor ID and product ID
         cn = "Matter Test DAC 0x#{vendor_id.to_s(16).upcase}/0x#{product_id.to_s(16).upcase}"

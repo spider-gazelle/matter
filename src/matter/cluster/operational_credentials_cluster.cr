@@ -699,9 +699,14 @@ module Matter
 
         # Parse NOC to extract fabric_id and node_id
         begin
+          Log.debug { "Received NOC certificate: #{request.noc_value.size} bytes" }
+          Log.debug { "NOC hex (first 100): #{request.noc_value[0, [100, request.noc_value.size].min].hexstring}" }
           fabric_id = extract_fabric_id_from_noc(request.noc_value)
           node_id = extract_node_id_from_noc(request.noc_value)
         rescue ex
+          Log.error { "Failed to parse NOC: #{ex.message}" }
+          Log.error { "  NOC size: #{request.noc_value.size}" }
+          Log.error { "  NOC hex: #{request.noc_value[0, [200, request.noc_value.size].min].hexstring}" }
           return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failed to parse NOC: #{ex.message}")
         end
 
@@ -883,32 +888,41 @@ module Matter
         # Parse TLV-encoded request
         request = Definitions::OperationalCredentials::AddTrustedRootCertificateRequest.new(fields)
 
+        Log.debug { "Received AddTrustedRootCertificate: #{request.root_certificate.size} bytes" }
+        Log.debug { "Root cert hex (first 100): #{request.root_certificate[0, [100, request.root_certificate.size].min].hexstring}" }
+
         # Validate failsafe is armed
         # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
         # NOTE: This command has no response according to Matter spec, but we return empty
         # bytes to indicate completion (success or failure cannot be distinguished)
         unless @failsafe_armed
+          Log.warn { "AddTrustedRootCertificate failed: Failsafe not armed" }
           return Bytes.new(0)
         end
 
         # Cannot set root cert twice in same failsafe
         if @failsafe_context.root_cert_set
+          Log.warn { "AddTrustedRootCertificate failed: Root cert already set" }
           return Bytes.new(0)
         end
 
         # Cannot set root cert after AddNOC/UpdateNOC
         if @failsafe_context.noc_added_or_updated
+          Log.warn { "AddTrustedRootCertificate failed: NOC already added/updated" }
           return Bytes.new(0)
         end
 
         # Validate certificate format
         unless validate_certificate_format(request.root_certificate)
+          Log.error { "AddTrustedRootCertificate failed: Invalid certificate format" }
+          Log.error { "  First byte: 0x#{request.root_certificate[0].to_s(16)}" }
           return Bytes.new(0)
         end
 
         # Store root certificate
         @trusted_root_certs << request.root_certificate
         @failsafe_context.root_cert_set = true
+        Log.info { "AddTrustedRootCertificate succeeded, root_cert_set=true" }
         increment_version
 
         # This command has no response (returns empty bytes on success)
@@ -1500,10 +1514,23 @@ module Matter
           reader = TLV::Reader.new(noc)
           cert_data = reader.get
 
+          Log.debug { "NOC TLV structure: #{cert_data.inspect}" }
+          if cert_data.is_a?(Hash)
+            Log.debug { "NOC TLV keys: #{cert_data.keys.inspect}" }
+          end
+
+          # Unwrap "Any" container if present
+          if cert_data.is_a?(Hash) && cert_data.has_key?("Any")
+            cert_data = cert_data["Any"]
+            Log.debug { "Unwrapped 'Any' container, new keys: #{cert_data.is_a?(Hash) ? cert_data.keys.inspect : cert_data.class}" }
+          end
+
           # Navigate to the certificate structure
           # The NOC is a TLV structure containing subject fields
           # Look for field 21 (fabricId) in the certificate data
+          Log.debug { "Searching for fabricId (field 21) in: #{cert_data.inspect[0..200]}" }
           fabric_id = find_tlv_field(cert_data, 21_u8)
+          Log.debug { "Found fabricId: #{fabric_id.inspect}" }
 
           unless fabric_id
             raise "fabricId not found in NOC certificate"
@@ -1529,6 +1556,11 @@ module Matter
         begin
           reader = TLV::Reader.new(noc)
           cert_data = reader.get
+
+          # Unwrap "Any" container if present
+          if cert_data.is_a?(Hash) && cert_data.has_key?("Any")
+            cert_data = cert_data["Any"]
+          end
 
           # Look for field 17 (nodeId) in the certificate data
           node_id = find_tlv_field(cert_data, 17_u8)
@@ -1578,6 +1610,27 @@ module Matter
               return found
             end
           end
+        else
+          # Handle PathContainer and other hash-like objects
+          # Check if the object responds to hash-like methods
+          if data.responds_to?(:has_key?) && data.responds_to?(:[])
+            tag_str = tag.to_s
+            # Try both string and numeric keys
+            if data.has_key?(tag_str)
+              return data[tag_str]
+            elsif data.has_key?(tag)
+              return data[tag]
+            end
+          end
+
+          # Try to iterate if it responds to each
+          if data.responds_to?(:each)
+            data.each do |value|
+              if found = find_tlv_field(value, tag)
+                return found
+              end
+            end
+          end
         end
 
         nil
@@ -1592,24 +1645,38 @@ module Matter
         # Matter spec indicates certificates are typically 100-600 bytes
         return false if cert.size < 50 || cert.size > 1024
 
-        # Check basic DER format (must start with SEQUENCE tag)
-        return false if cert[0] != 0x30_u8
+        # Matter supports two certificate formats:
+        # 1. X.509 DER format (starts with 0x30 - SEQUENCE tag)
+        # 2. Matter TLV format (starts with 0x15 - TLV structure tag)
+        first_byte = cert[0]
 
-        # Check length encoding is valid
-        if cert.size >= 2
-          length_byte = cert[1]
-          # Short form (length < 128) or long form indicator
-          if length_byte >= 0x80
-            # Long form - check we have enough bytes
-            num_length_bytes = length_byte & 0x7F
-            return false if num_length_bytes > 4 # Unreasonably long
-            return false if cert.size < 2 + num_length_bytes
+        # Check for DER format
+        if first_byte == 0x30_u8
+          # Check length encoding is valid
+          if cert.size >= 2
+            length_byte = cert[1]
+            # Short form (length < 128) or long form indicator
+            if length_byte >= 0x80
+              # Long form - check we have enough bytes
+              num_length_bytes = length_byte & 0x7F
+              return false if num_length_bytes > 4 # Unreasonably long
+              return false if cert.size < 2 + num_length_bytes
+            end
+          else
+            return false
           end
-        else
-          return false
+          return true
         end
 
-        true
+        # Check for Matter TLV format (starts with 0x15 - TLV structure tag)
+        if first_byte == 0x15_u8
+          # Basic TLV validation - just check it's not obviously malformed
+          # Full TLV parsing will happen when we try to use the certificate
+          return cert.size >= 2 # Must have at least tag and some data
+        end
+
+        # Unknown format
+        false
       end
 
       # TLV Encoding methods
