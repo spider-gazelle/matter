@@ -226,7 +226,7 @@ module Matter
           # both of which need to eventually add an "Administer Node over CASE" Access Control Entry to finalize new
           # Fabric configuration and subsequently be able to call the CommissioningComplete command.
           @[TLV::Field(tag: 3)]
-          property case_admin_subject : DataType::SubjectId
+          property case_admin_subject : UInt64
 
           # This field shall be set to the Vendor ID of the entity issuing the AddNOC command. This value shall NOT be
           # one of the reserved Vendor ID values defined in Table 1, “Vendor ID Allocations”.
@@ -315,7 +315,7 @@ module Matter
           # Thereafter, the Node shall respond with an NOCResponse with a StatusCode of OK and a FabricIndex field
           # matching the FabricIndex under which the new Node Operational Certificate (NOC) is scoped.
           @[TLV::Field(tag: 4)]
-          property admin_vendor_id : DataType::VendorId
+          property admin_vendor_id : UInt16
         end
 
         # This command shall be generated in response to the following commands:

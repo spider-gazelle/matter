@@ -645,8 +645,8 @@ module Matter
         # Build CSR elements (TLV structure with public key and nonce)
         csr_elements = build_csr_elements(request.csr_nonce, @pending_noc_key.not_nil!)
 
-        # Sign CSR with attestation key
-        csr_signature = sign_attestation(csr_elements)
+        # Sign CSR with attestation key (pass session_id for attestation challenge)
+        csr_signature = sign_attestation(csr_elements, @session_id)
 
         # Store CSR context in failsafe
         # NOTE: @session_id should be set by protocol layer, defaults to 0 for testing
@@ -718,7 +718,7 @@ module Matter
           operational_cert: request.noc_value,
           operational_key: @pending_noc_key.not_nil!,
           ipk: request.ipk_value,
-          vendor_id: request.admin_vendor_id.id,
+          vendor_id: request.admin_vendor_id,
           label: "",
           intermediate_cert: request.icac_value
         )
@@ -737,7 +737,7 @@ module Matter
           default_acl = AccessControlCluster::AccessControlEntry.new(
             privilege: AccessControlCluster::AccessControlEntryPrivilege::Administer,
             auth_mode: AccessControlCluster::AccessControlEntryAuthMode::CASE,
-            subjects: [request.case_admin_subject.id],
+            subjects: [request.case_admin_subject],
             targets: nil, # nil means all targets
             fabric_index: fabric.fabric_index
           )
@@ -1382,6 +1382,15 @@ module Matter
 
         # Create a DER-encoded CSR with the public key
         csr = build_csr_der(key)
+
+        Log.debug { "=== CSR Generated ===" }
+        Log.debug { "CSR length: #{csr.size} bytes" }
+        Log.debug { "CSR hex: #{csr.hexstring}" }
+        Log.debug { "Public key in CSR: #{key.public_key.hexstring}" }
+
+        # Verify CSR with OpenSSL for debugging
+        File.write("/tmp/device_csr.der", csr)
+        Log.debug { "CSR saved to /tmp/device_csr.der for inspection" }
 
         io = IO::Memory.new
         writer = TLV::Writer.new(io)
