@@ -215,9 +215,14 @@ module MatterSwitch
       # Configure session lookup callback for attestation signature generation
       # This allows the OperationalCredentials cluster to access the session's attestation_challenge
       @operational_credentials.session_lookup = ->(session_id : UInt64) {
-        if session = @message_handler.sessions[session_id]?
-          session.attestation_challenge
+        puts "DEBUG: session_lookup called with session_id=#{session_id}"
+        puts "DEBUG: Available sessions: #{@message_handler.sessions.keys.inspect}"
+        if session = @message_handler.sessions[session_id.to_u16]?
+          challenge = session.attestation_challenge
+          puts "DEBUG: Found session, attestation_challenge=#{challenge ? challenge.hexstring : "nil"}"
+          challenge
         else
+          puts "DEBUG: Session not found!"
           nil
         end
       }
