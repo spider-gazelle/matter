@@ -165,9 +165,9 @@ module Matter
     #
     # Specification: Matter 1.4 § 4.13.2.4.2 (Compressed Fabric Identifier)
     def compressed_fabric_id : Bytes
-      # Prepare salt: fabric_id as 8 bytes (little-endian)
+      # Prepare salt: fabric_id as 8 bytes (big-endian per Matter spec 4.3.2.2)
       salt = Bytes.new(8)
-      IO::ByteFormat::LittleEndian.encode(@fabric_id, salt)
+      IO::ByteFormat::BigEndian.encode(@fabric_id, salt)
 
       # Key: root public key without first byte (skip 0x04 uncompressed point indicator)
       # Root public key format is: 0x04 || x (32 bytes) || y (32 bytes) = 65 bytes total
