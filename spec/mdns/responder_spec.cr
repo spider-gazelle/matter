@@ -85,7 +85,7 @@ describe Matter::MDNS::Responder do
       )
 
       info = Matter::MDNS::OperationalInfo.new(
-        fabric_id: 0x0000000000000001_u64,
+        compressed_fabric_id: (cfid = Bytes.new(8); IO::ByteFormat::LittleEndian.encode(0x0000000000000001_u64, cfid); cfid),
         node_id: 0x0000000000000001_u64,
         session_idle_interval: 500_u32,
         session_active_interval: 300_u32,
@@ -98,7 +98,7 @@ describe Matter::MDNS::Responder do
 
     it "includes correct TXT records for operational" do
       info = Matter::MDNS::OperationalInfo.new(
-        fabric_id: 0x0000000000000001_u64,
+        compressed_fabric_id: (cfid = Bytes.new(8); IO::ByteFormat::LittleEndian.encode(0x0000000000000001_u64, cfid); cfid),
         node_id: 0x0000000000000001_u64,
         session_idle_interval: 500_u32,
         session_active_interval: 300_u32,
@@ -113,7 +113,7 @@ describe Matter::MDNS::Responder do
 
     it "omits TCP flag when not supported" do
       info = Matter::MDNS::OperationalInfo.new(
-        fabric_id: 0x0000000000000001_u64,
+        compressed_fabric_id: (cfid = Bytes.new(8); IO::ByteFormat::LittleEndian.encode(0x0000000000000001_u64, cfid); cfid),
         node_id: 0x0000000000000001_u64,
         tcp_supported: false
       )
@@ -130,8 +130,12 @@ describe Matter::MDNS::Responder do
     end
 
     it "generates correct operational instance name" do
+      # Create compressed fabric ID as bytes
+      compressed_fabric_id = Bytes.new(8)
+      IO::ByteFormat::BigEndian.encode(0x1234567890ABCDEF_u64, compressed_fabric_id)
+
       instance = Matter::MDNS::ServiceNames.operational_instance(
-        0x1234567890ABCDEF_u64,
+        compressed_fabric_id,
         0xFEDCBA0987654321_u64
       )
       instance.should eq("1234567890ABCDEF-FEDCBA0987654321._matter._tcp.local")
@@ -456,7 +460,7 @@ describe Matter::MDNS::Responder do
 
       # Advertise operational service
       op_info = Matter::MDNS::OperationalInfo.new(
-        fabric_id: 0x1234567890ABCDEF_u64,
+        compressed_fabric_id: (cfid = Bytes.new(8); IO::ByteFormat::LittleEndian.encode(0x1234567890ABCDEF_u64, cfid); cfid),
         node_id: 0x0000000000000001_u64,
         session_idle_interval: 500_u32,
         session_active_interval: 300_u32,

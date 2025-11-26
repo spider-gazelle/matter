@@ -68,8 +68,12 @@ describe "mDNS Integration" do
       )
 
       # Advertise operational service
+      # Create a dummy compressed fabric ID (8 bytes)
+      compressed_fabric_id = Bytes.new(8)
+      IO::ByteFormat::LittleEndian.encode(0x0000000000000001_u64, compressed_fabric_id)
+
       info = Matter::MDNS::OperationalInfo.new(
-        fabric_id: 0x0000000000000001_u64,
+        compressed_fabric_id: compressed_fabric_id,
         node_id: 0x0000000000000001_u64,
         session_idle_interval: 500_u32,
         session_active_interval: 300_u32,
@@ -220,8 +224,12 @@ describe "mDNS Integration" do
       responder.advertise_commissioning(commissioning_info, port: 5540)
 
       # Advertise operational
+      # Create a dummy compressed fabric ID (8 bytes)
+      compressed_fabric_id2 = Bytes.new(8)
+      IO::ByteFormat::LittleEndian.encode(0x0000000000000001_u64, compressed_fabric_id2)
+
       operational_info = Matter::MDNS::OperationalInfo.new(
-        fabric_id: 0x0000000000000001_u64,
+        compressed_fabric_id: compressed_fabric_id2,
         node_id: 0x0000000000000001_u64
       )
 
@@ -315,8 +323,12 @@ describe "mDNS Integration" do
     end
 
     it "formats operational instance correctly" do
+      # Create compressed fabric ID as bytes
+      compressed_fabric_id3 = Bytes.new(8)
+      IO::ByteFormat::BigEndian.encode(0x1234567890ABCDEF_u64, compressed_fabric_id3)
+
       instance = Matter::MDNS::ServiceNames.operational_instance(
-        0x1234567890ABCDEF_u64,
+        compressed_fabric_id3,
         0xFEDCBA0987654321_u64
       )
       instance.should eq("1234567890ABCDEF-FEDCBA0987654321._matter._tcp.local")

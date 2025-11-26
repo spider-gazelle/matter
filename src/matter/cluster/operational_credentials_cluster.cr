@@ -720,11 +720,17 @@ module Matter
           return encode_noc_response(NodeOperationalCertStatus::FabricConflict, nil, "Fabric with this ID already exists")
         end
 
+        # Extract public key from root certificate
+        # The compressed fabric ID computation requires the public key, not the full certificate
+        root_cert = @trusted_root_certs.last
+        root_public_key = extract_public_key_from_certificate(root_cert)
+        Log.debug { "Extracted root public key: #{root_public_key.size} bytes, first byte: 0x#{root_public_key[0].to_s(16)}" }
+
         # Add fabric to table
         fabric = @fabric_table.add_fabric_auto_index(
           fabric_id: fabric_id,
           node_id: node_id,
-          root_public_key: @trusted_root_certs.last,
+          root_public_key: root_public_key,
           operational_cert: request.noc_value,
           operational_key: @pending_noc_key.not_nil!,
           ipk: request.ipk_value,
@@ -1598,6 +1604,101 @@ module Matter
         rescue ex
           # If parsing fails, raise with context
           raise "Failed to parse NOC certificate: #{ex.message}"
+        end
+      end
+
+      # Extract the public key from a certificate (supports both TLV and DER formats)
+      # Returns the public key in uncompressed format (65 bytes: 0x04 + x + y coordinates)
+      private def extract_public_key_from_certificate(cert_bytes : Bytes) : Bytes
+        # Check certificate format by first byte
+        first_byte = cert_bytes[0]
+
+        case first_byte
+        when 0x15 # Matter TLV certificate
+          extract_public_key_from_tlv_certificate(cert_bytes)
+        when 0x30 # X.509 DER certificate
+          extract_public_key_from_der_certificate(cert_bytes)
+        else
+          raise "Unknown certificate format: first byte 0x#{first_byte.to_s(16)}"
+        end
+      end
+
+      # Extract public key from Matter TLV certificate
+      # Matter TLV certificates have tag 9 for the EC public key field
+      private def extract_public_key_from_tlv_certificate(cert_tlv : Bytes) : Bytes
+        begin
+          # Parse the TLV certificate using TLV::Reader
+          reader = TLV::Reader.new(cert_tlv)
+          parsed = reader.get
+
+          Log.debug { "Parsed TLV certificate structure: #{parsed.class}" }
+
+          # Matter certificate format has tag 9 for elliptic curve public key
+          # The public key should be 65 bytes: 0x04 || x (32 bytes) || y (32 bytes)
+          public_key_value = find_tlv_field(parsed, 9_u8)
+
+          if public_key_value.nil?
+            raise "Could not find public key field (tag 9) in TLV certificate"
+          end
+
+          # Extract bytes from the TLV value
+          public_key_bytes = case public_key_value
+                             when Bytes
+                               public_key_value
+                             when Slice(UInt8)
+                               public_key_value.to_a.to_slice
+                             when String
+                               public_key_value.to_slice
+                             else
+                               raise "Unexpected public key type: #{public_key_value.class}"
+                             end
+
+          # Validate that it's the correct format (65 bytes starting with 0x04)
+          if public_key_bytes.size != 65
+            raise "Invalid public key size: expected 65 bytes, got #{public_key_bytes.size}"
+          end
+
+          if public_key_bytes[0] != 0x04
+            raise "Invalid public key format: expected uncompressed point (0x04), got 0x#{public_key_bytes[0].to_s(16)}"
+          end
+
+          Log.debug { "Extracted public key from TLV certificate: #{public_key_bytes.size} bytes" }
+          Log.debug { "Public key hex: #{public_key_bytes.hexstring}" }
+          public_key_bytes
+        rescue ex
+          Log.error { "Failed to extract public key from TLV certificate: #{ex.message}" }
+          raise "Failed to extract public key from TLV certificate: #{ex.message}"
+        end
+      end
+
+      # Extract public key from X.509 DER certificate using OpenSSL
+      private def extract_public_key_from_der_certificate(cert_der : Bytes) : Bytes
+        begin
+          # Load the certificate from DER bytes
+          x509 = OpenSSL::X509::Certificate.from_der(cert_der)
+
+          # Get the public key from the certificate
+          pkey = x509.public_key
+
+          # For EC keys, extract the uncompressed point bytes
+          # The public key should be in the form: 0x04 || x (32 bytes) || y (32 bytes)
+          if pkey.is_a?(OpenSSL::PKey::EC)
+            # Use OpenSSL's API to get the public key bytes directly
+            # This returns the uncompressed EC point (65 bytes: 0x04 || x || y)
+            public_key_bytes = pkey.public_key_bytes
+
+            if public_key_bytes.size == 65 && public_key_bytes[0] == 0x04
+              Log.debug { "Extracted public key from DER certificate: #{public_key_bytes.size} bytes" }
+              return public_key_bytes
+            else
+              raise "Invalid EC public key format (expected 65 bytes starting with 0x04, got #{public_key_bytes.size} bytes)"
+            end
+          else
+            raise "Certificate does not contain an EC public key"
+          end
+        rescue ex
+          Log.error { "Failed to extract public key from DER certificate: #{ex.message}" }
+          raise "Failed to extract public key from DER certificate: #{ex.message}"
         end
       end
 

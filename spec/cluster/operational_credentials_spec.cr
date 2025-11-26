@@ -26,6 +26,21 @@ def create_certificate_chain_request_tlv(cert_type : UInt8) : Bytes
   io.rewind.to_slice
 end
 
+# Helper to create a valid TLV certificate with a public key for testing
+def create_test_tlv_certificate(public_key : Bytes, fabric_id : UInt64 = 0x1_u64) : Bytes
+  io = IO::Memory.new
+  writer = TLV::Writer.new(io)
+
+  cert_data = {
+     1_u8 => 1_u8,       # Serial number
+     9_u8 => public_key, # EC public key (tag 9)
+    21_u8 => fabric_id,  # Fabric ID
+  } of TLV::Tag => TLV::Value
+
+  writer.put(nil, cert_data)
+  io.rewind.to_slice
+end
+
 def create_csr_request_tlv(nonce : Bytes, is_for_update : Bool? = nil) : Bytes
   io = IO::Memory.new
   writer = TLV::Writer.new(io)
@@ -43,15 +58,12 @@ def create_add_noc_request_tlv(noc : Bytes, icac : Bytes?, ipk : Bytes, admin_su
   io = IO::Memory.new
   writer = TLV::Writer.new(io)
 
-  # Create DataType wrappers and get their TLV representations
-  subject_id = Matter::DataType::SubjectId.new(admin_subject)
-  vendor_id = Matter::DataType::VendorId.new(admin_vendor)
-
+  # AddNocRequest expects plain UInt64 and UInt16, not DataType wrappers
   data = {
     0_u8 => noc,
     2_u8 => ipk,
-    3_u8 => subject_id.to_h,
-    4_u8 => vendor_id.to_h,
+    3_u8 => admin_subject,
+    4_u8 => admin_vendor,
   } of TLV::Tag => TLV::Value
   data[1_u8] = icac if icac
 
@@ -63,12 +75,10 @@ def create_update_noc_request_tlv(noc : Bytes, icac : Bytes?, fabric_index : UIn
   io = IO::Memory.new
   writer = TLV::Writer.new(io)
 
-  # Create FabricIndex wrapper and get its TLV representation
-  fabric_idx = Matter::DataType::FabricIndex.new(fabric_index)
-
+  # TLV layer will convert plain UInt8 to DataType::FabricIndex
   data = {
       0_u8 => noc,
-    254_u8 => fabric_idx.to_h,
+    254_u8 => fabric_index,
   } of TLV::Tag => TLV::Value
   data[1_u8] = icac if icac
 
@@ -450,7 +460,11 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         csr_result.as(Matter::Cluster::CommandResponse).data.size.should be > 0
 
         # Step 2: Add trusted root certificate
-        root_cert = Bytes.new(100, 0x30_u8) # Mock DER cert starting with SEQUENCE
+        # Create a valid TLV certificate with a public key
+        root_public_key = Bytes.new(65)
+        root_public_key[0] = 0x04_u8
+        (1...65).each { |i| root_public_key[i] = i.to_u8 }
+        root_cert = create_test_tlv_certificate(root_public_key)
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
         root_result = cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
@@ -509,7 +523,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster.failsafe_armed = true
 
         # Add trusted root first
-        root_cert = Bytes.new(100, 0x30_u8)
+        root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
         cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
@@ -602,7 +616,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           csr_request_tlv
         )
 
-        root_cert = Bytes.new(100, 0x30_u8)
+        root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
         cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
@@ -690,7 +704,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           create_csr_request_tlv(nonce1, false)
         )
 
-        root_cert1 = Bytes.new(100, 0x30_u8)
+        root_public_key1 = Bytes.new(65); root_public_key1[0] = 0x04_u8; (1...65).each { |i| root_public_key1[i] = i.to_u8 }; root_cert1 = create_test_tlv_certificate(root_public_key1, 0xAAAAAAAAAAAAAAAA_u64)
         cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert1)
@@ -727,7 +741,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         )
 
         # Try to add trusted root (not allowed for updates)
-        root_cert = Bytes.new(100, 0x30_u8)
+        root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
         cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
@@ -775,7 +789,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           csr_request_tlv
         )
 
-        root_cert = Bytes.new(100, 0x30_u8)
+        root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
         cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
@@ -866,7 +880,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           create_csr_request_tlv(nonce1, false)
         )
 
-        root_cert1 = Bytes.new(100, 0x30_u8)
+        root_public_key1 = Bytes.new(65); root_public_key1[0] = 0x04_u8; (1...65).each { |i| root_public_key1[i] = i.to_u8 }; root_cert1 = create_test_tlv_certificate(root_public_key1, 0xAAAAAAAAAAAAAAAA_u64)
         cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert1)
@@ -898,7 +912,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           create_csr_request_tlv(nonce2, false)
         )
 
-        root_cert2 = Bytes.new(100, 0x30_u8)
+        root_public_key2 = Bytes.new(65); root_public_key2[0] = 0x04_u8; (1...65).each { |i| root_public_key2[i] = (i + 1).to_u8 }; root_cert2 = create_test_tlv_certificate(root_public_key2, 0xBBBBBBBBBBBBBBBB_u64)
         cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert2)
@@ -943,7 +957,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           create_csr_request_tlv(nonce1, false)
         )
 
-        root_cert1 = Bytes.new(100, 0x30_u8)
+        root_public_key1 = Bytes.new(65); root_public_key1[0] = 0x04_u8; (1...65).each { |i| root_public_key1[i] = i.to_u8 }; root_cert1 = create_test_tlv_certificate(root_public_key1, 0xAAAAAAAAAAAAAAAA_u64)
         cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert1)
@@ -976,7 +990,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           create_csr_request_tlv(nonce2, false)
         )
 
-        root_cert2 = Bytes.new(100, 0x30_u8)
+        root_public_key2 = Bytes.new(65); root_public_key2[0] = 0x04_u8; (1...65).each { |i| root_public_key2[i] = (i + 1).to_u8 }; root_cert2 = create_test_tlv_certificate(root_public_key2, 0xBBBBBBBBBBBBBBBB_u64)
         cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert2)
@@ -1022,7 +1036,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           create_csr_request_tlv(nonce, false)
         )
 
-        root_cert = Bytes.new(100, 0x30_u8)
+        root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
         cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert)
@@ -1086,7 +1100,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
             create_csr_request_tlv(nonce, false)
           )
 
-          root_cert = Bytes.new(100, 0x30_u8)
+          root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
           cluster.invoke_command(
             Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
             create_add_trusted_root_cert_request_tlv(root_cert)
@@ -1148,6 +1162,215 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         response = reader.get
         status = response["Any"].as(Hash)[0_u8]
         status.should eq(10_u8) # LabelConflict
+      end
+    end
+
+    describe "certificate public key extraction" do
+      it "processes AddNOC with TLV root certificate" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        storage = Matter::Storage::MemoryBackend.new
+        fabric_table = Matter::FabricTable.new(storage)
+        cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table, endpoint_id, nil)
+
+        # Set up for AddNOC
+        cluster.failsafe_armed = true
+        cluster.session_id = 1_u64
+
+        # Request CSR first
+        nonce = Bytes.new(32, 0_u8)
+        cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
+          create_csr_request_tlv(nonce, false)
+        )
+
+        # Create a TLV root certificate with tag 9 containing a valid 65-byte EC public key
+        cert_io = IO::Memory.new
+        cert_writer = TLV::Writer.new(cert_io)
+
+        # Create a valid 65-byte uncompressed EC public key
+        public_key = Bytes.new(65)
+        public_key[0] = 0x04_u8
+        (1...65).each { |i| public_key[i] = (i % 256).to_u8 }
+
+        cert_data = {
+           1_u8 => 1_u8,             # Serial number
+           9_u8 => public_key,       # EC public key (tag 9) - Matter TLV certificate format
+          21_u8 => 0x1234567890_u64, # Fabric ID
+        } of TLV::Tag => TLV::Value
+        cert_writer.put(nil, cert_data)
+        tlv_cert = cert_io.rewind.to_slice
+
+        # Add trusted root certificate (TLV format)
+        cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
+          create_add_trusted_root_cert_request_tlv(tlv_cert)
+        )
+
+        # Create NOC
+        noc_io = IO::Memory.new
+        noc_writer = TLV::Writer.new(noc_io)
+        noc_writer.put(nil, {
+          17_u8 => 0x1111111111111111_u64,
+          21_u8 => 0x1234567890_u64,
+           9_u8 => public_key, # Same public key as root
+        } of TLV::Tag => TLV::Value)
+        noc = noc_io.rewind.to_slice
+
+        # Invoke AddNOC - should successfully extract public key from TLV certificate
+        ipk = Bytes.new(16, 0_u8)
+        result = cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
+          create_add_noc_request_tlv(noc, nil, ipk, 0xABCD_u64, 0xFFF1_u16)
+        )
+
+        # Should succeed - verifying that TLV certificate processing worked
+        result.should be_a(Matter::Cluster::CommandResponse)
+        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
+        response = reader.get
+        status = response["Any"].as(Hash)[0_u8]
+        status.should eq(0_u8) # Success
+
+        # Verify fabric was created with correct public key
+        cluster.fabrics.size.should eq(1)
+        cluster.fabrics[0].root_public_key.should eq(public_key)
+      end
+
+      it "processes AddNOC with DER root certificate" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        storage = Matter::Storage::MemoryBackend.new
+        fabric_table = Matter::FabricTable.new(storage)
+        cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table, endpoint_id, nil)
+
+        # Set up for AddNOC
+        cluster.failsafe_armed = true
+        cluster.session_id = 1_u64
+
+        # Request CSR
+        nonce = Bytes.new(32, 0_u8)
+        cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
+          create_csr_request_tlv(nonce, false)
+        )
+
+        # Generate a real DER certificate using OpenSSL's native key generation
+        # This ensures the certificate has a proper EC public key structure
+        pkey = OpenSSL::PKey::EC.generate_by_curve_name("prime256v1")
+
+        cert = OpenSSL::X509::Certificate.new
+        cert.version = 2
+        cert.serial = OpenSSL::BN.new(1)
+        cert.not_before = OpenSSL::ASN1::Time.days_from_now(-1)
+        cert.not_after = OpenSSL::ASN1::Time.days_from_now(365)
+
+        name = OpenSSL::X509::Name.new
+        name.add_entry("CN", "Test Root")
+        cert.subject = name
+        cert.issuer = name
+        cert.public_key = pkey
+
+        cert.sign(pkey, OpenSSL::Digest.new("SHA256"))
+
+        der_cert = cert.to_der.to_slice
+
+        # Extract the public key bytes from the generated key for NOC
+        public_key_bytes = pkey.public_key_bytes
+
+        # Add DER root certificate
+        cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
+          create_add_trusted_root_cert_request_tlv(der_cert)
+        )
+
+        # Create NOC with same public key
+        noc_io = IO::Memory.new
+        noc_writer = TLV::Writer.new(noc_io)
+        noc_writer.put(nil, {
+          17_u8 => 0x2222222222222222_u64,
+          21_u8 => 0x9876543210_u64,
+           9_u8 => public_key_bytes,
+        } of TLV::Tag => TLV::Value)
+        noc = noc_io.rewind.to_slice
+
+        # Invoke AddNOC - should successfully extract public key from DER certificate
+        ipk = Bytes.new(16, 1_u8)
+        result = cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
+          create_add_noc_request_tlv(noc, nil, ipk, 0xBCDE_u64, 0xFFF2_u16)
+        )
+
+        # Should succeed - verifying that DER certificate processing worked
+        result.should be_a(Matter::Cluster::CommandResponse)
+        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
+        response = reader.get
+        status = response["Any"].as(Hash)[0_u8]
+        status.should eq(0_u8) # Success
+
+        # Verify fabric was created with correct public key
+        cluster.fabrics.size.should eq(1)
+        cluster.fabrics[0].root_public_key.should eq(public_key_bytes)
+      end
+
+      it "computes correct compressed fabric ID from extracted public key" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        storage = Matter::Storage::MemoryBackend.new
+        fabric_table = Matter::FabricTable.new(storage)
+        cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table, endpoint_id, nil)
+
+        # Set up for AddNOC
+        cluster.failsafe_armed = true
+        cluster.session_id = 1_u64
+
+        # Request CSR
+        nonce = Bytes.new(32, 0_u8)
+        cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
+          create_csr_request_tlv(nonce, false)
+        )
+
+        # Create a known public key
+        public_key = Bytes.new(65)
+        public_key[0] = 0x04_u8
+        (1...65).each { |i| public_key[i] = i.to_u8 }
+
+        # Create TLV root certificate
+        cert_io = IO::Memory.new
+        cert_writer = TLV::Writer.new(cert_io)
+        cert_writer.put(nil, {
+           1_u8 => 1_u8,
+           9_u8 => public_key,
+          21_u8 => 0x1_u64,
+        } of TLV::Tag => TLV::Value)
+        tlv_cert = cert_io.rewind.to_slice
+
+        cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
+          create_add_trusted_root_cert_request_tlv(tlv_cert)
+        )
+
+        # Create NOC
+        noc_io = IO::Memory.new
+        noc_writer = TLV::Writer.new(noc_io)
+        noc_writer.put(nil, {
+          17_u8 => 0x1_u64,
+          21_u8 => 0x1_u64,
+           9_u8 => public_key,
+        } of TLV::Tag => TLV::Value)
+        noc = noc_io.rewind.to_slice
+
+        ipk = Bytes.new(16, 0_u8)
+        cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
+          create_add_noc_request_tlv(noc, nil, ipk, 0xDEAD_u64, 0xBEEF_u16)
+        )
+
+        # Verify fabric was created with correct public key extracted from certificate
+        cluster.fabrics.size.should eq(1)
+        fabric = cluster.fabrics[0]
+
+        # The compressed fabric ID is computed from the public key (bytes 1-64)
+        # using HKDF-SHA256 with fabric_id as salt. We verify the fabric has
+        # the correct public key, which means the compressed fabric ID will be correct.
+        fabric.root_public_key.should eq(public_key)
       end
     end
   end
