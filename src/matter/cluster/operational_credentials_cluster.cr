@@ -289,12 +289,17 @@ module Matter
       # This is set by the protocol layer to allow the cluster to access session data
       @session_lookup : Proc(UInt64, Bytes?)? = nil
 
+      # Callback fired when a new fabric is successfully added via AddNOC
+      # This allows the application to save fabric state and trigger operational advertisement
+      @on_fabric_added : Proc(Fabric, Nil)? = nil
+
       getter fabric_table : FabricTable
       property current_fabric_index : UInt8
       property session_id : UInt64?
       property session_fabric_index : UInt8?
       property failsafe_armed : Bool
       property session_lookup : Proc(UInt64, Bytes?)?
+      property on_fabric_added : Proc(Fabric, Nil)?
 
       # CurrentFabricIndex helper method (returns passed value or stored value)
       def current_fabric_index(session_fabric_index : UInt8?) : UInt8
@@ -750,6 +755,12 @@ module Matter
           acl_cluster.increment_version
         end
 
+        # Notify application that fabric was successfully added
+        # This allows the application to save state and trigger operational advertisement
+        if callback = @on_fabric_added
+          callback.call(fabric)
+        end
+
         encode_noc_response(NodeOperationalCertStatus::Ok, fabric.fabric_index)
       end
 
@@ -1160,6 +1171,12 @@ module Matter
           )
           acl_cluster.acl << default_acl
           acl_cluster.increment_version
+        end
+
+        # Notify application that fabric was successfully added
+        # This allows the application to save state and trigger operational advertisement
+        if callback = @on_fabric_added
+          callback.call(fabric)
         end
 
         NOCResponse.new(

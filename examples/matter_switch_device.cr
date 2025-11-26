@@ -227,6 +227,15 @@ module MatterSwitch
         end
       }
 
+      # Configure fabric added callback for operational advertisement
+      # When a fabric is successfully added during commissioning, we need to:
+      # 1. Save the fabric to persistent storage
+      # 2. Advertise the operational service for the new fabric
+      # 3. Mark the device as commissioned
+      @operational_credentials.on_fabric_added = ->(fabric : Matter::Fabric) {
+        handle_fabric_added(fabric)
+      }
+
       # Create mDNS responder
       @responder = Matter::MDNS::Responder.new(
         hostname: @hostname,
@@ -391,7 +400,7 @@ module MatterSwitch
       # Advertise operational service for each fabric
       @fabric_storage.fabrics.each do |fabric|
         info = Matter::MDNS::OperationalInfo.new(
-          fabric_id: fabric.fabric_id,
+          compressed_fabric_id: fabric.compressed_fabric_id,
           node_id: fabric.node_id,
           session_idle_interval: 500_u32,
           session_active_interval: 300_u32,
@@ -408,6 +417,46 @@ module MatterSwitch
       end
 
       puts "✅ Device is ready to receive commands from your controller!"
+      puts ""
+    end
+
+    # Handle fabric added during commissioning
+    # This is called by the OperationalCredentials cluster when AddNOC succeeds
+    def handle_fabric_added(fabric : Matter::Fabric)
+      puts ""
+      puts "🎉 Fabric Successfully Added!"
+      puts "   Fabric ID: 0x#{fabric.fabric_id.to_s(16).upcase}"
+      puts "   Node ID: 0x#{fabric.node_id.to_s(16).upcase}"
+      puts "   Fabric Index: #{fabric.fabric_index}"
+      puts ""
+
+      # 1. Save fabric to storage
+      @fabric_storage.add_fabric(fabric)
+      @fabric_storage.save(FABRIC_FILE)
+      puts "💾 Fabric saved to #{FABRIC_FILE}"
+
+      # 2. Mark device as commissioned
+      @state.commissioned = true
+      @state.save(STATE_FILE)
+      puts "💾 Device state saved to #{STATE_FILE}"
+
+      # 3. Advertise operational service for the new fabric
+      info = Matter::MDNS::OperationalInfo.new(
+        compressed_fabric_id: fabric.compressed_fabric_id,
+        node_id: fabric.node_id,
+        session_idle_interval: 500_u32,
+        session_active_interval: 300_u32,
+        tcp_supported: false
+      )
+
+      @responder.advertise_operational(info, port: @port)
+
+      puts "📡 Operational Advertisement Started:"
+      puts "   Service: _matter._tcp.local"
+      puts "   Compressed Fabric ID: #{fabric.compressed_fabric_id.hexstring.upcase}"
+      puts "   Node ID: 0x#{fabric.node_id.to_s(16).upcase.rjust(16, '0')}"
+      puts ""
+      puts "✅ Commissioning Complete! Device is now operational."
       puts ""
     end
 

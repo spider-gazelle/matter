@@ -46,9 +46,11 @@ module Matter
 
       # Build instance name for operational
       # Format: <compressed-fabric-id>-<node-id>._matter._tcp.local
-      def operational_instance(fabric_id : UInt64, node_id : UInt64) : String
-        fabric_hex = fabric_id.to_s(16).upcase
-        node_hex = node_id.to_s(16).upcase
+      # @param compressed_fabric_id [Bytes] 8-byte compressed fabric ID
+      # @param node_id [UInt64] Node ID within the fabric
+      def operational_instance(compressed_fabric_id : Bytes, node_id : UInt64) : String
+        fabric_hex = compressed_fabric_id.hexstring.upcase
+        node_hex = node_id.to_s(16).upcase.rjust(16, '0')
         "#{fabric_hex}-#{node_hex}.#{OPERATIONAL}"
       end
 
@@ -140,14 +142,14 @@ module Matter
 
     # Operational information for mDNS advertisement
     struct OperationalInfo
-      property fabric_id : UInt64
+      property compressed_fabric_id : Bytes # 8-byte HKDF-derived compressed fabric ID
       property node_id : UInt64
       property session_idle_interval : UInt32   # milliseconds
       property session_active_interval : UInt32 # milliseconds
       property tcp_supported : Bool
 
       def initialize(
-        @fabric_id : UInt64,
+        @compressed_fabric_id : Bytes,
         @node_id : UInt64,
         @session_idle_interval : UInt32 = 500_u32,
         @session_active_interval : UInt32 = 300_u32,

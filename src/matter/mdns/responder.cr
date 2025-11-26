@@ -226,7 +226,7 @@ module Matter
         ttl : Time::Span = DEFAULT_TTL,
       ) : Nil
         service = ServiceNames::OPERATIONAL
-        instance = ServiceNames.operational_instance(info.fabric_id, info.node_id)
+        instance = ServiceNames.operational_instance(info.compressed_fabric_id, info.node_id)
 
         # Track this service for query responses
         @advertised_services[instance] = {ServiceType::Operational, port, info.to_txt_records, nil}
