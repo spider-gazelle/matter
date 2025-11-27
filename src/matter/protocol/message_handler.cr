@@ -1,5 +1,7 @@
 require "../codec/message_codec"
 require "../session/pase/pase"
+require "../session/case/case"
+require "../session/case/definitions"
 require "../session/context"
 require "../session/secure_message"
 require "../transport/udp_transport"
@@ -58,6 +60,15 @@ module Matter
       property initiator_session_id : UInt16?
       property responder_session_id : UInt16?
 
+      # CASE support
+      property case_responder : Session::Case::CaseResponder?
+      property case_initiator_session_id : UInt16?
+      property case_responder_session_id : UInt16?
+
+      # Fabric access callback - set by the device implementation
+      # This allows the message handler to access fabric data for CASE
+      property on_get_fabric : Proc(Fabric?)?
+
       def initialize(
         @transport : Transport::UDPTransport,
         @setup_pin : UInt32,
@@ -67,6 +78,10 @@ module Matter
       )
         @sessions = {} of UInt16 => Session::SecureContext
         @pase_responder = nil
+        @case_responder = nil
+        @case_initiator_session_id = nil
+        @case_responder_session_id = nil
+        @on_get_fabric = nil
 
         # Initialize clusters
         @clusters = {} of Tuple(UInt16, UInt32) => Cluster::Base
@@ -187,7 +202,9 @@ module Matter
         when MSG_STATUS_REPORT
           handle_status_report(msg, peer)
         when MSG_CASE_SIGMA1
-          Log.info { "Received CASE Sigma1 (not yet implemented)" }
+          handle_case_sigma1(msg, peer)
+        when MSG_CASE_SIGMA3
+          handle_case_sigma3(msg, peer)
         else
           Log.warn { "Unsupported Secure Channel message type: 0x#{msg.payload_header.message_type.to_s(16)}" }
         end
@@ -823,6 +840,172 @@ module Matter
           message_type: MSG_STATUS_REPORT,
           payload: status_report.to_bytes
         )
+      end
+
+      # Handle CASE Sigma1 (first step of CASE - operational session establishment)
+      private def handle_case_sigma1(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
+        Log.info { "Handling CASE Sigma1" }
+
+        # Decode Sigma1 message
+        begin
+          sigma1 = Session::Case::Definitions::Sigma1.new(msg.payload)
+
+          Log.info { "  Initiator session ID: #{sigma1.initiator_session_id}" }
+          Log.info { "  Initiator ephemeral public key: #{sigma1.initiator_eph_pub_key.size} bytes" }
+          Log.debug { "  Destination ID: #{sigma1.destination_id.hexstring}" }
+
+          # Store initiator session ID
+          @case_initiator_session_id = sigma1.initiator_session_id
+
+          # Get fabric from callback
+          fabric_callback = @on_get_fabric
+          unless fabric_callback
+            Log.error { "No fabric callback set - cannot process CASE" }
+            return
+          end
+
+          fabric = fabric_callback.call
+          unless fabric
+            Log.error { "No fabric available - device not commissioned" }
+            return
+          end
+
+          Log.info { "Using fabric: #{fabric.fabric_id.to_s(16)}" }
+
+          # Create CaseResponder with fabric's operational certificate and key
+          cert_chain = Session::Case::CertificateChain.new(
+            dac: fabric.operational_cert,
+            pai: fabric.intermediate_cert,
+            paa: nil # Don't need PAA for responder
+          )
+
+          crypto = Crypto::StandardCrypto.new
+          responder = Session::Case::CaseResponder.new(
+            cert_chain: cert_chain,
+            operational_key: fabric.operational_key,
+            fabric_id: fabric.fabric_id,
+            node_id: fabric.node_id,
+            crypto: crypto
+          )
+
+          # Store responder for Sigma3 processing
+          @case_responder = responder
+
+          # Process Sigma1 and generate Sigma2 response
+          sigma2_data = responder.process_sigma1(
+            peer_ephemeral_public_key: sigma1.initiator_eph_pub_key,
+            peer_random: sigma1.initiator_random,
+            peer_session_id: sigma1.initiator_session_id
+          )
+
+          # Store responder session ID
+          @case_responder_session_id = sigma2_data[:session_id]
+
+          Log.info { "  Generated Sigma2 response" }
+          Log.info { "  Responder session ID: #{sigma2_data[:session_id]}" }
+          Log.debug { "  Responder ephemeral public key: #{sigma2_data[:ephemeral_public_key].size} bytes" }
+          Log.debug { "  Encrypted cert: #{sigma2_data[:encrypted_cert].size} bytes" }
+
+          # Build Sigma2 message
+          sigma2 = Session::Case::Definitions::Sigma2.new(
+            responder_random: sigma2_data[:random],
+            responder_session_id: sigma2_data[:session_id],
+            responder_eph_pub_key: sigma2_data[:ephemeral_public_key],
+            encrypted2: sigma2_data[:encrypted_cert]
+          )
+
+          # Send Sigma2 response
+          send_secure_channel_response(
+            msg: msg,
+            peer: peer,
+            message_type: MSG_CASE_SIGMA2,
+            payload: sigma2.to_bytes
+          )
+
+          Log.info { "Sent CASE Sigma2" }
+        rescue ex
+          Log.error(exception: ex) { "Error handling CASE Sigma1: #{ex.message}" }
+        end
+      end
+
+      # Handle CASE Sigma3 (final step of CASE)
+      private def handle_case_sigma3(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
+        Log.info { "Handling CASE Sigma3" }
+
+        begin
+          # Decode Sigma3 message
+          sigma3 = Session::Case::Definitions::Sigma3.new(msg.payload)
+
+          Log.debug { "  Encrypted cert: #{sigma3.encrypted3.size} bytes" }
+
+          # Get CASE responder
+          responder = @case_responder
+          unless responder
+            Log.error { "CASE responder not initialized - Sigma1 must come first" }
+            return
+          end
+
+          # Process Sigma3 and verify
+          # Note: Sigma3 includes encrypted initiator certificate
+          # The CaseResponder will decrypt and verify it
+          unless responder.process_sigma3(sigma3.encrypted3, Bytes.new(0))
+            Log.error { "CASE Sigma3 verification failed" }
+            return
+          end
+
+          Log.info { "✅ CASE Sigma3 verified successfully" }
+
+          # Derive session keys from the shared secret
+          keys = responder.derive_session_keys
+
+          Log.debug { "  Derived encryption key (R2I): #{keys[:encryption].hexstring}" }
+          Log.debug { "  Derived decryption key (I2R): #{keys[:decryption].hexstring}" }
+
+          # Create secure session context using stored session IDs from Sigma1/Sigma2 exchange
+          session_id = @case_responder_session_id
+          peer_session_id = @case_initiator_session_id
+
+          unless session_id && peer_session_id
+            Log.error { "Missing session IDs - Sigma1/Sigma2 exchange must complete first" }
+            return
+          end
+
+          # Get fabric for node IDs
+          fabric_callback = @on_get_fabric
+          unless fabric_callback
+            Log.error { "No fabric callback set" }
+            return
+          end
+
+          fabric = fabric_callback.call
+          unless fabric
+            Log.error { "No fabric available" }
+            return
+          end
+
+          secure_context = Session::SecureContext.new(
+            session_id: session_id,
+            peer_session_id: peer_session_id,
+            session_type: Session::SessionType::Unicast,
+            encryption_key: keys[:encryption],
+            decryption_key: keys[:decryption],
+            is_initiator: false, # We're the responder
+            local_node_id: DataType::NodeId.new(fabric.node_id),
+            peer_node_id: nil # Will be set from message headers
+          )
+
+          # Store session for future encrypted communication
+          @sessions[session_id] = secure_context
+
+          Log.info { "✅ CASE secure session established! Session ID: #{session_id}" }
+          Log.info { "   Operational messages can now be encrypted/decrypted" }
+
+          # Send StatusReport to confirm session establishment
+          # Like PASE, this is sent unsecured as part of the CASE handshake
+          send_status_report_success(msg, peer)
+        rescue ex
+          Log.error(exception: ex) { "Error handling CASE Sigma3: #{ex.message}" }
+        end
       end
     end
   end

@@ -227,6 +227,12 @@ module MatterSwitch
         end
       }
 
+      # Configure fabric access callback for CASE session establishment
+      # This allows the message handler to access the fabric data for CASE responder
+      @message_handler.on_get_fabric = -> : Matter::Fabric? {
+        @fabric_storage.fabrics.first?
+      }
+
       # Configure fabric added callback for operational advertisement
       # When a fabric is successfully added during commissioning, we need to:
       # 1. Save the fabric to persistent storage

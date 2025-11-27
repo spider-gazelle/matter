@@ -480,6 +480,8 @@ module Matter
           # Check for service type queries (PTR or ANY)
           if question.type == RecordBuilder::TYPE_PTR || question.type == 255 # 255 = ANY
             check_service_query(question.name)
+            # For ANY queries, also check if it's an instance-specific query
+            check_instance_query(question.name) if question.type == 255
             # Check for specific instance queries (SRV, TXT, A, AAAA)
           elsif question.type.in?(RecordBuilder::TYPE_SRV, RecordBuilder::TYPE_TXT, RecordBuilder::TYPE_A, RecordBuilder::TYPE_AAAA)
             check_instance_query(question.name)

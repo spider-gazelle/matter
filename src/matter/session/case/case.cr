@@ -3,6 +3,7 @@ require "../../crypto/ecdh"
 require "../../crypto/key"
 require "../context"
 require "openssl_ext"
+require "./definitions"
 
 module Matter
   module Session
@@ -243,7 +244,7 @@ module Matter
 
         def initialize(
           @cert_chain : CertificateChain,
-          @operational_key : Crypto::Key,
+          operational_key : Crypto::Key,
           @fabric_id : UInt64,
           @node_id : UInt64,
           @crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
@@ -252,6 +253,21 @@ module Matter
           @shared_secret = nil
           @our_random = nil
           @our_ephemeral_public = nil
+
+          # Ensure operational key has public component for signing
+          # Derive public key from private key if not already present
+          if operational_key.public_bits.nil?
+            # Use OpenSSL to derive public key from private key
+            # Note: from_private_bytes expects NIST curve names like "P-256", not "prime256v1"
+            ec_key = OpenSSL::PKey::EC.from_private_bytes(operational_key.private_key, "P-256")
+            pub_bytes = ec_key.public_key_bytes
+
+            # Create a new Key with both private and public components
+            @operational_key = operational_key.dup
+            @operational_key.public_bits = pub_bytes
+          else
+            @operational_key = operational_key
+          end
         end
 
         # Step 1: Process Sigma1 and generate Sigma2 response
@@ -288,14 +304,42 @@ module Matter
           ephemeral_public = @ephemeral_key.not_nil!.public_key
           @our_ephemeral_public = ephemeral_public
 
-          # Encrypt our certificate with deterministic nonce
+          # Build TLV structure for signature (SignedData)
+          # This contains: NOC, ICAC (optional), responder's ephemeral public key, initiator's ephemeral public key
+          signed_data = Definitions::SignedData.new(
+            responder_noc: @cert_chain.dac,
+            responder_icac: @cert_chain.pai,
+            responder_public_key: ephemeral_public,
+            initiator_public_key: peer_ephemeral_public_key
+          )
+
+          # Sign the TLV-encoded SignedData structure
+          signed_data_bytes = signed_data.to_bytes
+          signature = @crypto.sign_ecdsa(@operational_key, signed_data_bytes)
+
+          # Generate resumption ID (16 bytes)
+          resumption_id = @crypto.random_bytes(16)
+
+          # Build TLV structure for encryption (EncryptedDataSigma2)
+          # This contains: NOC, ICAC (optional), signature, resumption ID
+          encrypted_data = Definitions::EncryptedDataSigma2.new(
+            responder_noc: @cert_chain.dac,
+            responder_icac: @cert_chain.pai,
+            signature: signature,
+            resumption_id: resumption_id
+          )
+
+          # Encode the TLV structure to bytes
+          encrypted_data_bytes = encrypted_data.to_bytes
+
+          # Encrypt the TLV-encoded structure with deterministic nonce
           nonce = @crypto.create_hkdf_key(
             @shared_secret.not_nil!,
             Bytes.new(0),
             "Sigma2Nonce".to_slice,
             13
           )
-          encrypted_cert = @crypto.encrypt(encryption_key, @cert_chain.dac, nonce)
+          encrypted_cert = @crypto.encrypt(encryption_key, encrypted_data_bytes, nonce)
 
           # Generate session ID
           session_id = @crypto.random_uint16
