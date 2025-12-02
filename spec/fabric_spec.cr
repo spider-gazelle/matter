@@ -237,9 +237,9 @@ describe Matter::Fabric do
       # Key: root public key without first byte
       hkdf_key = root_pub_key[1..-1]
 
-      # Salt: fabric_id as 8 bytes (little-endian)
+      # Salt: fabric_id as 8 bytes (big-endian per Matter spec 4.3.2.2)
       salt = Bytes.new(8)
-      IO::ByteFormat::LittleEndian.encode(fabric_id, salt)
+      IO::ByteFormat::BigEndian.encode(fabric_id, salt)
 
       # Info: "CompressedFabric"
       info = "CompressedFabric".to_slice

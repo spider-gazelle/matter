@@ -6,6 +6,8 @@ require "../src/matter/mdns/service_type"
 require "../src/matter/mdns/service_description"
 require "../src/matter/constants/device_types"
 require "../src/matter/fabric"
+require "../src/matter/fabric_table"
+require "../src/matter/storage/memory_backend"
 require "../src/matter/setup_payload"
 require "../src/matter"
 require "../src/matter/transport/udp_transport"
@@ -65,6 +67,7 @@ module MatterDevice
     property responder : Matter::MDNS::Responder
     property transport : Matter::Transport::UDPTransport
     property message_handler : Matter::Protocol::MessageHandler
+    property fabric_table : Matter::FabricTable
     property hostname : String
     property ip_addresses : Array(Socket::IPAddress)
     property port : Int32
@@ -90,12 +93,39 @@ module MatterDevice
       # Create UDP transport
       @transport = Matter::Transport::UDPTransport.new(port: @port)
 
-      # Create protocol message handler
+      # Create fabric table with in-memory storage (could use file-based for persistence)
+      storage = Matter::Storage::MemoryBackend.new
+      @fabric_table = Matter::FabricTable.new(storage)
+
+      # Create protocol message handler with fabric table
       @message_handler = Matter::Protocol::MessageHandler.new(
         transport: @transport,
         setup_pin: @state.setup_pin,
-        discriminator: @state.discriminator
+        discriminator: @state.discriminator,
+        fabric_table: @fabric_table,
+        vendor_id: @state.vendor_id,
+        product_id: @state.product_id
       )
+
+      # Set up commissioned callback to switch from commissioning to operational mDNS
+      @message_handler.on_commissioned = ->(fabric : Matter::Fabric) do
+        puts "\n🎉 Device commissioned to fabric!"
+        puts "   Fabric ID: #{fabric.fabric_id}"
+        puts "   Node ID: #{fabric.node_id}"
+        puts "   Compressed Fabric ID: #{fabric.compressed_fabric_id.hexstring.upcase}"
+        puts ""
+
+        # Stop commissioning advertisement and start operational advertisement
+        start_operational_advertisement(fabric)
+      end
+
+      # Set up on_get_fabric callback for CASE session establishment
+      # This allows the message handler to retrieve fabric data for CASE
+      @message_handler.on_get_fabric = -> do
+        # Return the first fabric (for single-fabric devices)
+        # For multi-fabric devices, this would need to be smarter
+        @fabric_table.all_fabrics.first?
+      end
     end
 
     def get_local_ips : Array(Socket::IPAddress)
@@ -212,6 +242,38 @@ module MatterDevice
       puts "📝 To commission with chip-tool:"
       puts "   chip-tool pairing code <node-id> #{manual_code}"
       puts "   Example: chip-tool pairing code 1 #{manual_code}"
+      puts ""
+    end
+
+    def start_operational_advertisement(fabric : Matter::Fabric)
+      puts "📡 Switching to operational mDNS advertisement..."
+
+      # Stop commissioning advertisement
+      @responder.stop_commissioning
+
+      # Create operational info from fabric
+      info = Matter::MDNS::OperationalInfo.new(
+        compressed_fabric_id: fabric.compressed_fabric_id,
+        node_id: fabric.node_id,
+        session_idle_interval: 500_u32,   # 500ms - MRP idle retransmit interval
+        session_active_interval: 300_u32, # 300ms - MRP active retransmit interval
+        tcp_supported: false
+      )
+
+      # Start operational advertisement
+      @responder.advertise_operational(info, port: @port)
+
+      instance_name = Matter::MDNS::ServiceNames.operational_instance(
+        fabric.compressed_fabric_id, fabric.node_id
+      )
+      puts "   ✅ mDNS service: _matter._tcp.local"
+      puts "   ✅ Instance: #{instance_name}._matter._tcp.local"
+      puts ""
+
+      # Mark device as commissioned
+      @state.commissioned = true
+      @state.save(STATE_FILE)
+      puts "💾 Device state saved (commissioned=true)"
       puts ""
     end
 

@@ -7,6 +7,8 @@ require "./aes/ccm"
 
 module Matter
   module Crypto
+    Log = ::Log.for("matter.crypto")
+
     # Cryptographic constants for Matter protocol
     CRYPTO_ENCRYPT_ALGORITHM    = "aes-128-ccm"
     CRYPTO_HASH_ALGORITHM       = "sha256"
@@ -393,18 +395,21 @@ module Matter
         io = IO::Memory.new(signature)
         sequence = io.read_bytes(ASN1::BER)
         parts = sequence.children
-        bytes = parts[0].get_integer_bytes
-        char = parts[1].get_integer_bytes
+        r_bytes = parts[0].get_integer_bytes
+        s_bytes = parts[1].get_integer_bytes
+
+        Log.debug { "asn1_to_raw: DER sig #{signature.size} bytes, R=#{r_bytes.size} bytes, S=#{s_bytes.size} bytes, target=#{byte_size}" }
+
+        # Pad or trim R and S values to exactly byte_size (32 for P-256)
+        # DER integers can have leading zeros if high bit is set
+        r_normalized = pad_or_trim(r_bytes, byte_size)
+        s_normalized = pad_or_trim(s_bytes, byte_size)
+
+        Log.debug { "asn1_to_raw: Normalized R=#{r_normalized.size}, S=#{s_normalized.size}, total=#{r_normalized.size + s_normalized.size}" }
 
         raw = IO::Memory.new
-
-        size = byte_size - bytes.size
-        raw.write Bytes.new(size) if size > 0
-        raw.write bytes
-
-        size = byte_size - char.size
-        raw.write Bytes.new(size) if size > 0
-        raw.write char
+        raw.write r_normalized
+        raw.write s_normalized
         raw.to_slice
       end
 

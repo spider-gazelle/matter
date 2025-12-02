@@ -6,6 +6,8 @@ require "../src/matter/mdns/service_type"
 require "../src/matter/mdns/service_description"
 require "../src/matter/constants/device_types"
 require "../src/matter/fabric"
+require "../src/matter/fabric_table"
+require "../src/matter/storage/memory_backend"
 require "../src/matter/setup_payload"
 require "../src/matter"
 require "../src/matter/transport/udp_transport"
@@ -151,6 +153,7 @@ module MatterSwitch
     property operational_credentials : Matter::Cluster::OperationalCredentialsCluster
     property responder : Matter::MDNS::Responder
     property fabric_storage : FabricStorage
+    property fabric_table : Matter::FabricTable
     property hostname : String
     property ip_addresses : Array(Socket::IPAddress)
     property port : Int32
@@ -199,11 +202,18 @@ module MatterSwitch
       # Create UDP transport
       @transport = Matter::Transport::UDPTransport.new(port: @port)
 
+      # Create fabric table with in-memory storage
+      storage = Matter::Storage::MemoryBackend.new
+      @fabric_table = Matter::FabricTable.new(storage)
+
       # Create protocol message handler (this handles PASE, IM, etc.)
       @message_handler = Matter::Protocol::MessageHandler.new(
         transport: @transport,
         setup_pin: @state.setup_pin,
-        discriminator: @state.discriminator
+        discriminator: @state.discriminator,
+        fabric_table: @fabric_table,
+        vendor_id: @state.vendor_id,
+        product_id: @state.product_id
       )
 
       # Wire up clusters to message handler

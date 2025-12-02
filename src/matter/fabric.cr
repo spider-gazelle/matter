@@ -105,23 +105,28 @@ module Matter
 
     # Serialize fabric to hash for storage
     def to_h : Hash(String, String | UInt64 | UInt16 | UInt8 | Int64)
-      # Serialize operational key (store private bits)
-      key_bytes = @operational_key.private_bits
-      raise "Operational key has no private bits" unless key_bytes
+      # Serialize operational key - store BOTH private and public bits
+      # This ensures we preserve the exact public key from commissioning
+      private_key_bytes = @operational_key.private_bits
+      raise "Operational key has no private bits" unless private_key_bytes
+
+      public_key_bytes = @operational_key.public_bits
+      raise "Operational key has no public bits" unless public_key_bytes
 
       {
-        "fabric_id"         => @fabric_id,
-        "fabric_index"      => @fabric_index,
-        "node_id"           => @node_id,
-        "root_public_key"   => Base64.strict_encode(@root_public_key),
-        "operational_cert"  => Base64.strict_encode(@operational_cert),
-        "operational_key"   => Base64.strict_encode(key_bytes),
-        "ipk"               => Base64.strict_encode(@ipk),
-        "vendor_id"         => @vendor_id,
-        "label"             => @label,
-        "intermediate_cert" => @intermediate_cert ? Base64.strict_encode(@intermediate_cert.not_nil!) : "",
-        "created_at"        => @created_at,
-        "last_used_at"      => @last_used_at,
+        "fabric_id"              => @fabric_id,
+        "fabric_index"           => @fabric_index,
+        "node_id"                => @node_id,
+        "root_public_key"        => Base64.strict_encode(@root_public_key),
+        "operational_cert"       => Base64.strict_encode(@operational_cert),
+        "operational_key"        => Base64.strict_encode(private_key_bytes),
+        "operational_public_key" => Base64.strict_encode(public_key_bytes),
+        "ipk"                    => Base64.strict_encode(@ipk),
+        "vendor_id"              => @vendor_id,
+        "label"                  => @label,
+        "intermediate_cert"      => @intermediate_cert ? Base64.strict_encode(@intermediate_cert.not_nil!) : "",
+        "created_at"             => @created_at,
+        "last_used_at"           => @last_used_at,
       }
     end
 
@@ -133,9 +138,17 @@ module Matter
                             nil
                           end
 
-      # Reconstruct operational key from private bits
+      # Reconstruct operational key from private AND public bits
+      # We store both to ensure the exact public key from commissioning is preserved
       operational_key_bytes = Base64.decode(data["operational_key"].as(String))
       operational_key = Crypto::Key.new(Crypto::KeyType::EC, Crypto::CurveType::P256)
+
+      # Set public bits FIRST if available (before private_bits triggers derivation)
+      if pub_key_str = data["operational_public_key"]?.as?(String)
+        operational_key.public_bits = Base64.decode(pub_key_str)
+      end
+
+      # Then set private bits (won't derive public since x_bits is already set)
       operational_key.private_bits = operational_key_bytes
 
       Fabric.new(
@@ -178,6 +191,29 @@ module Matter
 
       # Derive 8-byte compressed fabric ID using HKDF-SHA256
       Crypto.create_hkdf_key(key, salt, info, 8)
+    end
+
+    # Derive the Identity Protection Key (IPK) for CASE authentication
+    #
+    # The IPK is derived from the epoch key (ipk_value from AddNOC) using HKDF.
+    # This derived key is what's actually used in the CASE Sigma2 salt.
+    #
+    # Formula: IPK = HKDF-SHA-256(InputKey=epoch_key, Salt=CompressedFabricId, Info="GroupKey v1.0", Length=16)
+    #
+    # Note: The info string "GroupKey v1.0" matches matter.js implementation.
+    # Specification: Matter 1.4 § 4.16.2.5.2 (Group Key Derivation)
+    def derived_ipk : Bytes
+      # Salt is the compressed fabric ID (8 bytes)
+      salt = compressed_fabric_id
+
+      # Input key is the raw epoch key stored as @ipk
+      input_key = @ipk
+
+      # Info string is "GroupKey v1.0" (matches matter.js GROUP_SECURITY_INFO)
+      info = "GroupKey v1.0".to_slice
+
+      # Derive 16-byte IPK using HKDF-SHA256
+      Crypto.create_hkdf_key(input_key, salt, info, 16)
     end
 
     # Get scoped node ID (used in CASE for peer identification)

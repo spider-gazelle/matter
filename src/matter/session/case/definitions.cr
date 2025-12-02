@@ -240,18 +240,19 @@ module Matter
           end
 
           # Encode to TLV bytes for signature
+          # TLV fields MUST be in tag order: 1, 2 (optional), 3, 4
           def to_bytes : Bytes
             io = IO::Memory.new
             writer = TLV::Writer.new(io)
-            data = {
-              1_u8 => @responder_noc,
-              3_u8 => @responder_public_key,
-              4_u8 => @initiator_public_key,
-            } of TLV::Tag => TLV::Value
 
+            # Build data in tag order to ensure correct TLV encoding
+            data = {} of TLV::Tag => TLV::Value
+            data[1_u8] = @responder_noc
             if icac = @responder_icac
               data[2_u8] = icac
             end
+            data[3_u8] = @responder_public_key
+            data[4_u8] = @initiator_public_key
 
             writer.put(nil, data)
             io.rewind.to_slice
@@ -275,18 +276,19 @@ module Matter
           end
 
           # Encode to TLV bytes for encryption
+          # TLV fields MUST be in tag order: 1, 2 (optional), 3, 4
           def to_bytes : Bytes
             io = IO::Memory.new
             writer = TLV::Writer.new(io)
-            data = {
-              1_u8 => @responder_noc,
-              3_u8 => @signature,
-              4_u8 => @resumption_id,
-            } of TLV::Tag => TLV::Value
 
+            # Build data in tag order to ensure correct TLV encoding
+            data = {} of TLV::Tag => TLV::Value
+            data[1_u8] = @responder_noc
             if icac = @responder_icac
               data[2_u8] = icac
             end
+            data[3_u8] = @signature
+            data[4_u8] = @resumption_id
 
             writer.put(nil, data)
             io.rewind.to_slice
@@ -310,6 +312,58 @@ module Matter
             responder_icac = hash[2_u8]?.try(&.as(Bytes))
 
             new(responder_noc, responder_icac, signature, resumption_id)
+          end
+        end
+
+        # TLV structure for encrypted data in Sigma3 (TBE_Data3)
+        # This structure is decrypted from Sigma3.encrypted3
+        struct EncryptedDataSigma3
+          property responder_noc : Bytes   # Actually initiator's NOC (named responder_noc for consistency)
+          property responder_icac : Bytes? # Actually initiator's ICAC
+          property signature : Bytes
+
+          def initialize(
+            @responder_noc : Bytes,
+            @responder_icac : Bytes?,
+            @signature : Bytes,
+          )
+          end
+
+          # Encode to TLV bytes for encryption
+          # TLV fields MUST be in tag order: 1, 2 (optional), 3
+          def to_bytes : Bytes
+            io = IO::Memory.new
+            writer = TLV::Writer.new(io)
+
+            # Build data in tag order to ensure correct TLV encoding
+            data = {} of TLV::Tag => TLV::Value
+            data[1_u8] = @responder_noc
+            if icac = @responder_icac
+              data[2_u8] = icac
+            end
+            data[3_u8] = @signature
+
+            writer.put(nil, data)
+            io.rewind.to_slice
+          end
+
+          # Constructor from TLV bytes (after decryption)
+          def self.from_bytes(data : Bytes) : EncryptedDataSigma3
+            reader = TLV::Reader.new(data)
+            tlv_data = reader.get
+
+            # Unwrap the anonymous structure
+            wrapper = tlv_data.as(Hash(TLV::Tag, TLV::Value))
+            hash = wrapper["Any"].as(Hash(TLV::Tag, TLV::Value))
+
+            # Extract required fields
+            responder_noc = hash[1_u8].as(Bytes)
+            signature = hash[3_u8].as(Bytes)
+
+            # Extract optional field
+            responder_icac = hash[2_u8]?.try(&.as(Bytes))
+
+            new(responder_noc, responder_icac, signature)
           end
         end
       end

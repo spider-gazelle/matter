@@ -727,6 +727,8 @@ module Matter
         Log.debug { "Extracted root public key: #{root_public_key.size} bytes, first byte: 0x#{root_public_key[0].to_s(16)}" }
 
         # Add fabric to table
+        Log.info { "AddNOC: IPK received: #{request.ipk_value.hexstring} (#{request.ipk_value.size} bytes)" }
+        Log.info { "AddNOC: fabric_id=0x#{fabric_id.to_s(16)}, node_id=0x#{node_id.to_s(16)}" }
         fabric = @fabric_table.add_fabric_auto_index(
           fabric_id: fabric_id,
           node_id: node_id,

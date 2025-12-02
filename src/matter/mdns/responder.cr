@@ -242,6 +242,16 @@ module Matter
         send_announcement(records)
       end
 
+      # Stop all commissioning advertisements
+      def stop_commissioning : Nil
+        # Find and remove all commissioning services
+        commissioning_instances = @advertised_services.select { |_, v| v[0] == ServiceType::Commissioning }.keys
+        commissioning_instances.each do |instance|
+          Log.info { "Stopping commissioning advertisement for: #{instance}" }
+          send_goodbye(ServiceType::Commissioning, instance)
+        end
+      end
+
       # Send goodbye announcement (TTL=0) to remove service
       def send_goodbye(service_type : ServiceType, instance : String) : Nil
         service = ServiceNames.service_name(service_type)

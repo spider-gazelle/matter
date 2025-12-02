@@ -7,6 +7,8 @@ require "../session/secure_message"
 require "../transport/udp_transport"
 require "../cluster/basic_information_cluster"
 require "../cluster/general_commissioning_cluster"
+require "../cluster/operational_credentials_cluster"
+require "../fabric_table"
 require "../interaction_model/messages"
 require "../interaction_model/paths"
 require "../interaction_model/status_code"
@@ -45,12 +47,16 @@ module Matter
       getter pase_responder : Session::Pase::PaseResponder?
       getter sessions : Hash(UInt16, Session::SecureContext)
       getter clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base)
+      getter fabric_table : FabricTable
+      getter operational_credentials_cluster : Cluster::OperationalCredentialsCluster?
 
       # Device credentials for PASE
       property setup_pin : UInt32
       property discriminator : UInt16
       property iterations : UInt32
       property salt : Bytes
+      property vendor_id : UInt16
+      property product_id : UInt16
 
       # PASE context: store request/response payloads for context hashing
       property pbkdf_request_payload : Bytes?
@@ -69,12 +75,19 @@ module Matter
       # This allows the message handler to access fabric data for CASE
       property on_get_fabric : Proc(Fabric?)?
 
+      # Commissioning callback - called when a fabric is successfully added (AddNOC complete)
+      # The device should use this to switch from commissioning to operational mDNS advertisement
+      property on_commissioned : Proc(Fabric, Nil)?
+
       def initialize(
         @transport : Transport::UDPTransport,
         @setup_pin : UInt32,
         @discriminator : UInt16,
+        @fabric_table : FabricTable,
         @iterations : UInt32 = 1000_u32,
         @salt : Bytes = Random::Secure.random_bytes(32),
+        @vendor_id : UInt16 = 0xFFF1_u16,
+        @product_id : UInt16 = 0x8001_u16,
       )
         @sessions = {} of UInt16 => Session::SecureContext
         @pase_responder = nil
@@ -82,6 +95,8 @@ module Matter
         @case_initiator_session_id = nil
         @case_responder_session_id = nil
         @on_get_fabric = nil
+        @on_commissioned = nil
+        @operational_credentials_cluster = nil
 
         # Initialize clusters
         @clusters = {} of Tuple(UInt16, UInt32) => Cluster::Base
@@ -103,18 +118,53 @@ module Matter
         @clusters[{0_u16, 0x001D_u32}] = descriptor
 
         # Basic Information cluster (0x0028) - required on endpoint 0
+        # Use the device's vendor_id and product_id to ensure consistency
+        # with DAC certificates and Certification Declaration
         basic_info = Cluster::BasicInformationCluster.new(
           endpoint_id: endpoint_0,
           vendor_name: "Crystal Matter",
-          vendor_id: 0xFFF1_u16,
+          vendor_id: @vendor_id,
           product_name: "Matter Device",
-          product_id: 0x8000_u16
+          product_id: @product_id
         )
         @clusters[{0_u16, 0x0028_u32}] = basic_info
 
         # General Commissioning cluster (0x0030) - required on endpoint 0
         general_commissioning = Cluster::GeneralCommissioningCluster.new(endpoint_0)
         @clusters[{0_u16, 0x0030_u32}] = general_commissioning
+
+        # Operational Credentials cluster (0x003E) - required on endpoint 0 for commissioning
+        operational_creds = Cluster::OperationalCredentialsCluster.new(@fabric_table, endpoint_0)
+        # Set up attestation credentials from certificate manager (generates DAC/PAI)
+        operational_creds.set_attestation_from_manager(@vendor_id, @product_id)
+
+        # Set up session_lookup callback so the cluster can get attestation challenge from sessions
+        # This is CRITICAL for attestation signature verification - per Matter spec,
+        # attestation signature must be over (attestation_elements || attestation_challenge)
+        operational_creds.session_lookup = ->(session_id : UInt64) : Bytes? do
+          # Look up session by ID and return its attestation challenge
+          session = @sessions[session_id.to_u16]?
+          if session
+            Log.debug { "session_lookup: Found session #{session_id}, returning attestation_challenge" }
+            session.attestation_challenge
+          else
+            Log.debug { "session_lookup: Session #{session_id} not found" }
+            nil
+          end
+        end
+
+        # Set up on_fabric_added callback to forward to on_commissioned
+        # This allows the device to switch from commissioning to operational mDNS advertisement
+        operational_creds.on_fabric_added = ->(fabric : Fabric) do
+          Log.info { "Fabric added: fabric_id=#{fabric.fabric_id}, node_id=#{fabric.node_id}" }
+          Log.info { "  compressed_fabric_id=#{fabric.compressed_fabric_id.hexstring.upcase}" }
+          if callback = @on_commissioned
+            callback.call(fabric)
+          end
+        end
+
+        @clusters[{0_u16, 0x003E_u32}] = operational_creds
+        @operational_credentials_cluster = operational_creds
 
         Log.info { "Initialized #{@clusters.size} clusters" }
       end
@@ -852,6 +902,7 @@ module Matter
 
           Log.info { "  Initiator session ID: #{sigma1.initiator_session_id}" }
           Log.info { "  Initiator ephemeral public key: #{sigma1.initiator_eph_pub_key.size} bytes" }
+          Log.debug { "  Initiator eph pub key hex: #{sigma1.initiator_eph_pub_key.hexstring}" }
           Log.debug { "  Destination ID: #{sigma1.destination_id.hexstring}" }
 
           # Store initiator session ID
@@ -872,11 +923,11 @@ module Matter
 
           Log.info { "Using fabric: #{fabric.fabric_id.to_s(16)}" }
 
-          # Create CaseResponder with fabric's operational certificate and key
-          cert_chain = Session::Case::CertificateChain.new(
-            dac: fabric.operational_cert,
-            pai: fabric.intermediate_cert,
-            paa: nil # Don't need PAA for responder
+          # Create CaseResponder with fabric's operational certificates and IPK
+          cert_chain = Session::Case::OperationalCertChain.new(
+            noc: fabric.operational_cert,
+            icac: fabric.intermediate_cert,
+            root: nil # Root certificate not needed for responder
           )
 
           crypto = Crypto::StandardCrypto.new
@@ -885,6 +936,7 @@ module Matter
             operational_key: fabric.operational_key,
             fabric_id: fabric.fabric_id,
             node_id: fabric.node_id,
+            ipk: fabric.derived_ipk,  # Use derived IPK with "GroupKey v1.0" info string
             crypto: crypto
           )
 
@@ -892,10 +944,12 @@ module Matter
           @case_responder = responder
 
           # Process Sigma1 and generate Sigma2 response
+          # Pass the raw Sigma1 bytes for key derivation
           sigma2_data = responder.process_sigma1(
             peer_ephemeral_public_key: sigma1.initiator_eph_pub_key,
             peer_random: sigma1.initiator_random,
-            peer_session_id: sigma1.initiator_session_id
+            peer_session_id: sigma1.initiator_session_id,
+            sigma1_bytes: msg.payload
           )
 
           # Store responder session ID
@@ -945,10 +999,13 @@ module Matter
             return
           end
 
+          # Get the raw Sigma3 bytes for key derivation
+          sigma3_bytes = msg.payload
+
           # Process Sigma3 and verify
           # Note: Sigma3 includes encrypted initiator certificate
           # The CaseResponder will decrypt and verify it
-          unless responder.process_sigma3(sigma3.encrypted3, Bytes.new(0))
+          unless responder.process_sigma3(sigma3.encrypted3, sigma3_bytes)
             Log.error { "CASE Sigma3 verification failed" }
             return
           end
@@ -956,7 +1013,8 @@ module Matter
           Log.info { "✅ CASE Sigma3 verified successfully" }
 
           # Derive session keys from the shared secret
-          keys = responder.derive_session_keys
+          # Pass sigma3_bytes for session key salt calculation
+          keys = responder.derive_session_keys(sigma3_bytes)
 
           Log.debug { "  Derived encryption key (R2I): #{keys[:encryption].hexstring}" }
           Log.debug { "  Derived decryption key (I2R): #{keys[:decryption].hexstring}" }
