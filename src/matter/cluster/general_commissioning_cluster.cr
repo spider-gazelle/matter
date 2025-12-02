@@ -160,6 +160,11 @@ module Matter
       @commissioning_window_open : Bool = false
       @terms_conditions_accepted : Bool = false
 
+      # Session context properties (set by base class invoke_command via responds_to?)
+      # These are populated automatically when commands are invoked through the cluster base class
+      property is_case_session : Bool = false
+      property fabric_index : UInt8? = nil
+
       # ========================================================================
       # Callbacks
       # ========================================================================
@@ -308,11 +313,12 @@ module Matter
           breadcrumb: request_def.breadcrumb
         )
 
-        # Call public command handler (session info would come from context in real implementation)
+        # Call public command handler with session context from base class invoke_command
+        # is_case_session and fabric_index are set by the base class before calling handle_command
         response = arm_failsafe(
           request: request,
-          session_fabric_index: nil,
-          is_pase_session: true
+          session_fabric_index: @fabric_index,
+          is_pase_session: !@is_case_session
         )
 
         # Encode response as TLV and return with response command ID
@@ -346,10 +352,10 @@ module Matter
       private def handle_commissioning_complete_tlv(fields : Bytes) : Cluster::CommandResponse
         # CommissioningComplete has no request fields
 
-        # Call public command handler (session info would come from context in real implementation)
+        # Call public command handler with session context from base class invoke_command
         response = commissioning_complete(
-          session_fabric_index: nil,
-          is_case_session: false
+          session_fabric_index: @fabric_index,
+          is_case_session: @is_case_session
         )
 
         # Encode response as TLV and return with response command ID

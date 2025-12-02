@@ -56,6 +56,12 @@ module Matter
       property last_activity_time : Time
       property is_initiator : Bool
 
+      # Session type and fabric association
+      # is_case: true for CASE sessions, false for PASE sessions
+      # fabric_index: the fabric index for CASE sessions (nil for PASE)
+      property is_case : Bool
+      property fabric_index : UInt8?
+
       def initialize(
         @session_id : UInt16,
         @peer_session_id : UInt16,
@@ -66,6 +72,8 @@ module Matter
         @peer_node_id : DataType::NodeId? = nil,
         @local_node_id : DataType::NodeId? = nil,
         @attestation_challenge : Bytes? = nil,
+        @is_case : Bool = false,
+        @fabric_index : UInt8? = nil,
       )
         # Matter spec requires message counter to start at a random value
         # to prevent replay attacks across session resumptions

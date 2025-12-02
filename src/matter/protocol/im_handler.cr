@@ -483,6 +483,8 @@ module Matter
         invoke_requests : Array(InteractionModel::CommandDataIB),
         clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
         session_id : UInt64? = nil,
+        is_case_session : Bool = false,
+        fabric_index : UInt8? = nil,
       ) : InteractionModel::InvokeResponse
         invoke_responses = [] of InteractionModel::CommandResponse
         invoke_status = [] of InteractionModel::CommandStatus
@@ -505,8 +507,8 @@ module Matter
             next
           end
 
-          # Invoke command on cluster (pass session_id for attestation)
-          result = cluster.invoke_command(path.command, cmd_data.fields, session_id)
+          # Invoke command on cluster (pass session info for authentication)
+          result = cluster.invoke_command(path.command, cmd_data.fields, session_id, is_case_session, fabric_index)
 
           if result.is_a?(InteractionModel::Status)
             # Error status

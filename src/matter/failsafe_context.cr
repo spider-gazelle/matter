@@ -137,8 +137,25 @@ module Matter
     #
     # @param fabric_index Fabric index to validate
     # @return true if matches, false otherwise
+    #
+    # Special case: If the context was created during PASE (nil fabric), and a CASE session
+    # is now calling with a fabric_index, this is the normal PASE→CASE commissioning flow.
+    # The fabric was created via AddNOC during the PASE session, so we accept this transition.
     def matches_fabric?(fabric_index : UInt8?) : Bool
-      @associated_fabric_index == fabric_index
+      # Exact match
+      return true if @associated_fabric_index == fabric_index
+
+      # PASE→CASE transition: context was created during PASE (nil),
+      # and now a CASE session is calling with a fabric_index
+      # This is expected during commissioning after AddNOC creates the fabric
+      if @associated_fabric_index.nil? && fabric_index
+        Log.info { "Accepting PASE→CASE fabric transition: nil → #{fabric_index}" }
+        # Update the associated fabric index for subsequent operations
+        @associated_fabric_index = fabric_index
+        return true
+      end
+
+      false
     end
 
     # Record that a new fabric was added during commissioning

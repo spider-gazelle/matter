@@ -354,8 +354,8 @@ module Matter
 
         Log.info { "InvokeRequest: #{request.invoke_requests.size} command(s) requested" }
 
-        # Execute commands on clusters (pass session_id for attestation)
-        response = IMHandler.invoke_commands(request.invoke_requests, @clusters, session.session_id)
+        # Execute commands on clusters (pass session info for attestation)
+        response = IMHandler.invoke_commands(request.invoke_requests, @clusters, session.session_id.to_u64, session.is_case, session.fabric_index)
 
         Log.info { "InvokeResponse: #{response.invoke_responses.size} response(s), #{response.invoke_status.size} status(es)" }
 
@@ -1041,6 +1041,15 @@ module Matter
             return
           end
 
+          # Get the peer's node ID extracted from their NOC in Sigma3
+          # This is critical for proper nonce construction in encrypted messages
+          peer_node_id_value = responder.peer_node_id
+          if peer_node_id_value
+            Log.info { "Using peer node ID from Sigma3: #{peer_node_id_value}" }
+          else
+            Log.warn { "No peer node ID extracted from Sigma3 - falling back to nil" }
+          end
+
           secure_context = Session::SecureContext.new(
             session_id: session_id,
             peer_session_id: peer_session_id,
@@ -1049,7 +1058,9 @@ module Matter
             decryption_key: keys[:decryption],
             is_initiator: false, # We're the responder
             local_node_id: DataType::NodeId.new(fabric.node_id),
-            peer_node_id: nil # Will be set from message headers
+            peer_node_id: peer_node_id_value ? DataType::NodeId.new(peer_node_id_value) : nil,
+            is_case: true,
+            fabric_index: fabric.fabric_index
           )
 
           # Store session for future encrypted communication

@@ -125,13 +125,23 @@ module Matter
       end
 
       # Invoke a command
-      def invoke_command(command_id : UInt32, fields : Bytes = Bytes.new(0), session_id : UInt64? = nil) : InteractionModel::Status | CommandResponse
+      def invoke_command(command_id : UInt32, fields : Bytes = Bytes.new(0), session_id : UInt64? = nil, is_case_session : Bool = false, fabric_index : UInt8? = nil) : InteractionModel::Status | CommandResponse
         metadata = commands.find { |c| c.id.id == command_id }
         return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand) unless metadata
 
         # Store session_id for clusters that need it (like OperationalCredentials)
         if responds_to?(:session_id=)
           self.session_id = session_id
+        end
+
+        # Store is_case_session for clusters that need it (like GeneralCommissioning)
+        if responds_to?(:is_case_session=)
+          self.is_case_session = is_case_session
+        end
+
+        # Store fabric_index for clusters that need it (like GeneralCommissioning)
+        if responds_to?(:fabric_index=)
+          self.fabric_index = fabric_index
         end
 
         # Command implementations override this
