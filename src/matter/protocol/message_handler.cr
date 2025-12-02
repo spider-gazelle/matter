@@ -936,7 +936,7 @@ module Matter
             operational_key: fabric.operational_key,
             fabric_id: fabric.fabric_id,
             node_id: fabric.node_id,
-            ipk: fabric.derived_ipk,  # Use derived IPK with "GroupKey v1.0" info string
+            ipk: fabric.derived_ipk, # Use derived IPK with "GroupKey v1.0" info string
             crypto: crypto
           )
 

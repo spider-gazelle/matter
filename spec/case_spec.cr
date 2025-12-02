@@ -24,7 +24,7 @@ describe Matter::Session::Case do
       # Tag 6: Subject as a LIST (PathContainer)
       writer.start_path(6_u8)
       writer.put(17_u8, expected_node_id) # Node ID
-      writer.put(18_u8, fabric_id)         # Fabric ID
+      writer.put(18_u8, fabric_id)        # Fabric ID
       writer.end_container
 
       # Tag 9: Public key (just placeholder bytes)
@@ -69,7 +69,7 @@ describe Matter::Session::Case do
       # Tag 6: Subject as a STRUCT (Hash in Crystal)
       writer.start_structure(6_u8)
       writer.put(17_u8, expected_node_id) # Node ID
-      writer.put(18_u8, fabric_id)         # Fabric ID
+      writer.put(18_u8, fabric_id)        # Fabric ID
       writer.end_container
 
       # Tag 9: Public key
@@ -134,7 +134,7 @@ describe Matter::Session::Case do
 
       # Create a cert with subject but no node ID (only fabric ID)
       writer.start_structure(nil)
-      writer.start_path(6_u8) # Subject as LIST
+      writer.start_path(6_u8)    # Subject as LIST
       writer.put(18_u8, 0x1_u64) # Only Fabric ID, no Node ID
       writer.end_container
       writer.put(9_u8, Bytes.new(65, 0x04_u8))
