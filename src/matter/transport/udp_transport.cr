@@ -25,6 +25,11 @@ module Matter
       # Per-session message counters (key = session_id)
       @session_counters : Hash(UInt16, MessageCounter)
 
+      # Per-source-node message counters for unsecured messages (session_id=0)
+      # Key is the source_node_id (UInt64), value is the MessageCounter
+      # This allows different nodes to have independent message counter windows
+      @unsecured_counters : Hash(UInt64, MessageCounter)
+
       # Callback for received messages
       # Signature: (message : Codec::MessageCodec::Message, peer_address : Socket::IPAddress) -> Nil
       property on_message : Proc(Codec::MessageCodec::Message, Socket::IPAddress, Nil)?
@@ -51,6 +56,8 @@ module Matter
         @session_counters = Hash(UInt16, MessageCounter).new
         # For backward compatibility, @message_counter points to session_id=0's counter
         @message_counter = @session_counters[0_u16] = MessageCounter.new
+        # Initialize per-source-node counters for unsecured messages
+        @unsecured_counters = Hash(UInt64, MessageCounter).new
         @exchange_manager = ExchangeManager.new
         @running = false
         @receive_fiber_ipv4 = nil
@@ -306,13 +313,27 @@ module Matter
         puts "   Source node ID: #{packet.header.source_node_id.inspect}"
         puts "   Destination node ID: #{packet.header.destination_node_id.inspect}"
 
-        # Check for duplicate messages using per-session counter
+        # Check for duplicate messages
         session_id = packet.header.session_id
-        counter = @session_counters[session_id] ||= MessageCounter.new
-        unless counter.valid?(packet.header.message_id)
-          # Duplicate message - ignore
-          puts "⚠️  Duplicate message ignored: session=#{session_id}, message_id=#{packet.header.message_id}"
-          return
+        if session_id == 0
+          # For unsecured messages (session_id=0), track per source_node_id
+          # This allows different nodes (e.g., different CASE initiators) to have
+          # independent message counter windows
+          source_node_id = packet.header.source_node_id.try(&.id) || 0_u64
+          counter = @unsecured_counters[source_node_id] ||= MessageCounter.new
+          unless counter.valid?(packet.header.message_id)
+            # Duplicate message - ignore
+            puts "⚠️  Duplicate message ignored: session=#{session_id}, source=#{source_node_id}, message_id=#{packet.header.message_id}"
+            return
+          end
+        else
+          # For secured messages, track per session_id as before
+          counter = @session_counters[session_id] ||= MessageCounter.new
+          unless counter.valid?(packet.header.message_id)
+            # Duplicate message - ignore
+            puts "⚠️  Duplicate message ignored: session=#{session_id}, message_id=#{packet.header.message_id}"
+            return
+          end
         end
 
         # For encrypted messages (session_id != 0), do NOT decode the payload yet
