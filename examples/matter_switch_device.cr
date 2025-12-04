@@ -360,6 +360,11 @@ module MatterSwitch
       puts "   Fabrics: #{@fabric_storage.size}"
       puts "   Discriminator: #{@state.discriminator}"
       puts "   Setup PIN: #{@state.setup_pin}"
+
+      # Sync fabrics from FabricStorage to FabricTable for CASE destination_id matching
+      @fabric_storage.fabrics.each do |fabric|
+        @fabric_table.add_fabric(fabric) unless @fabric_table.find_by_fabric_id(fabric.fabric_id)
+      end
       puts ""
       @ip_addresses.each do |ip|
         puts "   IP: #{ip.address} (#{ip.family == Socket::Family::INET ? "IPv4" : "IPv6"})"
@@ -446,9 +451,10 @@ module MatterSwitch
       puts "   Fabric Index: #{fabric.fabric_index}"
       puts ""
 
-      # 1. Save fabric to storage
+      # 1. Save fabric to storage (both FabricStorage for persistence and FabricTable for CASE matching)
       @fabric_storage.add_fabric(fabric)
       @fabric_storage.save(FABRIC_FILE)
+      @fabric_table.add_fabric(fabric) # Add to fabric_table so CASE destination_id matching works
       puts "💾 Fabric saved to #{FABRIC_FILE}"
 
       # 2. Mark device as commissioned

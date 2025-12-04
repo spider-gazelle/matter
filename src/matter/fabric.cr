@@ -227,6 +227,48 @@ module Matter
       @fabric_index == index
     end
 
+    # Compute the expected destination_id for CASE Sigma1 matching
+    #
+    # The destination_id helps identify which fabric is being targeted in a CASE session.
+    # It's computed as:
+    #   destination_id = HMAC-SHA256(key=IPK, data=initiatorRandom || rootPublicKey || fabricId || nodeId)
+    #
+    # This method computes what the destination_id should be for this fabric given an initiator_random.
+    #
+    # @param initiator_random The 32-byte random value from CASE Sigma1
+    # @return 32-byte destination_id that should match the one in Sigma1 if this fabric is the target
+    def compute_destination_id(initiator_random : Bytes) : Bytes
+      # Use derived IPK as the HMAC key
+      ipk = derived_ipk
+
+      # Build the data to HMAC: initiatorRandom || rootPublicKey || fabricId || nodeId
+      data = IO::Memory.new
+      data.write(initiator_random)
+      data.write(@root_public_key)
+
+      # fabricId and nodeId are 8 bytes each, big-endian per Matter spec
+      fabric_id_bytes = Bytes.new(8)
+      IO::ByteFormat::BigEndian.encode(@fabric_id, fabric_id_bytes)
+      data.write(fabric_id_bytes)
+
+      node_id_bytes = Bytes.new(8)
+      IO::ByteFormat::BigEndian.encode(@node_id, node_id_bytes)
+      data.write(node_id_bytes)
+
+      # Compute HMAC-SHA256
+      Crypto.sign_hmac(ipk, data.to_slice)
+    end
+
+    # Check if this fabric matches the given destination_id from CASE Sigma1
+    #
+    # @param destination_id The 32-byte destination_id from Sigma1
+    # @param initiator_random The 32-byte initiator_random from Sigma1
+    # @return true if this fabric matches the destination_id
+    def matches_destination_id?(destination_id : Bytes, initiator_random : Bytes) : Bool
+      expected = compute_destination_id(initiator_random)
+      destination_id == expected
+    end
+
     # Helper to check if a given fabric_id matches
     def matches_id?(id : UInt64) : Bool
       @fabric_id == id

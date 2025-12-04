@@ -729,6 +729,18 @@ module Matter
         # Add fabric to table
         Log.info { "AddNOC: IPK received: #{request.ipk_value.hexstring} (#{request.ipk_value.size} bytes)" }
         Log.info { "AddNOC: fabric_id=0x#{fabric_id.to_s(16)}, node_id=0x#{node_id.to_s(16)}" }
+
+        # Normalize ICAC: treat empty slice as nil (some controllers send empty ICAC instead of omitting)
+        icac_value = request.icac_value
+        icac_value = nil if icac_value && icac_value.size == 0
+
+        if icac = icac_value
+          Log.info { "AddNOC: ICAC present: #{icac.size} bytes" }
+          Log.debug { "AddNOC: ICAC hex (first 100): #{icac[0, [100, icac.size].min].hexstring}" }
+        else
+          Log.warn { "AddNOC: NO ICAC provided - CASE may fail if controller expects 3-tier PKI" }
+        end
+
         fabric = @fabric_table.add_fabric_auto_index(
           fabric_id: fabric_id,
           node_id: node_id,
@@ -738,7 +750,7 @@ module Matter
           ipk: request.ipk_value,
           vendor_id: request.admin_vendor_id,
           label: "",
-          intermediate_cert: request.icac_value
+          intermediate_cert: icac_value
         )
 
         unless fabric

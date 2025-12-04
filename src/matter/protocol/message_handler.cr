@@ -285,7 +285,7 @@ module Matter
         when 0x02_u8 # ReadRequest
           handle_read_request(msg.payload, msg, peer, session)
         when 0x06_u8 # WriteRequest
-          Log.info { "WriteRequest received (not yet implemented)" }
+          handle_write_request(msg.payload, msg, peer, session)
         when 0x08_u8 # InvokeRequest
           handle_invoke_request(msg.payload, msg, peer, session)
         else
@@ -334,6 +334,53 @@ module Matter
         Log.info { "Sent ReadResponse" }
       rescue ex
         Log.error(exception: ex) { "Error handling ReadRequest: #{ex.message}" }
+      end
+
+      # Handle WriteRequest - parse, write attributes, encode response, encrypt and send
+      private def handle_write_request(
+        decrypted : Bytes,
+        original_msg : Codec::MessageCodec::Message,
+        peer : Socket::IPAddress,
+        session : Session::SecureContext,
+      ) : Nil
+        Log.info { "Handling WriteRequest" }
+
+        # Parse WriteRequest using IMHandler
+        request = IMHandler.parse_write_request(decrypted)
+        unless request
+          Log.error { "Failed to parse WriteRequest" }
+          return
+        end
+
+        Log.info { "WriteRequest: #{request.write_requests.size} attribute(s) to write" }
+
+        # Write attributes to clusters
+        response = IMHandler.write_attributes(request.write_requests, @clusters)
+
+        Log.info { "WriteResponse: #{response.write_responses.size} status(es)" }
+
+        # Check if response should be suppressed
+        if request.suppress_response && response.write_responses.all? { |s| s.status.status == InteractionModel::StatusCode::Success }
+          Log.info { "Response suppressed per suppressResponse flag (all writes succeeded)" }
+          return
+        end
+
+        # Encode WriteResponse as TLV
+        response_tlv = IMHandler.encode_write_response(response)
+        Log.debug { "Encoded WriteResponse TLV (#{response_tlv.size} bytes): #{response_tlv.hexstring}" }
+
+        # Send encrypted IM response
+        send_im_response(
+          original_msg: original_msg,
+          peer: peer,
+          session: session,
+          message_type: 0x07_u8, # WriteResponse
+          payload: response_tlv
+        )
+
+        Log.info { "Sent WriteResponse" }
+      rescue ex
+        Log.error(exception: ex) { "Error handling WriteRequest: #{ex.message}" }
       end
 
       # Handle InvokeRequest - parse, execute commands, encode response, encrypt and send
@@ -854,13 +901,24 @@ module Matter
             Log.warn { "  Protocol-specific error code: #{status_report.protocol_status}" }
           end
 
-          # If this is an error during PASE, the handshake failed
+          # If this is an error, provide context-specific help
           if status_report.general_status != 0
-            Log.error { "PASE handshake rejected by controller - commissioning failed" }
-            Log.error { "This usually means:" }
-            Log.error { "  - Incorrect PIN code" }
-            Log.error { "  - SPAKE2+ computation mismatch" }
-            Log.error { "  - Invalid crypto parameters" }
+            # Check if we have a CASE responder active (indicating CASE session establishment)
+            if @case_responder
+              Log.error { "CASE session rejected by controller" }
+              Log.error { "Protocol status 0x#{status_report.protocol_status.to_s(16).rjust(4, '0')} meanings:" }
+              Log.error { "  0x0002 = NO_SHARED_TRUST_ROOTS - Certificate chain verification failed" }
+              Log.error { "This usually means:" }
+              Log.error { "  - Missing ICAC certificate in fabric" }
+              Log.error { "  - NOC not signed by a trusted root" }
+              Log.error { "  - Certificate chain validation failure" }
+            else
+              Log.error { "PASE handshake rejected by controller - commissioning failed" }
+              Log.error { "This usually means:" }
+              Log.error { "  - Incorrect PIN code" }
+              Log.error { "  - SPAKE2+ computation mismatch" }
+              Log.error { "  - Invalid crypto parameters" }
+            end
           end
         rescue ex
           Log.error(exception: ex) { "Failed to parse StatusReport: #{ex.message}" }
@@ -908,20 +966,58 @@ module Matter
           # Store initiator session ID
           @case_initiator_session_id = sigma1.initiator_session_id
 
-          # Get fabric from callback
-          fabric_callback = @on_get_fabric
-          unless fabric_callback
-            Log.error { "No fabric callback set - cannot process CASE" }
-            return
+          # Find the fabric matching the destination_id from Sigma1
+          # The destination_id is computed by the initiator as:
+          #   HMAC-SHA256(IPK, initiatorRandom || rootPublicKey || fabricId || nodeId)
+          # We need to check each fabric to find which one matches
+          fabric : Fabric? = nil
+
+          # First try fabric_table (preferred)
+          if @fabric_table.size > 0
+            Log.debug { "Searching #{@fabric_table.size} fabrics for destination_id match" }
+            @fabric_table.all_fabrics.each do |f|
+              expected_dest_id = f.compute_destination_id(sigma1.initiator_random)
+              Log.debug { "  Fabric #{f.fabric_id.to_s(16)}: expected=#{expected_dest_id.hexstring}" }
+              Log.debug { "  Fabric #{f.fabric_id.to_s(16)}: received=#{sigma1.destination_id.hexstring}" }
+              if expected_dest_id == sigma1.destination_id
+                fabric = f
+                Log.info { "  Matched fabric by destination_id: #{f.fabric_id.to_s(16)}" }
+                break
+              end
+            end
           end
 
-          fabric = fabric_callback.call
+          # Fall back to callback if no match in fabric_table
+          if fabric.nil?
+            fabric_callback = @on_get_fabric
+            if fabric_callback
+              fabric = fabric_callback.call
+              if fabric
+                # Log warning - we're using callback without destination_id matching
+                expected_dest_id = fabric.compute_destination_id(sigma1.initiator_random)
+                if expected_dest_id != sigma1.destination_id
+                  Log.warn { "Fabric from callback doesn't match destination_id!" }
+                  Log.warn { "  Expected: #{expected_dest_id.hexstring}" }
+                  Log.warn { "  Received: #{sigma1.destination_id.hexstring}" }
+                end
+              end
+            end
+          end
+
           unless fabric
-            Log.error { "No fabric available - device not commissioned" }
+            Log.error { "No fabric found matching destination_id: #{sigma1.destination_id.hexstring}" }
+            Log.error { "Device may not be commissioned or destination_id computation differs" }
             return
           end
 
           Log.info { "Using fabric: #{fabric.fabric_id.to_s(16)}" }
+          Log.info { "  NOC size: #{fabric.operational_cert.size} bytes" }
+          Log.info { "  ICAC present: #{fabric.intermediate_cert != nil}" }
+          if icac = fabric.intermediate_cert
+            Log.info { "  ICAC size: #{icac.size} bytes" }
+          else
+            Log.warn { "  NO ICAC in fabric - CASE may fail if controller expects 3-tier PKI" }
+          end
 
           # Create CaseResponder with fabric's operational certificates and IPK
           cert_chain = Session::Case::OperationalCertChain.new(
