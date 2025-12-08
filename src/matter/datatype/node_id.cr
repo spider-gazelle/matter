@@ -37,7 +37,7 @@ module Matter
         io = IO::Memory.new
         writer = TLV::Writer.new(io, IO::ByteFormat::BigEndian)
 
-        writer.write(nil, id)
+        writer.put(nil, id)
 
         io.rewind.to_slice.hexstring.upcase
       end
