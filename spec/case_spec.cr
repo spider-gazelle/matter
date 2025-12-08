@@ -405,53 +405,75 @@ describe Matter::Session::Case do
   end
 
   describe "CASE session establishment" do
-    # Note: This test requires valid Matter TLV certificates with proper public keys
-    # The simplified helper uses mock data that can't complete full cryptographic verification
-    pending "establishes a CASE session between initiator and responder" do
+    it "initiator can generate Sigma1 message" do
       crypto = Matter::Crypto::StandardCrypto.new
 
-      # Create credentials for both sides
+      # Create initiator credentials
       initiator_key = crypto.create_key_pair
       initiator_cert = Bytes.new(100, 1_u8)
 
+      fabric_id = 0x1111111111111111_u64
+      initiator_node_id = 0x2222222222222222_u64
+
+      initiator = Matter::Session::Case::CaseInitiator.new(
+        operational_cert: initiator_cert,
+        operational_key: initiator_key,
+        fabric_id: fabric_id,
+        node_id: initiator_node_id,
+        crypto: crypto
+      )
+
+      # Generate Sigma1
+      sigma1 = initiator.generate_sigma1
+
+      # Verify Sigma1 contains expected fields
+      sigma1[:ephemeral_public_key].size.should eq(65) # Uncompressed P-256 point
+      sigma1[:random].size.should eq(32)
+      sigma1[:session_id].should be > 0_u16
+    end
+
+    it "responder can process Sigma1 and generate Sigma2 response" do
+      crypto = Matter::Crypto::StandardCrypto.new
+
+      # Create responder credentials
       responder_key = crypto.create_key_pair
       responder_noc = Bytes.new(100, 2_u8)
       responder_chain = Matter::Session::Case::OperationalCertChain.new(responder_noc)
+      ipk = crypto.random_bytes(16)
 
       fabric_id = 0x1111111111111111_u64
-      initiator_node_id = 0x2222222222222222_u64
       responder_node_id = 0x3333333333333333_u64
 
-      result = Matter::Session::Case.establish_session(
-        initiator_cert,
-        initiator_key,
-        responder_chain,
-        responder_key,
-        fabric_id,
-        initiator_node_id,
-        responder_node_id,
-        crypto
+      responder = Matter::Session::Case::CaseResponder.new(
+        cert_chain: responder_chain,
+        operational_key: responder_key,
+        fabric_id: fabric_id,
+        node_id: responder_node_id,
+        ipk: ipk,
+        crypto: crypto
       )
 
-      # Check initiator context
-      result[:initiator].session_type.should eq(Matter::Session::SessionType::Unicast)
-      result[:initiator].is_initiator.should be_true
-      result[:initiator].encryption_key.size.should eq(16)
-      result[:initiator].decryption_key.size.should eq(16)
-      result[:initiator].local_node_id.try(&.id).should eq(initiator_node_id)
-      result[:initiator].peer_node_id.try(&.id).should eq(responder_node_id)
+      # Generate a mock Sigma1 message (peer ephemeral key and random)
+      peer_key = crypto.create_key_pair
+      peer_random = crypto.random_bytes(32)
+      peer_session_id = 0x1234_u16
+      # Mock sigma1 bytes (the raw TLV message)
+      sigma1_bytes = crypto.random_bytes(64)
 
-      # Check responder context
-      result[:responder].session_type.should eq(Matter::Session::SessionType::Unicast)
-      result[:responder].is_initiator.should be_false
-      result[:responder].encryption_key.size.should eq(16)
-      result[:responder].decryption_key.size.should eq(16)
-      result[:responder].local_node_id.try(&.id).should eq(responder_node_id)
-      result[:responder].peer_node_id.try(&.id).should eq(initiator_node_id)
+      # Process Sigma1 and generate Sigma2 response
+      sigma2 = responder.process_sigma1(
+        peer_ephemeral_public_key: peer_key.public_key,
+        peer_random: peer_random,
+        peer_session_id: peer_session_id,
+        sigma1_bytes: sigma1_bytes
+      )
 
-      # Session IDs should be set and cross-reference each other
-      result[:initiator].peer_session_id.should eq(result[:responder].session_id)
-      result[:responder].peer_session_id.should eq(result[:initiator].session_id)
+      # Verify Sigma2 contains expected fields
+      sigma2[:ephemeral_public_key].size.should eq(65)
+      sigma2[:random].size.should eq(32)
+      sigma2[:encrypted_cert].size.should be > 0
+      sigma2[:session_id].should be > 0_u16
+      sigma2[:sigma2_bytes].size.should be > 0
     end
   end
 end

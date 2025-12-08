@@ -68,15 +68,30 @@ describe "StandardCrypto Compatibility" do
   end
 
   describe "ECDSA signing" do
-    pending "signs & verifies with raw keys" do
-      # Skipping for now - Key construction is complex
+    it "signs & verifies with raw keys" do
+      # Use test vectors from matter.js
+      ecdsa_key = Matter::Crypto::Key.new(Matter::Crypto::KeyType::EC, Matter::Crypto::CurveType::P256)
+      ecdsa_key.private_bits = private_key
+      ecdsa_key.public_bits = public_key
+
+      # Sign some data
+      test_data = "test data for signing".to_slice
+      signature = crypto.sign_ecdsa(ecdsa_key, test_data)
+
+      # Signature should be 64 bytes for P-256 in IEEE P1363 format
+      signature.size.should eq(64)
+
+      # Verify the signature - verify_ecdsa raises on failure, returns nil on success
+      crypto.verify_ecdsa(ecdsa_key, test_data, signature)
     end
 
-    pending "generates a working DSA key pair" do
-      # verify_ecdsa returns nil instead of boolean - API issue
+    it "generates a working DSA key pair" do
+      # verify_ecdsa raises on failure, returns nil on success
       ecdsa_key = crypto.create_key_pair
       signature = crypto.sign_ecdsa(ecdsa_key, encrypted_data)
-      crypto.verify_ecdsa(ecdsa_key, encrypted_data, signature).should be_true
+
+      # Should not raise - verification succeeds
+      crypto.verify_ecdsa(ecdsa_key, encrypted_data, signature)
     end
   end
 end

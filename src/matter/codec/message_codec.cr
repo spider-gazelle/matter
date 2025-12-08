@@ -195,7 +195,7 @@ module Matter
           raise Exception.new("Privacy enhancements not supported") if has_privacy_enhancements
 
           is_control_message = (security_flags & SecurityFlag::IsControlMessage.value) != 0
-          raise Exception.new("Control Messages not supported") if is_control_message
+          # Control messages are valid - used for MRP standalone ACKs and other control functions
 
           has_message_extensions = (security_flags & SecurityFlag::HasMessageExtension.value) != 0
           raise Exception.new("Message extensions not supported") if has_message_extensions
