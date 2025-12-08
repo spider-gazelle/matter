@@ -71,6 +71,9 @@ module Matter
       property case_initiator_session_id : UInt16?
       property case_responder_session_id : UInt16?
 
+      # Subscription support
+      property next_subscription_id : UInt32 = 1_u32
+
       # Fabric access callback - set by the device implementation
       # This allows the message handler to access fabric data for CASE
       property on_get_fabric : Proc(Fabric?)?
@@ -282,8 +285,12 @@ module Matter
         # Message is already decrypted, payload contains TLV data
         # Parse IM message based on message type
         case msg.payload_header.message_type
+        when 0x01_u8 # StatusResponse
+          handle_status_response(msg.payload, msg, peer, session)
         when 0x02_u8 # ReadRequest
           handle_read_request(msg.payload, msg, peer, session)
+        when 0x03_u8 # SubscribeRequest
+          handle_subscribe_request(msg.payload, msg, peer, session)
         when 0x06_u8 # WriteRequest
           handle_write_request(msg.payload, msg, peer, session)
         when 0x08_u8 # InvokeRequest
@@ -293,6 +300,48 @@ module Matter
         end
       rescue ex
         Log.error(exception: ex) { "Error handling IM message: #{ex.message}" }
+      end
+
+      # Handle StatusResponse - acknowledgment from controller
+      private def handle_status_response(
+        decrypted : Bytes,
+        original_msg : Codec::MessageCodec::Message,
+        peer : Socket::IPAddress,
+        session : Session::SecureContext,
+      ) : Nil
+        Log.info { "Handling StatusResponse" }
+
+        # Parse StatusResponse TLV
+        begin
+          reader = TLV::Reader.new(decrypted)
+          data = reader.get.as(Hash(TLV::Tag, TLV::Value))
+          request_data = data["Any"].as(Hash(TLV::Tag, TLV::Value))
+
+          # Extract status code (tag 0)
+          status_value = request_data[0_u8]?
+          status_code = if status_value
+                          case status_value
+                          when Int
+                            status_value.to_u8
+                          when UInt8
+                            status_value
+                          else
+                            0_u8
+                          end
+                        else
+                          0_u8
+                        end
+
+          if status_code == 0
+            Log.info { "✅ StatusResponse: SUCCESS" }
+          else
+            Log.warn { "⚠️  StatusResponse: status=0x#{status_code.to_s(16)}" }
+          end
+        rescue ex
+          Log.error { "Failed to parse StatusResponse: #{ex.message}" }
+        end
+
+        # StatusResponse is just an acknowledgment - no response needed
       end
 
       # Handle ReadRequest - parse, read attributes, encode response, encrypt and send
@@ -334,6 +383,79 @@ module Matter
         Log.info { "Sent ReadResponse" }
       rescue ex
         Log.error(exception: ex) { "Error handling ReadRequest: #{ex.message}" }
+      end
+
+      # Handle SubscribeRequest - parse, read attributes, send ReportData, then SubscribeResponse
+      private def handle_subscribe_request(
+        decrypted : Bytes,
+        original_msg : Codec::MessageCodec::Message,
+        peer : Socket::IPAddress,
+        session : Session::SecureContext,
+      ) : Nil
+        Log.info { "Handling SubscribeRequest" }
+
+        # Parse SubscribeRequest using IMHandler
+        request = IMHandler.parse_subscribe_request(decrypted)
+        unless request
+          Log.error { "Failed to parse SubscribeRequest" }
+          return
+        end
+
+        Log.info { "SubscribeRequest: #{request.attribute_requests.size} attribute(s), min=#{request.min_interval_floor}s, max=#{request.max_interval_ceiling}s" }
+
+        # Log what attributes are being subscribed to
+        request.attribute_requests.each_with_index do |path, idx|
+          endpoint = path.endpoint.try(&.to_s) || "*"
+          cluster = path.cluster.try { |c| "0x#{c.to_s(16)}" } || "*"
+          attribute = path.attribute.try { |a| "0x#{a.to_s(16)}" } || "*"
+          Log.info { "  Subscribe #{idx}: endpoint=#{endpoint} cluster=#{cluster} attr=#{attribute}" }
+        end
+
+        # Generate subscription ID
+        subscription_id = @next_subscription_id
+        @next_subscription_id += 1
+
+        Log.info { "Created subscription #{subscription_id}" }
+
+        # Read attributes from clusters (same as ReadRequest)
+        response = IMHandler.read_attributes(request.attribute_requests, @clusters)
+
+        Log.info { "Initial ReportData: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
+
+        # Encode ReportData with subscription ID as TLV
+        report_data_tlv = IMHandler.encode_report_data(response, subscription_id)
+        Log.debug { "Encoded ReportData TLV (#{report_data_tlv.size} bytes)" }
+
+        # Send ReportData (initial subscription data)
+        send_im_response(
+          original_msg: original_msg,
+          peer: peer,
+          session: session,
+          message_type: 0x05_u8, # ReportData
+          payload: report_data_tlv
+        )
+
+        Log.info { "Sent initial ReportData for subscription #{subscription_id}" }
+
+        # Calculate actual max interval (we honor the requested ceiling)
+        max_interval = request.max_interval_ceiling
+
+        # Encode SubscribeResponse as TLV
+        subscribe_response_tlv = IMHandler.encode_subscribe_response(subscription_id, max_interval)
+        Log.debug { "Encoded SubscribeResponse TLV (#{subscribe_response_tlv.size} bytes)" }
+
+        # Send SubscribeResponse
+        send_im_response(
+          original_msg: original_msg,
+          peer: peer,
+          session: session,
+          message_type: 0x04_u8, # SubscribeResponse
+          payload: subscribe_response_tlv
+        )
+
+        Log.info { "Sent SubscribeResponse for subscription #{subscription_id}, maxInterval=#{max_interval}s" }
+      rescue ex
+        Log.error(exception: ex) { "Error handling SubscribeRequest: #{ex.message}" }
       end
 
       # Handle WriteRequest - parse, write attributes, encode response, encrypt and send

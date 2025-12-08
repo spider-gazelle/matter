@@ -172,20 +172,19 @@ describe Matter::Certificate::AttestationCertificateManager do
     pai_cert = OpenSSL::X509::Certificate.from_der(manager.pai_cert)
     entries = pai_cert.subject.to_a
 
-    # Per Matter spec: vendor/product IDs should be 4-character uppercase hex
+    # Per Matter spec: PAI includes only vendorId (not productId)
+    # This matches matter.js behavior where PAI is reusable across products
     # VendorId OID: 1.3.6.1.4.1.37244.2.1
-    # ProductId OID: 1.3.6.1.4.1.37244.2.2
-    # Expected format: "FFF1", "8000" (zero-padded to 4 chars)
+    # Expected format: "FFF1" (zero-padded to 4 chars)
 
     # Find vendor ID entry
     vid_entry = entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.1") }
     vid_entry.should_not be_nil
     vid_entry.not_nil![1].should eq("FFF1")
 
-    # Find product ID entry
+    # PAI should NOT include productId (it's only in DAC)
     pid_entry = entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.2") }
-    pid_entry.should_not be_nil
-    pid_entry.not_nil![1].should eq("8000")
+    pid_entry.should be_nil
   end
 
   it "encodes Matter vendor/product ID in DAC subject DN per spec" do
@@ -219,7 +218,7 @@ describe Matter::Certificate::AttestationCertificateManager do
     product_id = 0x0012_u16 # Should encode as "0012"
     manager = Matter::Certificate::AttestationCertificateManager.new(vendor_id, product_id)
 
-    # Check PAI
+    # Check PAI (only vendorId, no productId per matter.js)
     pai_cert = OpenSSL::X509::Certificate.from_der(manager.pai_cert)
     pai_entries = pai_cert.subject.to_a
 
@@ -227,11 +226,11 @@ describe Matter::Certificate::AttestationCertificateManager do
     vid_entry.should_not be_nil
     vid_entry.not_nil![1].should eq("00AB")
 
+    # PAI should NOT include productId
     pid_entry = pai_entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.2") }
-    pid_entry.should_not be_nil
-    pid_entry.not_nil![1].should eq("0012")
+    pid_entry.should be_nil
 
-    # Check DAC
+    # Check DAC (includes both vendorId and productId)
     dac_cert_der, _key = manager.get_dac_cert(product_id)
     dac_cert = OpenSSL::X509::Certificate.from_der(dac_cert_der)
     dac_entries = dac_cert.subject.to_a

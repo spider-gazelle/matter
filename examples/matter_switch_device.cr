@@ -37,9 +37,11 @@ module MatterSwitch
     property vendor_id : UInt16
     property product_id : UInt16
     property setup_pin : UInt32
+    property unique_id : String
+    property serial_number : String
 
     def initialize(
-      @device_name = "Matter Switch",
+      @device_name = "Crystal Switch",
       @on_off = false,
       @data_version = 0_u32,
       @commissioned = false,
@@ -47,7 +49,20 @@ module MatterSwitch
       @vendor_id = 0xFFF1_u16,
       @product_id = 0x8004_u16,
       @setup_pin = DeviceState.generate_random_pin,
+      @unique_id = DeviceState.generate_unique_id,
+      @serial_number = DeviceState.generate_serial_number,
     )
+    end
+
+    # Generate a unique ID (UUID-like format)
+    def self.generate_unique_id : String
+      bytes = Random::Secure.random_bytes(16)
+      bytes.hexstring.upcase
+    end
+
+    # Generate a serial number
+    def self.generate_serial_number : String
+      "CS-#{Random::Secure.rand(100000..999999)}"
     end
 
     # Generate a random discriminator (12-bit value, 0-4095)
@@ -166,19 +181,23 @@ module MatterSwitch
       @fabric_storage = FabricStorage.load(FABRIC_FILE)
 
       # Create Basic Information cluster on endpoint 0 (required for root node)
+      # NOTE: nodeLabel and productLabel are what iOS Home app reads for device name
       root_endpoint = Matter::DataType::EndpointNumber.new(0_u16)
       @basic_info = Matter::Cluster::BasicInformationCluster.new(
         root_endpoint,
         data_model_revision: 1_u16,
         vendor_name: "Spider-Gazelle",
         vendor_id: @state.vendor_id,
-        product_name: "Matter Switch 2",
+        product_name: @state.device_name, # Product name
         product_id: @state.product_id,
-        node_label: @state.device_name, # This is the device name shown in iOS
+        node_label: @state.device_name,    # User-facing device name (writable)
+        product_label: @state.device_name, # Product label (fixed)
         hardware_version: 1_u16,
-        hardware_version_string: "1.1",
+        hardware_version_string: "1.0",
         software_version: 1_u32,
-        software_version_string: "1.0.1"
+        software_version_string: "1.0.0",
+        serial_number: @state.serial_number,
+        unique_id: @state.unique_id
       )
 
       # Create General Commissioning cluster on endpoint 0 (required for commissioning)
@@ -360,6 +379,8 @@ module MatterSwitch
       puts "   Fabrics: #{@fabric_storage.size}"
       puts "   Discriminator: #{@state.discriminator}"
       puts "   Setup PIN: #{@state.setup_pin}"
+      puts "   Serial Number: #{@state.serial_number}"
+      puts "   Unique ID: #{@state.unique_id}"
 
       # Sync fabrics from FabricStorage to FabricTable for CASE destination_id matching
       @fabric_storage.fabrics.each do |fabric|
