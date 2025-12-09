@@ -1,6 +1,8 @@
 require "./cluster"
 require "tlv"
 require "log"
+require "../datatype/node_id"
+require "../datatype/case_authenticated_tag"
 
 module Matter
   module Cluster
@@ -197,12 +199,13 @@ module Matter
       end
 
       # Check if a subject has the required privilege
+      # Supports CaseAuthenticatedTag (CAT) subject matching per Matter spec
       def check_access(subject : UInt64, fabric_index : UInt8, privilege : AccessControlEntryPrivilege,
                        cluster : UInt32? = nil, endpoint : UInt16? = nil, device_type : UInt32? = nil) : Bool
         # Find matching ACL entries for this fabric
         matching_entries = @acl.select do |entry|
           entry.fabric_index == fabric_index &&
-            entry.subjects.includes?(subject)
+            entry.subjects.any? { |acl_subject| subject_matches?(acl_subject, subject) }
         end
 
         # Check if any entry grants sufficient privilege
@@ -222,6 +225,33 @@ module Matter
                               end
 
           has_privilege && has_target_access
+        end
+      end
+
+      # Check if a subject (from incoming request) matches an ACL subject
+      # Supports CaseAuthenticatedTag (CAT) matching:
+      # - For CAT subjects: identity must match, incoming version >= ACL version
+      # - For regular NodeIds: exact match required
+      private def subject_matches?(acl_subject : UInt64, incoming_subject : UInt64) : Bool
+        acl_node = DataType::NodeId.new(acl_subject)
+        incoming_node = DataType::NodeId.new(incoming_subject)
+
+        # If both are CAT-encoded, use CAT matching rules
+        if acl_node.is_case_authenticated_tag? && incoming_node.is_case_authenticated_tag?
+          begin
+            acl_cat = acl_node.extract_as_case_authenticated_tag
+            incoming_cat = incoming_node.extract_as_case_authenticated_tag
+
+            # CAT matching: identity must match, incoming version >= ACL version
+            acl_cat.get_identity_value == incoming_cat.get_identity_value &&
+              incoming_cat.get_version >= acl_cat.get_version
+          rescue
+            # If CAT extraction fails, fall back to exact match
+            acl_subject == incoming_subject
+          end
+        else
+          # Regular NodeId: exact match required
+          acl_subject == incoming_subject
         end
       end
 

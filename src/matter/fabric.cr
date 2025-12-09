@@ -1,4 +1,6 @@
 require "./crypto/key"
+require "./datatype/case_authenticated_tag"
+require "./datatype/node_id"
 require "base64"
 
 module Matter
@@ -58,6 +60,12 @@ module Matter
     # Timestamp when this fabric was last used (Unix epoch seconds)
     property last_used_at : Int64
 
+    # Case Authenticated Tags (CATs) extracted from NOC certificate
+    # CATs provide additional identity attributes for access control.
+    # Up to 3 CATs can be specified in the NOC subject field.
+    # Specification: Matter 1.4 § 6.6.2.1.1 (Case Authenticated Tag Subject)
+    property cats : Array(DataType::CaseAuthenticatedTag)
+
     def initialize(
       @fabric_id : UInt64,
       @fabric_index : UInt8,
@@ -71,6 +79,7 @@ module Matter
       @intermediate_cert : Bytes? = nil,
       @created_at : Int64 = Time.utc.to_unix,
       @last_used_at : Int64 = Time.utc.to_unix,
+      @cats : Array(DataType::CaseAuthenticatedTag) = [] of DataType::CaseAuthenticatedTag,
     )
       validate!
     end
@@ -91,6 +100,9 @@ module Matter
 
       # Node ID must not be 0
       raise ArgumentError.new("node_id must not be 0") if @node_id == 0
+
+      # Max 3 CATs per fabric (per Matter spec)
+      raise ArgumentError.new("cats must have <= 3 entries") if @cats.size > 3
     end
 
     # Update the last used timestamp
@@ -113,6 +125,9 @@ module Matter
       public_key_bytes = @operational_key.public_bits
       raise "Operational key has no public bits" unless public_key_bytes
 
+      # Serialize CATs as comma-separated hex values
+      cats_str = @cats.map { |cat| cat.value.to_s(16) }.join(",")
+
       {
         "fabric_id"              => @fabric_id,
         "fabric_index"           => @fabric_index,
@@ -127,6 +142,7 @@ module Matter
         "intermediate_cert"      => @intermediate_cert ? Base64.strict_encode(@intermediate_cert.not_nil!) : "",
         "created_at"             => @created_at,
         "last_used_at"           => @last_used_at,
+        "cats"                   => cats_str,
       }
     end
 
@@ -151,6 +167,19 @@ module Matter
       # Then set private bits (won't derive public since x_bits is already set)
       operational_key.private_bits = operational_key_bytes
 
+      # Deserialize CATs from comma-separated hex values
+      cats = if cats_str = data["cats"]?.as?(String)
+               if cats_str.empty?
+                 [] of DataType::CaseAuthenticatedTag
+               else
+                 cats_str.split(",").map do |hex|
+                   DataType::CaseAuthenticatedTag.new(hex.to_u32(16))
+                 end
+               end
+             else
+               [] of DataType::CaseAuthenticatedTag
+             end
+
       Fabric.new(
         fabric_id: data["fabric_id"].as(UInt64 | Int64).to_u64,
         fabric_index: data["fabric_index"].as(UInt8 | Int32 | Int64).to_u8,
@@ -163,7 +192,8 @@ module Matter
         label: data["label"].as(String),
         intermediate_cert: intermediate_cert,
         created_at: data["created_at"].as(Int64),
-        last_used_at: data["last_used_at"].as(Int64)
+        last_used_at: data["last_used_at"].as(Int64),
+        cats: cats
       )
     end
 
@@ -272,6 +302,20 @@ module Matter
     # Helper to check if a given fabric_id matches
     def matches_id?(id : UInt64) : Bool
       @fabric_id == id
+    end
+
+    # Get CATs as NodeId-encoded values for access control matching
+    # Each CAT is encoded as a NodeId with prefix 0xFFFFFFFD
+    #
+    # This is used during CASE session establishment to provide the
+    # subjects that should be checked against access control entries.
+    def cat_node_ids : Array(UInt64)
+      @cats.map { |cat| DataType::NodeId.from_case_authenticated_tag(cat).id }
+    end
+
+    # Check if this fabric has any CATs
+    def has_cats? : Bool
+      !@cats.empty?
     end
 
     # String representation for debugging

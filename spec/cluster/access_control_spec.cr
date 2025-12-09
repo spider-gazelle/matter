@@ -316,6 +316,151 @@ describe Matter::Cluster::AccessControlCluster do
     end
   end
 
+  describe "CaseAuthenticatedTag (CAT) subject matching" do
+    it "matches CAT subjects with same identity and version" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+      # Create CAT-encoded subject (identity=0x1234, version=0x0001)
+      cat = Matter::DataType::CaseAuthenticatedTag.new(0x12340001_u32)
+      cat_node_id = Matter::DataType::NodeId.from_case_authenticated_tag(cat)
+
+      entry = Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
+        privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Operate,
+        auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+        subjects: [cat_node_id.id],
+        targets: nil,
+        fabric_index: 1_u8
+      )
+      cluster.acl << entry
+
+      # Should match with same identity and version
+      cluster.check_access(
+        subject: cat_node_id.id,
+        fabric_index: 1_u8,
+        privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::View
+      ).should be_true
+    end
+
+    it "matches CAT subjects when incoming version is higher" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+      # ACL has CAT with version 0x0001
+      acl_cat = Matter::DataType::CaseAuthenticatedTag.new(0x12340001_u32)
+      acl_node_id = Matter::DataType::NodeId.from_case_authenticated_tag(acl_cat)
+
+      entry = Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
+        privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Operate,
+        auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+        subjects: [acl_node_id.id],
+        targets: nil,
+        fabric_index: 1_u8
+      )
+      cluster.acl << entry
+
+      # Incoming request has CAT with version 0x0005 (higher than ACL version)
+      incoming_cat = Matter::DataType::CaseAuthenticatedTag.new(0x12340005_u32)
+      incoming_node_id = Matter::DataType::NodeId.from_case_authenticated_tag(incoming_cat)
+
+      cluster.check_access(
+        subject: incoming_node_id.id,
+        fabric_index: 1_u8,
+        privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::View
+      ).should be_true
+    end
+
+    it "denies CAT subjects when incoming version is lower" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+      # ACL has CAT with version 0x0005
+      acl_cat = Matter::DataType::CaseAuthenticatedTag.new(0x12340005_u32)
+      acl_node_id = Matter::DataType::NodeId.from_case_authenticated_tag(acl_cat)
+
+      entry = Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
+        privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Operate,
+        auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+        subjects: [acl_node_id.id],
+        targets: nil,
+        fabric_index: 1_u8
+      )
+      cluster.acl << entry
+
+      # Incoming request has CAT with version 0x0001 (lower than ACL version)
+      incoming_cat = Matter::DataType::CaseAuthenticatedTag.new(0x12340001_u32)
+      incoming_node_id = Matter::DataType::NodeId.from_case_authenticated_tag(incoming_cat)
+
+      cluster.check_access(
+        subject: incoming_node_id.id,
+        fabric_index: 1_u8,
+        privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::View
+      ).should be_false
+    end
+
+    it "denies CAT subjects with different identity" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+      # ACL has CAT with identity 0x1234
+      acl_cat = Matter::DataType::CaseAuthenticatedTag.new(0x12340001_u32)
+      acl_node_id = Matter::DataType::NodeId.from_case_authenticated_tag(acl_cat)
+
+      entry = Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
+        privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Operate,
+        auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+        subjects: [acl_node_id.id],
+        targets: nil,
+        fabric_index: 1_u8
+      )
+      cluster.acl << entry
+
+      # Incoming request has CAT with different identity 0x5678
+      incoming_cat = Matter::DataType::CaseAuthenticatedTag.new(0x56780001_u32)
+      incoming_node_id = Matter::DataType::NodeId.from_case_authenticated_tag(incoming_cat)
+
+      cluster.check_access(
+        subject: incoming_node_id.id,
+        fabric_index: 1_u8,
+        privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::View
+      ).should be_false
+    end
+
+    it "requires exact match when mixing CAT and regular NodeIds" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+      # ACL has regular NodeId
+      regular_node_id = 0x1122334455667788_u64
+
+      entry = Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
+        privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Operate,
+        auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+        subjects: [regular_node_id],
+        targets: nil,
+        fabric_index: 1_u8
+      )
+      cluster.acl << entry
+
+      # Incoming request with CAT-encoded NodeId should not match
+      cat = Matter::DataType::CaseAuthenticatedTag.new(0x12340001_u32)
+      cat_node_id = Matter::DataType::NodeId.from_case_authenticated_tag(cat)
+
+      cluster.check_access(
+        subject: cat_node_id.id,
+        fabric_index: 1_u8,
+        privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::View
+      ).should be_false
+
+      # Regular NodeId should still match exactly
+      cluster.check_access(
+        subject: regular_node_id,
+        fabric_index: 1_u8,
+        privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::View
+      ).should be_true
+    end
+  end
+
   describe "fabric isolation" do
     it "isolates ACL entries by fabric" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)

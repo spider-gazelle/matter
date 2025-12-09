@@ -1,3 +1,5 @@
+require "./case_authenticated_tag"
+
 module Matter
   module DataType
     class NodeId
@@ -6,12 +8,35 @@ module Matter
       OPERATIONAL_MINIMUM = BigInt.new("0000000000000001", base: 16)
       OPERATIONAL_MAXIMUM = BigInt.new("FFFFFFEFFFFFFFFF", base: 16)
 
+      # CAT NodeId prefix: 0xFFFFFFFD followed by 32-bit CAT value
+      CAT_PREFIX = 0xFFFFFFFD00000000_u64
+
       getter brand : String = "NodeId"
 
       @[TLV::Field(tag: nil)]
       property id : UInt64
 
       def initialize(@id : UInt64)
+      end
+
+      # Create NodeId from a CaseAuthenticatedTag
+      # Format: 0xFFFFFFFD + 32-bit CAT value
+      def self.from_case_authenticated_tag(cat : CaseAuthenticatedTag) : NodeId
+        NodeId.new(CAT_PREFIX | cat.value.to_u64)
+      end
+
+      # Check if this NodeId encodes a CaseAuthenticatedTag
+      def is_case_authenticated_tag? : Bool
+        (id >> 32) == 0xFFFFFFFD_u64
+      end
+
+      # Extract the CaseAuthenticatedTag from this NodeId
+      # Raises if this NodeId is not a CAT-encoded NodeId
+      def extract_as_case_authenticated_tag : CaseAuthenticatedTag
+        unless is_case_authenticated_tag?
+          raise ArgumentError.new("NodeId does not encode a CaseAuthenticatedTag")
+        end
+        CaseAuthenticatedTag.new((id & 0xFFFFFFFF).to_u32)
       end
 
       def get_random_operational_node_id : NodeId

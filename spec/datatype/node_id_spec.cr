@@ -72,4 +72,49 @@ describe Matter::DataType::NodeId do
       decoded.id.should eq(original.id)
     end
   end
+
+  describe "CaseAuthenticatedTag support" do
+    it "creates NodeId from CaseAuthenticatedTag" do
+      cat = Matter::DataType::CaseAuthenticatedTag.new(0x12345678_u32)
+      node_id = Matter::DataType::NodeId.from_case_authenticated_tag(cat)
+
+      # Format: 0xFFFFFFFD + 32-bit CAT value
+      node_id.id.should eq(0xFFFFFFFD12345678_u64)
+    end
+
+    it "detects CAT-encoded NodeId" do
+      cat = Matter::DataType::CaseAuthenticatedTag.new(0x12345678_u32)
+      node_id = Matter::DataType::NodeId.from_case_authenticated_tag(cat)
+
+      node_id.is_case_authenticated_tag?.should eq(true)
+    end
+
+    it "returns false for non-CAT NodeId" do
+      node_id = Matter::DataType::NodeId.new(0x123456789ABCDEF0_u64)
+
+      node_id.is_case_authenticated_tag?.should eq(false)
+    end
+
+    it "extracts CaseAuthenticatedTag from NodeId" do
+      original_cat = Matter::DataType::CaseAuthenticatedTag.new(0xABCD1234_u32)
+      node_id = Matter::DataType::NodeId.from_case_authenticated_tag(original_cat)
+
+      extracted_cat = node_id.extract_as_case_authenticated_tag
+      extracted_cat.value.should eq(original_cat.value)
+      extracted_cat.get_identity_value.should eq(0xABCD_u16)
+      extracted_cat.get_version.should eq(0x1234_u16)
+    end
+
+    it "raises when extracting CAT from non-CAT NodeId" do
+      node_id = Matter::DataType::NodeId.new(0x123456789ABCDEF0_u64)
+
+      expect_raises(ArgumentError, "NodeId does not encode a CaseAuthenticatedTag") do
+        node_id.extract_as_case_authenticated_tag
+      end
+    end
+
+    it "has correct CAT_PREFIX constant" do
+      Matter::DataType::NodeId::CAT_PREFIX.should eq(0xFFFFFFFD00000000_u64)
+    end
+  end
 end

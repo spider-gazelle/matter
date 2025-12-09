@@ -304,6 +304,156 @@ describe Matter::Fabric do
       fresh.expired?.should be_false
     end
   end
+
+  describe "CaseAuthenticatedTag (CAT) support" do
+    it "creates fabric with CATs" do
+      key = Matter::Crypto::Key.generate_key_pair
+      ipk = Random::Secure.random_bytes(16)
+
+      cats = [
+        Matter::DataType::CaseAuthenticatedTag.new(0x12340001_u32),
+        Matter::DataType::CaseAuthenticatedTag.new(0x56780002_u32),
+      ]
+
+      fabric = Matter::Fabric.new(
+        fabric_id: 0x1_u64,
+        fabric_index: 1_u8,
+        node_id: 0x1_u64,
+        root_public_key: Random::Secure.random_bytes(65),
+        operational_cert: Random::Secure.random_bytes(200),
+        operational_key: key,
+        ipk: ipk,
+        cats: cats
+      )
+
+      fabric.cats.size.should eq(2)
+      fabric.has_cats?.should be_true
+      fabric.cats[0].value.should eq(0x12340001_u32)
+      fabric.cats[1].value.should eq(0x56780002_u32)
+    end
+
+    it "defaults to empty CATs" do
+      key = Matter::Crypto::Key.generate_key_pair
+      ipk = Random::Secure.random_bytes(16)
+
+      fabric = Matter::Fabric.new(
+        fabric_id: 0x1_u64,
+        fabric_index: 1_u8,
+        node_id: 0x1_u64,
+        root_public_key: Random::Secure.random_bytes(65),
+        operational_cert: Random::Secure.random_bytes(200),
+        operational_key: key,
+        ipk: ipk
+      )
+
+      fabric.cats.should be_empty
+      fabric.has_cats?.should be_false
+    end
+
+    it "validates max 3 CATs" do
+      key = Matter::Crypto::Key.generate_key_pair
+      ipk = Random::Secure.random_bytes(16)
+
+      cats = [
+        Matter::DataType::CaseAuthenticatedTag.new(0x12340001_u32),
+        Matter::DataType::CaseAuthenticatedTag.new(0x56780002_u32),
+        Matter::DataType::CaseAuthenticatedTag.new(0x9ABC0003_u32),
+        Matter::DataType::CaseAuthenticatedTag.new(0xDEF00004_u32), # 4th CAT - invalid
+      ]
+
+      expect_raises(ArgumentError, /cats must have <= 3 entries/) do
+        Matter::Fabric.new(
+          fabric_id: 0x1_u64,
+          fabric_index: 1_u8,
+          node_id: 0x1_u64,
+          root_public_key: Random::Secure.random_bytes(65),
+          operational_cert: Random::Secure.random_bytes(200),
+          operational_key: key,
+          ipk: ipk,
+          cats: cats
+        )
+      end
+    end
+
+    it "returns CAT-encoded NodeIds" do
+      key = Matter::Crypto::Key.generate_key_pair
+      ipk = Random::Secure.random_bytes(16)
+
+      cats = [
+        Matter::DataType::CaseAuthenticatedTag.new(0x12340001_u32),
+        Matter::DataType::CaseAuthenticatedTag.new(0x56780002_u32),
+      ]
+
+      fabric = Matter::Fabric.new(
+        fabric_id: 0x1_u64,
+        fabric_index: 1_u8,
+        node_id: 0x1_u64,
+        root_public_key: Random::Secure.random_bytes(65),
+        operational_cert: Random::Secure.random_bytes(200),
+        operational_key: key,
+        ipk: ipk,
+        cats: cats
+      )
+
+      cat_node_ids = fabric.cat_node_ids
+      cat_node_ids.size.should eq(2)
+
+      # CAT NodeId format: 0xFFFFFFFD + 32-bit CAT value
+      cat_node_ids[0].should eq(0xFFFFFFFD12340001_u64)
+      cat_node_ids[1].should eq(0xFFFFFFFD56780002_u64)
+    end
+
+    it "serializes and deserializes CATs" do
+      key = Matter::Crypto::Key.generate_key_pair
+      ipk = Random::Secure.random_bytes(16)
+
+      cats = [
+        Matter::DataType::CaseAuthenticatedTag.new(0xABCD1234_u32),
+        Matter::DataType::CaseAuthenticatedTag.new(0xEF567890_u32),
+      ]
+
+      original = Matter::Fabric.new(
+        fabric_id: 0x1_u64,
+        fabric_index: 1_u8,
+        node_id: 0x1_u64,
+        root_public_key: Random::Secure.random_bytes(65),
+        operational_cert: Random::Secure.random_bytes(200),
+        operational_key: key,
+        ipk: ipk,
+        cats: cats
+      )
+
+      hash = original.to_h
+      hash["cats"].as(String).should eq("abcd1234,ef567890")
+
+      restored = Matter::Fabric.from_h(hash)
+      restored.cats.size.should eq(2)
+      restored.cats[0].value.should eq(0xABCD1234_u32)
+      restored.cats[1].value.should eq(0xEF567890_u32)
+    end
+
+    it "handles empty CATs in serialization" do
+      key = Matter::Crypto::Key.generate_key_pair
+      ipk = Random::Secure.random_bytes(16)
+
+      original = Matter::Fabric.new(
+        fabric_id: 0x1_u64,
+        fabric_index: 1_u8,
+        node_id: 0x1_u64,
+        root_public_key: Random::Secure.random_bytes(65),
+        operational_cert: Random::Secure.random_bytes(200),
+        operational_key: key,
+        ipk: ipk
+        # No cats specified - defaults to empty
+      )
+
+      hash = original.to_h
+      hash["cats"].as(String).should eq("")
+
+      restored = Matter::Fabric.from_h(hash)
+      restored.cats.should be_empty
+    end
+  end
 end
 
 describe Matter::FabricTable do
