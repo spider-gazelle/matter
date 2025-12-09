@@ -76,14 +76,16 @@ module Matter
 
       # Pending subscription responses - keyed by exchange_id
       # After sending ReportData, we wait for StatusResponse before sending SubscribeResponse
-      struct PendingSubscription
+      # Supports chunked responses - remaining_chunks stores chunks yet to be sent
+      class PendingSubscription
         property subscription_id : UInt32
         property max_interval : UInt16
         property peer : Socket::IPAddress
         property session : Session::SecureContext
         property original_msg : Codec::MessageCodec::Message
+        property remaining_chunks : Array(Tuple(Bytes, Bool))
 
-        def initialize(@subscription_id, @max_interval, @peer, @session, @original_msg)
+        def initialize(@subscription_id, @max_interval, @peer, @session, @original_msg, @remaining_chunks = [] of Tuple(Bytes, Bool))
         end
       end
 
@@ -375,23 +377,43 @@ module Matter
         exchange_id = original_msg.payload_header.exchange_id
         if pending = @pending_subscriptions.delete(exchange_id)
           if status_code == 0
-            # Success - send SubscribeResponse to complete the subscription
-            Log.info { "StatusResponse received for subscription #{pending.subscription_id}, sending SubscribeResponse" }
+            # Success - check if there are more chunks to send
+            if !pending.remaining_chunks.empty?
+              # Send next chunk
+              next_chunk, is_last = pending.remaining_chunks.shift
+              Log.info { "StatusResponse received for subscription #{pending.subscription_id}, sending next chunk (#{pending.remaining_chunks.size} remaining)" }
 
-            # Encode SubscribeResponse as TLV
-            subscribe_response_tlv = IMHandler.encode_subscribe_response(pending.subscription_id, pending.max_interval)
-            Log.debug { "Encoded SubscribeResponse TLV (#{subscribe_response_tlv.size} bytes)" }
+              # Send next ReportData chunk
+              send_im_response(
+                original_msg: original_msg,
+                peer: pending.peer,
+                session: pending.session,
+                message_type: 0x05_u8, # ReportData
+                payload: next_chunk
+              )
 
-            # Send SubscribeResponse
-            send_im_response(
-              original_msg: original_msg,
-              peer: pending.peer,
-              session: pending.session,
-              message_type: 0x04_u8, # SubscribeResponse
-              payload: subscribe_response_tlv
-            )
+              # Put pending subscription back to wait for next StatusResponse
+              @pending_subscriptions[exchange_id] = pending
+              Log.info { "Sent ReportData chunk, waiting for StatusResponse" }
+            else
+              # All chunks sent - send SubscribeResponse to complete the subscription
+              Log.info { "StatusResponse received for subscription #{pending.subscription_id}, all chunks sent, sending SubscribeResponse" }
 
-            Log.info { "Sent SubscribeResponse for subscription #{pending.subscription_id}, maxInterval=#{pending.max_interval}s" }
+              # Encode SubscribeResponse as TLV
+              subscribe_response_tlv = IMHandler.encode_subscribe_response(pending.subscription_id, pending.max_interval)
+              Log.debug { "Encoded SubscribeResponse TLV (#{subscribe_response_tlv.size} bytes)" }
+
+              # Send SubscribeResponse
+              send_im_response(
+                original_msg: original_msg,
+                peer: pending.peer,
+                session: pending.session,
+                message_type: 0x04_u8, # SubscribeResponse
+                payload: subscribe_response_tlv
+              )
+
+              Log.info { "Sent SubscribeResponse for subscription #{pending.subscription_id}, maxInterval=#{pending.max_interval}s" }
+            end
           else
             # Error - subscription failed
             Log.error { "StatusResponse error for subscription #{pending.subscription_id}, aborting subscription" }
@@ -483,25 +505,31 @@ module Matter
 
         Log.info { "Initial ReportData: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
 
-        # Encode ReportData with subscription ID as TLV
-        report_data_tlv = IMHandler.encode_report_data(response, subscription_id)
-        Log.debug { "Encoded ReportData TLV (#{report_data_tlv.size} bytes)" }
+        # Encode ReportData with subscription ID as TLV, chunked to fit MTU
+        chunks = IMHandler.encode_chunked_report_data(response, subscription_id)
+        Log.info { "Chunked ReportData into #{chunks.size} chunk(s)" }
 
-        # Send ReportData (initial subscription data)
+        # Get first chunk to send
+        first_chunk, _ = chunks.first
+        remaining_chunks = chunks.size > 1 ? chunks[1..] : [] of Tuple(Bytes, Bool)
+
+        Log.debug { "Sending first chunk (#{first_chunk.size} bytes), #{remaining_chunks.size} remaining" }
+
+        # Send first ReportData chunk
         send_im_response(
           original_msg: original_msg,
           peer: peer,
           session: session,
           message_type: 0x05_u8, # ReportData
-          payload: report_data_tlv
+          payload: first_chunk
         )
 
-        Log.info { "Sent initial ReportData for subscription #{subscription_id}" }
+        Log.info { "Sent initial ReportData chunk for subscription #{subscription_id}" }
 
         # Calculate actual max interval (we honor the requested ceiling)
         max_interval = request.max_interval_ceiling
 
-        # Store pending subscription - we'll send SubscribeResponse after receiving StatusResponse
+        # Store pending subscription - we'll send more chunks or SubscribeResponse after receiving StatusResponse
         # The exchange_id is used to correlate the StatusResponse with this subscription
         exchange_id = original_msg.payload_header.exchange_id
         @pending_subscriptions[exchange_id] = PendingSubscription.new(
@@ -509,10 +537,11 @@ module Matter
           max_interval: max_interval,
           peer: peer,
           session: session,
-          original_msg: original_msg
+          original_msg: original_msg,
+          remaining_chunks: remaining_chunks
         )
 
-        Log.info { "Waiting for StatusResponse on exchange #{exchange_id} before sending SubscribeResponse" }
+        Log.info { "Waiting for StatusResponse on exchange #{exchange_id} (#{remaining_chunks.size} chunks remaining)" }
       rescue ex
         Log.error(exception: ex) { "Error handling SubscribeRequest: #{ex.message}" }
       end
@@ -1041,6 +1070,7 @@ module Matter
       # Send a StatusReport with success status
       # Handle Standalone ACK messages
       # These are sent when a peer wants to acknowledge a message but has no other data to send
+      # For chunked ReportData, iPhone may send StandaloneAck instead of StatusResponse between chunks
       private def handle_standalone_ack(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
         Log.info { "✅ Received StandaloneAck" }
 
@@ -1049,8 +1079,54 @@ module Matter
           Log.debug { "  Acknowledging message ID: #{ack_msg_id}" }
         end
 
-        # StandaloneAck doesn't require any processing - it just confirms receipt
-        # The exchange is complete
+        # Check if this ACK is for a pending subscription with remaining chunks
+        # iPhone sends StandaloneAck (instead of StatusResponse) to acknowledge intermediate ReportData chunks
+        exchange_id = msg.payload_header.exchange_id
+        if pending = @pending_subscriptions[exchange_id]?
+          if !pending.remaining_chunks.empty?
+            # Send next chunk
+            next_chunk, is_last = pending.remaining_chunks.shift
+            Log.info { "StandaloneAck received for subscription #{pending.subscription_id}, sending next chunk (#{pending.remaining_chunks.size} remaining)" }
+
+            # Send next ReportData chunk
+            send_im_response(
+              original_msg: pending.original_msg,
+              peer: pending.peer,
+              session: pending.session,
+              message_type: 0x05_u8, # ReportData
+              payload: next_chunk
+            )
+
+            # If there are more chunks, keep waiting
+            if !pending.remaining_chunks.empty?
+              Log.info { "Sent ReportData chunk, waiting for ACK/StatusResponse" }
+            else
+              # Last chunk sent, wait for StatusResponse to send SubscribeResponse
+              Log.info { "Sent final ReportData chunk, waiting for StatusResponse to complete subscription" }
+            end
+          elsif pending.remaining_chunks.empty?
+            # All chunks were sent, this ACK might be for the final chunk
+            # Now we need to send SubscribeResponse
+            Log.info { "StandaloneAck received after final chunk, sending SubscribeResponse for subscription #{pending.subscription_id}" }
+
+            # Remove from pending
+            @pending_subscriptions.delete(exchange_id)
+
+            # Encode and send SubscribeResponse
+            subscribe_response_tlv = IMHandler.encode_subscribe_response(pending.subscription_id, pending.max_interval)
+            Log.debug { "Encoded SubscribeResponse TLV (#{subscribe_response_tlv.size} bytes)" }
+
+            send_im_response(
+              original_msg: pending.original_msg,
+              peer: pending.peer,
+              session: pending.session,
+              message_type: 0x04_u8, # SubscribeResponse
+              payload: subscribe_response_tlv
+            )
+
+            Log.info { "Sent SubscribeResponse for subscription #{pending.subscription_id}, maxInterval=#{pending.max_interval}s" }
+          end
+        end
       end
 
       # Handle StatusReport messages (sent by controllers to indicate errors or status)

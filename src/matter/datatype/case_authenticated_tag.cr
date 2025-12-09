@@ -12,11 +12,7 @@
 module Matter
   module DataType
     class CaseAuthenticatedTag
-      include TLV::Serializable
-
       getter brand : String = "CaseAuthenticatedTag"
-
-      @[TLV::Field(tag: nil)]
       property value : UInt32
 
       def initialize(@value : UInt32)

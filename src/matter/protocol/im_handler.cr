@@ -795,6 +795,200 @@ module Matter
         io.rewind.to_slice
       end
 
+      # Maximum TLV payload size per message (conservative value to stay under IPv6 MTU of 1280)
+      # Overhead: UDP header (8) + IPv6 header (40) + Matter packet header (~12) +
+      # Matter payload header (~13) + MAC tag (16) = ~89 bytes overhead
+      # 1280 - 89 = ~1191 bytes available for TLV payload, use 1100 for safety margin
+      MAX_REPORT_PAYLOAD_SIZE = 1100
+
+      # Encode a single attribute report to TLV bytes (for size estimation)
+      private def self.encode_single_attribute_report(report : InteractionModel::AttributeData) : Bytes?
+        return nil if report.value.empty?
+
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        # Parse attribute value
+        reader = TLV::Reader.new(report.value)
+        value_data = reader.get
+        actual_value = value_data.is_a?(Hash) && value_data.has_key?("Any") ? value_data["Any"] : value_data
+
+        # Start AttributeReportIB
+        writer.start_structure(nil)
+
+        # Tag 1: AttributeDataIB
+        writer.start_structure(1_u8)
+
+        # Tag 0: dataVersion
+        writer.put(0_u8, report.data_version)
+
+        # Tag 1: path (using PATH container!)
+        writer.start_path(1_u8)
+        writer.put(2_u8, report.path.endpoint.not_nil!) if report.path.endpoint
+        writer.put(3_u8, report.path.cluster.not_nil!) if report.path.cluster
+        writer.put(4_u8, report.path.attribute.not_nil!) if report.path.attribute
+        writer.end_container # End path
+
+        # Tag 2: data
+        writer.put(2_u8, actual_value)
+
+        writer.end_container # End AttributeDataIB
+        writer.end_container # End AttributeReportIB
+
+        io.rewind.to_slice
+      rescue
+        nil
+      end
+
+      # Encode a single attribute status to TLV bytes (for size estimation)
+      private def self.encode_single_attribute_status(status : InteractionModel::AttributeStatus) : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        # Start AttributeReportIB
+        writer.start_structure(nil)
+
+        # Tag 0: AttributeStatusIB (for errors)
+        writer.start_structure(0_u8)
+
+        # Tag 0: path (using PATH container!)
+        writer.start_path(0_u8)
+        writer.put(2_u8, status.path.endpoint.not_nil!) if status.path.endpoint
+        writer.put(3_u8, status.path.cluster.not_nil!) if status.path.cluster
+        writer.put(4_u8, status.path.attribute.not_nil!) if status.path.attribute
+        writer.end_container # End path
+
+        # Tag 1: status (StatusIB structure)
+        writer.start_structure(1_u8)
+        writer.put(0_u8, status.status.status.value) # Tag 0: status code
+        writer.end_container                         # End StatusIB
+
+        writer.end_container # End AttributeStatusIB
+        writer.end_container # End AttributeReportIB
+
+        io.rewind.to_slice
+      end
+
+      # Chunk attributes into multiple ReportData messages that fit within MTU
+      # Returns an array of (encoded_bytes, is_last_chunk) tuples
+      def self.encode_chunked_report_data(
+        response : InteractionModel::ReadResponse,
+        subscription_id : UInt32? = nil,
+      ) : Array(Tuple(Bytes, Bool))
+        chunks = [] of Tuple(Bytes, Bool)
+
+        # Pre-encode all attribute reports and statuses with their sizes
+        encoded_reports = [] of Tuple(InteractionModel::AttributeData, Bytes)
+        response.attribute_reports.each do |report|
+          if encoded = encode_single_attribute_report(report)
+            encoded_reports << {report, encoded}
+          end
+        end
+
+        encoded_statuses = [] of Tuple(InteractionModel::AttributeStatus, Bytes)
+        response.attribute_status.each do |status|
+          encoded_statuses << {status, encode_single_attribute_status(status)}
+        end
+
+        # Calculate base overhead for ReportData structure
+        # Structure start (~1) + subscriptionId (~6 if present) + array start (~2) +
+        # moreChunkedMessages (~2) + interactionModelRevision (~3) + structure end (~1) = ~15 bytes
+        base_overhead = subscription_id ? 20 : 15
+
+        # Current chunk state
+        current_reports = [] of InteractionModel::AttributeData
+        current_statuses = [] of InteractionModel::AttributeStatus
+        current_size = base_overhead
+
+        report_index = 0
+        status_index = 0
+
+        # Process all reports and statuses
+        while report_index < encoded_reports.size || status_index < encoded_statuses.size
+          # Try to add the next report
+          if report_index < encoded_reports.size
+            report, encoded = encoded_reports[report_index]
+
+            if current_size + encoded.size <= MAX_REPORT_PAYLOAD_SIZE
+              current_reports << report
+              current_size += encoded.size
+              report_index += 1
+              next
+            elsif current_reports.empty? && current_statuses.empty?
+              # Single report too large - include it anyway (will exceed MTU but necessary)
+              Log.warn { "Single attribute report exceeds max payload size (#{encoded.size} bytes)" }
+              current_reports << report
+              current_size += encoded.size
+              report_index += 1
+            end
+          end
+
+          # Try to add the next status
+          if status_index < encoded_statuses.size && report_index >= encoded_reports.size
+            status, encoded = encoded_statuses[status_index]
+
+            if current_size + encoded.size <= MAX_REPORT_PAYLOAD_SIZE
+              current_statuses << status
+              current_size += encoded.size
+              status_index += 1
+              next
+            elsif current_reports.empty? && current_statuses.empty?
+              # Single status too large - include it anyway
+              Log.warn { "Single attribute status exceeds max payload size (#{encoded.size} bytes)" }
+              current_statuses << status
+              current_size += encoded.size
+              status_index += 1
+            end
+          end
+
+          # Chunk is full or we need to output what we have
+          if !current_reports.empty? || !current_statuses.empty?
+            is_last = (report_index >= encoded_reports.size && status_index >= encoded_statuses.size)
+
+            chunk_response = InteractionModel::ReadResponse.new(
+              attribute_reports: current_reports,
+              attribute_status: current_statuses,
+              more_chunks: !is_last
+            )
+
+            chunk_bytes = encode_report_data(chunk_response, subscription_id)
+            chunks << {chunk_bytes, is_last}
+
+            Log.info { "Created chunk #{chunks.size}: #{current_reports.size} reports, #{current_statuses.size} statuses, #{chunk_bytes.size} bytes, more=#{!is_last}" }
+
+            # Reset for next chunk
+            current_reports = [] of InteractionModel::AttributeData
+            current_statuses = [] of InteractionModel::AttributeStatus
+            current_size = base_overhead
+          end
+        end
+
+        # Output final chunk if there's anything left
+        if !current_reports.empty? || !current_statuses.empty?
+          chunk_response = InteractionModel::ReadResponse.new(
+            attribute_reports: current_reports,
+            attribute_status: current_statuses,
+            more_chunks: false
+          )
+
+          chunk_bytes = encode_report_data(chunk_response, subscription_id)
+          chunks << {chunk_bytes, true}
+
+          Log.info { "Created final chunk #{chunks.size}: #{current_reports.size} reports, #{current_statuses.size} statuses, #{chunk_bytes.size} bytes" }
+        end
+
+        # Edge case: empty response
+        if chunks.empty?
+          empty_response = InteractionModel::ReadResponse.new(more_chunks: false)
+          chunk_bytes = encode_report_data(empty_response, subscription_id)
+          chunks << {chunk_bytes, true}
+          Log.info { "Created empty chunk: #{chunk_bytes.size} bytes" }
+        end
+
+        Log.info { "Total chunks: #{chunks.size}" }
+        chunks
+      end
+
       # Encode SubscribeResponse
       def self.encode_subscribe_response(
         subscription_id : UInt32,

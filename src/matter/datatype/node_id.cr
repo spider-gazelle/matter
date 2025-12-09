@@ -1,10 +1,9 @@
 require "./case_authenticated_tag"
+require "tlv"
 
 module Matter
   module DataType
     class NodeId
-      include TLV::Serializable
-
       OPERATIONAL_MINIMUM = BigInt.new("0000000000000001", base: 16)
       OPERATIONAL_MAXIMUM = BigInt.new("FFFFFFEFFFFFFFFF", base: 16)
 
@@ -12,8 +11,6 @@ module Matter
       CAT_PREFIX = 0xFFFFFFFD00000000_u64
 
       getter brand : String = "NodeId"
-
-      @[TLV::Field(tag: nil)]
       property id : UInt64
 
       def initialize(@id : UInt64)
