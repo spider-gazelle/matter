@@ -121,7 +121,7 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when NAME_SUPPORT
           encode_uint8(@feature_map.group_names? ? 0x80_u8 : 0x00_u8)

@@ -166,6 +166,7 @@ module MatterSwitch
     property basic_info : Matter::Cluster::BasicInformationCluster
     property general_commissioning : Matter::Cluster::GeneralCommissioningCluster
     property operational_credentials : Matter::Cluster::OperationalCredentialsCluster
+    property access_control : Matter::Cluster::AccessControlCluster
     property responder : Matter::MDNS::Responder
     property fabric_storage : FabricStorage
     property fabric_table : Matter::FabricTable
@@ -210,12 +211,15 @@ module MatterSwitch
       storage = Matter::Storage::MemoryBackend.new
       @fabric_table = Matter::FabricTable.new(storage)
 
+      # Create Access Control cluster on endpoint 0 (required for ACL management)
+      @access_control = Matter::Cluster::AccessControlCluster.new(root_endpoint)
+
       # Create Operational Credentials cluster on endpoint 0 (required for commissioning)
       # Pass the general_commissioning reference so AddNOC can update the failsafe context
       @operational_credentials = Matter::Cluster::OperationalCredentialsCluster.new(
         @fabric_table,
         root_endpoint,
-        access_control_cluster: nil,
+        access_control_cluster: @access_control,
         general_commissioning_cluster: @general_commissioning
       )
 
@@ -243,6 +247,7 @@ module MatterSwitch
 
       # Wire up clusters to message handler
       @message_handler.clusters[{0_u16, 0x0028_u32}] = @basic_info              # BasicInformation on endpoint 0
+      @message_handler.clusters[{0_u16, 0x001F_u32}] = @access_control          # AccessControl on endpoint 0 (required!)
       @message_handler.clusters[{0_u16, 0x0030_u32}] = @general_commissioning   # GeneralCommissioning on endpoint 0 (required!)
       @message_handler.clusters[{0_u16, 0x003E_u32}] = @operational_credentials # OperationalCredentials on endpoint 0 (required!)
       @message_handler.clusters[{1_u16, 0x0006_u32}] = @switch                  # OnOff on endpoint 1

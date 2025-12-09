@@ -135,8 +135,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_NOCS)
       value.should be_a(Bytes)
-      # Empty list encoded
-      value.as(Bytes).should eq(Bytes.new(0))
+      # Empty list encoded as TLV: 0x16 (array start) + 0x18 (end container)
+      value.as(Bytes).should eq(Bytes[0x16, 0x18])
     end
 
     it "reads Fabrics attribute" do
@@ -1162,6 +1162,107 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         response = reader.get
         status = response["Any"].as(Hash)[0_u8]
         status.should eq(10_u8) # LabelConflict
+      end
+    end
+
+    describe "Fabrics attribute read after AddNOC" do
+      it "returns non-empty Fabrics attribute after successful AddNOC" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        storage = Matter::Storage::MemoryBackend.new
+        fabric_table = Matter::FabricTable.new(storage)
+        cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table, endpoint_id, nil)
+
+        # Verify fabric_table is empty initially
+        fabric_table.size.should eq(0)
+
+        # Set session context for commissioning
+        cluster.session_id = 12345_u64
+        cluster.failsafe_armed = true
+
+        # Step 1: Generate CSR
+        nonce = Bytes.new(32, 0x42_u8)
+        csr_request_tlv = create_csr_request_tlv(nonce, false)
+        cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
+          csr_request_tlv
+        )
+
+        # Step 2: Add trusted root certificate
+        root_public_key = Bytes.new(65)
+        root_public_key[0] = 0x04_u8
+        (1...65).each { |i| root_public_key[i] = i.to_u8 }
+        root_cert = create_test_tlv_certificate(root_public_key)
+        add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
+        cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
+          add_root_tlv
+        )
+
+        # Step 3: Create and add NOC
+        noc_io = IO::Memory.new
+        noc_writer = TLV::Writer.new(noc_io)
+        noc_data = {
+          17_u8 => 0x1234567890ABCDEF_u64, # node_id
+          21_u8 => 0x0011223344556677_u64, # fabric_id
+        } of TLV::Tag => TLV::Value
+        noc_writer.put(nil, noc_data)
+        noc_bytes = noc_io.rewind.to_slice
+
+        ipk = Bytes.new(16, 0x02_u8)
+        add_noc_tlv = create_add_noc_request_tlv(
+          noc_bytes,
+          nil,
+          ipk,
+          0xABCDEF0123456789_u64,
+          0xFFF1_u16
+        )
+        noc_result = cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
+          add_noc_tlv
+        )
+
+        # Verify AddNOC succeeded
+        noc_result.should be_a(Matter::Cluster::CommandResponse)
+        reader = TLV::Reader.new(noc_result.as(Matter::Cluster::CommandResponse).data)
+        response = reader.get
+        status = response["Any"].as(Hash)[0_u8]
+        status.should eq(0_u8) # Success
+
+        # Verify fabric was added to fabric_table
+        fabric_table.size.should eq(1)
+        puts "fabric_table.size after AddNOC: #{fabric_table.size}"
+        puts "fabric_table.all_fabrics: #{fabric_table.all_fabrics.map(&.fabric_index)}"
+
+        # Verify cluster.fabrics returns the fabric
+        cluster.fabrics.size.should eq(1)
+        puts "cluster.fabrics.size: #{cluster.fabrics.size}"
+
+        # NOW TEST THE ACTUAL ISSUE: Read the Fabrics attribute
+        # This is what the iPhone does after commissioning
+        fabrics_value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_FABRICS)
+        fabrics_value.should be_a(Bytes)
+
+        fabrics_bytes = fabrics_value.as(Bytes)
+        puts "Fabrics attribute bytes: #{fabrics_bytes.size} bytes"
+        puts "Fabrics attribute hex: #{fabrics_bytes.hexstring}"
+
+        # The attribute should NOT be empty
+        fabrics_bytes.size.should be > 0
+        fabrics_bytes.should_not eq(Bytes.new(0))
+
+        # Parse the TLV to verify it contains the fabric data
+        if fabrics_bytes.size > 0
+          fabrics_reader = TLV::Reader.new(fabrics_bytes)
+          fabrics_data = fabrics_reader.get
+          puts "Fabrics TLV parsed: #{fabrics_data.inspect}"
+
+          # Should contain an array with one fabric
+          fabrics_hash = fabrics_data.as(Hash(TLV::Tag, TLV::Value))
+          fabrics_hash.has_key?("Any").should be_true
+
+          inner = fabrics_hash["Any"]
+          inner.as(Array(TLV::Value)).size.should eq(1)
+        end
       end
     end
 

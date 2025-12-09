@@ -374,7 +374,7 @@ module Matter
         cmds
       end
 
-      def read_attribute(attribute_id : UInt32) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_CURRENT_HUE
           return unsupported_attribute unless @feature_map.hue_saturation?

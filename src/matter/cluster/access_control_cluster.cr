@@ -170,7 +170,7 @@ module Matter
         [] of CommandMetadata
       end
 
-      def read_attribute(attribute_id : UInt32) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_ACL
           encode_acl_list
@@ -298,83 +298,96 @@ module Matter
       # Decode ACL list from TLV array
       private def decode_acl_list(value : Bytes) : InteractionModel::Status
         begin
+          Log.debug { "decode_acl_list: received #{value.size} bytes: #{value.hexstring}" }
+
           reader = TLV::Reader.new(value)
           data = reader.get
 
+          Log.debug { "decode_acl_list: parsed TLV: #{data.inspect}" }
+
           # Extract the array from the parsed data
-          # For arrays, the data should contain "Any" key with the array
-          acl_array = if data.has_key?("Any")
-                        data["Any"].as(Array(TLV::Value))
-                      else
-                        # Empty array case
-                        [] of TLV::Value
-                      end
+          # The TLV structure can vary - handle multiple cases
+          acl_array = extract_acl_array(data)
+
+          Log.debug { "decode_acl_list: extracted #{acl_array.size} ACL entries" }
 
           new_acl = [] of AccessControlEntry
 
-          acl_array.each do |entry_value|
+          acl_array.each_with_index do |entry_value, idx|
+            Log.debug { "decode_acl_list: parsing entry #{idx}: #{entry_value.inspect}" }
             entry_hash = entry_value.as(Hash(TLV::Tag, TLV::Value))
 
-            privilege = entry_hash[1_u8].as(UInt8)
-            auth_mode = entry_hash[2_u8].as(UInt8)
+            # Handle privilege
+            privilege = case val = entry_hash[1_u8]
+                        when Int then val.to_u8
+                        else          raise "Invalid privilege type: #{val.class}"
+                        end
 
-            # Parse subjects array
-            subjects_array = entry_hash[3_u8].as(Array(TLV::Value))
-            subjects = subjects_array.map do |s|
-              # TLV may encode integers as different sizes based on value
-              case s
-              when UInt8
-                s.to_u64
-              when UInt16
-                s.to_u64
-              when UInt32
-                s.to_u64
-              when UInt64
-                s
-              else
-                raise "Invalid subject type: #{s.class}"
+            # Handle auth_mode
+            auth_mode = case val = entry_hash[2_u8]
+                        when Int then val.to_u8
+                        else          raise "Invalid auth_mode type: #{val.class}"
+                        end
+
+            # Parse subjects array - may be nil for empty array
+            subjects_value = entry_hash[3_u8]?
+            subjects = if subjects_value.nil?
+                         [] of UInt64
+                       else
+                         subjects_array = subjects_value.as(Array(TLV::Value))
+                         subjects_array.map do |s|
+                           case s
+                           when Int then s.to_u64
+                           else          raise "Invalid subject type: #{s.class}"
+                           end
+                         end
+                       end
+
+            # Parse targets array (optional - nil means all targets)
+            targets = nil.as(Array(Target)?)
+            if entry_hash.has_key?(4_u8) && (targets_value = entry_hash[4_u8]?)
+              if targets_value.is_a?(Array)
+                targets_array = targets_value.as(Array(TLV::Value))
+                targets = targets_array.map do |target_value|
+                  target_hash = target_value.as(Hash(TLV::Tag, TLV::Value))
+
+                  cluster = if target_hash.has_key?(0_u8)
+                              case val = target_hash[0_u8]
+                              when Int then val.to_u32
+                              else          nil
+                              end
+                            end
+
+                  endpoint = if target_hash.has_key?(1_u8)
+                               case val = target_hash[1_u8]
+                               when Int then val.to_u16
+                               else          nil
+                               end
+                             end
+
+                  device_type = if target_hash.has_key?(2_u8)
+                                  case val = target_hash[2_u8]
+                                  when Int then val.to_u32
+                                  else          nil
+                                  end
+                                end
+
+                  Target.new(cluster, endpoint, device_type)
+                end
               end
             end
 
-            # Parse targets array (optional)
-            targets = nil.as(Array(Target)?)
-            if entry_hash.has_key?(4_u8)
-              targets_array = entry_hash[4_u8].as(Array(TLV::Value))
-              targets = targets_array.map do |target_value|
-                target_hash = target_value.as(Hash(TLV::Tag, TLV::Value))
-
-                # Handle TLV encoding integers as different sizes
-                cluster = if target_hash.has_key?(0_u8)
-                            case val = target_hash[0_u8]
-                            when UInt8  then val.to_u32
-                            when UInt16 then val.to_u32
-                            when UInt32 then val
-                            else             nil
-                            end
-                          end
-
-                endpoint = if target_hash.has_key?(1_u8)
-                             case val = target_hash[1_u8]
-                             when UInt8  then val.to_u16
-                             when UInt16 then val
-                             else             nil
+            # Handle fabric_index - may be omitted by client (fabric-scoped attribute)
+            fabric_index = if entry_hash.has_key?(254_u8)
+                             case val = entry_hash[254_u8]
+                             when Int then val.to_u8
+                             else          1_u8
                              end
+                           else
+                             1_u8 # Default to fabric 1 when not provided
                            end
 
-                device_type = if target_hash.has_key?(2_u8)
-                                case val = target_hash[2_u8]
-                                when UInt8  then val.to_u32
-                                when UInt16 then val.to_u32
-                                when UInt32 then val
-                                else             nil
-                                end
-                              end
-
-                Target.new(cluster, endpoint, device_type)
-              end
-            end
-
-            fabric_index = entry_hash[254_u8].as(UInt8)
+            Log.debug { "decode_acl_list: entry #{idx}: privilege=#{privilege}, auth_mode=#{auth_mode}, subjects=#{subjects}, fabric_index=#{fabric_index}" }
 
             new_acl << AccessControlEntry.new(
               AccessControlEntryPrivilege.from_value(privilege),
@@ -387,10 +400,51 @@ module Matter
 
           @acl = new_acl
           increment_version
+          Log.info { "decode_acl_list: successfully wrote #{new_acl.size} ACL entries" }
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         rescue ex
           Log.error(exception: ex) { "Failed to decode ACL list" }
           InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+        end
+      end
+
+      # Helper to extract ACL array from various TLV structures
+      private def extract_acl_array(data : TLV::Value) : Array(TLV::Value)
+        case data
+        when Array
+          # Direct array
+          data.as(Array(TLV::Value))
+        when Hash
+          hash = data.as(Hash(TLV::Tag, TLV::Value))
+          # Check for "Any" wrapper (anonymous structure)
+          if hash.has_key?("Any")
+            inner = hash["Any"]
+            case inner
+            when Array
+              inner.as(Array(TLV::Value))
+            when Hash
+              # Nested hash - might contain the array
+              inner_hash = inner.as(Hash(TLV::Tag, TLV::Value))
+              if inner_hash.has_key?("Any")
+                nested = inner_hash["Any"]
+                if nested.is_a?(Array)
+                  nested.as(Array(TLV::Value))
+                else
+                  [inner.as(TLV::Value)]
+                end
+              else
+                # Single entry wrapped in hash
+                [inner.as(TLV::Value)]
+              end
+            else
+              [] of TLV::Value
+            end
+          else
+            # Hash without "Any" - might be a single entry
+            [data.as(TLV::Value)]
+          end
+        else
+          [] of TLV::Value
         end
       end
 
@@ -438,11 +492,12 @@ module Matter
         end
       end
 
-      # Helper: Encode UInt16 as bytes
+      # Helper: Encode UInt16 as TLV bytes
       private def encode_uint16(value : UInt16) : Bytes
         io = IO::Memory.new
-        io.write_bytes(value, IO::ByteFormat::LittleEndian)
-        io.to_slice
+        writer = TLV::Writer.new(io)
+        writer.put(nil, value)
+        io.rewind.to_slice
       end
     end
   end

@@ -535,7 +535,7 @@ module Matter
       end
 
       # CurrentFabricIndex attribute (0x05) - Fabric index from session context
-      def read_attribute(attribute_id : UInt32) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_NOCS
           encode_noc_list
@@ -548,7 +548,8 @@ module Matter
         when ATTR_TRUSTED_ROOT_CERTIFICATES
           encode_certificate_list
         when ATTR_CURRENT_FABRIC_INDEX
-          encode_uint8(current_fabric_index)
+          # Use passed fabric_index from session context, fall back to stored value
+          encode_uint8(fabric_index || @current_fabric_index)
         else
           super
         end
@@ -892,18 +893,51 @@ module Matter
       end
 
       private def handle_remove_fabric(fields : Bytes) : Bytes
-        # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::RemoveFabricRequest.new(fields)
+        Log.debug { "RemoveFabric: received #{fields.size} bytes: #{fields.hexstring}" }
 
-        fabric_idx = request.fabric_index.index
+        # Parse TLV manually to extract fabric_index since the nested struct parsing has issues
+        # Expected format: 15 24 00 XX 18 (structure with tag 0 = fabric_index)
+        fabric_idx : UInt8? = nil
+        begin
+          reader = TLV::Reader.new(fields)
+          data = reader.get
+          Log.debug { "RemoveFabric: TLV parsed: #{data.inspect}" }
+
+          if data.is_a?(Hash)
+            # Look for the fabric_index value
+            wrapper = data.as(Hash(TLV::Tag, TLV::Value))
+            if wrapper.has_key?("Any")
+              struct_data = wrapper["Any"]
+              if struct_data.is_a?(Hash)
+                struct_hash = struct_data.as(Hash(TLV::Tag, TLV::Value))
+                if val = struct_hash[0_u8]?
+                  fabric_idx = val.as(Int).to_u8
+                end
+              end
+            end
+          end
+        rescue ex
+          Log.error { "RemoveFabric: TLV parsing error: #{ex.message}" }
+        end
+
+        Log.debug { "RemoveFabric: parsed fabric_index=#{fabric_idx.inspect}" }
 
         unless fabric_idx
-          return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Invalid fabric index")
+          Log.error { "RemoveFabric: fabric_index is nil after parsing" }
+          # Return error with fabric_index 0 since we couldn't parse
+          return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, 0_u8, "Invalid fabric index")
+        end
+
+        # fabric_index 0 means NO_FABRIC per Matter spec - this is invalid for RemoveFabric
+        if fabric_idx == 0
+          Log.warn { "RemoveFabric: fabric_index 0 (NO_FABRIC) is invalid" }
+          return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, fabric_idx, "Invalid fabric index (NO_FABRIC)")
         end
 
         # Check if fabric exists
         unless @fabric_table.get_fabric(fabric_idx)
-          return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Fabric not found")
+          Log.warn { "RemoveFabric: fabric #{fabric_idx} not found" }
+          return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, fabric_idx, "Fabric not found")
         end
 
         # Remove fabric
@@ -1828,9 +1862,11 @@ module Matter
         writer = TLV::Writer.new(io)
 
         # Encode array of NOCStruct for all fabrics
-        array_data = @fabric_table.all_fabrics.flat_map do |fabric|
-          nocs(fabric.fabric_index).map do |noc_struct|
-            {
+        # Must explicitly cast to Array(TLV::Value) for TLV writer type matching
+        array_data = [] of TLV::Value
+        @fabric_table.all_fabrics.each do |fabric|
+          nocs(fabric.fabric_index).each do |noc_struct|
+            array_data << {
                 1_u8 => noc_struct.noc,
                 2_u8 => noc_struct.icac,
               254_u8 => noc_struct.fabric_index,
@@ -1846,9 +1882,15 @@ module Matter
         io = IO::Memory.new
         writer = TLV::Writer.new(io)
 
+        fabric_list = fabrics
+        Log.debug { "encode_fabric_list: fabric_table has #{@fabric_table.size} fabrics, fabrics() returned #{fabric_list.size}" }
+
         # Encode array of FabricDescriptorStruct
-        array_data = fabrics.map do |fabric|
-          {
+        # Must explicitly cast to Array(TLV::Value) for TLV writer type matching
+        array_data = [] of TLV::Value
+        fabric_list.each do |fabric|
+          Log.debug { "encode_fabric_list: encoding fabric #{fabric.fabric_index}: id=0x#{fabric.fabric_id.to_s(16)}, node=0x#{fabric.node_id.to_s(16)}" }
+          array_data << {
               1_u8 => fabric.root_public_key,
               2_u8 => fabric.vendor_id,
               3_u8 => fabric.fabric_id,
@@ -1859,7 +1901,9 @@ module Matter
         end
 
         writer.put(nil, array_data)
-        io.rewind.to_slice
+        result = io.rewind.to_slice
+        Log.debug { "encode_fabric_list: encoded #{result.size} bytes" }
+        result
       end
 
       private def encode_certificate_list : Bytes
@@ -1867,7 +1911,10 @@ module Matter
         writer = TLV::Writer.new(io)
 
         # Encode array of certificate bytes
-        writer.put(nil, @trusted_root_certs)
+        # Must explicitly cast to Array(TLV::Value) for TLV writer type matching
+        array_data = [] of TLV::Value
+        @trusted_root_certs.each { |cert| array_data << cert }
+        writer.put(nil, array_data)
         io.rewind.to_slice
       end
 

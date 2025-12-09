@@ -267,6 +267,9 @@ module Matter
     #
     # @param initiator_random The 32-byte random value from CASE Sigma1
     # @return 32-byte destination_id that should match the one in Sigma1 if this fabric is the target
+    #
+    # Note: fabricId and nodeId are encoded in Little Endian format per matter.js implementation.
+    # This differs from some other Matter protocol encodings that use Big Endian.
     def compute_destination_id(initiator_random : Bytes) : Bytes
       # Use derived IPK as the HMAC key
       ipk = derived_ipk
@@ -276,13 +279,13 @@ module Matter
       data.write(initiator_random)
       data.write(@root_public_key)
 
-      # fabricId and nodeId are 8 bytes each, big-endian per Matter spec
+      # fabricId and nodeId are 8 bytes each, Little Endian (matches matter.js DataWriter)
       fabric_id_bytes = Bytes.new(8)
-      IO::ByteFormat::BigEndian.encode(@fabric_id, fabric_id_bytes)
+      IO::ByteFormat::LittleEndian.encode(@fabric_id, fabric_id_bytes)
       data.write(fabric_id_bytes)
 
       node_id_bytes = Bytes.new(8)
-      IO::ByteFormat::BigEndian.encode(@node_id, node_id_bytes)
+      IO::ByteFormat::LittleEndian.encode(@node_id, node_id_bytes)
       data.write(node_id_bytes)
 
       # Compute HMAC-SHA256

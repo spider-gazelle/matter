@@ -243,7 +243,7 @@ module Matter
         [] of CommandMetadata # No commands for sensing clusters
       end
 
-      def read_attribute(attribute_id : UInt32) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
         case attribute_id
         when ATTR_OCCUPANCY
           Bytes[@occupancy]

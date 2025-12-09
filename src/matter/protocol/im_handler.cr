@@ -129,9 +129,11 @@ module Matter
       end
 
       # Read attributes from clusters
+      # The fabric_index parameter is used for fabric-scoped attributes like CurrentFabricIndex
       def self.read_attributes(
         attribute_requests : Array(InteractionModel::AttributePath),
         clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
+        fabric_index : UInt8? = nil,
       ) : InteractionModel::ReadResponse
         attribute_reports = [] of InteractionModel::AttributeData
         attribute_status = [] of InteractionModel::AttributeStatus
@@ -172,7 +174,7 @@ module Matter
               cluster = clusters[{endpoint_id, cluster_id}]
               next unless cluster
 
-              result = cluster.read_attribute(attribute_id)
+              result = cluster.read_attribute(attribute_id, fabric_index)
               concrete_path = InteractionModel::AttributePath.new(
                 endpoint: endpoint_id,
                 cluster: cluster_id,
@@ -213,7 +215,7 @@ module Matter
           end
 
           # Read attribute from cluster
-          result = cluster.read_attribute(attribute_id)
+          result = cluster.read_attribute(attribute_id, fabric_index)
 
           if result.is_a?(InteractionModel::Status)
             # Error status
@@ -979,7 +981,7 @@ module Matter
                                Bytes.empty
                              end
 
-            Log.debug { "  Invoke #{idx}: endpoint=#{endpoint || "nil"}, cluster=0x#{cluster.to_s(16)}, command=0x#{command.to_s(16)}, fields=#{command_fields.size} bytes" }
+            Log.debug { "  Invoke #{idx}: endpoint=#{endpoint || "nil"}, cluster=0x#{cluster.to_s(16)}, command=0x#{command.to_s(16)}, fields=#{command_fields.size} bytes: #{command_fields.hexstring}" }
 
             invoke_requests << InteractionModel::CommandDataIB.new(
               path: command_path,

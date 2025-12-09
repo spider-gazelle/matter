@@ -310,7 +310,7 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_DATA_MODEL_REVISION
           encode_tlv_uint16(@data_model_revision)

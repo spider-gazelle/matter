@@ -191,7 +191,7 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when SCENE_COUNT
           encode_uint8(@scenes.size.to_u8)

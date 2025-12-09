@@ -109,7 +109,7 @@ module Matter
         [] of CommandMetadata # No commands for measurement clusters
       end
 
-      def read_attribute(attribute_id : UInt32) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
         case attribute_id
         when ATTR_MEASURED_VALUE
           if value = @measured_value

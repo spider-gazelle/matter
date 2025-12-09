@@ -486,7 +486,7 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_MAX_NETWORKS
           encode_uint8(@max_networks)

@@ -393,7 +393,7 @@ module Matter
         cmds
       end
 
-      def read_attribute(attribute_id : UInt32) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_TYPE
           encode_uint8(@covering_type.value)

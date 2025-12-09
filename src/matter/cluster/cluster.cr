@@ -107,7 +107,9 @@ module Matter
       end
 
       # Read an attribute value
-      def read_attribute(attribute_id : UInt32) : InteractionModel::Status | Bytes
+      # The fabric_index parameter is optional and used for fabric-scoped attributes
+      # like CurrentFabricIndex in OperationalCredentialsCluster
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         metadata = attributes.find { |a| a.id.id == attribute_id }
         return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless metadata
 

@@ -126,7 +126,7 @@ module Matter
         [] of CommandMetadata # No commands for localization cluster
       end
 
-      def read_attribute(attribute_id : UInt32) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
         case attribute_id
         when ATTR_HOUR_FORMAT
           Bytes[@hour_format.value.to_u8]

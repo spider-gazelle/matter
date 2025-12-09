@@ -298,7 +298,7 @@ module Matter
         cmds
       end
 
-      def read_attribute(attribute_id : UInt32) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
         case attribute_id
         when ATTR_FAN_MODE
           Bytes[@fan_mode.value.to_u8]

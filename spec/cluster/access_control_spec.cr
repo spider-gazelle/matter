@@ -1,7 +1,77 @@
 require "../spec_helper"
 require "../../src/matter/cluster/access_control_cluster"
+require "../../src/matter/protocol/im_handler"
 
 describe Matter::Cluster::AccessControlCluster do
+  describe "iPhone ACL write request" do
+    # This is the actual decrypted WriteRequest payload captured from an iPhone during commissioning
+    # The full TLV payload from the log is:
+    # 1528002801360215370124020024031f2404001836021524010524020236030701001d32fdffffff060498fabe183404181524010324020236030701002b4ffdffffff18340418181818280324ff0c18
+    it "parses ACL write request from iPhone" do
+      # Full WriteRequest TLV payload (without the protocol header)
+      write_request_hex = "1528002801360215370124020024031f2404001836021524010524020236030701001d32fdffffff060498fabe183404181524010324020236030701002b4ffdffffff18340418181818280324ff0c18"
+      write_request_bytes = write_request_hex.hexbytes
+
+      # Parse the WriteRequest using im_handler
+      request = Matter::Protocol::IMHandler.parse_write_request(write_request_bytes)
+      request.should_not be_nil
+
+      # Should have 1 write request
+      request.not_nil!.write_requests.size.should eq(1)
+
+      # Extract the value that will be passed to write_attribute
+      acl_value = request.not_nil!.write_requests[0].value
+      puts "ACL value size: #{acl_value.size} bytes"
+      puts "ACL value hex: #{acl_value.hexstring}"
+
+      # Now try to decode it with the access control cluster
+      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+      status = cluster.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL, acl_value)
+      puts "Write status: #{status.status}"
+
+      status.status.should eq(Matter::InteractionModel::StatusCode::Success)
+
+      # Verify we got 2 ACL entries
+      cluster.acl.size.should eq(2)
+
+      # First entry should be Administer privilege
+      cluster.acl[0].privilege.should eq(5_u8) # Administer
+      cluster.acl[0].auth_mode.should eq(2_u8) # CASE
+
+      # Second entry should be Operate privilege
+      cluster.acl[1].privilege.should eq(3_u8) # Operate
+      cluster.acl[1].auth_mode.should eq(2_u8) # CASE
+    end
+
+    it "decodes ACL TLV value directly" do
+      # This is a minimal test case - just the ACL array portion encoded as TLV
+      # Two entries: Administer with subject, Operate with subject
+      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+
+      # First, let's see what the encoded format looks like for a known entry
+      entry = Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
+        privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer,
+        auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+        subjects: [0x12345678_u64],
+        targets: nil,
+        fabric_index: 1_u8
+      )
+      cluster.acl << entry
+
+      encoded = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL)
+      puts "Encoded ACL: #{encoded.as(Bytes).hexstring}"
+
+      # Try round-trip
+      cluster2 = Matter::Cluster::AccessControlCluster.new(endpoint_id)
+      status = cluster2.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL, encoded.as(Bytes))
+      status.status.should eq(Matter::InteractionModel::StatusCode::Success)
+      cluster2.acl.size.should eq(1)
+    end
+  end
+
   describe "initialization" do
     it "creates access control cluster" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
@@ -42,8 +112,15 @@ describe Matter::Cluster::AccessControlCluster do
 
       value = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_SUBJECTS_PER_ACCESS_CONTROL_ENTRY)
       value.should be_a(Bytes)
-      io = IO::Memory.new(value.as(Bytes))
-      subjects = io.read_bytes(UInt16, IO::ByteFormat::LittleEndian)
+      # Value is TLV-encoded (may be UInt8 for small values)
+      reader = TLV::Reader.new(value.as(Bytes))
+      tlv_value = reader.get
+      inner = tlv_value.as(Hash(TLV::Tag, TLV::Value))["Any"]
+      subjects = case inner
+                 when UInt8  then inner.to_u16
+                 when UInt16 then inner
+                 else             raise "Unexpected type: #{inner.class}"
+                 end
       subjects.should eq(4_u16)
     end
 
@@ -53,8 +130,15 @@ describe Matter::Cluster::AccessControlCluster do
 
       value = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_TARGETS_PER_ACCESS_CONTROL_ENTRY)
       value.should be_a(Bytes)
-      io = IO::Memory.new(value.as(Bytes))
-      targets = io.read_bytes(UInt16, IO::ByteFormat::LittleEndian)
+      # Value is TLV-encoded (may be UInt8 for small values)
+      reader = TLV::Reader.new(value.as(Bytes))
+      tlv_value = reader.get
+      inner = tlv_value.as(Hash(TLV::Tag, TLV::Value))["Any"]
+      targets = case inner
+                when UInt8  then inner.to_u16
+                when UInt16 then inner
+                else             raise "Unexpected type: #{inner.class}"
+                end
       targets.should eq(3_u16)
     end
 
@@ -64,8 +148,15 @@ describe Matter::Cluster::AccessControlCluster do
 
       value = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACCESS_CONTROL_ENTRIES_PER_FABRIC)
       value.should be_a(Bytes)
-      io = IO::Memory.new(value.as(Bytes))
-      entries = io.read_bytes(UInt16, IO::ByteFormat::LittleEndian)
+      # Value is TLV-encoded (may be UInt8 for small values)
+      reader = TLV::Reader.new(value.as(Bytes))
+      tlv_value = reader.get
+      inner = tlv_value.as(Hash(TLV::Tag, TLV::Value))["Any"]
+      entries = case inner
+                when UInt8  then inner.to_u16
+                when UInt16 then inner
+                else             raise "Unexpected type: #{inner.class}"
+                end
       entries.should eq(4_u16)
     end
 

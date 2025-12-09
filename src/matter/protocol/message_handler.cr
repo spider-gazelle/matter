@@ -74,6 +74,21 @@ module Matter
       # Subscription support
       property next_subscription_id : UInt32 = 1_u32
 
+      # Pending subscription responses - keyed by exchange_id
+      # After sending ReportData, we wait for StatusResponse before sending SubscribeResponse
+      struct PendingSubscription
+        property subscription_id : UInt32
+        property max_interval : UInt16
+        property peer : Socket::IPAddress
+        property session : Session::SecureContext
+        property original_msg : Codec::MessageCodec::Message
+
+        def initialize(@subscription_id, @max_interval, @peer, @session, @original_msg)
+        end
+      end
+
+      @pending_subscriptions : Hash(UInt16, PendingSubscription) = {} of UInt16 => PendingSubscription
+
       # Fabric access callback - set by the device implementation
       # This allows the message handler to access fabric data for CASE
       property on_get_fabric : Proc(Fabric?)?
@@ -81,6 +96,11 @@ module Matter
       # Commissioning callback - called when a fabric is successfully added (AddNOC complete)
       # The device should use this to switch from commissioning to operational mDNS advertisement
       property on_commissioned : Proc(Fabric, Nil)?
+
+      # Mutex to ensure message processing is serialized
+      # iPhone and other controllers may send multiple messages back-to-back,
+      # and without synchronization, responses could get interleaved or state corrupted
+      @message_mutex : Mutex = Mutex.new
 
       def initialize(
         @transport : Transport::UDPTransport,
@@ -174,32 +194,37 @@ module Matter
 
       # Main message routing entry point
       def handle_message(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
-        session_id = msg.packet_header.session_id
+        # Serialize all message processing to prevent race conditions
+        # iPhone and other controllers may send multiple messages back-to-back,
+        # and without synchronization, responses could get interleaved or state corrupted
+        @message_mutex.synchronize do
+          session_id = msg.packet_header.session_id
 
-        # Decrypt encrypted messages (session_id != 0) BEFORE routing
-        if session_id != 0
-          Log.debug { "Message is encrypted (session_id=#{session_id}), decrypting..." }
+          # Decrypt encrypted messages (session_id != 0) BEFORE routing
+          if session_id != 0
+            Log.debug { "Message is encrypted (session_id=#{session_id}), decrypting..." }
 
-          # Get secure session context
-          session = @sessions[session_id]?
-          unless session
-            Log.error { "No session found for ID: #{session_id}" }
-            return
+            # Get secure session context
+            session = @sessions[session_id]?
+            unless session
+              Log.error { "No session found for ID: #{session_id}" }
+              return
+            end
+
+            # Decrypt the payload
+            msg = decrypt_message(msg, session)
           end
 
-          # Decrypt the payload
-          msg = decrypt_message(msg, session)
-        end
+          Log.info { "Received message: protocol=0x#{msg.payload_header.protocol_id.to_s(16)}, type=0x#{msg.payload_header.message_type.to_s(16)}" }
 
-        Log.info { "Received message: protocol=0x#{msg.payload_header.protocol_id.to_s(16)}, type=0x#{msg.payload_header.message_type.to_s(16)}" }
-
-        case msg.payload_header.protocol_id
-        when PROTOCOL_SECURE_CHANNEL
-          handle_secure_channel(msg, peer)
-        when PROTOCOL_INTERACTION_MODEL
-          handle_interaction_model(msg, peer)
-        else
-          Log.warn { "Unsupported protocol: 0x#{msg.payload_header.protocol_id.to_s(16)}" }
+          case msg.payload_header.protocol_id
+          when PROTOCOL_SECURE_CHANNEL
+            handle_secure_channel(msg, peer)
+          when PROTOCOL_INTERACTION_MODEL
+            handle_interaction_model(msg, peer)
+          else
+            Log.warn { "Unsupported protocol: 0x#{msg.payload_header.protocol_id.to_s(16)}" }
+          end
         end
       rescue ex
         Log.error(exception: ex) { "Error handling message: #{ex.message}" }
@@ -303,6 +328,10 @@ module Matter
       end
 
       # Handle StatusResponse - acknowledgment from controller
+      #
+      # This may be a response to:
+      # - ReportData (part of subscription flow) - we need to send SubscribeResponse
+      # - Other messages - just an acknowledgment
       private def handle_status_response(
         decrypted : Bytes,
         original_msg : Codec::MessageCodec::Message,
@@ -312,6 +341,7 @@ module Matter
         Log.info { "Handling StatusResponse" }
 
         # Parse StatusResponse TLV
+        status_code = 0_u8
         begin
           reader = TLV::Reader.new(decrypted)
           data = reader.get.as(Hash(TLV::Tag, TLV::Value))
@@ -341,7 +371,32 @@ module Matter
           Log.error { "Failed to parse StatusResponse: #{ex.message}" }
         end
 
-        # StatusResponse is just an acknowledgment - no response needed
+        # Check if this StatusResponse is for a pending subscription
+        exchange_id = original_msg.payload_header.exchange_id
+        if pending = @pending_subscriptions.delete(exchange_id)
+          if status_code == 0
+            # Success - send SubscribeResponse to complete the subscription
+            Log.info { "StatusResponse received for subscription #{pending.subscription_id}, sending SubscribeResponse" }
+
+            # Encode SubscribeResponse as TLV
+            subscribe_response_tlv = IMHandler.encode_subscribe_response(pending.subscription_id, pending.max_interval)
+            Log.debug { "Encoded SubscribeResponse TLV (#{subscribe_response_tlv.size} bytes)" }
+
+            # Send SubscribeResponse
+            send_im_response(
+              original_msg: original_msg,
+              peer: pending.peer,
+              session: pending.session,
+              message_type: 0x04_u8, # SubscribeResponse
+              payload: subscribe_response_tlv
+            )
+
+            Log.info { "Sent SubscribeResponse for subscription #{pending.subscription_id}, maxInterval=#{pending.max_interval}s" }
+          else
+            # Error - subscription failed
+            Log.error { "StatusResponse error for subscription #{pending.subscription_id}, aborting subscription" }
+          end
+        end
       end
 
       # Handle ReadRequest - parse, read attributes, encode response, encrypt and send
@@ -362,8 +417,8 @@ module Matter
 
         Log.info { "ReadRequest: #{request.attribute_requests.size} attribute(s) requested" }
 
-        # Read attributes from clusters
-        response = IMHandler.read_attributes(request.attribute_requests, @clusters)
+        # Read attributes from clusters (pass fabric_index for fabric-scoped attributes)
+        response = IMHandler.read_attributes(request.attribute_requests, @clusters, session.fabric_index)
 
         Log.info { "ReadResponse: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
 
@@ -385,7 +440,13 @@ module Matter
         Log.error(exception: ex) { "Error handling ReadRequest: #{ex.message}" }
       end
 
-      # Handle SubscribeRequest - parse, read attributes, send ReportData, then SubscribeResponse
+      # Handle SubscribeRequest - parse, read attributes, send ReportData, wait for StatusResponse, then SubscribeResponse
+      #
+      # Matter spec subscription flow:
+      # 1. Controller sends SubscribeRequest
+      # 2. Device sends ReportData (with SubscriptionId)
+      # 3. Controller sends StatusResponse (acknowledging receipt)
+      # 4. Device sends SubscribeResponse
       private def handle_subscribe_request(
         decrypted : Bytes,
         original_msg : Codec::MessageCodec::Message,
@@ -417,8 +478,8 @@ module Matter
 
         Log.info { "Created subscription #{subscription_id}" }
 
-        # Read attributes from clusters (same as ReadRequest)
-        response = IMHandler.read_attributes(request.attribute_requests, @clusters)
+        # Read attributes from clusters (same as ReadRequest, pass fabric_index for fabric-scoped attributes)
+        response = IMHandler.read_attributes(request.attribute_requests, @clusters, session.fabric_index)
 
         Log.info { "Initial ReportData: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
 
@@ -440,20 +501,18 @@ module Matter
         # Calculate actual max interval (we honor the requested ceiling)
         max_interval = request.max_interval_ceiling
 
-        # Encode SubscribeResponse as TLV
-        subscribe_response_tlv = IMHandler.encode_subscribe_response(subscription_id, max_interval)
-        Log.debug { "Encoded SubscribeResponse TLV (#{subscribe_response_tlv.size} bytes)" }
-
-        # Send SubscribeResponse
-        send_im_response(
-          original_msg: original_msg,
+        # Store pending subscription - we'll send SubscribeResponse after receiving StatusResponse
+        # The exchange_id is used to correlate the StatusResponse with this subscription
+        exchange_id = original_msg.payload_header.exchange_id
+        @pending_subscriptions[exchange_id] = PendingSubscription.new(
+          subscription_id: subscription_id,
+          max_interval: max_interval,
           peer: peer,
           session: session,
-          message_type: 0x04_u8, # SubscribeResponse
-          payload: subscribe_response_tlv
+          original_msg: original_msg
         )
 
-        Log.info { "Sent SubscribeResponse for subscription #{subscription_id}, maxInterval=#{max_interval}s" }
+        Log.info { "Waiting for StatusResponse on exchange #{exchange_id} before sending SubscribeResponse" }
       rescue ex
         Log.error(exception: ex) { "Error handling SubscribeRequest: #{ex.message}" }
       end

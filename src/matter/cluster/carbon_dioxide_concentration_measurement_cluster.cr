@@ -238,7 +238,7 @@ module Matter
         [] of CommandMetadata # No commands for concentration measurement cluster
       end
 
-      def read_attribute(attribute_id : UInt32) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
         case attribute_id
         when ATTR_MEASUREMENT_MEDIUM
           Bytes[@measurement_medium.value.to_u8]
