@@ -11,6 +11,8 @@ module Matter
       property name : String
       property type : Symbol # :bool, :uint8, :uint16, :uint32, :int8, :string, :array, etc.
       property writable : Bool
+      property optional : Bool
+      property fixed : Bool
       property default : Bytes?
       property min : Int64?
       property max : Int64?
@@ -21,6 +23,8 @@ module Matter
         @name : String,
         @type : Symbol,
         @writable : Bool = false,
+        @optional : Bool = false,
+        @fixed : Bool = false,
         @default : Bytes? = nil,
         @min : Int64? = nil,
         @max : Int64? = nil,
@@ -33,11 +37,13 @@ module Matter
     struct CommandMetadata
       property id : DataType::CommandId
       property name : String
+      property optional : Bool
       property access : Definitions::AccessControl::EntryPrivilege
 
       def initialize(
         @id : DataType::CommandId,
         @name : String,
+        @optional : Bool = false,
         @access : Definitions::AccessControl::EntryPrivilege = Definitions::AccessControl::EntryPrivilege::Operate,
       )
       end
