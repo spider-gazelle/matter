@@ -8,9 +8,18 @@ module Matter
     # information that a node uses when conveying values to a user. This cluster
     # supports both hour format (12hr/24hr) and calendar format preferences.
     #
+    # Features:
+    # - CalendarFormat (CALFMT): Calendar format support
+    #
     # Specification: Matter 1.4 § 11.4
     class TimeFormatLocalizationCluster < Base
       CLUSTER_ID = 0x002C_u32
+
+      # Feature flags
+      @[Flags]
+      enum Feature : UInt32
+        CalendarFormat = 0x01 # CALFMT - Calendar format support
+      end
 
       # Attributes
       ATTR_HOUR_FORMAT              = 0x0000_u32
@@ -41,6 +50,9 @@ module Matter
         UseActiveLocale = 255
       end
 
+      # Feature map
+      property feature_map : Feature
+
       # Hour format preference (writable)
       property hour_format : HourFormat
 
@@ -51,24 +63,28 @@ module Matter
       property supported_calendar_types : Array(CalendarType)?
 
       def initialize(endpoint_id : DataType::EndpointNumber,
+                     @feature_map : Feature = Feature::None,
                      @hour_format : HourFormat = HourFormat::Hr24,
                      @active_calendar_type : CalendarType? = nil,
                      @supported_calendar_types : Array(CalendarType)? = nil)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
-        # Validate active calendar type is in supported list if both are provided
-        if active = @active_calendar_type
-          if supported = @supported_calendar_types
-            unless supported.includes?(active)
-              raise ArgumentError.new("active_calendar_type must be in supported_calendar_types")
+        # If CalendarFormat feature is enabled, validate calendar attributes
+        if @feature_map.calendar_format?
+          # Validate active calendar type is in supported list if both are provided
+          if active = @active_calendar_type
+            if supported = @supported_calendar_types
+              unless supported.includes?(active)
+                raise ArgumentError.new("active_calendar_type must be in supported_calendar_types")
+              end
             end
           end
-        end
 
-        # Validate no duplicates in supported calendar types
-        if supported = @supported_calendar_types
-          if supported.size != supported.uniq.size
-            raise ArgumentError.new("supported_calendar_types must not contain duplicates")
+          # Validate no duplicates in supported calendar types
+          if supported = @supported_calendar_types
+            if supported.size != supported.uniq.size
+              raise ArgumentError.new("supported_calendar_types must not contain duplicates")
+            end
           end
         end
       end
@@ -81,23 +97,23 @@ module Matter
         attrs = [
           AttributeMetadata.new(
             DataType::AttributeId.new(ATTR_HOUR_FORMAT),
-            "HourFormat",
+            "hourFormat",
             :uint8,
             writable: true
           ),
         ]
 
         # Add calendar format attributes if CalendarFormat feature is enabled
-        if @active_calendar_type || @supported_calendar_types
+        if @feature_map.calendar_format?
           attrs << AttributeMetadata.new(
             DataType::AttributeId.new(ATTR_ACTIVE_CALENDAR_TYPE),
-            "ActiveCalendarType",
+            "activeCalendarType",
             :uint8,
             writable: true
           )
           attrs << AttributeMetadata.new(
             DataType::AttributeId.new(ATTR_SUPPORTED_CALENDAR_TYPES),
-            "SupportedCalendarTypes",
+            "supportedCalendarTypes",
             :array,
             writable: false
           )
@@ -115,16 +131,18 @@ module Matter
         when ATTR_HOUR_FORMAT
           Bytes[@hour_format.value.to_u8]
         when ATTR_ACTIVE_CALENDAR_TYPE
+          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.calendar_format?
           if active = @active_calendar_type
             Bytes[active.value.to_u8]
           else
-            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         when ATTR_SUPPORTED_CALENDAR_TYPES
+          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.calendar_format?
           if supported = @supported_calendar_types
             encode_array(supported.map(&.value.to_u8))
           else
-            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         else
           super
@@ -152,6 +170,7 @@ module Matter
 
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_ACTIVE_CALENDAR_TYPE
+          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.calendar_format?
           return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
 
           calendar_value = value[0]
@@ -164,14 +183,11 @@ module Matter
 
           new_calendar = CalendarType.from_value(calendar_value)
 
-          # Check if calendar format feature is enabled
-          unless @supported_calendar_types
-            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
-          end
-
           # Validate new calendar type is in supported list
-          unless @supported_calendar_types.not_nil!.includes?(new_calendar)
-            return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+          if supported = @supported_calendar_types
+            unless supported.includes?(new_calendar)
+              return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+            end
           end
 
           old_calendar = @active_calendar_type
@@ -189,7 +205,7 @@ module Matter
 
       # Check if CalendarFormat feature is enabled
       def calendar_format_enabled? : Bool
-        !@supported_calendar_types.nil?
+        @feature_map.calendar_format?
       end
 
       # Callback when hour format changes

@@ -5,8 +5,19 @@ module Matter
   module Cluster
     # Groups Cluster Implementation (0x0004)
     # Manages group membership for multicast communication
+    #
+    # Features:
+    # - GroupNames (GN): Store names for groups
+    #
+    # Specification: Matter 1.4 § 1.3
     class GroupsCluster < Base
       CLUSTER_ID = 0x0004_u32
+
+      # Feature flags
+      @[Flags]
+      enum Feature : UInt32
+        GroupNames = 0x01 # GN - Store names for groups
+      end
 
       # Attribute IDs
       NAME_SUPPORT = 0x0000_u32
@@ -27,21 +38,28 @@ module Matter
 
       # Global attributes
       CLUSTER_REVISION = 0xFFFD_u32
-      FEATURE_MAP      = 0xFFFC_u32
+      FEATURE_MAP_ATTR = 0xFFFC_u32
+
+      # Feature map
+      property feature_map : Feature
 
       # Group storage: GroupId => GroupName
       property groups : Hash(UInt16, String)
-      property name_support : Bool
 
       def initialize(
         endpoint_id : DataType::EndpointNumber,
-        @name_support : Bool = true,
+        @feature_map : Feature = Feature::GroupNames,
         max_groups : UInt8 = 16_u8,
       )
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
         @groups = Hash(UInt16, String).new
         @max_groups = max_groups
-        @attribute_values[NAME_SUPPORT] = encode_uint8(@name_support ? 0x80_u8 : 0x00_u8)
+        @attribute_values[NAME_SUPPORT] = encode_uint8(@feature_map.group_names? ? 0x80_u8 : 0x00_u8)
+      end
+
+      # Backward compatibility
+      def name_support : Bool
+        @feature_map.group_names?
       end
 
       def name : String
@@ -52,24 +70,24 @@ module Matter
         [
           AttributeMetadata.new(
             id: DataType::AttributeId.new(NAME_SUPPORT),
-            name: "NameSupport",
+            name: "nameSupport",
             type: :uint8,
             writable: false,
-            default: encode_uint8(0x80_u8) # Bit 7 set = names supported
+            default: encode_uint8(@feature_map.group_names? ? 0x80_u8 : 0x00_u8)
           ),
           AttributeMetadata.new(
             id: DataType::AttributeId.new(CLUSTER_REVISION),
-            name: "ClusterRevision",
+            name: "clusterRevision",
             type: :uint16,
             writable: false,
             default: encode_uint16(4_u16)
           ),
           AttributeMetadata.new(
-            id: DataType::AttributeId.new(FEATURE_MAP),
-            name: "FeatureMap",
+            id: DataType::AttributeId.new(FEATURE_MAP_ATTR),
+            name: "featureMap",
             type: :uint32,
             writable: false,
-            default: encode_uint32(0_u32)
+            default: encode_uint32(@feature_map.value)
           ),
         ]
       end
@@ -78,27 +96,27 @@ module Matter
         [
           CommandMetadata.new(
             id: DataType::CommandId.new(CMD_ADD_GROUP),
-            name: "AddGroup"
+            name: "addGroup"
           ),
           CommandMetadata.new(
             id: DataType::CommandId.new(CMD_VIEW_GROUP),
-            name: "ViewGroup"
+            name: "viewGroup"
           ),
           CommandMetadata.new(
             id: DataType::CommandId.new(CMD_GET_GROUP_MEMBERSHIP),
-            name: "GetGroupMembership"
+            name: "getGroupMembership"
           ),
           CommandMetadata.new(
             id: DataType::CommandId.new(CMD_REMOVE_GROUP),
-            name: "RemoveGroup"
+            name: "removeGroup"
           ),
           CommandMetadata.new(
             id: DataType::CommandId.new(CMD_REMOVE_ALL_GROUPS),
-            name: "RemoveAllGroups"
+            name: "removeAllGroups"
           ),
           CommandMetadata.new(
             id: DataType::CommandId.new(CMD_ADD_GROUP_IF_IDENTIFYING),
-            name: "AddGroupIfIdentifying"
+            name: "addGroupIfIdentifying"
           ),
         ]
       end
@@ -106,7 +124,9 @@ module Matter
       def read_attribute(attribute_id : UInt32) : InteractionModel::Status | Bytes
         case attribute_id
         when NAME_SUPPORT
-          encode_uint8(@name_support ? 0x80_u8 : 0x00_u8)
+          encode_uint8(@feature_map.group_names? ? 0x80_u8 : 0x00_u8)
+        when FEATURE_MAP_ATTR
+          encode_uint32(@feature_map.value)
         else
           super(attribute_id)
         end

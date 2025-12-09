@@ -46,7 +46,7 @@ describe Matter::Cluster::LevelControlCluster do
 
       current_level = attributes.find { |a| a.id.id == Matter::Cluster::LevelControlCluster::ATTR_CURRENT_LEVEL }
       current_level.should_not be_nil
-      current_level.not_nil!.name.should eq("CurrentLevel")
+      current_level.not_nil!.name.should eq("currentLevel")
       current_level.not_nil!.writable.should be_false
 
       min_level = attributes.find { |a| a.id.id == Matter::Cluster::LevelControlCluster::ATTR_MIN_LEVEL }
@@ -103,7 +103,7 @@ describe Matter::Cluster::LevelControlCluster do
 
       move_to_level = commands.find { |c| c.id.id == Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL }
       move_to_level.should_not be_nil
-      move_to_level.not_nil!.name.should eq("MoveToLevel")
+      move_to_level.not_nil!.name.should eq("moveToLevel")
 
       move = commands.find { |c| c.id.id == Matter::Cluster::LevelControlCluster::CMD_MOVE }
       move.should_not be_nil

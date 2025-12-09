@@ -90,10 +90,10 @@ describe Matter::Cluster::FanControlCluster do
       cluster = Matter::Cluster::FanControlCluster.new(endpoint_id)
       attrs = cluster.attributes
       attrs.size.should eq(4)
-      attrs.map(&.name).should contain("FanMode")
-      attrs.map(&.name).should contain("FanModeSequence")
-      attrs.map(&.name).should contain("PercentSetting")
-      attrs.map(&.name).should contain("PercentCurrent")
+      attrs.map(&.name).should contain("fanMode")
+      attrs.map(&.name).should contain("fanModeSequence")
+      attrs.map(&.name).should contain("percentSetting")
+      attrs.map(&.name).should contain("percentCurrent")
     end
 
     it "reads FanMode" do
@@ -136,16 +136,16 @@ describe Matter::Cluster::FanControlCluster do
       bytes.as(Bytes).should eq(Bytes[75])
     end
 
-    it "marks FanMode as writable" do
+    it "marks fanMode as writable" do
       cluster = Matter::Cluster::FanControlCluster.new(endpoint_id)
-      attr = cluster.attributes.find { |a| a.name == "FanMode" }
+      attr = cluster.attributes.find { |a| a.name == "fanMode" }
       attr.should_not be_nil
       attr.not_nil!.writable.should be_true
     end
 
-    it "marks PercentSetting as writable" do
+    it "marks percentSetting as writable" do
       cluster = Matter::Cluster::FanControlCluster.new(endpoint_id)
-      attr = cluster.attributes.find { |a| a.name == "PercentSetting" }
+      attr = cluster.attributes.find { |a| a.name == "percentSetting" }
       attr.should_not be_nil
       attr.not_nil!.writable.should be_true
     end

@@ -10,6 +10,7 @@ describe Matter::Cluster::GroupsCluster do
       cluster.name.should eq("Groups")
       cluster.cluster_id.id.should eq(0x0004_u32)
       cluster.name_support.should be_true
+      cluster.feature_map.group_names?.should be_true
       cluster.groups.should be_empty
       cluster.group_count.should eq(0)
     end
@@ -18,11 +19,12 @@ describe Matter::Cluster::GroupsCluster do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::GroupsCluster.new(
         endpoint,
-        name_support: false,
+        feature_map: Matter::Cluster::GroupsCluster::Feature::None,
         max_groups: 8_u8
       )
 
       cluster.name_support.should be_false
+      cluster.feature_map.group_names?.should be_false
     end
   end
 
@@ -37,27 +39,46 @@ describe Matter::Cluster::GroupsCluster do
       # Check NameSupport attribute
       name_support = attrs.find { |a| a.id.id == Matter::Cluster::GroupsCluster::NAME_SUPPORT }
       name_support.should_not be_nil
-      name_support.not_nil!.name.should eq("NameSupport")
+      name_support.not_nil!.name.should eq("nameSupport")
       name_support.not_nil!.type.should eq(:uint8)
       name_support.not_nil!.writable.should be_false
     end
 
-    it "reads NameSupport attribute when enabled" do
+    it "reads NameSupport attribute when GroupNames feature enabled" do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::GroupsCluster.new(endpoint, name_support: true)
+      cluster = Matter::Cluster::GroupsCluster.new(
+        endpoint,
+        feature_map: Matter::Cluster::GroupsCluster::Feature::GroupNames
+      )
 
       result = cluster.read_attribute(Matter::Cluster::GroupsCluster::NAME_SUPPORT)
       result.should be_a(Bytes)
       decode_tlv_value(result.as(Bytes)).should eq(0x80_u8) # Bit 7 set
     end
 
-    it "reads NameSupport attribute when disabled" do
+    it "reads NameSupport attribute when GroupNames feature disabled" do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::GroupsCluster.new(endpoint, name_support: false)
+      cluster = Matter::Cluster::GroupsCluster.new(
+        endpoint,
+        feature_map: Matter::Cluster::GroupsCluster::Feature::None
+      )
 
       result = cluster.read_attribute(Matter::Cluster::GroupsCluster::NAME_SUPPORT)
       result.should be_a(Bytes)
       decode_tlv_value(result.as(Bytes)).should eq(0x00_u8)
+    end
+
+    it "reads FeatureMap attribute" do
+      endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+      cluster = Matter::Cluster::GroupsCluster.new(
+        endpoint,
+        feature_map: Matter::Cluster::GroupsCluster::Feature::GroupNames
+      )
+
+      result = cluster.read_attribute(Matter::Cluster::GroupsCluster::FEATURE_MAP_ATTR)
+      result.should be_a(Bytes)
+      # Feature::GroupNames = 0x01
+      decode_tlv_value(result.as(Bytes)).should eq(0x01_u32)
     end
   end
 
@@ -71,7 +92,7 @@ describe Matter::Cluster::GroupsCluster do
 
       add_group = cmds.find { |c| c.id.id == Matter::Cluster::GroupsCluster::CMD_ADD_GROUP }
       add_group.should_not be_nil
-      add_group.not_nil!.name.should eq("AddGroup")
+      add_group.not_nil!.name.should eq("addGroup")
     end
 
     it "executes AddGroup command" do

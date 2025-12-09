@@ -82,11 +82,11 @@ describe Matter::Cluster do
       cluster = Matter::Cluster::OnOffCluster.new(endpoint)
 
       attrs = cluster.attributes
-      attrs.size.should eq(3)
+      attrs.size.should eq(3) # Base cluster: onOff, featureMap, clusterRevision
 
       on_off_attr = attrs.find { |a| a.id.id == Matter::Cluster::OnOffCluster::ATTR_ON_OFF }
       on_off_attr.should_not be_nil
-      on_off_attr.not_nil!.name.should eq("OnOff")
+      on_off_attr.not_nil!.name.should eq("onOff")
       on_off_attr.not_nil!.type.should eq(:bool)
       on_off_attr.not_nil!.writable.should be_false
     end
@@ -96,11 +96,11 @@ describe Matter::Cluster do
       cluster = Matter::Cluster::OnOffCluster.new(endpoint)
 
       cmds = cluster.commands
-      cmds.size.should eq(6)
+      cmds.size.should eq(3) # Base cluster: off, on, toggle (Lighting commands require Lighting feature)
 
       off_cmd = cmds.find { |c| c.id.id == Matter::Cluster::OnOffCluster::CMD_OFF }
       off_cmd.should_not be_nil
-      off_cmd.not_nil!.name.should eq("Off")
+      off_cmd.not_nil!.name.should eq("off")
 
       on_cmd = cmds.find { |c| c.id.id == Matter::Cluster::OnOffCluster::CMD_ON }
       on_cmd.should_not be_nil

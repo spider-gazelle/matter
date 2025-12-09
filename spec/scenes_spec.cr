@@ -10,6 +10,7 @@ describe Matter::Cluster::ScenesCluster do
       cluster.name.should eq("Scenes")
       cluster.cluster_id.id.should eq(0x0005_u32)
       cluster.name_support.should be_true
+      cluster.feature_map.scene_names?.should be_true
       cluster.scenes.should be_empty
       cluster.scene_count.should eq(0)
       cluster.current_scene.should eq(0_u8)
@@ -21,11 +22,12 @@ describe Matter::Cluster::ScenesCluster do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::ScenesCluster.new(
         endpoint,
-        name_support: false,
+        feature_map: Matter::Cluster::ScenesCluster::Feature::None,
         max_scenes: 8_u8
       )
 
       cluster.name_support.should be_false
+      cluster.feature_map.scene_names?.should be_false
     end
   end
 
@@ -40,7 +42,7 @@ describe Matter::Cluster::ScenesCluster do
       # Check SceneCount attribute
       scene_count = attrs.find { |a| a.id.id == Matter::Cluster::ScenesCluster::SCENE_COUNT }
       scene_count.should_not be_nil
-      scene_count.not_nil!.name.should eq("SceneCount")
+      scene_count.not_nil!.name.should eq("sceneCount")
       scene_count.not_nil!.type.should eq(:uint8)
       scene_count.not_nil!.writable.should be_false
 
@@ -82,13 +84,28 @@ describe Matter::Cluster::ScenesCluster do
       decode_tlv_value(result.as(Bytes)).should eq(false)
     end
 
-    it "reads NameSupport attribute" do
+    it "reads NameSupport attribute when SceneNames feature enabled" do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ScenesCluster.new(endpoint, name_support: true)
+      cluster = Matter::Cluster::ScenesCluster.new(
+        endpoint,
+        feature_map: Matter::Cluster::ScenesCluster::Feature::SceneNames
+      )
 
       result = cluster.read_attribute(Matter::Cluster::ScenesCluster::NAME_SUPPORT)
       result.should be_a(Bytes)
       decode_tlv_value(result.as(Bytes)).should eq(0x80_u8) # Bit 7 set
+    end
+
+    it "reads NameSupport attribute when SceneNames feature disabled" do
+      endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+      cluster = Matter::Cluster::ScenesCluster.new(
+        endpoint,
+        feature_map: Matter::Cluster::ScenesCluster::Feature::None
+      )
+
+      result = cluster.read_attribute(Matter::Cluster::ScenesCluster::NAME_SUPPORT)
+      result.should be_a(Bytes)
+      decode_tlv_value(result.as(Bytes)).should eq(0x00_u8)
     end
   end
 
@@ -102,7 +119,7 @@ describe Matter::Cluster::ScenesCluster do
 
       add_scene = cmds.find { |c| c.id.id == Matter::Cluster::ScenesCluster::CMD_ADD_SCENE }
       add_scene.should_not be_nil
-      add_scene.not_nil!.name.should eq("AddScene")
+      add_scene.not_nil!.name.should eq("addScene")
 
       recall_scene = cmds.find { |c| c.id.id == Matter::Cluster::ScenesCluster::CMD_RECALL_SCENE }
       recall_scene.should_not be_nil

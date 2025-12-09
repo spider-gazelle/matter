@@ -365,7 +365,11 @@ describe Matter::Cluster::ColorControlCluster do
   describe "enhanced hue commands" do
     it "executes EnhancedMoveToHue command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControlCluster.new(endpoint_id)
+      cluster = Matter::Cluster::ColorControlCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::ColorControlCluster::Feature::HueSaturation |
+                     Matter::Cluster::ColorControlCluster::Feature::EnhancedHue
+      )
 
       # EnhancedMoveToHue(enhanced_hue=32768, ...)
       io = IO::Memory.new
@@ -384,7 +388,12 @@ describe Matter::Cluster::ColorControlCluster do
 
     it "executes EnhancedStepHue Up command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControlCluster.new(endpoint_id, current_hue: 100_u8)
+      cluster = Matter::Cluster::ColorControlCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::ColorControlCluster::Feature::HueSaturation |
+                     Matter::Cluster::ColorControlCluster::Feature::EnhancedHue,
+        current_hue: 100_u8
+      )
 
       initial_enhanced_hue = cluster.enhanced_current_hue
 
@@ -403,7 +412,11 @@ describe Matter::Cluster::ColorControlCluster do
 
     it "wraps enhanced hue around 65536" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControlCluster.new(endpoint_id)
+      cluster = Matter::Cluster::ColorControlCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::ColorControlCluster::Feature::HueSaturation |
+                     Matter::Cluster::ColorControlCluster::Feature::EnhancedHue
+      )
 
       # Set to near max
       io = IO::Memory.new
@@ -421,7 +434,11 @@ describe Matter::Cluster::ColorControlCluster do
 
     it "executes EnhancedMoveToHueAndSaturation command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControlCluster.new(endpoint_id)
+      cluster = Matter::Cluster::ColorControlCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::ColorControlCluster::Feature::HueSaturation |
+                     Matter::Cluster::ColorControlCluster::Feature::EnhancedHue
+      )
 
       # EnhancedMoveToHueAndSaturation(enhanced_hue=40000, saturation=200, ...)
       io = IO::Memory.new

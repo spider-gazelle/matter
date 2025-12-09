@@ -4,16 +4,21 @@ describe Matter::Cluster::PowerSourceCluster do
   endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
 
   describe "initialization" do
-    it "creates with default values" do
+    it "creates with default values (Battery feature)" do
       cluster = Matter::Cluster::PowerSourceCluster.new(endpoint_id)
       cluster.status.should eq(Matter::Cluster::PowerSourceCluster::PowerSourceStatus::Active)
       cluster.order.should eq(0_u8)
       cluster.description.should eq("Battery")
-      cluster.bat_charge_level.should be_nil
-      cluster.bat_replacement_needed.should be_nil
-      cluster.bat_replaceability.should be_nil
-      cluster.bat_replacement_description.should be_nil
-      cluster.bat_quantity.should be_nil
+      cluster.feature_map.should eq(Matter::Cluster::PowerSourceCluster::Feature::Battery)
+      cluster.battery_feature_enabled?.should be_true
+      cluster.replaceable_feature_enabled?.should be_false
+    end
+
+    it "creates with no features" do
+      cluster = Matter::Cluster::PowerSourceCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::None
+      )
       cluster.battery_feature_enabled?.should be_false
       cluster.replaceable_feature_enabled?.should be_false
     end
@@ -21,6 +26,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "creates with Battery feature (from matter.js test)" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         status: Matter::Cluster::PowerSourceCluster::PowerSourceStatus::Active,
         order: 1_u8,
         description: "aa batteries",
@@ -40,6 +46,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "creates with Replaceable feature (from matter.js test)" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery | Matter::Cluster::PowerSourceCluster::Feature::Replaceable,
         status: Matter::Cluster::PowerSourceCluster::PowerSourceStatus::Active,
         order: 1_u8,
         description: "aa batteries",
@@ -68,6 +75,7 @@ describe Matter::Cluster::PowerSourceCluster do
       expect_raises(ArgumentError, /bat_replacement_description must be <= 60 characters/) do
         Matter::Cluster::PowerSourceCluster.new(
           endpoint_id,
+          feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery | Matter::Cluster::PowerSourceCluster::Feature::Replaceable,
           bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
           bat_replacement_needed: false,
           bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable,
@@ -81,8 +89,20 @@ describe Matter::Cluster::PowerSourceCluster do
       expect_raises(ArgumentError, /Battery feature requires/) do
         Matter::Cluster::PowerSourceCluster.new(
           endpoint_id,
+          feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
           bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok
           # Missing bat_replacement_needed and bat_replaceability
+        )
+      end
+    end
+
+    it "validates Replaceable feature requires Battery feature" do
+      expect_raises(ArgumentError, /Replaceable feature requires Battery feature/) do
+        Matter::Cluster::PowerSourceCluster.new(
+          endpoint_id,
+          feature_map: Matter::Cluster::PowerSourceCluster::Feature::Replaceable,
+          bat_replacement_description: "open, replace",
+          bat_quantity: 2_u8
         )
       end
     end
@@ -91,6 +111,7 @@ describe Matter::Cluster::PowerSourceCluster do
       expect_raises(ArgumentError, /Replaceable feature requires/) do
         Matter::Cluster::PowerSourceCluster.new(
           endpoint_id,
+          feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery | Matter::Cluster::PowerSourceCluster::Feature::Replaceable,
           bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
           bat_replacement_needed: false,
           bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable,
@@ -99,35 +120,49 @@ describe Matter::Cluster::PowerSourceCluster do
         )
       end
     end
+
+    it "validates Wired and Battery are mutually exclusive" do
+      expect_raises(ArgumentError, /Wired and Battery features are mutually exclusive/) do
+        Matter::Cluster::PowerSourceCluster.new(
+          endpoint_id,
+          feature_map: Matter::Cluster::PowerSourceCluster::Feature::Wired | Matter::Cluster::PowerSourceCluster::Feature::Battery
+        )
+      end
+    end
   end
 
   describe "attributes" do
-    it "has base attributes" do
-      cluster = Matter::Cluster::PowerSourceCluster.new(endpoint_id)
+    it "has base attributes only when no features enabled" do
+      cluster = Matter::Cluster::PowerSourceCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::None
+      )
       attrs = cluster.attributes
       attrs.size.should eq(3)
-      attrs.map(&.name).should contain("Status")
-      attrs.map(&.name).should contain("Order")
-      attrs.map(&.name).should contain("Description")
+      attrs.map(&.name).should contain("status")
+      attrs.map(&.name).should contain("order")
+      attrs.map(&.name).should contain("description")
     end
 
     it "has Battery feature attributes when enabled" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable
       )
       attrs = cluster.attributes
       attrs.size.should eq(6)
-      attrs.map(&.name).should contain("BatChargeLevel")
-      attrs.map(&.name).should contain("BatReplacementNeeded")
-      attrs.map(&.name).should contain("BatReplaceability")
+      attrs.map(&.name).should contain("batChargeLevel")
+      attrs.map(&.name).should contain("batReplacementNeeded")
+      attrs.map(&.name).should contain("batReplaceability")
     end
 
     it "has Replaceable feature attributes when enabled" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery | Matter::Cluster::PowerSourceCluster::Feature::Replaceable,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable,
@@ -136,13 +171,14 @@ describe Matter::Cluster::PowerSourceCluster do
       )
       attrs = cluster.attributes
       attrs.size.should eq(8)
-      attrs.map(&.name).should contain("BatReplacementDescription")
-      attrs.map(&.name).should contain("BatQuantity")
+      attrs.map(&.name).should contain("batReplacementDescription")
+      attrs.map(&.name).should contain("batQuantity")
     end
 
     it "reads Status" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::None,
         status: Matter::Cluster::PowerSourceCluster::PowerSourceStatus::Standby
       )
       bytes = cluster.read_attribute(Matter::Cluster::PowerSourceCluster::ATTR_STATUS)
@@ -153,6 +189,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "reads Order" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::None,
         order: 5_u8
       )
       bytes = cluster.read_attribute(Matter::Cluster::PowerSourceCluster::ATTR_ORDER)
@@ -163,6 +200,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "reads Description" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::None,
         description: "DC Power"
       )
       bytes = cluster.read_attribute(Matter::Cluster::PowerSourceCluster::ATTR_DESCRIPTION)
@@ -174,6 +212,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "reads BatChargeLevel when Battery feature enabled" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Warning,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable
@@ -186,6 +225,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "reads BatReplacementNeeded" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
         bat_replacement_needed: true,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable
@@ -198,6 +238,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "reads BatReplaceability" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::FactoryReplaceable
@@ -210,6 +251,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "reads BatReplacementDescription when Replaceable feature enabled" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery | Matter::Cluster::PowerSourceCluster::Feature::Replaceable,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable,
@@ -224,6 +266,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "reads BatQuantity" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery | Matter::Cluster::PowerSourceCluster::Feature::Replaceable,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable,
@@ -236,7 +279,10 @@ describe Matter::Cluster::PowerSourceCluster do
     end
 
     it "returns unsupported for Battery attributes when feature not enabled" do
-      cluster = Matter::Cluster::PowerSourceCluster.new(endpoint_id)
+      cluster = Matter::Cluster::PowerSourceCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::None
+      )
       result = cluster.read_attribute(Matter::Cluster::PowerSourceCluster::ATTR_BAT_CHARGE_LEVEL)
       result.should be_a(Matter::InteractionModel::Status)
       status = result.as(Matter::InteractionModel::Status)
@@ -246,6 +292,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "returns unsupported for Replaceable attributes when feature not enabled" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable
@@ -261,6 +308,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "updates battery charge level" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable
@@ -273,6 +321,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "calls callback when charge level changes" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable
@@ -293,6 +342,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "updates battery replacement needed" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable
@@ -305,6 +355,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "calls callback when replacement needed changes" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable
@@ -325,6 +376,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "increments data version on change" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable
@@ -338,6 +390,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "doesn't increment version if value unchanged" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable
@@ -353,6 +406,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "models AA battery powered sensor (from matter.js test)" do
       sensor = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery | Matter::Cluster::PowerSourceCluster::Feature::Replaceable,
         status: Matter::Cluster::PowerSourceCluster::PowerSourceStatus::Active,
         order: 1_u8,
         description: "aa batteries",
@@ -372,6 +426,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "models rechargeable battery device" do
       device = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         status: Matter::Cluster::PowerSourceCluster::PowerSourceStatus::Active,
         order: 0_u8,
         description: "Lithium-ion battery",
@@ -386,6 +441,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "models battery monitoring with charge level changes" do
       monitor = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable
@@ -409,6 +465,7 @@ describe Matter::Cluster::PowerSourceCluster do
     it "models battery replacement workflow" do
       device = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery | Matter::Cluster::PowerSourceCluster::Feature::Replaceable,
         bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Critical,
         bat_replacement_needed: false,
         bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable,
@@ -431,6 +488,7 @@ describe Matter::Cluster::PowerSourceCluster do
       # Primary battery (order 0 - preferred)
       primary = Matter::Cluster::PowerSourceCluster.new(
         Matter::DataType::EndpointNumber.new(1_u16),
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         status: Matter::Cluster::PowerSourceCluster::PowerSourceStatus::Active,
         order: 0_u8,
         description: "Primary battery",
@@ -442,6 +500,7 @@ describe Matter::Cluster::PowerSourceCluster do
       # Backup battery (order 1 - fallback)
       backup = Matter::Cluster::PowerSourceCluster.new(
         Matter::DataType::EndpointNumber.new(2_u16),
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
         status: Matter::Cluster::PowerSourceCluster::PowerSourceStatus::Standby,
         order: 1_u8,
         description: "Backup battery",
@@ -458,7 +517,10 @@ describe Matter::Cluster::PowerSourceCluster do
 
   describe "error handling" do
     it "returns error for unsupported attribute reads" do
-      cluster = Matter::Cluster::PowerSourceCluster.new(endpoint_id)
+      cluster = Matter::Cluster::PowerSourceCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::None
+      )
       result = cluster.read_attribute(0x9999_u32)
       result.should be_a(Matter::InteractionModel::Status)
       status = result.as(Matter::InteractionModel::Status)

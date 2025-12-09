@@ -5,8 +5,19 @@ module Matter
   module Cluster
     # Scenes Cluster Implementation (0x0005)
     # Provides scene storage and recall functionality
+    #
+    # Features:
+    # - SceneNames (SN): Store names for scenes
+    #
+    # Specification: Matter 1.4 § 1.4
     class ScenesCluster < Base
       CLUSTER_ID = 0x0005_u32
+
+      # Feature flags
+      @[Flags]
+      enum Feature : UInt32
+        SceneNames = 0x01 # SN - Store names for scenes
+      end
 
       # Attribute IDs
       SCENE_COUNT        = 0x0000_u32
@@ -37,7 +48,7 @@ module Matter
 
       # Global attributes
       CLUSTER_REVISION = 0xFFFD_u32
-      FEATURE_MAP      = 0xFFFC_u32
+      FEATURE_MAP_ATTR = 0xFFFC_u32
 
       # Scene data structure
       struct SceneData
@@ -49,9 +60,11 @@ module Matter
         end
       end
 
+      # Feature map
+      property feature_map : Feature
+
       # Scene storage: {group_id, scene_id} => SceneData
       property scenes : Hash({UInt16, UInt8}, SceneData)
-      property name_support : Bool
       property current_scene : UInt8
       property current_group : UInt16
       property scene_valid : Bool
@@ -61,7 +74,7 @@ module Matter
 
       def initialize(
         endpoint_id : DataType::EndpointNumber,
-        @name_support : Bool = true,
+        @feature_map : Feature = Feature::SceneNames,
         max_scenes : UInt8 = 16_u8,
       )
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
@@ -75,7 +88,12 @@ module Matter
         @attribute_values[CURRENT_SCENE] = encode_uint8(@current_scene)
         @attribute_values[CURRENT_GROUP] = encode_uint16(@current_group)
         @attribute_values[SCENE_VALID] = encode_bool(@scene_valid)
-        @attribute_values[NAME_SUPPORT] = encode_uint8(@name_support ? 0x80_u8 : 0x00_u8)
+        @attribute_values[NAME_SUPPORT] = encode_uint8(@feature_map.scene_names? ? 0x80_u8 : 0x00_u8)
+      end
+
+      # Backward compatibility
+      def name_support : Bool
+        @feature_map.scene_names?
       end
 
       def name : String
@@ -86,52 +104,52 @@ module Matter
         [
           AttributeMetadata.new(
             id: DataType::AttributeId.new(SCENE_COUNT),
-            name: "SceneCount",
+            name: "sceneCount",
             type: :uint8,
             writable: false,
             default: encode_uint8(0_u8)
           ),
           AttributeMetadata.new(
             id: DataType::AttributeId.new(CURRENT_SCENE),
-            name: "CurrentScene",
+            name: "currentScene",
             type: :uint8,
             writable: false,
             default: encode_uint8(0_u8)
           ),
           AttributeMetadata.new(
             id: DataType::AttributeId.new(CURRENT_GROUP),
-            name: "CurrentGroup",
+            name: "currentGroup",
             type: :uint16,
             writable: false,
             default: encode_uint16(0_u16)
           ),
           AttributeMetadata.new(
             id: DataType::AttributeId.new(SCENE_VALID),
-            name: "SceneValid",
+            name: "sceneValid",
             type: :bool,
             writable: false,
             default: encode_bool(false)
           ),
           AttributeMetadata.new(
             id: DataType::AttributeId.new(NAME_SUPPORT),
-            name: "NameSupport",
+            name: "nameSupport",
             type: :uint8,
             writable: false,
-            default: encode_uint8(0x80_u8)
+            default: encode_uint8(@feature_map.scene_names? ? 0x80_u8 : 0x00_u8)
           ),
           AttributeMetadata.new(
             id: DataType::AttributeId.new(CLUSTER_REVISION),
-            name: "ClusterRevision",
+            name: "clusterRevision",
             type: :uint16,
             writable: false,
             default: encode_uint16(4_u16)
           ),
           AttributeMetadata.new(
-            id: DataType::AttributeId.new(FEATURE_MAP),
-            name: "FeatureMap",
+            id: DataType::AttributeId.new(FEATURE_MAP_ATTR),
+            name: "featureMap",
             type: :uint32,
             writable: false,
-            default: encode_uint32(0_u32)
+            default: encode_uint32(@feature_map.value)
           ),
         ]
       end
@@ -140,35 +158,35 @@ module Matter
         [
           CommandMetadata.new(
             id: DataType::CommandId.new(CMD_ADD_SCENE),
-            name: "AddScene"
+            name: "addScene"
           ),
           CommandMetadata.new(
             id: DataType::CommandId.new(CMD_VIEW_SCENE),
-            name: "ViewScene"
+            name: "viewScene"
           ),
           CommandMetadata.new(
             id: DataType::CommandId.new(CMD_REMOVE_SCENE),
-            name: "RemoveScene"
+            name: "removeScene"
           ),
           CommandMetadata.new(
             id: DataType::CommandId.new(CMD_REMOVE_ALL_SCENES),
-            name: "RemoveAllScenes"
+            name: "removeAllScenes"
           ),
           CommandMetadata.new(
             id: DataType::CommandId.new(CMD_STORE_SCENE),
-            name: "StoreScene"
+            name: "storeScene"
           ),
           CommandMetadata.new(
             id: DataType::CommandId.new(CMD_RECALL_SCENE),
-            name: "RecallScene"
+            name: "recallScene"
           ),
           CommandMetadata.new(
             id: DataType::CommandId.new(CMD_GET_SCENE_MEMBERSHIP),
-            name: "GetSceneMembership"
+            name: "getSceneMembership"
           ),
           CommandMetadata.new(
             id: DataType::CommandId.new(CMD_COPY_SCENE),
-            name: "CopyScene"
+            name: "copyScene"
           ),
         ]
       end
@@ -184,7 +202,9 @@ module Matter
         when SCENE_VALID
           encode_bool(@scene_valid)
         when NAME_SUPPORT
-          encode_uint8(@name_support ? 0x80_u8 : 0x00_u8)
+          encode_uint8(@feature_map.scene_names? ? 0x80_u8 : 0x00_u8)
+        when FEATURE_MAP_ATTR
+          encode_uint32(@feature_map.value)
         else
           super(attribute_id)
         end

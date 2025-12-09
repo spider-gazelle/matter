@@ -70,14 +70,20 @@ describe Matter::Cluster::OccupancySensingCluster do
     it "has required attributes" do
       cluster = Matter::Cluster::OccupancySensingCluster.new(endpoint_id)
       attrs = cluster.attributes
-      attrs.size.should eq(7)
-      attrs.map(&.name).should contain("Occupancy")
-      attrs.map(&.name).should contain("OccupancySensorType")
-      attrs.map(&.name).should contain("OccupancySensorTypeBitmap")
-      attrs.map(&.name).should contain("HoldTime")
-      attrs.map(&.name).should contain("PIROccupiedToUnoccupiedDelay")
-      attrs.map(&.name).should contain("PIRUnoccupiedToOccupiedDelay")
-      attrs.map(&.name).should contain("PIRUnoccupiedToOccupiedThreshold")
+      # Base attributes (3) + PIR feature attributes (3)
+      attrs.size.should eq(6)
+      attrs.map(&.name).should contain("occupancy")
+      attrs.map(&.name).should contain("occupancySensorType")
+      attrs.map(&.name).should contain("occupancySensorTypeBitmap")
+      attrs.map(&.name).should contain("pirOccupiedToUnoccupiedDelay")
+      attrs.map(&.name).should contain("pirUnoccupiedToOccupiedDelay")
+      attrs.map(&.name).should contain("pirUnoccupiedToOccupiedThreshold")
+    end
+
+    it "includes holdTime attribute when set" do
+      cluster = Matter::Cluster::OccupancySensingCluster.new(endpoint_id, hold_time: 60_u16)
+      attrs = cluster.attributes
+      attrs.map(&.name).should contain("holdTime")
     end
 
     it "reads Occupancy when unoccupied" do
@@ -142,8 +148,18 @@ describe Matter::Cluster::OccupancySensingCluster do
       IO::ByteFormat::LittleEndian.decode(UInt16, bytes.as(Bytes)).should eq(30_u16)
     end
 
-    it "returns unsupported for PIROccupiedToUnoccupiedDelay when not set" do
+    it "returns default value for PIROccupiedToUnoccupiedDelay when not explicitly set" do
       cluster = Matter::Cluster::OccupancySensingCluster.new(endpoint_id)
+      bytes = cluster.read_attribute(Matter::Cluster::OccupancySensingCluster::ATTR_PIR_OCCUPIED_TO_UNOCCUPIED_DELAY)
+      bytes.should be_a(Bytes)
+      IO::ByteFormat::LittleEndian.decode(UInt16, bytes.as(Bytes)).should eq(0_u16)
+    end
+
+    it "returns unsupported for PIROccupiedToUnoccupiedDelay when PIR feature disabled" do
+      cluster = Matter::Cluster::OccupancySensingCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::OccupancySensingCluster::Feature::None
+      )
       result = cluster.read_attribute(Matter::Cluster::OccupancySensingCluster::ATTR_PIR_OCCUPIED_TO_UNOCCUPIED_DELAY)
       result.should be_a(Matter::InteractionModel::Status)
       status = result.as(Matter::InteractionModel::Status)
@@ -160,8 +176,18 @@ describe Matter::Cluster::OccupancySensingCluster do
       bytes.as(Bytes).should eq(Bytes[3])
     end
 
-    it "returns unsupported for PIRUnoccupiedToOccupiedThreshold when not set" do
+    it "returns default value for PIRUnoccupiedToOccupiedThreshold when not explicitly set" do
       cluster = Matter::Cluster::OccupancySensingCluster.new(endpoint_id)
+      bytes = cluster.read_attribute(Matter::Cluster::OccupancySensingCluster::ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH)
+      bytes.should be_a(Bytes)
+      bytes.as(Bytes).should eq(Bytes[1]) # Default value is 1
+    end
+
+    it "returns unsupported for PIRUnoccupiedToOccupiedThreshold when PIR feature disabled" do
+      cluster = Matter::Cluster::OccupancySensingCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::OccupancySensingCluster::Feature::None
+      )
       result = cluster.read_attribute(Matter::Cluster::OccupancySensingCluster::ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH)
       result.should be_a(Matter::InteractionModel::Status)
       status = result.as(Matter::InteractionModel::Status)

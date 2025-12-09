@@ -30,7 +30,7 @@ describe Matter::Cluster::OnOffCluster do
 
       on_off_attr = attributes.find { |a| a.id.id == Matter::Cluster::OnOffCluster::ATTR_ON_OFF }
       on_off_attr.should_not be_nil
-      on_off_attr.not_nil!.name.should eq("OnOff")
+      on_off_attr.not_nil!.name.should eq("onOff")
       on_off_attr.not_nil!.type.should eq(:bool)
       on_off_attr.not_nil!.writable.should be_false
     end
@@ -76,15 +76,15 @@ describe Matter::Cluster::OnOffCluster do
 
       off_cmd = commands.find { |c| c.id.id == Matter::Cluster::OnOffCluster::CMD_OFF }
       off_cmd.should_not be_nil
-      off_cmd.not_nil!.name.should eq("Off")
+      off_cmd.not_nil!.name.should eq("off")
 
       on_cmd = commands.find { |c| c.id.id == Matter::Cluster::OnOffCluster::CMD_ON }
       on_cmd.should_not be_nil
-      on_cmd.not_nil!.name.should eq("On")
+      on_cmd.not_nil!.name.should eq("on")
 
       toggle_cmd = commands.find { |c| c.id.id == Matter::Cluster::OnOffCluster::CMD_TOGGLE }
       toggle_cmd.should_not be_nil
-      toggle_cmd.not_nil!.name.should eq("Toggle")
+      toggle_cmd.not_nil!.name.should eq("toggle")
     end
 
     describe "Off command" do
@@ -195,11 +195,15 @@ describe Matter::Cluster::OnOffCluster do
     end
 
     describe "OffWithEffect command" do
-      it "executes OffWithEffect command" do
+      it "executes OffWithEffect command with Lighting feature" do
         endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: true)
+        cluster = Matter::Cluster::OnOffCluster.new(
+          endpoint_id,
+          on_off: true,
+          feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting
+        )
 
-        result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF_EFFECT, Bytes.new(0))
+        result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF_WITH_EFFECT, Bytes.new(0))
 
         result.as(Matter::InteractionModel::Status).success?.should be_true
         cluster.on_off.should be_false
@@ -207,11 +211,15 @@ describe Matter::Cluster::OnOffCluster do
     end
 
     describe "OnWithRecallGlobalScene command" do
-      it "executes OnWithRecallGlobalScene command" do
+      it "executes OnWithRecallGlobalScene command with Lighting feature" do
         endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: false)
+        cluster = Matter::Cluster::OnOffCluster.new(
+          endpoint_id,
+          on_off: false,
+          feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting
+        )
 
-        result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON_RECALL, Bytes.new(0))
+        result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON_WITH_RECALL_GLOBAL_SCENE, Bytes.new(0))
 
         result.as(Matter::InteractionModel::Status).success?.should be_true
         cluster.on_off.should be_true
@@ -219,11 +227,15 @@ describe Matter::Cluster::OnOffCluster do
     end
 
     describe "OnWithTimedOff command" do
-      it "executes OnWithTimedOff command" do
+      it "executes OnWithTimedOff command with Lighting feature" do
         endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: false)
+        cluster = Matter::Cluster::OnOffCluster.new(
+          endpoint_id,
+          on_off: false,
+          feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting
+        )
 
-        result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON_TIMED, Bytes.new(0))
+        result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON_WITH_TIMED_OFF, Bytes.new(0))
 
         result.as(Matter::InteractionModel::Status).success?.should be_true
         cluster.on_off.should be_true
