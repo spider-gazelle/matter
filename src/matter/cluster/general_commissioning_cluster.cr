@@ -714,6 +714,22 @@ module Matter
         end
       end
 
+      # Record that a fabric was added during this failsafe context
+      #
+      # This should be called by OperationalCredentialsCluster when AddNOC succeeds.
+      # It updates the failsafe context so that CommissioningComplete can be called
+      # from a CASE session on the new fabric (PASE→CASE transition).
+      #
+      # @param fabric_index The index of the newly added fabric
+      def record_added_fabric(fabric_index : UInt8) : Nil
+        if context = @failsafe_context
+          context.record_added_fabric(fabric_index)
+          Log.info { "Recorded added fabric #{fabric_index} in failsafe context" }
+        else
+          Log.warn { "No failsafe context to record added fabric #{fabric_index}" }
+        end
+      end
+
       # Get basic commissioning info (for BasicCommissioningInfo attribute)
       def basic_commissioning_info : BasicCommissioningInfo
         # Default fail-safe expiry length (60 seconds as per Matter spec default)

@@ -1,6 +1,7 @@
 require "json"
 require "file_utils"
 require "goban"
+require "../src/matter"
 require "../src/matter/mdns/responder"
 require "../src/matter/mdns/service_type"
 require "../src/matter/mdns/service_description"
@@ -9,7 +10,6 @@ require "../src/matter/fabric"
 require "../src/matter/fabric_table"
 require "../src/matter/storage/memory_backend"
 require "../src/matter/setup_payload"
-require "../src/matter"
 require "../src/matter/transport/udp_transport"
 require "../src/matter/codec/message_codec"
 require "../src/matter/protocol/message_handler"
@@ -203,8 +203,21 @@ module MatterSwitch
       # Create General Commissioning cluster on endpoint 0 (required for commissioning)
       @general_commissioning = Matter::Cluster::GeneralCommissioningCluster.new(root_endpoint)
 
+      # Create UDP transport
+      @transport = Matter::Transport::UDPTransport.new(port: @port)
+
+      # Create fabric table with in-memory storage
+      storage = Matter::Storage::MemoryBackend.new
+      @fabric_table = Matter::FabricTable.new(storage)
+
       # Create Operational Credentials cluster on endpoint 0 (required for commissioning)
-      @operational_credentials = Matter::Cluster::OperationalCredentialsCluster.new(root_endpoint)
+      # Pass the general_commissioning reference so AddNOC can update the failsafe context
+      @operational_credentials = Matter::Cluster::OperationalCredentialsCluster.new(
+        @fabric_table,
+        root_endpoint,
+        access_control_cluster: nil,
+        general_commissioning_cluster: @general_commissioning
+      )
 
       # Set up test attestation credentials (DAC, PAI, and attestation key)
       setup_attestation_credentials
@@ -217,13 +230,6 @@ module MatterSwitch
       @switch.on_state_changed do |new_state|
         handle_state_change(new_state)
       end
-
-      # Create UDP transport
-      @transport = Matter::Transport::UDPTransport.new(port: @port)
-
-      # Create fabric table with in-memory storage
-      storage = Matter::Storage::MemoryBackend.new
-      @fabric_table = Matter::FabricTable.new(storage)
 
       # Create protocol message handler (this handles PASE, IM, etc.)
       @message_handler = Matter::Protocol::MessageHandler.new(
@@ -267,6 +273,8 @@ module MatterSwitch
       # 1. Save the fabric to persistent storage
       # 2. Advertise the operational service for the new fabric
       # 3. Mark the device as commissioned
+      # NOTE: The failsafe context is automatically updated by the library when
+      #       general_commissioning_cluster is passed to OperationalCredentialsCluster
       @operational_credentials.on_fabric_added = ->(fabric : Matter::Fabric) {
         handle_fabric_added(fabric)
       }

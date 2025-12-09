@@ -275,7 +275,8 @@ module Matter
       @product_id : UInt16                                                    # Product ID for attestation
       @attestation_cert_manager : Certificate::AttestationCertificateManager? # Certificate manager
       @trusted_root_certs : Array(Bytes)
-      @access_control_cluster : AccessControlCluster? # Optional ACL cluster reference
+      @access_control_cluster : AccessControlCluster?               # Optional ACL cluster reference
+      @general_commissioning_cluster : GeneralCommissioningCluster? # Optional GeneralCommissioning cluster reference
       @current_fabric_index_value : UInt8 = 0_u8
 
       # Session context for command handling
@@ -300,6 +301,7 @@ module Matter
       property failsafe_armed : Bool
       property session_lookup : Proc(UInt64, Bytes?)?
       property on_fabric_added : Proc(Fabric, Nil)?
+      property general_commissioning_cluster : GeneralCommissioningCluster?
 
       # CurrentFabricIndex helper method (returns passed value or stored value)
       def current_fabric_index(session_fabric_index : UInt8?) : UInt8
@@ -310,6 +312,7 @@ module Matter
         @fabric_table : FabricTable,
         endpoint_id : DataType::EndpointNumber = DataType::EndpointNumber.new(0_u16),
         @access_control_cluster : AccessControlCluster? = nil,
+        @general_commissioning_cluster : GeneralCommissioningCluster? = nil,
       )
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
@@ -773,6 +776,13 @@ module Matter
           )
           acl_cluster.acl << default_acl
           acl_cluster.increment_version
+        end
+
+        # Record the fabric in the GeneralCommissioning cluster's failsafe context
+        # This is critical for the PASE→CASE transition during commissioning
+        # so that CommissioningComplete can be called from the new CASE session
+        if gc_cluster = @general_commissioning_cluster
+          gc_cluster.record_added_fabric(fabric.fabric_index)
         end
 
         # Notify application that fabric was successfully added
