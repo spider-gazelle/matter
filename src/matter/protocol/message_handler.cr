@@ -70,6 +70,7 @@ module Matter
       property case_responder : Session::Case::CaseResponder?
       property case_initiator_session_id : UInt16?
       property case_responder_session_id : UInt16?
+      property case_fabric : Fabric?
 
       # Subscription support
       property next_subscription_id : UInt32 = 1_u32
@@ -119,7 +120,9 @@ module Matter
         @case_responder = nil
         @case_initiator_session_id = nil
         @case_responder_session_id = nil
+        @case_fabric = nil
         @on_get_fabric = nil
+        # Note: @case_fabric is now a property with type Fabric?
         @on_commissioned = nil
         @operational_credentials_cluster = nil
 
@@ -1293,8 +1296,9 @@ module Matter
             crypto: crypto
           )
 
-          # Store responder for Sigma3 processing
+          # Store responder and fabric for Sigma3 processing
           @case_responder = responder
+          @case_fabric = fabric
 
           # Process Sigma1 and generate Sigma2 response
           # Pass the raw Sigma1 bytes for key derivation
@@ -1381,18 +1385,15 @@ module Matter
             return
           end
 
-          # Get fabric for node IDs
-          fabric_callback = @on_get_fabric
-          unless fabric_callback
-            Log.error { "No fabric callback set" }
-            return
-          end
-
-          fabric = fabric_callback.call
+          # Use the fabric matched during Sigma1 (stored in @case_fabric)
+          # This is critical - we must use the exact fabric that was matched by destination_id
+          # Using on_get_fabric callback here would return wrong fabric in multi-fabric scenarios
+          fabric = @case_fabric
           unless fabric
-            Log.error { "No fabric available" }
+            Log.error { "No CASE fabric available - Sigma1 must complete first" }
             return
           end
+          Log.info { "Using CASE fabric from Sigma1: #{fabric.fabric_id.to_s(16)} (index=#{fabric.fabric_index})" }
 
           # Get the peer's node ID extracted from their NOC in Sigma3
           # This is critical for proper nonce construction in encrypted messages

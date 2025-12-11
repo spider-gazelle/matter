@@ -163,6 +163,9 @@ module MatterSwitch
 
     property state : DeviceState
     property switch : Matter::Cluster::OnOffCluster
+    property identify : Matter::Cluster::IdentifyCluster
+    property groups : Matter::Cluster::GroupsCluster
+    property scenes : Matter::Cluster::ScenesCluster
     property basic_info : Matter::Cluster::BasicInformationCluster
     property general_commissioning : Matter::Cluster::GeneralCommissioningCluster
     property operational_credentials : Matter::Cluster::OperationalCredentialsCluster
@@ -226,14 +229,30 @@ module MatterSwitch
       # Set up test attestation credentials (DAC, PAI, and attestation key)
       setup_attestation_credentials
 
-      # Create the switch cluster on endpoint 1
+      # Create clusters for endpoint 1 (the actual device)
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-      @switch = Matter::Cluster::OnOffCluster.new(endpoint, on_off: @state.on_off)
+
+      # OnOff cluster - the main functionality
+      # LIGHTING feature is MANDATORY for On/Off Light device type per Matter spec
+      @switch = Matter::Cluster::OnOffCluster.new(
+        endpoint,
+        on_off: @state.on_off,
+        feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting
+      )
 
       # Setup state change callback
       @switch.on_state_changed do |new_state|
         handle_state_change(new_state)
       end
+
+      # Identify cluster - MANDATORY for On/Off Light device type
+      @identify = Matter::Cluster::IdentifyCluster.new(endpoint)
+
+      # Groups cluster - MANDATORY for On/Off Light device type
+      @groups = Matter::Cluster::GroupsCluster.new(endpoint)
+
+      # Scenes cluster - MANDATORY for On/Off Light device type
+      @scenes = Matter::Cluster::ScenesCluster.new(endpoint)
 
       # Create protocol message handler (this handles PASE, IM, etc.)
       @message_handler = Matter::Protocol::MessageHandler.new(
@@ -246,11 +265,48 @@ module MatterSwitch
       )
 
       # Wire up clusters to message handler
-      @message_handler.clusters[{0_u16, 0x0028_u32}] = @basic_info              # BasicInformation on endpoint 0
-      @message_handler.clusters[{0_u16, 0x001F_u32}] = @access_control          # AccessControl on endpoint 0 (required!)
-      @message_handler.clusters[{0_u16, 0x0030_u32}] = @general_commissioning   # GeneralCommissioning on endpoint 0 (required!)
-      @message_handler.clusters[{0_u16, 0x003E_u32}] = @operational_credentials # OperationalCredentials on endpoint 0 (required!)
-      @message_handler.clusters[{1_u16, 0x0006_u32}] = @switch                  # OnOff on endpoint 1
+      # Endpoint 0 clusters
+      @message_handler.clusters[{0_u16, Matter::Cluster::BasicInformationCluster::CLUSTER_ID}] = @basic_info
+      @message_handler.clusters[{0_u16, Matter::Cluster::AccessControlCluster::CLUSTER_ID}] = @access_control
+      @message_handler.clusters[{0_u16, Matter::Cluster::GeneralCommissioningCluster::CLUSTER_ID}] = @general_commissioning
+      @message_handler.clusters[{0_u16, Matter::Cluster::OperationalCredentialsCluster::CLUSTER_ID}] = @operational_credentials
+      # Endpoint 1 clusters (On/Off Light device)
+      @message_handler.clusters[{1_u16, Matter::Cluster::OnOffCluster::CLUSTER_ID}] = @switch
+      @message_handler.clusters[{1_u16, Matter::Cluster::IdentifyCluster::CLUSTER_ID}] = @identify
+      @message_handler.clusters[{1_u16, Matter::Cluster::GroupsCluster::CLUSTER_ID}] = @groups
+      @message_handler.clusters[{1_u16, Matter::Cluster::ScenesCluster::CLUSTER_ID}] = @scenes
+
+      # Configure Descriptor cluster for endpoint 0 (Root Node)
+      # This tells controllers about the device structure
+      if descriptor_0 = @message_handler.clusters[{0_u16, Matter::Cluster::DescriptorCluster::CLUSTER_ID}]?.as?(Matter::Cluster::DescriptorCluster)
+        # Root Node device type
+        descriptor_0.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+          device_type: Matter::DeviceTypes::ROOT_NODE.to_u32,
+          revision: 1_u16
+        )
+        # Add endpoint 1 to parts list (child endpoints)
+        descriptor_0.add_part(1_u16)
+        # Add server clusters for endpoint 0
+        descriptor_0.server_list << Matter::Cluster::BasicInformationCluster::CLUSTER_ID
+        descriptor_0.server_list << Matter::Cluster::AccessControlCluster::CLUSTER_ID
+        descriptor_0.server_list << Matter::Cluster::GeneralCommissioningCluster::CLUSTER_ID
+        descriptor_0.server_list << Matter::Cluster::OperationalCredentialsCluster::CLUSTER_ID
+      end
+
+      # Create Descriptor cluster for endpoint 1 (On/Off Light)
+      # HomeKit requires this to identify the device type
+      descriptor_1 = Matter::Cluster::DescriptorCluster.new(endpoint)
+      # On/Off Light device type
+      descriptor_1.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+        device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+        revision: 2_u16
+      )
+      # Add all mandatory server clusters for On/Off Light device type
+      descriptor_1.server_list << Matter::Cluster::IdentifyCluster::CLUSTER_ID # 0x0003 - Mandatory
+      descriptor_1.server_list << Matter::Cluster::GroupsCluster::CLUSTER_ID   # 0x0004 - Mandatory
+      descriptor_1.server_list << Matter::Cluster::ScenesCluster::CLUSTER_ID   # 0x0005 - Mandatory
+      descriptor_1.server_list << Matter::Cluster::OnOffCluster::CLUSTER_ID    # 0x0006 - Mandatory
+      @message_handler.clusters[{1_u16, Matter::Cluster::DescriptorCluster::CLUSTER_ID}] = descriptor_1
 
       # Configure session lookup callback for attestation signature generation
       # This allows the OperationalCredentials cluster to access the session's attestation_challenge
@@ -282,6 +338,13 @@ module MatterSwitch
       #       general_commissioning_cluster is passed to OperationalCredentialsCluster
       @operational_credentials.on_fabric_added = ->(fabric : Matter::Fabric) {
         handle_fabric_added(fabric)
+      }
+
+      # Configure failsafe armed callback to reset OperationalCredentials state
+      # When a new failsafe is armed (new commissioning session), we need to reset
+      # OperationalCredentials failsafe context to avoid "Cannot generate CSR after AddNOC"
+      @general_commissioning.on_failsafe_armed = -> {
+        @operational_credentials.on_failsafe_armed
       }
 
       # Create mDNS responder

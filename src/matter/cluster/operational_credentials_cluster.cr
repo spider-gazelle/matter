@@ -299,6 +299,13 @@ module Matter
       property session_id : UInt64?
       property session_fabric_index : UInt8?
       property failsafe_armed : Bool
+
+      # Alias for session_fabric_index to match base Cluster interface
+      # The base Cluster.invoke_command sets fabric_index= from the session
+      def fabric_index=(value : UInt8?)
+        @session_fabric_index = value
+      end
+
       property session_lookup : Proc(UInt64, Bytes?)?
       property on_fabric_added : Proc(Fabric, Nil)?
       property general_commissioning_cluster : GeneralCommissioningCluster?
@@ -865,7 +872,8 @@ module Matter
 
         # Get session fabric index from instance variable or request
         # NOTE: @session_fabric_index should be set by protocol layer
-        fabric_idx = @session_fabric_index || request.fabric_index.index
+        # Per Matter spec, fabric_index in command is optional - use session context if not provided
+        fabric_idx = @session_fabric_index || request.fabric_index.try(&.index)
 
         unless fabric_idx
           return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Invalid fabric index")
@@ -1014,6 +1022,16 @@ module Matter
 
       # Failsafe timer disarmed successfully - commit changes
       def on_failsafe_success
+        @failsafe_context.reset
+        @pending_noc_key = nil
+      end
+
+      # New failsafe armed - reset context for new commissioning session
+      # This is called by GeneralCommissioning when a new failsafe is created.
+      # It ensures that state from a previous commissioning session (like noc_added_or_updated)
+      # doesn't interfere with the new session.
+      def on_failsafe_armed
+        Log.info { "Resetting failsafe context for new commissioning session" }
         @failsafe_context.reset
         @pending_noc_key = nil
       end

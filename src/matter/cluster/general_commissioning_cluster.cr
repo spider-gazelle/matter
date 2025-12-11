@@ -178,6 +178,11 @@ module Matter
       # Callback to clear all PASE sessions after successful commissioning
       property on_clear_pase_sessions : (Proc(Nil))? = nil
 
+      # Callback to reset OperationalCredentials failsafe context when a new failsafe is armed
+      # This is necessary because the OperationalCredentials cluster has its own failsafe state
+      # tracking (noc_added_or_updated, etc.) that must be reset for each new commissioning session
+      property on_failsafe_armed : (Proc(Nil))? = nil
+
       # ========================================================================
       # Initialization
       # ========================================================================
@@ -466,6 +471,13 @@ module Matter
           )
           @admin_fabric_index = session_fabric_index
           @breadcrumb = request.breadcrumb
+
+          # Notify OperationalCredentials cluster to reset its failsafe state
+          # This is critical for proper handling of subsequent CSR/NOC operations
+          if callback = @on_failsafe_armed
+            callback.call
+          end
+
           Log.info { "Armed new failsafe" }
         end
 

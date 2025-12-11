@@ -363,6 +363,7 @@ module Matter
         end
 
         # Input to the OperationalCredentials updateFabricLabel command
+        # Note: fabric_index is optional - if not provided, it should be taken from the session context
         struct UpdateFabricLabelRequest
           include TLV::Serializable
 
@@ -370,7 +371,7 @@ module Matter
           property label : String
 
           @[TLV::Field(tag: 254)]
-          property fabric_index : DataType::FabricIndex
+          property fabric_index : DataType::FabricIndex?
         end
 
         # Input to the OperationalCredentials removeFabric command
