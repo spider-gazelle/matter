@@ -164,10 +164,76 @@ module MatterSwitch
     end
   end
 
+  # Session storage for persisting CASE sessions across restarts
+  # This allows controllers to reconnect without re-establishing CASE
+  class SessionStorage
+    property sessions : Hash(UInt16, Matter::Session::SecureContext)
+
+    def initialize
+      @sessions = {} of UInt16 => Matter::Session::SecureContext
+    end
+
+    def self.load(path : String) : SessionStorage
+      storage = new
+      if File.exists?(path)
+        json = File.read(path)
+        data = Hash(String, Hash(String, String | Int64 | Bool)).from_json(json)
+        data.each do |session_id_str, session_data|
+          # Convert to proper hash types for SecureContext.from_h
+          session_hash = {} of String => (String | UInt64 | UInt32 | UInt16 | UInt8 | Int64 | Bool)
+          session_data.each do |key, value|
+            session_hash[key] = value
+          end
+          session = Matter::Session::SecureContext.from_h(session_hash)
+          # Only restore CASE sessions (skip PASE sessions which are ephemeral)
+          if session.is_case
+            storage.sessions[session.session_id] = session
+            puts "   📡 Restored session #{session.session_id} (peer: #{session.peer_session_id})"
+          end
+        end
+      end
+      storage
+    rescue ex
+      puts "⚠️  Failed to load sessions: #{ex.message}"
+      new
+    end
+
+    def save(path : String)
+      # Only save CASE sessions (PASE sessions are ephemeral)
+      data = {} of String => Hash(String, String | UInt64 | UInt32 | UInt16 | UInt8 | Int64 | Bool)
+      @sessions.each do |session_id, session|
+        next unless session.is_case
+        data[session_id.to_s] = session.to_h
+      end
+      File.write(path, data.to_pretty_json)
+    end
+
+    def add_session(session : Matter::Session::SecureContext)
+      @sessions[session.session_id] = session
+    end
+
+    def get(session_id : UInt16) : Matter::Session::SecureContext?
+      @sessions[session_id]?
+    end
+
+    def empty?
+      @sessions.empty?
+    end
+
+    def size
+      @sessions.size
+    end
+
+    def each(&)
+      @sessions.each { |k, v| yield k, v }
+    end
+  end
+
   # Main device class
   class Device
-    STATE_FILE  = "matter_switch_state.json"
-    FABRIC_FILE = "matter_switch_fabrics.json"
+    STATE_FILE   = "matter_switch_state.json"
+    FABRIC_FILE  = "matter_switch_fabrics.json"
+    SESSION_FILE = "matter_switch_sessions.json"
 
     property state : DeviceState
     property switch : Matter::Cluster::OnOffCluster
@@ -187,6 +253,7 @@ module MatterSwitch
     property scenes_management : Matter::Cluster::ScenesManagementCluster
     property responder : Matter::MDNS::Responder
     property fabric_storage : FabricStorage
+    property session_storage : SessionStorage
     property fabric_table : Matter::FabricTable
     property hostname : String
     property ip_addresses : Array(Socket::IPAddress)
@@ -200,6 +267,7 @@ module MatterSwitch
       @state = DeviceState.load(STATE_FILE)
       @ip_addresses = get_local_ips
       @fabric_storage = FabricStorage.load(FABRIC_FILE)
+      @session_storage = SessionStorage.load(SESSION_FILE)
 
       # Create Basic Information cluster on endpoint 0 (required for root node)
       # NOTE: nodeLabel and productLabel are what iOS Home app reads for device name
@@ -351,6 +419,25 @@ module MatterSwitch
         else
           puts "session_lookup: Session #{session_id} not found in #{sessions.keys.inspect}"
           nil
+        end
+      end
+
+      # Restore persisted sessions to the message handler
+      # This allows controllers to reconnect after device restart without CASE re-establishment
+      if !@session_storage.empty?
+        puts "📡 Restoring #{@session_storage.size} CASE session(s)..."
+        @session_storage.each do |session_id, session|
+          @message_handler.sessions[session_id] = session
+        end
+      end
+
+      # Set up callback to save sessions when new CASE sessions are established
+      session_storage = @session_storage
+      @message_handler.on_session_established = ->(session : Matter::Session::SecureContext) do
+        if session.is_case
+          puts "💾 Saving new CASE session #{session.session_id}"
+          session_storage.add_session(session)
+          session_storage.save(SESSION_FILE)
         end
       end
 
@@ -810,6 +897,7 @@ module MatterSwitch
         # Delete state files
         File.delete(STATE_FILE) if File.exists?(STATE_FILE)
         File.delete(FABRIC_FILE) if File.exists?(FABRIC_FILE)
+        File.delete(SESSION_FILE) if File.exists?(SESSION_FILE)
 
         puts "✅ Factory reset complete"
         puts "🔄 Please restart the application"
@@ -826,6 +914,15 @@ module MatterSwitch
       puts "📁 Saving state..."
       @state.save(STATE_FILE)
       @fabric_storage.save(FABRIC_FILE)
+
+      # Save all current CASE sessions for reconnection after restart
+      @message_handler.sessions.each do |session_id, session|
+        if session.is_case
+          @session_storage.add_session(session)
+        end
+      end
+      @session_storage.save(SESSION_FILE)
+      puts "   💾 Saved #{@session_storage.size} session(s)"
 
       puts "🛑 Stopping transport..."
       @transport.close

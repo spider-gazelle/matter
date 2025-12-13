@@ -114,6 +114,10 @@ module Matter
       # The device should use this to switch from commissioning to operational mDNS advertisement
       property on_commissioned : Proc(Fabric, Nil)?
 
+      # Session established callback - called when a new secure session is established (CASE or PASE)
+      # The device can use this to persist sessions for reconnection after restart
+      property on_session_established : Proc(Session::SecureContext, Nil)?
+
       # Mutex to ensure message processing is serialized
       # iPhone and other controllers may send multiple messages back-to-back,
       # and without synchronization, responses could get interleaved or state corrupted
@@ -1524,6 +1528,11 @@ module Matter
 
           Log.info { "✅ CASE secure session established! Session ID: #{session_id}" }
           Log.info { "   Operational messages can now be encrypted/decrypted" }
+
+          # Notify device of new session (for persistence)
+          if callback = @on_session_established
+            callback.call(secure_context)
+          end
 
           # Send StatusReport to confirm session establishment
           # Like PASE, this is sent unsecured as part of the CASE handshake
