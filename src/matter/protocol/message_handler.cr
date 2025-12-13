@@ -92,6 +92,20 @@ module Matter
 
       @pending_subscriptions : Hash(UInt16, PendingSubscription) = {} of UInt16 => PendingSubscription
 
+      # Pending read responses - keyed by exchange_id
+      # For chunked ReadResponses, we wait for StatusResponse/ACK before sending next chunk
+      class PendingReadResponse
+        property peer : Socket::IPAddress
+        property session : Session::SecureContext
+        property original_msg : Codec::MessageCodec::Message
+        property remaining_chunks : Array(Tuple(Bytes, Bool))
+
+        def initialize(@peer, @session, @original_msg, @remaining_chunks = [] of Tuple(Bytes, Bool))
+        end
+      end
+
+      @pending_read_responses : Hash(UInt16, PendingReadResponse) = {} of UInt16 => PendingReadResponse
+
       # Fabric access callback - set by the device implementation
       # This allows the message handler to access fabric data for CASE
       property on_get_fabric : Proc(Fabric?)?
@@ -162,9 +176,12 @@ module Matter
         @clusters[{0_u16, 0x0030_u32}] = general_commissioning
 
         # Operational Credentials cluster (0x003E) - required on endpoint 0 for commissioning
+        # NOTE: We do NOT call set_attestation_from_manager here because:
+        # 1. The device application should set up its own attestation credentials
+        # 2. Calling it here AND in the device causes double DAC keypair generation
+        # 3. The device example overwrites these clusters anyway
+        # The device application must call set_attestation_from_manager or set_attestation_credentials
         operational_creds = Cluster::OperationalCredentialsCluster.new(@fabric_table, endpoint_0)
-        # Set up attestation credentials from certificate manager (generates DAC/PAI)
-        operational_creds.set_attestation_from_manager(@vendor_id, @product_id)
 
         # Set up session_lookup callback so the cluster can get attestation challenge from sessions
         # This is CRITICAL for attestation signature verification - per Matter spec,
@@ -194,7 +211,7 @@ module Matter
         @clusters[{0_u16, 0x003E_u32}] = operational_creds
         @operational_credentials_cluster = operational_creds
 
-        Log.info { "Initialized #{@clusters.size} clusters" }
+        Log.debug { "MessageHandler initialized with #{@clusters.size} default clusters (device may add more)" }
       end
 
       # Main message routing entry point
@@ -421,10 +438,44 @@ module Matter
             # Error - subscription failed
             Log.error { "StatusResponse error for subscription #{pending.subscription_id}, aborting subscription" }
           end
+          # Check if this StatusResponse is for a pending read response
+        elsif pending_read = @pending_read_responses.delete(exchange_id)
+          if status_code == 0
+            # Success - check if there are more chunks to send
+            if !pending_read.remaining_chunks.empty?
+              # Send next chunk
+              next_chunk, is_last = pending_read.remaining_chunks.shift
+              Log.info { "StatusResponse received for read response, sending next chunk (#{pending_read.remaining_chunks.size} remaining)" }
+
+              # Send next ReportData chunk
+              send_im_response(
+                original_msg: original_msg,
+                peer: pending_read.peer,
+                session: pending_read.session,
+                message_type: 0x05_u8, # ReportData
+                payload: next_chunk
+              )
+
+              # Put pending read back to wait for next StatusResponse
+              if !pending_read.remaining_chunks.empty?
+                @pending_read_responses[exchange_id] = pending_read
+                Log.info { "Sent ReportData chunk, waiting for StatusResponse" }
+              else
+                Log.info { "Sent final ReportData chunk for read response" }
+              end
+            else
+              # All chunks already sent - nothing more to do for read responses
+              Log.info { "StatusResponse received for read response, all chunks sent" }
+            end
+          else
+            # Error - read failed
+            Log.error { "StatusResponse error for read response, aborting" }
+          end
         end
       end
 
       # Handle ReadRequest - parse, read attributes, encode response, encrypt and send
+      # Uses chunking for large responses to stay within UDP MTU limits
       private def handle_read_request(
         decrypted : Bytes,
         original_msg : Codec::MessageCodec::Message,
@@ -447,20 +498,38 @@ module Matter
 
         Log.info { "ReadResponse: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
 
-        # Encode ReadResponse as TLV
-        response_tlv = IMHandler.encode_read_response(response)
-        Log.debug { "Encoded ReadResponse TLV (#{response_tlv.size} bytes): #{response_tlv.hexstring}" }
+        # Encode ReadResponse as TLV with chunking (no subscription_id for regular reads)
+        chunks = IMHandler.encode_chunked_report_data(response, nil)
+        Log.info { "Chunked ReadResponse into #{chunks.size} chunk(s)" }
 
-        # Send encrypted IM response
+        # Get first chunk to send
+        first_chunk, is_last = chunks.first
+        remaining_chunks = chunks.size > 1 ? chunks[1..] : [] of Tuple(Bytes, Bool)
+
+        Log.debug { "Sending first chunk (#{first_chunk.size} bytes), #{remaining_chunks.size} remaining, is_last=#{is_last}" }
+
+        # Send first ReportData chunk
         send_im_response(
           original_msg: original_msg,
           peer: peer,
           session: session,
-          message_type: 0x05_u8, # ReportData (ReadResponse)
-          payload: response_tlv
+          message_type: 0x05_u8, # ReportData
+          payload: first_chunk
         )
 
-        Log.info { "Sent ReadResponse" }
+        Log.info { "Sent ReadResponse chunk 1/#{chunks.size}" }
+
+        # If there are more chunks, store pending read response
+        if !remaining_chunks.empty?
+          exchange_id = original_msg.payload_header.exchange_id
+          @pending_read_responses[exchange_id] = PendingReadResponse.new(
+            peer: peer,
+            session: session,
+            original_msg: original_msg,
+            remaining_chunks: remaining_chunks
+          )
+          Log.info { "Waiting for StatusResponse/ACK on exchange #{exchange_id} (#{remaining_chunks.size} chunks remaining)" }
+        end
       rescue ex
         Log.error(exception: ex) { "Error handling ReadRequest: #{ex.message}" }
       end
@@ -660,16 +729,17 @@ module Matter
         security_flags = 0_u8
         security_flags |= Codec::MessageCodec::SessionType::Unicast.value # Bits 1-0
 
-        # For PASE sessions, we must explicitly set source_node_id to NodeId(0)
-        # matter.js always includes source_node_id in packet headers, using UNSPECIFIED_NODE_ID (0) for PASE
-        # If we leave it as nil, the HasSourceNodeId flag won't be set and the 8-byte field won't be encoded,
-        # creating a mismatch between AAD and nonce that causes chip-tool's decryption to fail
+        # Determine response source node ID
+        # For PASE sessions, this will be nil (no node IDs in header)
+        # For CASE sessions, we use the actual node IDs from the session
+        # IMPORTANT: Use nil when there's no node ID, not NodeId(0)
+        # Presence is determined by nil-ness in compute_flags/encode_packet_header
         response_source_node_id = if original_msg.packet_header.destination_node_id
                                     original_msg.packet_header.destination_node_id
                                   elsif session.local_node_id
                                     session.local_node_id
                                   else
-                                    DataType::NodeId.new(0_u64) # PASE uses UNSPECIFIED_NODE_ID
+                                    nil # PASE: no node ID in header
                                   end
 
         # Compute the flags byte for the packet header (swapping source/dest from request)
@@ -794,7 +864,7 @@ module Matter
 
         # VERIFY: Log the actual bytes being sent on the wire
         Log.info { "📤 Sending UDP packet (#{udp_packet.size} bytes):" }
-        Log.info { "   Header (AAD, 8 bytes): #{packet_header_bytes.hexstring}" }
+        Log.info { "   Header (AAD, #{packet_header_bytes.size} bytes): #{packet_header_bytes.hexstring}" }
         Log.info { "   Encrypted (first 64): #{encrypted[0, [64, encrypted.size].min].hexstring}" }
 
         # Send raw UDP packet
@@ -1082,9 +1152,10 @@ module Matter
           Log.debug { "  Acknowledging message ID: #{ack_msg_id}" }
         end
 
+        exchange_id = msg.payload_header.exchange_id
+
         # Check if this ACK is for a pending subscription with remaining chunks
         # iPhone sends StandaloneAck (instead of StatusResponse) to acknowledge intermediate ReportData chunks
-        exchange_id = msg.payload_header.exchange_id
         if pending = @pending_subscriptions[exchange_id]?
           if !pending.remaining_chunks.empty?
             # Send next chunk
@@ -1128,6 +1199,35 @@ module Matter
             )
 
             Log.info { "Sent SubscribeResponse for subscription #{pending.subscription_id}, maxInterval=#{pending.max_interval}s" }
+          end
+          # Check if this ACK is for a pending read response with remaining chunks
+        elsif pending_read = @pending_read_responses[exchange_id]?
+          if !pending_read.remaining_chunks.empty?
+            # Send next chunk
+            next_chunk, is_last = pending_read.remaining_chunks.shift
+            Log.info { "StandaloneAck received for read response, sending next chunk (#{pending_read.remaining_chunks.size} remaining)" }
+
+            # Send next ReportData chunk
+            send_im_response(
+              original_msg: pending_read.original_msg,
+              peer: pending_read.peer,
+              session: pending_read.session,
+              message_type: 0x05_u8, # ReportData
+              payload: next_chunk
+            )
+
+            # If there are more chunks, keep waiting
+            if pending_read.remaining_chunks.empty?
+              # Last chunk sent, remove from pending
+              @pending_read_responses.delete(exchange_id)
+              Log.info { "Sent final ReportData chunk for read response" }
+            else
+              Log.info { "Sent ReportData chunk, waiting for ACK/StatusResponse" }
+            end
+          else
+            # All chunks were sent, remove from pending
+            @pending_read_responses.delete(exchange_id)
+            Log.info { "StandaloneAck received after final chunk for read response" }
           end
         end
       end
@@ -1375,6 +1475,7 @@ module Matter
 
           Log.debug { "  Derived encryption key (R2I): #{keys[:encryption].hexstring}" }
           Log.debug { "  Derived decryption key (I2R): #{keys[:decryption].hexstring}" }
+          Log.debug { "  Derived attestation challenge: #{keys[:attestation_challenge].hexstring}" }
 
           # Create secure session context using stored session IDs from Sigma1/Sigma2 exchange
           session_id = @case_responder_session_id
@@ -1410,7 +1511,8 @@ module Matter
             session_type: Session::SessionType::Unicast,
             encryption_key: keys[:encryption],
             decryption_key: keys[:decryption],
-            is_initiator: false, # We're the responder
+            attestation_challenge: keys[:attestation_challenge], # CRITICAL for attestation signatures
+            is_initiator: false,                                 # We're the responder
             local_node_id: DataType::NodeId.new(fabric.node_id),
             peer_node_id: peer_node_id_value ? DataType::NodeId.new(peer_node_id_value) : nil,
             is_case: true,

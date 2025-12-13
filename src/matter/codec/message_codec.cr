@@ -82,17 +82,25 @@ module Matter
 
         # Helper method to compute the flags byte from packet header fields
         # This is used both when encoding and when creating new packet headers
+        #
+        # Presence is determined by nil-ness, NOT by the node ID value.
+        # Callers should pass nil when there's no node ID (e.g., PASE sessions),
+        # not NodeId(0). This ensures consistent AAD computation across the codebase.
         def compute_flags(
           source_node_id : DataType::NodeId?,
           destination_node_id : DataType::NodeId?,
           destination_group_id : DataType::GroupId?,
         ) : UInt8
-          Log.debug { "compute_flags called: source=#{source_node_id.inspect}, dest=#{destination_node_id.inspect}, group=#{destination_group_id.inspect}" }
           flags = (HEADER_VERSION << 4).to_u8
-          flags |= PacketHeaderFlag::HasSourceNodeId.value unless source_node_id.nil?
-          flags |= PacketHeaderFlag::HasDestNodeId.value unless destination_node_id.nil?
+
+          # Presence is based on nil-ness, not the ID value
+          source_present = !source_node_id.nil?
+          dest_present = !destination_node_id.nil?
+
+          flags |= PacketHeaderFlag::HasSourceNodeId.value if source_present
+          flags |= PacketHeaderFlag::HasDestNodeId.value if dest_present
           flags |= PacketHeaderFlag::HasDestGroupId.value unless destination_group_id.nil?
-          Log.debug { "compute_flags result: 0x#{flags.to_s(16)}, source_nil?=#{source_node_id.nil?}, dest_nil?=#{destination_node_id.nil?}" }
+          Log.debug { "compute_flags: source=#{source_node_id.try(&.id) || "nil"}, dest=#{destination_node_id.try(&.id) || "nil"} -> flags=0x#{flags.to_s(16)}" }
           flags
         end
 
@@ -146,9 +154,13 @@ module Matter
           byte_format.encode(UInt8.new(security_flags), io)
           byte_format.encode(UInt32.new(packet_header.message_id), io)
 
-          Log.debug { "encode_packet_header: source_node_id=#{packet_header.source_node_id.inspect}, nil?=#{packet_header.source_node_id.nil?}" }
-          byte_format.encode(UInt64.new(packet_header.source_node_id.not_nil!.id), io) unless packet_header.source_node_id.nil?
-          byte_format.encode(UInt64.new(packet_header.destination_node_id.not_nil!.id), io) unless packet_header.destination_node_id.nil?
+          # Presence is based on nil-ness, not the ID value
+          # This must match the logic in compute_flags for consistent AAD
+          source_node_id = packet_header.source_node_id
+          dest_node_id = packet_header.destination_node_id
+
+          byte_format.encode(UInt64.new(source_node_id.not_nil!.id), io) unless source_node_id.nil?
+          byte_format.encode(UInt64.new(dest_node_id.not_nil!.id), io) unless dest_node_id.nil?
           byte_format.encode(UInt32.new(packet_header.destination_group_id.not_nil!.id), io) unless packet_header.destination_group_id.nil?
         end
 

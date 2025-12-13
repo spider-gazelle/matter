@@ -115,19 +115,19 @@ module Matter
           if value = @measured_value
             encode_int16(value)
           else
-            Bytes[0xFF, 0xFF] # Null value for Int16
+            encode_null
           end
         when ATTR_MIN_MEASURED_VALUE
           if value = @min_measured_value
             encode_int16(value)
           else
-            Bytes[0xFF, 0xFF] # Null value
+            encode_null
           end
         when ATTR_MAX_MEASURED_VALUE
           if value = @max_measured_value
             encode_int16(value)
           else
-            Bytes[0xFF, 0xFF] # Null value
+            encode_null
           end
         when ATTR_TOLERANCE
           if tolerance = @tolerance
@@ -215,16 +215,15 @@ module Matter
         from_kilopascals(value / 0.2953)
       end
 
-      private def encode_int16(value : Int16) : Bytes
-        bytes = Bytes.new(2)
-        IO::ByteFormat::LittleEndian.encode(value, bytes)
-        bytes
-      end
+      # NOTE: encode_uint16 inherited from Base class with proper TLV encoding
+      # Do NOT override with raw byte encoding
 
-      private def encode_uint16(value : UInt16) : Bytes
-        bytes = Bytes.new(2)
-        IO::ByteFormat::LittleEndian.encode(value, bytes)
-        bytes
+      # encode_int16 uses TLV encoding for attribute responses
+      private def encode_int16(value : Int16) : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, value)
+        io.rewind.to_slice
       end
     end
   end

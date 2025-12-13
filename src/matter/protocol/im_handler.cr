@@ -157,9 +157,26 @@ module Matter
 
               # If attribute is wildcard, read all attributes from this cluster
               if path.attribute.nil?
+                # Track which attributes we've added to avoid duplicates
+                added_attrs = Set(UInt32).new
+
                 # Get all attribute IDs from cluster metadata
                 cluster.attributes.each do |attr_meta|
                   expanded_paths << {endpoint_id, cluster_id, attr_meta.id.id}
+                  added_attrs << attr_meta.id.id
+                end
+
+                # Also include global attributes (required on all clusters) if not already added
+                [
+                  Cluster::Base::GLOBAL_GENERATED_COMMAND_LIST,
+                  Cluster::Base::GLOBAL_ACCEPTED_COMMAND_LIST,
+                  Cluster::Base::GLOBAL_ATTRIBUTE_LIST,
+                  Cluster::Base::GLOBAL_FEATURE_MAP,
+                  Cluster::Base::GLOBAL_CLUSTER_REVISION,
+                ].each do |global_attr|
+                  unless added_attrs.includes?(global_attr)
+                    expanded_paths << {endpoint_id, cluster_id, global_attr}
+                  end
                 end
               else
                 # Specific attribute on wildcard endpoint/cluster
@@ -206,10 +223,12 @@ module Matter
           # Find cluster
           cluster = clusters[{endpoint_id, cluster_id}]?
           unless cluster
-            # Cluster not found - return NotFound status
+            # Cluster not found on this endpoint - return UnsupportedCluster status
+            # Per Matter spec, NotFound should only be used for missing endpoints,
+            # UnsupportedCluster is correct for missing clusters on a valid endpoint
             attribute_status << InteractionModel::AttributeStatus.new(
               path: path,
-              status: InteractionModel::Status.new(InteractionModel::StatusCode::NotFound)
+              status: InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCluster)
             )
             next
           end
@@ -246,16 +265,18 @@ module Matter
         writer = TLV::Writer.new(io)
 
         # Start root structure (anonymous) - ReportData/ReadResponse
+        # Per Matter spec ReportDataMessage tags:
+        #   Tag 0: SubscriptionId (optional)
+        #   Tag 1: AttributeReports (array)
+        #   Tag 2: EventReports (optional array)
+        #   Tag 3: MoreChunkedMessages (optional bool)
+        #   Tag 4: SuppressResponse (optional bool)
+        #   Tag 0xFF: InteractionModelRevision
         writer.start_structure(nil)
 
-        # Tag 1: suppressResponse (optional, defaults to false)
-        if response.suppress_response
-          writer.put(1_u8, true)
-        end
+        # Tag 0: subscriptionId (optional) - not included for regular reads
 
-        # Tag 1: subscriptionId (optional) - not implemented yet
-
-        # Tag 1: attributeReports (array) - matches matter.js structure
+        # Tag 1: attributeReports (array)
         writer.start_array(1_u8)
 
         response.attribute_reports.each_with_index do |report, idx|
@@ -265,11 +286,6 @@ module Matter
               Log.warn { "Skipping empty report #{idx}" }
               next
             end
-
-            # Parse attribute value
-            reader = TLV::Reader.new(report.value)
-            value_data = reader.get
-            actual_value = value_data.is_a?(Hash) && value_data.has_key?("Any") ? value_data["Any"] : value_data
 
             # Start AttributeReportIB
             writer.start_structure(nil)
@@ -281,19 +297,29 @@ module Matter
             writer.put(0_u8, report.data_version)
 
             # Tag 1: path (using PATH container!)
+            # IMPORTANT: Response paths MUST always have concrete endpoint/cluster/attribute
+            # Missing fields cause iOS Home to show "Not Supported"
+            ep = report.path.endpoint
+            cl = report.path.cluster
+            at = report.path.attribute
+            unless ep && cl && at
+              Log.error { "Skipping report #{idx} with incomplete path: endpoint=#{ep}, cluster=#{cl}, attribute=#{at}" }
+              next
+            end
+
             writer.start_path(1_u8)
-            writer.put(2_u8, report.path.endpoint.not_nil!) if report.path.endpoint
-            writer.put(3_u8, report.path.cluster.not_nil!) if report.path.cluster
-            writer.put(4_u8, report.path.attribute.not_nil!) if report.path.attribute
+            writer.put(2_u8, ep)
+            writer.put(3_u8, cl)
+            writer.put(4_u8, at)
             writer.end_container # End path
 
-            # Tag 2: data
-            writer.put(2_u8, actual_value)
+            # Tag 2: data - use raw bytes to preserve exact TLV encoding (integer widths)
+            writer.put_raw_element(2_u8, report.value)
 
             writer.end_container # End AttributeDataIB
             writer.end_container # End AttributeReportIB
 
-            Log.debug { "Encoded attribute report #{idx}: endpoint=#{report.path.endpoint}, cluster=0x#{report.path.cluster.try(&.to_s(16))}, attr=#{report.path.attribute}" }
+            Log.debug { "Encoded attribute report #{idx}: endpoint=#{ep}, cluster=0x#{cl.to_s(16)}, attr=0x#{at.to_s(16)}" }
           rescue ex
             Log.error { "Failed to encode report #{idx}: #{ex.message}" }
           end
@@ -309,10 +335,19 @@ module Matter
             writer.start_structure(0_u8)
 
             # Tag 0: path (using PATH container!)
+            # IMPORTANT: Response paths MUST always have concrete endpoint/cluster/attribute
+            ep = status.path.endpoint
+            cl = status.path.cluster
+            at = status.path.attribute
+            unless ep && cl && at
+              Log.error { "Skipping status #{idx} with incomplete path: endpoint=#{ep}, cluster=#{cl}, attribute=#{at}" }
+              next
+            end
+
             writer.start_path(0_u8)
-            writer.put(2_u8, status.path.endpoint.not_nil!) if status.path.endpoint
-            writer.put(3_u8, status.path.cluster.not_nil!) if status.path.cluster
-            writer.put(4_u8, status.path.attribute.not_nil!) if status.path.attribute
+            writer.put(2_u8, ep)
+            writer.put(3_u8, cl)
+            writer.put(4_u8, at)
             writer.end_container # End path
 
             # Tag 1: status (StatusIB structure)
@@ -324,7 +359,7 @@ module Matter
             writer.end_container # End AttributeStatusIB
             writer.end_container # End AttributeReportIB
 
-            Log.debug { "Encoded attribute status #{idx}: endpoint=#{status.path.endpoint}, cluster=0x#{status.path.cluster.try(&.to_s(16))}, attr=#{status.path.attribute}, status=#{status.status.status}" }
+            Log.debug { "Encoded attribute status #{idx}: endpoint=#{ep}, cluster=0x#{cl.to_s(16)}, attr=0x#{at.to_s(16)}, status=#{status.status.status}" }
           rescue ex
             Log.error { "Failed to encode status #{idx}: #{ex.message}" }
           end
@@ -332,11 +367,17 @@ module Matter
 
         writer.end_container # End attributeReports array
 
-        # Tag 4: eventReports (array, optional) - not implemented yet
+        # Tag 2: eventReports (array, optional) - not implemented yet
 
-        # Tag 5: moreChunkedMessages (optional, defaults to false)
+        # Tag 3: moreChunkedMessages (optional, defaults to false)
+        # Per Matter spec: tag 3 = MoreChunkedMessages, tag 4 = SuppressResponse
         if response.more_chunks
-          writer.put(5_u8, true)
+          writer.put(3_u8, true)
+        end
+
+        # Tag 4: suppressResponse (optional, defaults to false)
+        if response.suppress_response
+          writer.put(4_u8, true)
         end
 
         # Tag 0xFF: interactionModelRevision (REQUIRED, Matter 1.3 = revision 12)
@@ -531,10 +572,11 @@ module Matter
           # Find cluster
           cluster = clusters[{endpoint_id, cluster_id}]?
           unless cluster
-            # Cluster not found on this endpoint
+            # Cluster not found on this endpoint - return UnsupportedCluster status
+            # Per Matter spec, NotFound should only be used for missing endpoints
             write_responses << InteractionModel::AttributeStatus.new(
               path: path,
-              status: InteractionModel::Status.new(InteractionModel::StatusCode::NotFound)
+              status: InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCluster)
             )
             next
           end
@@ -714,11 +756,6 @@ module Matter
               next
             end
 
-            # Parse attribute value
-            reader = TLV::Reader.new(report.value)
-            value_data = reader.get
-            actual_value = value_data.is_a?(Hash) && value_data.has_key?("Any") ? value_data["Any"] : value_data
-
             # Start AttributeReportIB
             writer.start_structure(nil)
 
@@ -729,19 +766,29 @@ module Matter
             writer.put(0_u8, report.data_version)
 
             # Tag 1: path (using PATH container!)
+            # IMPORTANT: Response paths MUST always have concrete endpoint/cluster/attribute
+            # Missing fields cause iOS Home to show "Not Supported"
+            ep = report.path.endpoint
+            cl = report.path.cluster
+            at = report.path.attribute
+            unless ep && cl && at
+              Log.error { "Skipping report #{idx} with incomplete path: endpoint=#{ep}, cluster=#{cl}, attribute=#{at}" }
+              next
+            end
+
             writer.start_path(1_u8)
-            writer.put(2_u8, report.path.endpoint.not_nil!) if report.path.endpoint
-            writer.put(3_u8, report.path.cluster.not_nil!) if report.path.cluster
-            writer.put(4_u8, report.path.attribute.not_nil!) if report.path.attribute
+            writer.put(2_u8, ep)
+            writer.put(3_u8, cl)
+            writer.put(4_u8, at)
             writer.end_container # End path
 
-            # Tag 2: data
-            writer.put(2_u8, actual_value)
+            # Tag 2: data - use raw bytes to preserve exact TLV encoding (integer widths)
+            writer.put_raw_element(2_u8, report.value)
 
             writer.end_container # End AttributeDataIB
             writer.end_container # End AttributeReportIB
 
-            Log.debug { "Encoded attribute report #{idx}: endpoint=#{report.path.endpoint}, cluster=0x#{report.path.cluster.try(&.to_s(16))}, attr=#{report.path.attribute}" }
+            Log.debug { "Encoded attribute report #{idx}: endpoint=#{ep}, cluster=0x#{cl.to_s(16)}, attr=0x#{at.to_s(16)}" }
           rescue ex
             Log.error { "Failed to encode report #{idx}: #{ex.message}" }
           end
@@ -779,13 +826,16 @@ module Matter
 
         writer.end_container # End attributeReports array
 
-        # Tag 3: suppressResponse (optional, for subscriptions - set to false to get ACK)
-        # Note: We don't suppress to ensure we get the ACK before sending SubscribeResponse
+        # Tag 2: eventReports (array, optional) - not implemented yet
 
-        # Tag 4: moreChunkedMessages (optional, defaults to false)
+        # Tag 3: moreChunkedMessages (optional, defaults to false)
+        # Per Matter spec: tag 3 = MoreChunkedMessages, tag 4 = SuppressResponse
         if response.more_chunks
-          writer.put(4_u8, true)
+          writer.put(3_u8, true)
         end
+
+        # Tag 4: suppressResponse (optional, for subscriptions - set to false to get ACK)
+        # Note: We don't suppress to ensure we get the ACK before sending SubscribeResponse
 
         # Tag 0xFF: interactionModelRevision (REQUIRED, Matter 1.3 = revision 12)
         writer.put(0xFF_u8, 12_u8)
@@ -805,13 +855,14 @@ module Matter
       private def self.encode_single_attribute_report(report : InteractionModel::AttributeData) : Bytes?
         return nil if report.value.empty?
 
+        # Response paths MUST have concrete endpoint/cluster/attribute
+        ep = report.path.endpoint
+        cl = report.path.cluster
+        at = report.path.attribute
+        return nil unless ep && cl && at
+
         io = IO::Memory.new
         writer = TLV::Writer.new(io)
-
-        # Parse attribute value
-        reader = TLV::Reader.new(report.value)
-        value_data = reader.get
-        actual_value = value_data.is_a?(Hash) && value_data.has_key?("Any") ? value_data["Any"] : value_data
 
         # Start AttributeReportIB
         writer.start_structure(nil)
@@ -824,13 +875,13 @@ module Matter
 
         # Tag 1: path (using PATH container!)
         writer.start_path(1_u8)
-        writer.put(2_u8, report.path.endpoint.not_nil!) if report.path.endpoint
-        writer.put(3_u8, report.path.cluster.not_nil!) if report.path.cluster
-        writer.put(4_u8, report.path.attribute.not_nil!) if report.path.attribute
+        writer.put(2_u8, ep)
+        writer.put(3_u8, cl)
+        writer.put(4_u8, at)
         writer.end_container # End path
 
-        # Tag 2: data
-        writer.put(2_u8, actual_value)
+        # Tag 2: data - use raw bytes to preserve exact TLV encoding (integer widths)
+        writer.put_raw_element(2_u8, report.value)
 
         writer.end_container # End AttributeDataIB
         writer.end_container # End AttributeReportIB
@@ -842,6 +893,11 @@ module Matter
 
       # Encode a single attribute status to TLV bytes (for size estimation)
       private def self.encode_single_attribute_status(status : InteractionModel::AttributeStatus) : Bytes
+        # Response paths MUST have concrete endpoint/cluster/attribute
+        ep = status.path.endpoint
+        cl = status.path.cluster
+        at = status.path.attribute
+
         io = IO::Memory.new
         writer = TLV::Writer.new(io)
 
@@ -853,9 +909,9 @@ module Matter
 
         # Tag 0: path (using PATH container!)
         writer.start_path(0_u8)
-        writer.put(2_u8, status.path.endpoint.not_nil!) if status.path.endpoint
-        writer.put(3_u8, status.path.cluster.not_nil!) if status.path.cluster
-        writer.put(4_u8, status.path.attribute.not_nil!) if status.path.attribute
+        writer.put(2_u8, ep) if ep
+        writer.put(3_u8, cl) if cl
+        writer.put(4_u8, at) if at
         writer.end_container # End path
 
         # Tag 1: status (StatusIB structure)
@@ -1027,14 +1083,23 @@ module Matter
 
         response.write_responses.each_with_index do |status, idx|
           begin
+            # Response paths MUST have concrete endpoint/cluster/attribute
+            ep = status.path.endpoint
+            cl = status.path.cluster
+            at = status.path.attribute
+            unless ep && cl && at
+              Log.error { "Skipping write status #{idx} with incomplete path: endpoint=#{ep}, cluster=#{cl}, attribute=#{at}" }
+              next
+            end
+
             # Start AttributeStatusIB
             writer.start_structure(nil)
 
             # Tag 0: path (using PATH container!)
             writer.start_path(0_u8)
-            writer.put(2_u8, status.path.endpoint.not_nil!) if status.path.endpoint
-            writer.put(3_u8, status.path.cluster.not_nil!) if status.path.cluster
-            writer.put(4_u8, status.path.attribute.not_nil!) if status.path.attribute
+            writer.put(2_u8, ep)
+            writer.put(3_u8, cl)
+            writer.put(4_u8, at)
             writer.end_container # End path
 
             # Tag 1: status (StatusIB structure)
@@ -1045,7 +1110,7 @@ module Matter
 
             writer.end_container # End AttributeStatusIB
 
-            Log.debug { "Encoded write status #{idx}: endpoint=#{status.path.endpoint}, cluster=0x#{status.path.cluster.try(&.to_s(16))}, attr=#{status.path.attribute}, status=#{status.status.status}" }
+            Log.debug { "Encoded write status #{idx}: endpoint=#{ep}, cluster=0x#{cl.to_s(16)}, attr=0x#{at.to_s(16)}, status=#{status.status.status}" }
           rescue ex
             Log.error { "Failed to encode write status #{idx}: #{ex.message}" }
           end
@@ -1214,11 +1279,11 @@ module Matter
           cluster = clusters[{endpoint_id, path.cluster}]?
 
           unless cluster
-            # Cluster not found
+            # Cluster not found on this endpoint - return UnsupportedCluster status
             Log.warn { "Cluster not found: endpoint=#{endpoint_id}, cluster=0x#{path.cluster.to_s(16)}" }
             invoke_status << InteractionModel::CommandStatus.new(
               path: path,
-              status: InteractionModel::Status.new(InteractionModel::StatusCode::NotFound)
+              status: InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCluster)
             )
             next
           end

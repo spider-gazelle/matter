@@ -157,9 +157,8 @@ module Matter
         ke, h_ay, h_bx = @protocol.compute_secret_and_verifiers_from_x(l, x, y)
 
         Log.debug { "  Shared secret Ke: SIZE=#{ke.size} bytes, hex=#{ke.hexstring}" }
-        if ke.size != 32
-          Log.error { "🚨 BUG: Ke should be 32 bytes but is #{ke.size} bytes!" }
-        end
+        # Note: Ke is correctly 16 bytes per SPAKE2+ spec (half of SHA-256 transcript hash)
+        # Session keys are derived via HKDF which expands Ke to the required 48 bytes
         Log.debug { "  Confirmation h_ay (cA, first 16 bytes): #{h_ay[0, 16].hexstring}" }
         Log.debug { "  Confirmation h_bx (cB, first 16 bytes): #{h_bx[0, 16].hexstring}" }
 

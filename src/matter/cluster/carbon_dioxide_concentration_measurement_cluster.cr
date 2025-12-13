@@ -407,16 +407,15 @@ module Matter
         @on_average_measured_value_changed = block
       end
 
-      private def encode_float(value : Float32) : Bytes
-        bytes = Bytes.new(4)
-        IO::ByteFormat::LittleEndian.encode(value, bytes)
-        bytes
-      end
+      # NOTE: encode_uint32 inherited from Base class with proper TLV encoding
+      # Do NOT override with raw byte encoding
 
-      private def encode_uint32(value : UInt32) : Bytes
-        bytes = Bytes.new(4)
-        IO::ByteFormat::LittleEndian.encode(value, bytes)
-        bytes
+      # encode_float uses TLV encoding for attribute responses
+      private def encode_float(value : Float32) : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, value)
+        io.rewind.to_slice
       end
     end
   end

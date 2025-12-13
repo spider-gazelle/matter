@@ -83,6 +83,7 @@ module Matter
       vendor_id : UInt16 = 0xFFF1_u16,
       label : String = "",
       intermediate_cert : Bytes? = nil,
+      root_cert : Bytes? = nil,
     ) : Fabric?
       # Find next available fabric index
       fabric_index = next_available_index
@@ -99,7 +100,8 @@ module Matter
         ipk: ipk,
         vendor_id: vendor_id,
         label: label,
-        intermediate_cert: intermediate_cert
+        intermediate_cert: intermediate_cert,
+        root_cert: root_cert
       )
 
       # Add fabric

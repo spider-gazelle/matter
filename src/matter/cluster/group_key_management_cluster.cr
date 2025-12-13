@@ -333,6 +333,105 @@ module Matter
         ]
       end
 
+      # Attribute IDs
+      ATTR_GROUP_KEY_MAP             = 0x0000_u32
+      ATTR_GROUP_TABLE               = 0x0001_u32
+      ATTR_MAX_GROUPS_PER_FABRIC     = 0x0002_u32
+      ATTR_MAX_GROUP_KEYS_PER_FABRIC = 0x0003_u32
+
+      # Global attributes
+      CLUSTER_REVISION = 0xFFFD_u32
+      FEATURE_MAP      = 0xFFFC_u32
+      ATTRIBUTE_LIST   = 0xFFFB_u32
+
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+        case attribute_id
+        when ATTR_GROUP_KEY_MAP
+          encode_group_key_map(fabric_index || 0_u8)
+        when ATTR_GROUP_TABLE
+          encode_group_table(fabric_index || 0_u8)
+        when ATTR_MAX_GROUPS_PER_FABRIC
+          encode_uint16(@max_groups_per_fabric)
+        when ATTR_MAX_GROUP_KEYS_PER_FABRIC
+          encode_uint16(@max_group_keys_per_fabric)
+        when CLUSTER_REVISION
+          encode_uint16(2_u16) # GroupKeyManagement cluster revision
+        when FEATURE_MAP
+          encode_uint32(@features.value)
+        when ATTRIBUTE_LIST
+          encode_attribute_list
+        else
+          super
+        end
+      end
+
+      private def encode_group_key_map(fabric_index : UInt8) : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        entries = group_key_map(fabric_index)
+
+        # Use explicit start_array/end_container to ensure empty arrays are properly encoded
+        # (writer.put produces 0 bytes for empty arrays, which is incorrect TLV)
+        writer.start_array(nil)
+        entries.each do |entry|
+          writer.start_structure(nil)
+          writer.put_unsigned_int(0_u8, entry.group_id)
+          writer.put_unsigned_int(1_u8, entry.group_key_set_id)
+          writer.put_unsigned_int(254_u8, entry.fabric_index)
+          writer.end_container
+        end
+        writer.end_container
+
+        io.to_slice
+      end
+
+      private def encode_group_table(fabric_index : UInt8) : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        entries = group_table(fabric_index)
+
+        # Use explicit start_array/end_container to ensure empty arrays are properly encoded
+        # (writer.put produces 0 bytes for empty arrays, which is incorrect TLV)
+        writer.start_array(nil)
+        entries.each do |entry|
+          writer.start_structure(nil)
+          writer.put_unsigned_int(1_u8, entry.group_id)
+          # Endpoints list
+          writer.start_array(2_u8)
+          entry.endpoints.each { |ep| writer.put_unsigned_int(nil, ep) }
+          writer.end_container
+          if name = entry.group_name
+            writer.put_string(3_u8, name)
+          end
+          writer.put_unsigned_int(254_u8, entry.fabric_index)
+          writer.end_container
+        end
+        writer.end_container
+
+        io.to_slice
+      end
+
+      private def encode_attribute_list : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        attr_ids = [
+          ATTR_GROUP_KEY_MAP,
+          ATTR_GROUP_TABLE,
+          ATTR_MAX_GROUPS_PER_FABRIC,
+          ATTR_MAX_GROUP_KEYS_PER_FABRIC,
+          CLUSTER_REVISION,
+          FEATURE_MAP,
+          ATTRIBUTE_LIST,
+        ]
+
+        attr_array = attr_ids.map { |id| id.as(TLV::Value) }
+        writer.put(nil, attr_array)
+        io.to_slice
+      end
+
       # Get group key map for the specified fabric
       def group_key_map(fabric_index : UInt8) : Array(GroupKeyMapStruct)
         @group_key_map.select { |entry| entry.fabric_index == fabric_index }

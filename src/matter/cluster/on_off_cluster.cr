@@ -40,8 +40,11 @@ module Matter
       CMD_ON_WITH_TIMED_OFF           = 0x42_u32 # Lighting feature
 
       # Global attributes
-      CLUSTER_REVISION = 0xFFFD_u32
-      FEATURE_MAP      = 0xFFFC_u32
+      CLUSTER_REVISION       = 0xFFFD_u32
+      FEATURE_MAP            = 0xFFFC_u32
+      ATTRIBUTE_LIST         = 0xFFFB_u32
+      ACCEPTED_COMMAND_LIST  = 0xFFF9_u32
+      GENERATED_COMMAND_LIST = 0xFFF8_u32
 
       # StartUpOnOff enum values
       enum StartUpOnOff : UInt8
@@ -100,6 +103,8 @@ module Matter
       end
 
       def attributes : Array(AttributeMetadata)
+        # Only cluster-specific attributes - global attributes (FeatureMap, ClusterRevision, etc.)
+        # are handled by the base class
         attrs = [
           # Base attribute - always present
           AttributeMetadata.new(
@@ -108,21 +113,6 @@ module Matter
             type: :bool,
             writable: false,
             default: encode_bool(false)
-          ),
-          # Global attributes
-          AttributeMetadata.new(
-            id: DataType::AttributeId.new(CLUSTER_REVISION),
-            name: "clusterRevision",
-            type: :uint16,
-            writable: false,
-            default: encode_uint16(6_u16) # Cluster revision 6
-          ),
-          AttributeMetadata.new(
-            id: DataType::AttributeId.new(FEATURE_MAP),
-            name: "featureMap",
-            type: :uint32,
-            writable: false,
-            default: encode_uint32(feature_map.value)
           ),
         ]
 
@@ -229,9 +219,88 @@ module Matter
           encode_uint32(feature_map.value)
         when CLUSTER_REVISION
           encode_uint16(6_u16)
+        when ATTRIBUTE_LIST
+          encode_attribute_list
+        when ACCEPTED_COMMAND_LIST
+          encode_accepted_command_list
+        when GENERATED_COMMAND_LIST
+          encode_generated_command_list
         else
           super
         end
+      end
+
+      # Encode list of supported attribute IDs as TLV array
+      private def encode_attribute_list : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        # Build list of supported attributes
+        attr_ids = [ATTR_ON_OFF]
+
+        # Lighting feature adds additional attributes
+        if feature_map.lighting?
+          attr_ids << ATTR_GLOBAL_SCENE_CONTROL
+          attr_ids << ATTR_ON_TIME
+          attr_ids << ATTR_OFF_WAIT_TIME
+          attr_ids << ATTR_START_UP_ON_OFF
+        end
+
+        # Global attributes (always present)
+        attr_ids << GENERATED_COMMAND_LIST
+        attr_ids << ACCEPTED_COMMAND_LIST
+        attr_ids << ATTRIBUTE_LIST
+        attr_ids << FEATURE_MAP
+        attr_ids << CLUSTER_REVISION
+
+        writer.start_array(nil)
+        attr_ids.each do |id|
+          writer.put_unsigned_int(nil, id, force_size: 4)
+        end
+        writer.end_container
+
+        io.to_slice
+      end
+
+      # Encode list of accepted command IDs as TLV array
+      private def encode_accepted_command_list : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        cmd_ids = [CMD_OFF]
+
+        # On and Toggle only available without OffOnly feature
+        unless feature_map.off_only?
+          cmd_ids << CMD_ON
+          cmd_ids << CMD_TOGGLE
+        end
+
+        # Lighting feature adds additional commands
+        if feature_map.lighting?
+          cmd_ids << CMD_OFF_WITH_EFFECT
+          cmd_ids << CMD_ON_WITH_RECALL_GLOBAL_SCENE
+          cmd_ids << CMD_ON_WITH_TIMED_OFF
+        end
+
+        writer.start_array(nil)
+        cmd_ids.each do |id|
+          writer.put_unsigned_int(nil, id, force_size: 4)
+        end
+        writer.end_container
+
+        io.to_slice
+      end
+
+      # Encode list of generated command IDs as TLV array (empty for OnOff)
+      private def encode_generated_command_list : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        # OnOff cluster doesn't generate any response commands
+        writer.start_array(nil)
+        writer.end_container
+
+        io.to_slice
       end
 
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status

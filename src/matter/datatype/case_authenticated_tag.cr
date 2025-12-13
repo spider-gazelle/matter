@@ -91,6 +91,22 @@ module Matter
       def to_u32 : UInt32
         value
       end
+
+      # Serialize to bytes (big-endian)
+      def to_slice : Bytes
+        io = IO::Memory.new
+        IO::ByteFormat::BigEndian.encode(@value, io)
+        io.to_slice
+      end
+
+      # Create from bytes (big-endian)
+      def initialize(slice : Bytes)
+        if slice.size < 4
+          raise ArgumentError.new("CaseAuthenticatedTag slice must be at least 4 bytes")
+        end
+        @value = IO::ByteFormat::BigEndian.decode(UInt32, slice)
+        validate!
+      end
     end
   end
 end

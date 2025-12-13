@@ -1,5 +1,19 @@
 require "../spec_helper"
 require "../../src/matter/cluster/network_commissioning_cluster"
+require "tlv"
+
+# Helper to decode TLV-encoded attribute value
+# Returns the actual value from the TLV-encoded bytes
+def decode_tlv_value(bytes : Bytes)
+  reader = TLV::Reader.new(bytes)
+  result = reader.get
+  # Anonymous TLV values are wrapped in {"Any" => value}
+  if result.is_a?(Hash) && result.has_key?("Any")
+    result["Any"]
+  else
+    result
+  end
+end
 
 describe Matter::Cluster::NetworkCommissioningCluster do
   describe "initialization" do
@@ -51,7 +65,9 @@ describe Matter::Cluster::NetworkCommissioningCluster do
 
       value = cluster.read_attribute(Matter::Cluster::NetworkCommissioningCluster::ATTR_MAX_NETWORKS)
       value.should be_a(Bytes)
-      value.as(Bytes).should eq(Bytes[1])
+      # Decode TLV to get actual value
+      decoded = decode_tlv_value(value.as(Bytes))
+      decoded.should eq(1_u8)
     end
 
     it "reads ScanMaxTimeSeconds attribute" do
@@ -63,7 +79,9 @@ describe Matter::Cluster::NetworkCommissioningCluster do
 
       value = cluster.read_attribute(Matter::Cluster::NetworkCommissioningCluster::ATTR_SCAN_MAX_TIME_SECONDS)
       value.should be_a(Bytes)
-      value.as(Bytes).should eq(Bytes[30])
+      # Decode TLV to get actual value
+      decoded = decode_tlv_value(value.as(Bytes))
+      decoded.should eq(30_u8)
     end
 
     it "reads ConnectMaxTimeSeconds attribute" do
@@ -75,7 +93,9 @@ describe Matter::Cluster::NetworkCommissioningCluster do
 
       value = cluster.read_attribute(Matter::Cluster::NetworkCommissioningCluster::ATTR_CONNECT_MAX_TIME_SECONDS)
       value.should be_a(Bytes)
-      value.as(Bytes).should eq(Bytes[60])
+      # Decode TLV to get actual value
+      decoded = decode_tlv_value(value.as(Bytes))
+      decoded.should eq(60_u8)
     end
 
     it "reads InterfaceEnabled attribute" do
@@ -87,7 +107,9 @@ describe Matter::Cluster::NetworkCommissioningCluster do
 
       value = cluster.read_attribute(Matter::Cluster::NetworkCommissioningCluster::ATTR_INTERFACE_ENABLED)
       value.should be_a(Bytes)
-      value.as(Bytes).should eq(Bytes[1])
+      # Decode TLV to get actual value (true = boolean)
+      decoded = decode_tlv_value(value.as(Bytes))
+      decoded.should eq(true)
     end
 
     it "writes InterfaceEnabled attribute" do

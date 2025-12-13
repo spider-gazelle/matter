@@ -54,6 +54,10 @@ module Matter
     # If present, forms a chain: Root CA -> ICA -> NOC
     property intermediate_cert : Bytes?
 
+    # Root CA certificate (RCAC) - the trust anchor certificate
+    # This is the full TLV-encoded certificate, not just the public key
+    property root_cert : Bytes?
+
     # Timestamp when this fabric was created (Unix epoch seconds)
     property created_at : Int64
 
@@ -77,6 +81,7 @@ module Matter
       @vendor_id : UInt16 = 0xFFF1_u16, # Default test vendor ID
       @label : String = "",
       @intermediate_cert : Bytes? = nil,
+      @root_cert : Bytes? = nil,
       @created_at : Int64 = Time.utc.to_unix,
       @last_used_at : Int64 = Time.utc.to_unix,
       @cats : Array(DataType::CaseAuthenticatedTag) = [] of DataType::CaseAuthenticatedTag,
@@ -140,6 +145,7 @@ module Matter
         "vendor_id"              => @vendor_id,
         "label"                  => @label,
         "intermediate_cert"      => @intermediate_cert ? Base64.strict_encode(@intermediate_cert.not_nil!) : "",
+        "root_cert"              => @root_cert ? Base64.strict_encode(@root_cert.not_nil!) : "",
         "created_at"             => @created_at,
         "last_used_at"           => @last_used_at,
         "cats"                   => cats_str,
@@ -153,6 +159,12 @@ module Matter
                           else
                             nil
                           end
+
+      root_cert = if rc = data["root_cert"]?.as?(String)
+                    rc.empty? ? nil : Base64.decode(rc)
+                  else
+                    nil
+                  end
 
       # Reconstruct operational key from private AND public bits
       # We store both to ensure the exact public key from commissioning is preserved
@@ -191,6 +203,7 @@ module Matter
         vendor_id: data["vendor_id"].as(UInt16 | Int32 | Int64).to_u16,
         label: data["label"].as(String),
         intermediate_cert: intermediate_cert,
+        root_cert: root_cert,
         created_at: data["created_at"].as(Int64),
         last_used_at: data["last_used_at"].as(Int64),
         cats: cats

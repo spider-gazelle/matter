@@ -127,7 +127,7 @@ describe Matter::Cluster::OccupancySensingCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::OccupancySensingCluster::ATTR_HOLD_TIME)
       bytes.should be_a(Bytes)
-      IO::ByteFormat::LittleEndian.decode(UInt16, bytes.as(Bytes)).should eq(60_u16)
+      decode_tlv_value(bytes.as(Bytes)).should eq(60)
     end
 
     it "returns unsupported for HoldTime when not set" do
@@ -145,14 +145,14 @@ describe Matter::Cluster::OccupancySensingCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::OccupancySensingCluster::ATTR_PIR_OCCUPIED_TO_UNOCCUPIED_DELAY)
       bytes.should be_a(Bytes)
-      IO::ByteFormat::LittleEndian.decode(UInt16, bytes.as(Bytes)).should eq(30_u16)
+      decode_tlv_value(bytes.as(Bytes)).should eq(30)
     end
 
     it "returns default value for PIROccupiedToUnoccupiedDelay when not explicitly set" do
       cluster = Matter::Cluster::OccupancySensingCluster.new(endpoint_id)
       bytes = cluster.read_attribute(Matter::Cluster::OccupancySensingCluster::ATTR_PIR_OCCUPIED_TO_UNOCCUPIED_DELAY)
       bytes.should be_a(Bytes)
-      IO::ByteFormat::LittleEndian.decode(UInt16, bytes.as(Bytes)).should eq(0_u16)
+      decode_tlv_value(bytes.as(Bytes)).should eq(0)
     end
 
     it "returns unsupported for PIROccupiedToUnoccupiedDelay when PIR feature disabled" do

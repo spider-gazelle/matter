@@ -126,9 +126,8 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
       result = cluster.read_attribute(0x0000_u32)
       result.should be_a(Bytes)
 
-      bytes = result.as(Bytes)
-      value = IO::ByteFormat::LittleEndian.decode(Int16, bytes)
-      value.should eq(2000_i16)
+      value = decode_tlv_value(result.as(Bytes))
+      value.should eq(2000)
     end
 
     it "reads MeasuredValue as null when not set" do
@@ -137,7 +136,7 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
 
       result = cluster.read_attribute(0x0000_u32)
       result.should be_a(Bytes)
-      result.as(Bytes).should eq(Bytes[0xFF]) # Null marker
+      decode_tlv_value(result.as(Bytes)).should be_nil
     end
 
     it "reads MinMeasuredValue attribute" do
@@ -150,9 +149,8 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
       result = cluster.read_attribute(0x0001_u32)
       result.should be_a(Bytes)
 
-      bytes = result.as(Bytes)
-      value = IO::ByteFormat::LittleEndian.decode(Int16, bytes)
-      value.should eq(-2000_i16)
+      value = decode_tlv_value(result.as(Bytes))
+      value.should eq(-2000)
     end
 
     it "reads MaxMeasuredValue attribute" do
@@ -165,9 +163,8 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
       result = cluster.read_attribute(0x0002_u32)
       result.should be_a(Bytes)
 
-      bytes = result.as(Bytes)
-      value = IO::ByteFormat::LittleEndian.decode(Int16, bytes)
-      value.should eq(12500_i16)
+      value = decode_tlv_value(result.as(Bytes))
+      value.should eq(12500)
     end
 
     it "reads Tolerance attribute when set" do
@@ -180,9 +177,8 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
       result = cluster.read_attribute(0x0003_u32)
       result.should be_a(Bytes)
 
-      bytes = result.as(Bytes)
-      value = IO::ByteFormat::LittleEndian.decode(UInt16, bytes)
-      value.should eq(100_u16)
+      value = decode_tlv_value(result.as(Bytes))
+      value.should eq(100)
     end
 
     it "returns unsupported for Tolerance when not set" do

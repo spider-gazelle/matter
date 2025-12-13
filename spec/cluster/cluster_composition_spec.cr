@@ -246,11 +246,8 @@ describe "Cluster Composition" do
       result = cluster.read_attribute(Matter::Cluster::WindowCoveringCluster::FEATURE_MAP)
       result.should be_a(Bytes)
 
-      bytes = result.as(Bytes)
-      feature_value = IO::ByteFormat::LittleEndian.decode(UInt32, bytes)
-
       # Tilt (0x02) | PositionAwareTilt (0x10) = 0x12
-      feature_value.should eq(0x12_u32)
+      decode_tlv_value(result.as(Bytes)).should eq(0x12)
     end
   end
 

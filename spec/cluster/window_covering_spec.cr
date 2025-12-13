@@ -193,7 +193,7 @@ describe Matter::Cluster::WindowCoveringCluster do
     it "reads type attribute" do
       result = cluster.read_attribute(Matter::Cluster::WindowCoveringCluster::ATTR_TYPE)
       result.should be_a(Bytes)
-      result.as(Bytes)[0].should eq(0_u8) # Rollershade
+      decode_tlv_value(result.as(Bytes)).should eq(0) # Rollershade
     end
 
     it "reads config status attribute" do
@@ -214,10 +214,8 @@ describe Matter::Cluster::WindowCoveringCluster do
     it "reads feature map" do
       result = cluster.read_attribute(Matter::Cluster::WindowCoveringCluster::FEATURE_MAP)
       result.should be_a(Bytes)
-      bytes = result.as(Bytes)
-      feature_value = IO::ByteFormat::LittleEndian.decode(UInt32, bytes)
       # Lift (0x01) | PositionAwareLift (0x04) = 0x05
-      feature_value.should eq(0x05_u32)
+      decode_tlv_value(result.as(Bytes)).should eq(0x05)
     end
   end
 end

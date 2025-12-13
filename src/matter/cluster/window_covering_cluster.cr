@@ -510,22 +510,8 @@ module Matter
         InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
       end
 
-      # Helper methods for encoding
-      private def encode_uint8(value : UInt8) : Bytes
-        Bytes[value]
-      end
-
-      private def encode_uint16(value : UInt16) : Bytes
-        bytes = Bytes.new(2)
-        IO::ByteFormat::LittleEndian.encode(value, bytes)
-        bytes
-      end
-
-      private def encode_uint32(value : UInt32) : Bytes
-        bytes = Bytes.new(4)
-        IO::ByteFormat::LittleEndian.encode(value, bytes)
-        bytes
-      end
+      # NOTE: encode_uint8, encode_uint16, encode_uint32 inherited from Base class
+      # with proper TLV encoding - do NOT override with raw byte encoding
     end
 
     # Backward compatibility alias

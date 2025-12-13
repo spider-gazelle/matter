@@ -653,7 +653,9 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         update_csr_request_tlv = create_csr_request_tlv(update_nonce, true) # is_for_update = true
         csr_result = cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
-          update_csr_request_tlv
+          update_csr_request_tlv,
+          session_id: 54321_u64,
+          fabric_index: initial_fabric_index
         )
 
         # Step 2: Update NOC with new certificate (same fabric_id)
@@ -669,7 +671,9 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         update_noc_tlv = create_update_noc_request_tlv(new_noc, nil, initial_fabric_index)
         result = cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_NOC,
-          update_noc_tlv
+          update_noc_tlv,
+          session_id: 54321_u64,
+          fabric_index: initial_fabric_index
         )
 
         result.should be_a(Matter::Cluster::CommandResponse)

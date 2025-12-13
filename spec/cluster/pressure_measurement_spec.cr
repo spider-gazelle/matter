@@ -94,15 +94,14 @@ describe Matter::Cluster::PressureMeasurementCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_MEASURED_VALUE)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).size.should eq(2)
-      IO::ByteFormat::LittleEndian.decode(Int16, bytes.as(Bytes)).should eq(1013_i16)
+      decode_tlv_value(bytes.as(Bytes)).should eq(1013)
     end
 
     it "reads MeasuredValue as null when not set" do
       cluster = Matter::Cluster::PressureMeasurementCluster.new(endpoint_id)
       bytes = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_MEASURED_VALUE)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[0xFF, 0xFF])
+      decode_tlv_value(bytes.as(Bytes)).should be_nil
     end
 
     it "reads MinMeasuredValue when set" do
@@ -112,14 +111,14 @@ describe Matter::Cluster::PressureMeasurementCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_MIN_MEASURED_VALUE)
       bytes.should be_a(Bytes)
-      IO::ByteFormat::LittleEndian.decode(Int16, bytes.as(Bytes)).should eq(800_i16)
+      decode_tlv_value(bytes.as(Bytes)).should eq(800)
     end
 
     it "reads MinMeasuredValue as null when not set" do
       cluster = Matter::Cluster::PressureMeasurementCluster.new(endpoint_id)
       bytes = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_MIN_MEASURED_VALUE)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[0xFF, 0xFF])
+      decode_tlv_value(bytes.as(Bytes)).should be_nil
     end
 
     it "reads MaxMeasuredValue when set" do
@@ -129,14 +128,14 @@ describe Matter::Cluster::PressureMeasurementCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_MAX_MEASURED_VALUE)
       bytes.should be_a(Bytes)
-      IO::ByteFormat::LittleEndian.decode(Int16, bytes.as(Bytes)).should eq(1200_i16)
+      decode_tlv_value(bytes.as(Bytes)).should eq(1200)
     end
 
     it "reads MaxMeasuredValue as null when not set" do
       cluster = Matter::Cluster::PressureMeasurementCluster.new(endpoint_id)
       bytes = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_MAX_MEASURED_VALUE)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[0xFF, 0xFF])
+      decode_tlv_value(bytes.as(Bytes)).should be_nil
     end
 
     it "reads Tolerance when set" do
@@ -146,7 +145,7 @@ describe Matter::Cluster::PressureMeasurementCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_TOLERANCE)
       bytes.should be_a(Bytes)
-      IO::ByteFormat::LittleEndian.decode(UInt16, bytes.as(Bytes)).should eq(10_u16)
+      decode_tlv_value(bytes.as(Bytes)).should eq(10)
     end
 
     it "returns unsupported for Tolerance when not set" do
@@ -393,7 +392,8 @@ describe Matter::Cluster::PressureMeasurementCluster do
 
       # Read attribute returns null
       bytes = sensor.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_MEASURED_VALUE)
-      bytes.should eq(Bytes[0xFF, 0xFF])
+      bytes.should be_a(Bytes)
+      decode_tlv_value(bytes.as(Bytes)).should be_nil
     end
 
     it "works with different pressure units" do

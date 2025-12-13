@@ -13,11 +13,19 @@ require "../src/matter/setup_payload"
 require "../src/matter/transport/udp_transport"
 require "../src/matter/codec/message_codec"
 require "../src/matter/protocol/message_handler"
+require "../src/matter/cluster/administrator_commissioning_cluster"
+require "../src/matter/cluster/general_diagnostics_cluster"
+require "../src/matter/cluster/network_commissioning_cluster"
+require "../src/matter/cluster/group_key_management_cluster"
+require "../src/matter/cluster/ota_requestor_cluster"
+require "../src/matter/cluster/diagnostic_logs_cluster"
+require "../src/matter/cluster/ethernet_network_diagnostics_cluster"
+require "../src/matter/cluster/scenes_management_cluster"
 
 # Matter Switch Device Example
 #
 # This is a complete Matter device implementation that:
-# - Presents as an On/Off Light Switch
+# - Presents as an On/Off Light (controllable light device)
 # - Persists state to JSON files
 # - Supports commissioning and operational modes
 # - Can reconnect after restart without recommissioning
@@ -165,11 +173,18 @@ module MatterSwitch
     property switch : Matter::Cluster::OnOffCluster
     property identify : Matter::Cluster::IdentifyCluster
     property groups : Matter::Cluster::GroupsCluster
-    property scenes : Matter::Cluster::ScenesCluster
     property basic_info : Matter::Cluster::BasicInformationCluster
     property general_commissioning : Matter::Cluster::GeneralCommissioningCluster
     property operational_credentials : Matter::Cluster::OperationalCredentialsCluster
     property access_control : Matter::Cluster::AccessControlCluster
+    property administrator_commissioning : Matter::Cluster::AdministratorCommissioningCluster
+    property general_diagnostics : Matter::Cluster::GeneralDiagnosticsCluster
+    property network_commissioning : Matter::Cluster::NetworkCommissioningCluster
+    property group_key_management : Matter::Cluster::GroupKeyManagementCluster
+    property ota_requestor : Matter::Cluster::OtaRequestorCluster
+    property diagnostic_logs : Matter::Cluster::DiagnosticLogsCluster
+    property ethernet_diagnostics : Matter::Cluster::EthernetNetworkDiagnosticsCluster
+    property scenes_management : Matter::Cluster::ScenesManagementCluster
     property responder : Matter::MDNS::Responder
     property fabric_storage : FabricStorage
     property fabric_table : Matter::FabricTable
@@ -178,8 +193,10 @@ module MatterSwitch
     property port : Int32
     property transport : Matter::Transport::UDPTransport
     property message_handler : Matter::Protocol::MessageHandler
+    property on_commissioned : Proc(Matter::Fabric, Nil)?
 
     def initialize(@hostname = "matter-switch.local", @port = 5540)
+      @on_commissioned = nil
       @state = DeviceState.load(STATE_FILE)
       @ip_addresses = get_local_ips
       @fabric_storage = FabricStorage.load(FABRIC_FILE)
@@ -201,7 +218,10 @@ module MatterSwitch
         software_version: 1_u32,
         software_version_string: "1.0.0",
         serial_number: @state.serial_number,
-        unique_id: @state.unique_id
+        unique_id: @state.unique_id,
+        product_appearance: Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.new(
+          Matter::Cluster::BasicInformationCluster::ProductFinish::Satin
+        )
       )
 
       # Create General Commissioning cluster on endpoint 0 (required for commissioning)
@@ -216,6 +236,37 @@ module MatterSwitch
 
       # Create Access Control cluster on endpoint 0 (required for ACL management)
       @access_control = Matter::Cluster::AccessControlCluster.new(root_endpoint)
+
+      # Create Administrator Commissioning cluster on endpoint 0 (required for Root Node)
+      # Handles commissioning window management (open/close/revoke)
+      @administrator_commissioning = Matter::Cluster::AdministratorCommissioningCluster.new(root_endpoint)
+
+      # Create General Diagnostics cluster on endpoint 0 (required for Root Node)
+      # Provides device health and network interface information
+      @general_diagnostics = Matter::Cluster::GeneralDiagnosticsCluster.new(root_endpoint)
+
+      # Create Network Commissioning cluster on endpoint 0 (required for Root Node)
+      # For Ethernet devices, advertise Ethernet interface feature
+      @network_commissioning = Matter::Cluster::NetworkCommissioningCluster.new(
+        root_endpoint,
+        network_type: Matter::Cluster::NetworkCommissioningCluster::NetworkType::Ethernet,
+        feature_map: Matter::Cluster::NetworkCommissioningCluster::Feature::EthernetNetworkInterface
+      )
+
+      # Create Group Key Management cluster on endpoint 0 (MANDATORY for Root Node)
+      # Manages group keys for secure group communication
+      @group_key_management = Matter::Cluster::GroupKeyManagementCluster.new(root_endpoint)
+
+      # Create OTA Requestor cluster on endpoint 0 (required for Apple Home compatibility)
+      # This is a minimal implementation that returns sensible defaults
+      # indicating no OTA update is in progress
+      @ota_requestor = Matter::Cluster::OtaRequestorCluster.new(root_endpoint)
+
+      # Diagnostic Logs cluster - required by Apple Home for accessory compatibility
+      @diagnostic_logs = Matter::Cluster::DiagnosticLogsCluster.new(root_endpoint)
+
+      # Ethernet Network Diagnostics cluster - required by Apple Home for Ethernet devices
+      @ethernet_diagnostics = Matter::Cluster::EthernetNetworkDiagnosticsCluster.new(root_endpoint)
 
       # Create Operational Credentials cluster on endpoint 0 (required for commissioning)
       # Pass the general_commissioning reference so AddNOC can update the failsafe context
@@ -233,7 +284,8 @@ module MatterSwitch
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
 
       # OnOff cluster - the main functionality
-      # LIGHTING feature is MANDATORY for On/Off Light device type per Matter spec
+      # Per Matter spec, On/Off Light device type REQUIRES the Lighting (LT) feature
+      # This adds attributes like GlobalSceneControl, OnTime, OffWaitTime, StartUpOnOff
       @switch = Matter::Cluster::OnOffCluster.new(
         endpoint,
         on_off: @state.on_off,
@@ -246,13 +298,17 @@ module MatterSwitch
       end
 
       # Identify cluster - MANDATORY for On/Off Light device type
-      @identify = Matter::Cluster::IdentifyCluster.new(endpoint)
+      # Use VisibleLight identify type since this is a light device
+      @identify = Matter::Cluster::IdentifyCluster.new(
+        endpoint,
+        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLight
+      )
 
       # Groups cluster - MANDATORY for On/Off Light device type
       @groups = Matter::Cluster::GroupsCluster.new(endpoint)
 
-      # Scenes cluster - MANDATORY for On/Off Light device type
-      @scenes = Matter::Cluster::ScenesCluster.new(endpoint)
+      # ScenesManagement cluster - MANDATORY for On/Off Light device type
+      @scenes_management = Matter::Cluster::ScenesManagementCluster.new(endpoint)
 
       # Create protocol message handler (this handles PASE, IM, etc.)
       @message_handler = Matter::Protocol::MessageHandler.new(
@@ -270,11 +326,47 @@ module MatterSwitch
       @message_handler.clusters[{0_u16, Matter::Cluster::AccessControlCluster::CLUSTER_ID}] = @access_control
       @message_handler.clusters[{0_u16, Matter::Cluster::GeneralCommissioningCluster::CLUSTER_ID}] = @general_commissioning
       @message_handler.clusters[{0_u16, Matter::Cluster::OperationalCredentialsCluster::CLUSTER_ID}] = @operational_credentials
+      @message_handler.clusters[{0_u16, Matter::Cluster::AdministratorCommissioningCluster::CLUSTER_ID}] = @administrator_commissioning
+      @message_handler.clusters[{0_u16, Matter::Cluster::GeneralDiagnosticsCluster::CLUSTER_ID}] = @general_diagnostics
+      @message_handler.clusters[{0_u16, Matter::Cluster::NetworkCommissioningCluster::CLUSTER_ID}] = @network_commissioning
+      @message_handler.clusters[{0_u16, Matter::Cluster::GroupKeyManagementCluster::CLUSTER_ID}] = @group_key_management
+      @message_handler.clusters[{0_u16, Matter::Cluster::OtaRequestorCluster::CLUSTER_ID}] = @ota_requestor
+      @message_handler.clusters[{0_u16, Matter::Cluster::DiagnosticLogsCluster::CLUSTER_ID}] = @diagnostic_logs
+      @message_handler.clusters[{0_u16, Matter::Cluster::EthernetNetworkDiagnosticsCluster::CLUSTER_ID}] = @ethernet_diagnostics
       # Endpoint 1 clusters (On/Off Light device)
       @message_handler.clusters[{1_u16, Matter::Cluster::OnOffCluster::CLUSTER_ID}] = @switch
       @message_handler.clusters[{1_u16, Matter::Cluster::IdentifyCluster::CLUSTER_ID}] = @identify
       @message_handler.clusters[{1_u16, Matter::Cluster::GroupsCluster::CLUSTER_ID}] = @groups
-      @message_handler.clusters[{1_u16, Matter::Cluster::ScenesCluster::CLUSTER_ID}] = @scenes
+      @message_handler.clusters[{1_u16, Matter::Cluster::ScenesManagementCluster::CLUSTER_ID}] = @scenes_management
+
+      # CRITICAL: Set up session_lookup callback on OperationalCredentials cluster
+      # This allows the cluster to get the attestation challenge from PASE sessions
+      # Without this, attestation signatures will fail because attestation_challenge is nil
+      sessions = @message_handler.sessions
+      @operational_credentials.session_lookup = ->(session_id : UInt64) : Bytes? do
+        session = sessions[session_id.to_u16]?
+        if session
+          puts "session_lookup: Found session #{session_id}, returning attestation_challenge"
+          session.attestation_challenge
+        else
+          puts "session_lookup: Session #{session_id} not found in #{sessions.keys.inspect}"
+          nil
+        end
+      end
+
+      # Set up on_fabric_added callback to switch to operational mode after commissioning
+      puts "DEBUG: Setting up on_fabric_added callback on @operational_credentials"
+      @operational_credentials.on_fabric_added = ->(fabric : Matter::Fabric) do
+        puts "✅ Fabric added! Switching to operational mode..."
+        puts "   Fabric ID: #{fabric.fabric_id}"
+        puts "   Node ID: #{fabric.node_id}"
+        puts "   Compressed Fabric ID: #{fabric.compressed_fabric_id.hexstring.upcase}"
+        # Trigger operational mDNS advertisement
+        if commissioned_callback = @on_commissioned
+          commissioned_callback.call(fabric)
+        end
+      end
+      puts "DEBUG: on_fabric_added callback set: #{@operational_credentials.on_fabric_added.nil? ? "nil" : "set"}"
 
       # Configure Descriptor cluster for endpoint 0 (Root Node)
       # This tells controllers about the device structure
@@ -286,11 +378,19 @@ module MatterSwitch
         )
         # Add endpoint 1 to parts list (child endpoints)
         descriptor_0.add_part(1_u16)
-        # Add server clusters for endpoint 0
+        # Add server clusters for endpoint 0 (Root Node required clusters)
+        # NOTE: Descriptor cluster already adds itself to server_list in initialize()
         descriptor_0.server_list << Matter::Cluster::BasicInformationCluster::CLUSTER_ID
         descriptor_0.server_list << Matter::Cluster::AccessControlCluster::CLUSTER_ID
         descriptor_0.server_list << Matter::Cluster::GeneralCommissioningCluster::CLUSTER_ID
         descriptor_0.server_list << Matter::Cluster::OperationalCredentialsCluster::CLUSTER_ID
+        descriptor_0.server_list << Matter::Cluster::AdministratorCommissioningCluster::CLUSTER_ID
+        descriptor_0.server_list << Matter::Cluster::GeneralDiagnosticsCluster::CLUSTER_ID
+        descriptor_0.server_list << Matter::Cluster::NetworkCommissioningCluster::CLUSTER_ID
+        descriptor_0.server_list << Matter::Cluster::GroupKeyManagementCluster::CLUSTER_ID
+        descriptor_0.server_list << Matter::Cluster::OtaRequestorCluster::CLUSTER_ID
+        descriptor_0.server_list << Matter::Cluster::DiagnosticLogsCluster::CLUSTER_ID
+        descriptor_0.server_list << Matter::Cluster::EthernetNetworkDiagnosticsCluster::CLUSTER_ID
       end
 
       # Create Descriptor cluster for endpoint 1 (On/Off Light)
@@ -299,14 +399,21 @@ module MatterSwitch
       # On/Off Light device type
       descriptor_1.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
         device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
-        revision: 2_u16
+        revision: 1_u16 # On/Off Light device type revision 1
       )
       # Add all mandatory server clusters for On/Off Light device type
-      descriptor_1.server_list << Matter::Cluster::IdentifyCluster::CLUSTER_ID # 0x0003 - Mandatory
-      descriptor_1.server_list << Matter::Cluster::GroupsCluster::CLUSTER_ID   # 0x0004 - Mandatory
-      descriptor_1.server_list << Matter::Cluster::ScenesCluster::CLUSTER_ID   # 0x0005 - Mandatory
-      descriptor_1.server_list << Matter::Cluster::OnOffCluster::CLUSTER_ID    # 0x0006 - Mandatory
+      # NOTE: Descriptor cluster already adds itself to server_list in initialize()
+      descriptor_1.server_list << Matter::Cluster::IdentifyCluster::CLUSTER_ID         # 0x0003 - Mandatory
+      descriptor_1.server_list << Matter::Cluster::GroupsCluster::CLUSTER_ID           # 0x0004 - Mandatory
+      descriptor_1.server_list << Matter::Cluster::OnOffCluster::CLUSTER_ID            # 0x0006 - Mandatory
+      descriptor_1.server_list << Matter::Cluster::ScenesManagementCluster::CLUSTER_ID # 0x0062 - Mandatory
       @message_handler.clusters[{1_u16, Matter::Cluster::DescriptorCluster::CLUSTER_ID}] = descriptor_1
+
+      # Log final cluster count for debugging
+      puts "📊 Final cluster configuration:"
+      puts "   Endpoint 0: #{@message_handler.clusters.count { |k, _| k[0] == 0_u16 }} clusters"
+      puts "   Endpoint 1: #{@message_handler.clusters.count { |k, _| k[0] == 1_u16 }} clusters"
+      puts "   Total: #{@message_handler.clusters.size} clusters"
 
       # Configure session lookup callback for attestation signature generation
       # This allows the OperationalCredentials cluster to access the session's attestation_challenge
@@ -441,7 +548,7 @@ module MatterSwitch
     def print_header
       puts "\n" + "=" * 70
       puts "  Matter Switch Device"
-      puts "  Device Type: On/Off Light Switch"
+      puts "  Device Type: On/Off Light"
       puts "=" * 70
       puts ""
     end
@@ -459,8 +566,13 @@ module MatterSwitch
       puts "   Unique ID: #{@state.unique_id}"
 
       # Sync fabrics from FabricStorage to FabricTable for CASE destination_id matching
+      # Also restore root certificates to OperationalCredentials cluster
       @fabric_storage.fabrics.each do |fabric|
         @fabric_table.add_fabric(fabric) unless @fabric_table.find_by_fabric_id(fabric.fabric_id)
+        # Restore root cert to OperationalCredentials if present
+        if root_cert = fabric.root_cert
+          @operational_credentials.restore_root_cert(root_cert)
+        end
       end
       puts ""
       @ip_addresses.each do |ip|
@@ -475,12 +587,13 @@ module MatterSwitch
       puts ""
 
       # Advertise commissioning service
+      # Device type in mDNS MUST match the primary device type in descriptor
       info = Matter::MDNS::CommissioningInfo.new(
         device_name: @state.device_name,
         vendor_id: @state.vendor_id,
         product_id: @state.product_id,
         discriminator: @state.discriminator,
-        device_type: Matter::DeviceTypes::ON_OFF_LIGHT_SWITCH,
+        device_type: Matter::DeviceTypes::ON_OFF_LIGHT,
         commissioning_mode: Matter::MDNS::CommissioningMode::Basic
       )
 
@@ -520,8 +633,7 @@ module MatterSwitch
         info = Matter::MDNS::OperationalInfo.new(
           compressed_fabric_id: fabric.compressed_fabric_id,
           node_id: fabric.node_id,
-          session_idle_interval: 500_u32,
-          session_active_interval: 300_u32,
+          # Don't set session intervals - this is an always-on device, not ICD
           tcp_supported: false
         )
 
@@ -563,8 +675,7 @@ module MatterSwitch
       info = Matter::MDNS::OperationalInfo.new(
         compressed_fabric_id: fabric.compressed_fabric_id,
         node_id: fabric.node_id,
-        session_idle_interval: 500_u32,
-        session_active_interval: 300_u32,
+        # Don't set session intervals - this is an always-on device, not ICD
         tcp_supported: false
       )
 

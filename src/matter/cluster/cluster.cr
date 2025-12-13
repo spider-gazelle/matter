@@ -106,10 +106,32 @@ module Matter
         [] of EventMetadata
       end
 
+      # Global attribute IDs (mandatory on all clusters)
+      GLOBAL_ATTRIBUTE_LIST         = 0xFFFB_u32
+      GLOBAL_ACCEPTED_COMMAND_LIST  = 0xFFF9_u32
+      GLOBAL_GENERATED_COMMAND_LIST = 0xFFF8_u32
+      GLOBAL_FEATURE_MAP            = 0xFFFC_u32
+      GLOBAL_CLUSTER_REVISION       = 0xFFFD_u32
+
       # Read an attribute value
       # The fabric_index parameter is optional and used for fabric-scoped attributes
       # like CurrentFabricIndex in OperationalCredentialsCluster
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+        # Handle global attributes that all clusters must support
+        # These MUST be handled before checking cluster-specific attributes
+        case attribute_id
+        when GLOBAL_ATTRIBUTE_LIST
+          return encode_attribute_list_global
+        when GLOBAL_ACCEPTED_COMMAND_LIST
+          return encode_accepted_command_list_global
+        when GLOBAL_GENERATED_COMMAND_LIST
+          return encode_generated_command_list_global
+        when GLOBAL_FEATURE_MAP
+          return encode_feature_map_global
+        when GLOBAL_CLUSTER_REVISION
+          return encode_cluster_revision_global
+        end
+
         metadata = attributes.find { |a| a.id.id == attribute_id }
         return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless metadata
 
@@ -117,6 +139,63 @@ module Matter
         @attribute_values.fetch(attribute_id) do
           metadata.default || InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
         end
+      end
+
+      # Encode FeatureMap - override in subclass if cluster has features
+      protected def encode_feature_map_global : Bytes
+        encode_uint32(0_u32) # Default: no features
+      end
+
+      # Encode ClusterRevision - override in subclass for specific revision
+      protected def encode_cluster_revision_global : Bytes
+        encode_uint16(1_u16) # Default: revision 1
+      end
+
+      # Encode AttributeList - override in subclass for custom handling
+      protected def encode_attribute_list_global : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        writer.start_array(nil)
+        # Add all cluster-specific attributes
+        attributes.each do |attr|
+          writer.put_unsigned_int(nil, attr.id.id, force_size: 4)
+        end
+        # Add global attributes
+        writer.put_unsigned_int(nil, GLOBAL_GENERATED_COMMAND_LIST, force_size: 4)
+        writer.put_unsigned_int(nil, GLOBAL_ACCEPTED_COMMAND_LIST, force_size: 4)
+        writer.put_unsigned_int(nil, GLOBAL_ATTRIBUTE_LIST, force_size: 4)
+        writer.put_unsigned_int(nil, GLOBAL_FEATURE_MAP, force_size: 4)
+        writer.put_unsigned_int(nil, GLOBAL_CLUSTER_REVISION, force_size: 4)
+        writer.end_container
+
+        io.to_slice
+      end
+
+      # Encode AcceptedCommandList - override in subclass for custom handling
+      protected def encode_accepted_command_list_global : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        writer.start_array(nil)
+        commands.each do |cmd|
+          writer.put_unsigned_int(nil, cmd.id.id, force_size: 4)
+        end
+        writer.end_container
+
+        io.to_slice
+      end
+
+      # Encode GeneratedCommandList - override in subclass to add generated commands
+      protected def encode_generated_command_list_global : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        # Default: empty array (no generated commands)
+        writer.start_array(nil)
+        writer.end_container
+
+        io.to_slice
       end
 
       # Write an attribute value
@@ -199,6 +278,20 @@ module Matter
       end
 
       protected def encode_bool(value : Bool) : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, value)
+        io.rewind.to_slice
+      end
+
+      protected def encode_null : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, nil)
+        io.rewind.to_slice
+      end
+
+      protected def encode_int16(value : Int16) : Bytes
         io = IO::Memory.new
         writer = TLV::Writer.new(io)
         writer.put(nil, value)

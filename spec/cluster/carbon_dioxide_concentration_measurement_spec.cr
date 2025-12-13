@@ -217,8 +217,8 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
       bytes = sensor.read_attribute(Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_MEASURED_VALUE)
       bytes.should be_a(Bytes)
 
-      # Decode float from bytes
-      value = IO::ByteFormat::LittleEndian.decode(Float32, bytes.as(Bytes))
+      # Decode TLV-encoded float value
+      value = decode_tlv_value(bytes.as(Bytes))
       value.should eq(450.0_f32)
     end
 

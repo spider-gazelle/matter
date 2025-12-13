@@ -1,4 +1,5 @@
 require "./cluster"
+require "tlv"
 
 module Matter
   module Cluster
@@ -16,6 +17,10 @@ module Matter
       # Attributes (using ATTR_ prefix for consistency)
       ATTR_IDENTIFY_TIME = 0x0000_u32
       ATTR_IDENTIFY_TYPE = 0x0001_u32
+
+      # Global attributes (required on all clusters)
+      CLUSTER_REVISION = 0xFFFD_u32
+      FEATURE_MAP      = 0xFFFC_u32
 
       # Commands
       CMD_IDENTIFY       = 0x00_u32
@@ -101,6 +106,10 @@ module Matter
           encode_uint16(@identify_time)
         when ATTR_IDENTIFY_TYPE
           encode_uint8(@identify_type.value)
+        when CLUSTER_REVISION
+          encode_uint16(4_u16) # Identify cluster revision 4
+        when FEATURE_MAP
+          encode_uint32(0_u32) # No features for basic Identify
         else
           super
         end
@@ -109,11 +118,29 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_IDENTIFY_TIME
-          if value.size == 2
-            @identify_time = IO::ByteFormat::LittleEndian.decode(UInt16, value)
+          begin
+            reader = TLV::Reader.new(value)
+            data = reader.get
+            new_time = case data
+                       when Int
+                         data.to_u16
+                       when Hash
+                         # Unwrap if needed
+                         wrapper = data.as(Hash(TLV::Tag, TLV::Value))
+                         if wrapper.has_key?("Any")
+                           inner = wrapper["Any"]
+                           inner.is_a?(Int) ? inner.to_u16 : 0_u16
+                         else
+                           0_u16
+                         end
+                       else
+                         0_u16
+                       end
+            @identify_time = new_time
             increment_version
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
-          else
+          rescue ex
+            Log.error { "IdentifyTime write TLV parsing error: #{ex.message}" }
             InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
           end
         else
@@ -133,14 +160,38 @@ module Matter
       end
 
       # Handle Identify command
+      # Command fields: IdentifyTime (tag 0, uint16) - seconds to identify
       private def handle_identify_command(fields : Bytes) : InteractionModel::Status
-        if fields.size < 2
+        new_time = 0_u16
+
+        begin
+          reader = TLV::Reader.new(fields)
+          data = reader.get
+
+          # Parse TLV structure to extract IdentifyTime (tag 0)
+          if data.is_a?(Hash)
+            wrapper = data.as(Hash(TLV::Tag, TLV::Value))
+            # Unwrap "Any" container if present (anonymous structure)
+            if wrapper.has_key?("Any")
+              struct_data = wrapper["Any"]
+              if struct_data.is_a?(Hash)
+                struct_hash = struct_data.as(Hash(TLV::Tag, TLV::Value))
+                # Tag 0 is IdentifyTime
+                if val = struct_hash[0_u8]?
+                  new_time = val.as(Int).to_u16
+                end
+              end
+            elsif val = wrapper[0_u8]?
+              # Direct context tag access
+              new_time = val.as(Int).to_u16
+            end
+          end
+        rescue ex
+          Log.error { "Identify command TLV parsing error: #{ex.message}" }
           return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
         end
 
-        new_time = IO::ByteFormat::LittleEndian.decode(UInt16, fields)
         was_identifying = identifying?
-
         @identify_time = new_time
         increment_version
 
@@ -155,13 +206,38 @@ module Matter
       end
 
       # Handle TriggerEffect command
+      # Command fields: EffectIdentifier (tag 0, enum8), EffectVariant (tag 1, enum8)
       private def handle_trigger_effect_command(fields : Bytes) : InteractionModel::Status
-        if fields.size < 2
+        effect = EffectIdentifier::Blink
+        variant = EffectVariant::Default
+
+        begin
+          reader = TLV::Reader.new(fields)
+          data = reader.get
+
+          if data.is_a?(Hash)
+            wrapper = data.as(Hash(TLV::Tag, TLV::Value))
+            # Unwrap "Any" container if present
+            struct_hash = if wrapper.has_key?("Any")
+                            struct_data = wrapper["Any"]
+                            struct_data.is_a?(Hash) ? struct_data.as(Hash(TLV::Tag, TLV::Value)) : wrapper
+                          else
+                            wrapper
+                          end
+
+            # Tag 0 is EffectIdentifier
+            if val = struct_hash[0_u8]?
+              effect = EffectIdentifier.from_value(val.as(Int).to_u8)
+            end
+            # Tag 1 is EffectVariant
+            if val = struct_hash[1_u8]?
+              variant = EffectVariant.from_value(val.as(Int).to_u8)
+            end
+          end
+        rescue ex
+          Log.error { "TriggerEffect command TLV parsing error: #{ex.message}" }
           return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
         end
-
-        effect = EffectIdentifier.from_value(fields[0])
-        variant = EffectVariant.from_value(fields[1])
 
         @on_trigger_effect.try &.call(effect, variant)
 

@@ -144,25 +144,32 @@ module Matter
     struct OperationalInfo
       property compressed_fabric_id : Bytes # 8-byte HKDF-derived compressed fabric ID
       property node_id : UInt64
-      property session_idle_interval : UInt32   # milliseconds
-      property session_active_interval : UInt32 # milliseconds
+      # Session intervals are optional - only set for ICD (sleepy) devices
+      # For always-on devices, leave these nil to avoid advertising ICD capability
+      property session_idle_interval : UInt32?   # milliseconds (SII)
+      property session_active_interval : UInt32? # milliseconds (SAI)
       property tcp_supported : Bool
 
       def initialize(
         @compressed_fabric_id : Bytes,
         @node_id : UInt64,
-        @session_idle_interval : UInt32 = 500_u32,
-        @session_active_interval : UInt32 = 300_u32,
+        @session_idle_interval : UInt32? = nil,
+        @session_active_interval : UInt32? = nil,
         @tcp_supported : Bool = false,
       )
       end
 
       # Convert to TXT record hash
       def to_txt_records : Hash(String, String)
-        records = {
-          "SII" => @session_idle_interval.to_s,
-          "SAI" => @session_active_interval.to_s,
-        }
+        records = {} of String => String
+
+        # Only include SII/SAI for ICD devices - omit for always-on devices
+        if sii = @session_idle_interval
+          records["SII"] = sii.to_s
+        end
+        if sai = @session_active_interval
+          records["SAI"] = sai.to_s
+        end
 
         if @tcp_supported
           records["T"] = "1"

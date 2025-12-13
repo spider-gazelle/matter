@@ -429,11 +429,8 @@ module Matter
         @on_occupancy_changed = block
       end
 
-      private def encode_uint16(value : UInt16) : Bytes
-        bytes = Bytes.new(2)
-        IO::ByteFormat::LittleEndian.encode(value, bytes)
-        bytes
-      end
+      # NOTE: encode_uint16 inherited from Base class with proper TLV encoding
+      # Do NOT override with raw byte encoding
     end
   end
 end

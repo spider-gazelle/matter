@@ -754,7 +754,7 @@ module Matter
 
         # Derive session keys after successful CASE
         # sigma3_bytes: Raw TLV bytes of Sigma3 message
-        def derive_session_keys(sigma3_bytes : Bytes) : {encryption: Bytes, decryption: Bytes}
+        def derive_session_keys(sigma3_bytes : Bytes) : {encryption: Bytes, decryption: Bytes, attestation_challenge: Bytes}
           shared_secret = @shared_secret
           sigma1_bytes = @sigma1_bytes
           sigma2_bytes = @sigma2_bytes
@@ -792,9 +792,11 @@ module Matter
 
           # Split into initiator-to-responder and responder-to-initiator keys
           # For responder: encryption is R2I, decryption is I2R
+          # Also return attestation_challenge for use in attestation signatures
           {
-            encryption: session_keys[16, 16], # R2I key
-            decryption: session_keys[0, 16],  # I2R key
+            encryption:            session_keys[16, 16], # R2I key
+            decryption:            session_keys[0, 16],  # I2R key
+            attestation_challenge: session_keys[32, 16], # AttestationChallenge
           }
         end
       end

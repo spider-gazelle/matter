@@ -486,6 +486,11 @@ module Matter
         ]
       end
 
+      # Global attribute IDs
+      ATTR_CLUSTER_REVISION = 0xFFFD_u32
+      ATTR_FEATURE_MAP      = 0xFFFC_u32
+      ATTR_ATTRIBUTE_LIST   = 0xFFFB_u32
+
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_MAX_NETWORKS
@@ -510,10 +515,38 @@ module Matter
           else
             Bytes.new(0) # Null
           end
+        when ATTR_NETWORKS
+          encode_networks
+        when ATTR_FEATURE_MAP
+          # Return the feature map (WiFi=0x01, Thread=0x02, Ethernet=0x04)
+          encode_uint32(@feature_map.value)
+        when ATTR_CLUSTER_REVISION
+          encode_uint16(1_u16) # Cluster revision 1
         else
           super
         end
       end
+
+      # Encode the Networks attribute as TLV array
+      private def encode_networks : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        writer.start_array(nil)
+        @networks.each do |network|
+          writer.start_structure(nil)
+          writer.put(0_u8, network.network_id) # networkID
+          writer.put(1_u8, network.connected)  # connected
+          writer.end_container
+        end
+        writer.end_container
+
+        io.to_slice
+      end
+
+      # NOTE: encode_uint16 and encode_uint32 are inherited from Base class
+      # Do NOT override them here - Base class uses TLV encoding which is required
+      # for proper attribute responses
 
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
@@ -1219,19 +1252,15 @@ module Matter
         @networks.any? { |n| n.network_id == network_id }
       end
 
-      # Helper methods for encoding values
-      private def encode_uint8(value : UInt8) : Bytes
-        Bytes[value]
-      end
+      # NOTE: encode_uint8, encode_bool inherited from Base class with proper TLV encoding
+      # Do NOT override them with raw byte encoding
 
-      private def encode_bool(value : Bool) : Bytes
-        Bytes[value ? 1_u8 : 0_u8]
-      end
-
+      # encode_int32 uses TLV encoding for attribute responses
       private def encode_int32(value : Int32) : Bytes
-        bytes = Bytes.new(4)
-        IO::ByteFormat::LittleEndian.encode(value, bytes)
-        bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+        writer.put(nil, value)
+        io.rewind.to_slice
       end
     end
 

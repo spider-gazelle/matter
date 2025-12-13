@@ -16,6 +16,21 @@ module Matter
       def initialize(@id : UInt64)
       end
 
+      # Create NodeId from bytes (big-endian)
+      def initialize(slice : Bytes)
+        if slice.size < 8
+          raise ArgumentError.new("NodeId slice must be at least 8 bytes")
+        end
+        @id = IO::ByteFormat::BigEndian.decode(UInt64, slice)
+      end
+
+      # Serialize to bytes (big-endian)
+      def to_slice : Bytes
+        io = IO::Memory.new
+        IO::ByteFormat::BigEndian.encode(@id, io)
+        io.to_slice
+      end
+
       # Create NodeId from a CaseAuthenticatedTag
       # Format: 0xFFFFFFFD + 32-bit CAT value
       def self.from_case_authenticated_tag(cat : CaseAuthenticatedTag) : NodeId

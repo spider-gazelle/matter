@@ -102,7 +102,7 @@ module Matter
           if value = @measured_value
             encode_uint16(value)
           else
-            Bytes[0xFF, 0xFF] # Null value for UInt16
+            encode_null
           end
         when ATTR_MIN_MEASURED_VALUE
           encode_uint16(@min_measured_value)
@@ -159,11 +159,8 @@ module Matter
         (value * 100).round.to_u16
       end
 
-      private def encode_uint16(value : UInt16) : Bytes
-        bytes = Bytes.new(2)
-        IO::ByteFormat::LittleEndian.encode(value, bytes)
-        bytes
-      end
+      # NOTE: encode_uint16 inherited from Base class with proper TLV encoding
+      # Do NOT override with raw byte encoding
     end
   end
 end

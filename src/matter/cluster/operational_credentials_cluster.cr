@@ -541,6 +541,12 @@ module Matter
         @trusted_root_certs
       end
 
+      # Restore a root certificate from persisted fabric data
+      # Called during device startup to restore TrustedRootCertificates
+      def restore_root_cert(root_cert : Bytes)
+        @trusted_root_certs << root_cert unless @trusted_root_certs.includes?(root_cert)
+      end
+
       # CurrentFabricIndex attribute (0x05) - Fabric index from session context
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
@@ -761,7 +767,8 @@ module Matter
           ipk: request.ipk_value,
           vendor_id: request.admin_vendor_id,
           label: "",
-          intermediate_cert: icac_value
+          intermediate_cert: icac_value,
+          root_cert: root_cert
         )
 
         unless fabric
@@ -795,8 +802,17 @@ module Matter
 
         # Notify application that fabric was successfully added
         # This allows the application to save state and trigger operational advertisement
+        Log.info { "AddNOC: About to call on_fabric_added callback (callback set: #{!@on_fabric_added.nil?})" }
         if callback = @on_fabric_added
-          callback.call(fabric)
+          Log.info { "AddNOC: Calling on_fabric_added callback for fabric #{fabric.fabric_index}" }
+          begin
+            callback.call(fabric)
+            Log.info { "AddNOC: on_fabric_added callback completed successfully" }
+          rescue ex
+            Log.error { "AddNOC: on_fabric_added callback raised exception: #{ex.message}" }
+          end
+        else
+          Log.warn { "AddNOC: No on_fabric_added callback registered!" }
         end
 
         encode_noc_response(NodeOperationalCertStatus::Ok, fabric.fabric_index)
@@ -1218,16 +1234,19 @@ module Matter
         end
 
         # Add fabric to table
+        root_cert = @trusted_root_certs.last
+        root_public_key = extract_public_key_from_certificate(root_cert)
         fabric = @fabric_table.add_fabric_auto_index(
           fabric_id: fabric_id,
           node_id: node_id,
-          root_public_key: @trusted_root_certs.last,
+          root_public_key: root_public_key,
           operational_cert: cmd.noc_value,
           operational_key: @pending_noc_key.not_nil!,
           ipk: cmd.ipk_value,
           vendor_id: cmd.admin_vendor_id,
           label: "",
-          intermediate_cert: cmd.icac_value
+          intermediate_cert: cmd.icac_value,
+          root_cert: root_cert
         )
 
         unless fabric

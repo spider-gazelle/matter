@@ -20,6 +20,11 @@ module Matter
       ATTR_CLIENT_LIST      = 0x0002_u32
       ATTR_PARTS_LIST       = 0x0003_u32
 
+      # Global attributes (required on all clusters)
+      CLUSTER_REVISION = 0xFFFD_u32
+      FEATURE_MAP      = 0xFFFC_u32
+      ATTRIBUTE_LIST   = 0xFFFB_u32
+
       # Device Type Structure
       struct DeviceTypeStruct
         include TLV::Serializable
@@ -100,9 +105,44 @@ module Matter
           encode_cluster_list(@client_list)
         when ATTR_PARTS_LIST
           encode_parts_list
+        when CLUSTER_REVISION
+          encode_uint16(2_u16) # Descriptor cluster revision 2
+        when FEATURE_MAP
+          encode_uint32(0_u32) # No features for Descriptor cluster
+        when ATTRIBUTE_LIST
+          encode_attribute_list
         else
           super
         end
+      end
+
+      # Encode the list of supported attributes as TLV array
+      private def encode_attribute_list : Bytes
+        io = IO::Memory.new
+        writer = TLV::Writer.new(io)
+
+        # All supported attribute IDs including global attributes
+        # Order: cluster-specific first, then global attributes
+        attr_ids = [
+          ATTR_DEVICE_TYPE_LIST,
+          ATTR_SERVER_LIST,
+          ATTR_CLIENT_LIST,
+          ATTR_PARTS_LIST,
+          # Global attributes (required on all clusters)
+          GLOBAL_GENERATED_COMMAND_LIST, # 0xFFF8
+          GLOBAL_ACCEPTED_COMMAND_LIST,  # 0xFFF9
+          ATTRIBUTE_LIST,                # 0xFFFB
+          FEATURE_MAP,                   # 0xFFFC
+          CLUSTER_REVISION,              # 0xFFFD
+        ]
+
+        writer.start_array(nil)
+        attr_ids.each do |id|
+          writer.put_unsigned_int(nil, id, force_size: 4)
+        end
+        writer.end_container
+
+        io.to_slice
       end
 
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
@@ -182,40 +222,57 @@ module Matter
       end
 
       # Encode device type list as TLV array
+      # IMPORTANT: Device type values MUST be encoded with correct widths per Matter spec:
+      # - deviceType (tag 0): UInt32
+      # - revision (tag 1): UInt16
+      # iOS is strict about this - using wrong widths causes "Not Supported"
       private def encode_device_type_list : Bytes
         io = IO::Memory.new
         writer = TLV::Writer.new(io)
 
-        # Convert each DeviceTypeStruct to TLV hash format
-        device_types_array = @device_type_list.map do |device_type|
-          device_type.to_h.as(TLV::Value)
+        # Manually encode array of device type structs with forced widths
+        writer.start_array(nil)
+        @device_type_list.each do |device_type|
+          writer.start_structure(nil)
+          writer.put_unsigned_int(0_u8, device_type.device_type, force_size: 4)     # deviceType: UInt32
+          writer.put_unsigned_int(1_u8, device_type.revision.to_u32, force_size: 2) # revision: UInt16
+          writer.end_container
         end
+        writer.end_container
 
-        writer.put(nil, device_types_array)
         io.to_slice
       end
 
       # Encode cluster list (server or client) as TLV array
+      # IMPORTANT: Cluster IDs MUST be encoded as UInt32 per Matter spec,
+      # even if the value fits in a smaller type. iOS is strict about this.
       private def encode_cluster_list(list : Array(UInt32)) : Bytes
         io = IO::Memory.new
         writer = TLV::Writer.new(io)
 
-        # Convert cluster IDs to TLV array
-        cluster_array = list.map { |id| id.as(TLV::Value) }
+        # Manually encode array with forced UInt32 width for cluster IDs
+        writer.start_array(nil)
+        list.each do |cluster_id|
+          writer.put_unsigned_int(nil, cluster_id, force_size: 4)
+        end
+        writer.end_container
 
-        writer.put(nil, cluster_array)
         io.to_slice
       end
 
       # Encode parts list as TLV array
+      # IMPORTANT: Endpoint IDs MUST be encoded as UInt16 per Matter spec.
       private def encode_parts_list : Bytes
         io = IO::Memory.new
         writer = TLV::Writer.new(io)
 
-        # Convert endpoint IDs to TLV array
-        parts_array = @parts_list.map { |id| id.as(TLV::Value) }
+        # Manually encode array with forced UInt16 width for endpoint IDs
+        writer.start_array(nil)
+        @parts_list.each do |endpoint_id|
+          writer.put_unsigned_int(nil, endpoint_id.to_u32, force_size: 2)
+        end
+        writer.end_container
 
-        writer.put(nil, parts_array)
         io.to_slice
       end
     end

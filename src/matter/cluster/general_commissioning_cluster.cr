@@ -109,6 +109,7 @@ module Matter
       ATTR_REGULATORY_CONFIG              = 0x0002_u32
       ATTR_LOCATION_CAPABILITY            = 0x0003_u32
       ATTR_SUPPORTS_CONCURRENT_CONNECTION = 0x0004_u32
+      ATTR_IS_COMMISSIONING_WITHOUT_POWER = 0x000C_u32 # TC feature attribute
 
       # Breadcrumb attribute (0x0000) - progress tracking during commissioning
       property breadcrumb : UInt64 = 0_u64
@@ -238,6 +239,12 @@ module Matter
             :bool,
             writable: false
           ),
+          AttributeMetadata.new(
+            DataType::AttributeId.new(ATTR_IS_COMMISSIONING_WITHOUT_POWER),
+            "IsCommissioningWithoutPower",
+            :bool,
+            writable: false
+          ),
         ]
       end
 
@@ -270,6 +277,10 @@ module Matter
           encode_uint8(@location_capability.value)
         when ATTR_SUPPORTS_CONCURRENT_CONNECTION
           encode_bool(@supports_concurrent_connection)
+        when ATTR_IS_COMMISSIONING_WITHOUT_POWER
+          # Returns true if the device is currently commissioning without main power
+          # (e.g., using backup power during initial setup). We don't support this mode.
+          encode_bool(false)
         else
           super
         end

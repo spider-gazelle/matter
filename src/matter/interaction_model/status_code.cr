@@ -43,14 +43,18 @@ module Matter
       Deprecated9E          = 0x9E
       Deprecated9F          = 0x9F
       DeprecatedA0          = 0xA0
-      DeprecatedA1          = 0xA1
-      DeprecatedA2          = 0xA2
-      DeprecatedA3          = 0xA3
-      DeprecatedA4          = 0xA4
-      DeprecatedA5          = 0xA5
-      DeprecatedA6          = 0xA6
-      DeprecatedA7          = 0xA7
-      DeprecatedA8          = 0xA8
+
+      # Cluster-specific errors (0xC0-0xFF range)
+      # These are defined in Matter spec section 8.5.2
+      UnsupportedCluster = 0xC3 # Request is for a cluster that doesn't exist on the endpoint
+      DeprecatedA1       = 0xA1
+      DeprecatedA2       = 0xA2
+      DeprecatedA3       = 0xA3
+      DeprecatedA4       = 0xA4
+      DeprecatedA5       = 0xA5
+      DeprecatedA6       = 0xA6
+      DeprecatedA7       = 0xA7
+      DeprecatedA8       = 0xA8
 
       # Cluster-specific range 0xC0-0xFF
       # Applications can define cluster-specific error codes in this range
@@ -99,6 +103,8 @@ module Matter
           "Timeout"
         when Busy
           "Busy"
+        when UnsupportedCluster
+          "Unsupported Cluster"
         else
           "Unknown Status (0x#{value.to_s(16)})"
         end
