@@ -80,13 +80,15 @@ module Matter
       # Supports chunked responses - remaining_chunks stores chunks yet to be sent
       class PendingSubscription
         property subscription_id : UInt32
+        property min_interval : UInt16
         property max_interval : UInt16
         property peer : Socket::IPAddress
         property session : Session::SecureContext
         property original_msg : Codec::MessageCodec::Message
         property remaining_chunks : Array(Tuple(Bytes, Bool))
+        property attribute_paths : Array(InteractionModel::AttributePath)
 
-        def initialize(@subscription_id, @max_interval, @peer, @session, @original_msg, @remaining_chunks = [] of Tuple(Bytes, Bool))
+        def initialize(@subscription_id, @min_interval, @max_interval, @peer, @session, @original_msg, @attribute_paths, @remaining_chunks = [] of Tuple(Bytes, Bool))
         end
       end
 
@@ -106,6 +108,104 @@ module Matter
 
       @pending_read_responses : Hash(UInt16, PendingReadResponse) = {} of UInt16 => PendingReadResponse
 
+      # Active subscriptions - keyed by subscription_id
+      # After SubscribeResponse is sent, subscriptions are moved here for ongoing updates
+      class ActiveSubscription
+        property subscription_id : UInt32
+        property min_interval : UInt16
+        property max_interval : UInt16
+        property peer : Socket::IPAddress
+        property session : Session::SecureContext
+        property attribute_paths : Array(InteractionModel::AttributePath)
+        property last_report_time : Time
+        property next_exchange_id : UInt16
+
+        def initialize(
+          @subscription_id,
+          @min_interval,
+          @max_interval,
+          @peer,
+          @session,
+          @attribute_paths,
+          @next_exchange_id = 0_u16,
+        )
+          @last_report_time = Time.utc
+        end
+
+        # Check if a path matches any subscribed paths (including wildcards)
+        def matches?(endpoint_id : UInt16, cluster_id : UInt32, attribute_id : UInt32) : Bool
+          @attribute_paths.any? do |path|
+            endpoint_match = path.endpoint.nil? || path.endpoint == endpoint_id
+            cluster_match = path.cluster.nil? || path.cluster == cluster_id
+            attribute_match = path.attribute.nil? || path.attribute == attribute_id
+            endpoint_match && cluster_match && attribute_match
+          end
+        end
+
+        # Serialize subscription to hash for persistence
+        # Note: session is stored by session_id - must be resolved when restoring
+        def to_h : Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil)))
+          paths_array = @attribute_paths.map do |path|
+            {
+              "endpoint"   => path.endpoint,
+              "cluster"    => path.cluster,
+              "attribute"  => path.attribute,
+              "list_index" => path.list_index,
+            }
+          end
+
+          {
+            "subscription_id"  => @subscription_id,
+            "min_interval"     => @min_interval,
+            "max_interval"     => @max_interval,
+            "peer_address"     => @peer.address,
+            "peer_port"        => @peer.port.to_u16,
+            "session_id"       => @session.session_id,
+            "next_exchange_id" => @next_exchange_id,
+            "last_report_time" => @last_report_time.to_unix,
+            "attribute_paths"  => paths_array,
+          }
+        end
+
+        # Deserialize subscription from hash
+        # Requires a session lookup function to resolve session_id to SecureContext
+        def self.from_h(
+          h : Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil))),
+          session : Session::SecureContext,
+        ) : ActiveSubscription
+          # Parse attribute paths
+          paths_data = h["attribute_paths"].as(Array(Hash(String, UInt32 | UInt16 | Nil)))
+          paths = paths_data.map do |path_h|
+            InteractionModel::AttributePath.new(
+              endpoint: path_h["endpoint"]?.try(&.as(UInt16)),
+              cluster: path_h["cluster"]?.try(&.as(UInt32)),
+              attribute: path_h["attribute"]?.try(&.as(UInt32)),
+              list_index: path_h["list_index"]?.try(&.as(UInt16))
+            )
+          end
+
+          # Build subscription
+          sub = ActiveSubscription.new(
+            subscription_id: h["subscription_id"].as(UInt32),
+            min_interval: h["min_interval"].as(UInt16),
+            max_interval: h["max_interval"].as(UInt16),
+            peer: Socket::IPAddress.new(h["peer_address"].as(String), h["peer_port"].as(UInt16).to_i),
+            session: session,
+            attribute_paths: paths,
+            next_exchange_id: h["next_exchange_id"].as(UInt16)
+          )
+
+          # Restore last_report_time
+          sub.last_report_time = Time.unix(h["last_report_time"].as(Int64))
+          sub
+        end
+      end
+
+      @active_subscriptions : Hash(UInt32, ActiveSubscription) = {} of UInt32 => ActiveSubscription
+
+      # Public getter for active subscriptions (for persistence)
+      getter active_subscriptions
+
       # Fabric access callback - set by the device implementation
       # This allows the message handler to access fabric data for CASE
       property on_get_fabric : Proc(Fabric?)?
@@ -117,6 +217,10 @@ module Matter
       # Session established callback - called when a new secure session is established (CASE or PASE)
       # The device can use this to persist sessions for reconnection after restart
       property on_session_established : Proc(Session::SecureContext, Nil)?
+
+      # Subscription established callback - called when a new subscription becomes active
+      # The device can use this to persist subscriptions for reconnection after restart
+      property on_subscription_established : Proc(ActiveSubscription, Nil)?
 
       # Mutex to ensure message processing is serialized
       # iPhone and other controllers may send multiple messages back-to-back,
@@ -216,6 +320,172 @@ module Matter
         @operational_credentials_cluster = operational_creds
 
         Log.debug { "MessageHandler initialized with #{@clusters.size} default clusters (device may add more)" }
+      end
+
+      # Wire up attribute change notification callbacks for all clusters
+      # This should be called after all clusters have been added to the clusters hash
+      # It enables automatic subscription updates when attributes change
+      def setup_cluster_notifications
+        @clusters.each do |key, cluster|
+          endpoint_id = key[0]
+          cluster_id = key[1]
+          cluster.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) do
+            notify_subscriptions(ep, cl, attr)
+          end
+        end
+        Log.info { "Set up attribute change notifications for #{@clusters.size} cluster(s)" }
+      end
+
+      # Handle attribute change and send updates to matching subscriptions
+      # This is called by clusters when their attributes change
+      def notify_subscriptions(endpoint_id : UInt16, cluster_id : UInt32, attribute_id : UInt32)
+        puts "🔔 notify_subscriptions called: endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)}, attr=0x#{attribute_id.to_s(16)}"
+        puts "   Active subscriptions: #{@active_subscriptions.size}"
+
+        if @active_subscriptions.empty?
+          puts "   ⚠️  No active subscriptions to notify"
+          return
+        end
+
+        Log.debug { "Attribute changed: endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)}, attr=0x#{attribute_id.to_s(16)}" }
+
+        # Find all subscriptions that match this attribute change
+        @active_subscriptions.each do |sub_id, subscription|
+          matches = subscription.matches?(endpoint_id, cluster_id, attribute_id)
+          puts "   Subscription #{sub_id}: matches=#{matches}"
+          next unless matches
+
+          puts "   📡 Sending update to subscription #{sub_id} at #{subscription.peer}"
+          Log.info { "Sending subscription update for subscription #{sub_id}" }
+
+          # Read the current attribute value
+          cluster = @clusters[{endpoint_id, cluster_id}]?
+          unless cluster
+            Log.warn { "Cluster not found for subscription update" }
+            next
+          end
+
+          # Build attribute report for just this attribute
+          value = cluster.read_attribute(attribute_id, subscription.session.fabric_index)
+          case value
+          when Bytes
+            # Create a single-attribute report
+            attr_path = InteractionModel::AttributePath.new(
+              endpoint: endpoint_id,
+              cluster: cluster_id,
+              attribute: attribute_id
+            )
+
+            attr_data = InteractionModel::AttributeData.new(
+              path: attr_path,
+              data_version: cluster.data_version,
+              value: value
+            )
+
+            response = InteractionModel::ReadResponse.new(
+              attribute_reports: [attr_data],
+              attribute_status: [] of InteractionModel::AttributeStatus,
+              suppress_response: false,
+              more_chunks: false
+            )
+
+            # Encode ReportData with subscription ID
+            report_data = IMHandler.encode_report_data(response, subscription.subscription_id)
+
+            # Generate a new exchange ID for this update
+            subscription.next_exchange_id = (subscription.next_exchange_id &+ 1_u16)
+
+            # Send the update
+            send_subscription_update(subscription, report_data)
+
+            # Update last report time
+            subscription.last_report_time = Time.utc
+          else
+            Log.warn { "Failed to read attribute for subscription update: #{value}" }
+          end
+        end
+      end
+
+      # Send a subscription update (ReportData) to a subscriber
+      private def send_subscription_update(subscription : ActiveSubscription, payload : Bytes)
+        session = subscription.session
+        crypto = Crypto::StandardCrypto.new
+
+        # Build security flags byte for outgoing message
+        security_flags = 0_u8
+        security_flags |= Codec::MessageCodec::SessionType::Unicast.value
+
+        # Compute flags - for subscription updates, we initiate to the subscriber
+        # Use the peer's node_id as destination, our node_id as source
+        flags = Codec::MessageCodec::Base.compute_flags(
+          session.local_node_id, # Our node as source
+          session.peer_node_id,  # Peer as destination
+          nil
+        )
+
+        # Get next message counter
+        message_counter = session.next_message_counter
+
+        # Build packet header
+        packet_header = Codec::MessageCodec::PacketHeader.new(
+          session_id: session.peer_session_id, # Use peer's session ID
+          session_type: Codec::MessageCodec::SessionType::Unicast,
+          message_id: message_counter,
+          privacy_enhancements: false,
+          control_message: false,
+          message_extensions: false,
+          flags: flags,
+          security_flags: security_flags,
+          source_node_id: session.local_node_id,
+          destination_node_id: session.peer_node_id
+        )
+
+        # Build payload header - we ARE the initiator for subscription updates
+        payload_header = Codec::MessageCodec::PayloadHeader.new(
+          exchange_id: subscription.next_exchange_id,
+          protocol_id: PROTOCOL_INTERACTION_MODEL,
+          message_type: 0x05_u8, # ReportData
+          initiator_message: true,
+          requires_acknowledge: true,
+          acknowledged_message_id: nil
+        )
+
+        # Encode payload header
+        payload_header_io = IO::Memory.new
+        Codec::MessageCodec::Base.encode_payload_header(payload_header, payload_header_io)
+        payload_header_bytes = payload_header_io.rewind.to_slice
+
+        # Application payload = payload header + TLV payload
+        application_payload = Slice.join([payload_header_bytes, payload])
+
+        # Encode packet header (needed for AAD)
+        packet_header_io = IO::Memory.new
+        Codec::MessageCodec::Base.encode_packet_header(packet_header, packet_header_io)
+        packet_header_bytes = packet_header_io.rewind.to_slice
+
+        # Extract security_flags from encoded header
+        actual_security_flags = packet_header_bytes[3]
+
+        # Determine source node id for nonce
+        source_node_id = session.local_node_id.try(&.id) || 0_u64
+
+        # Build nonce
+        nonce = Session::SecureMessage.build_nonce(source_node_id, message_counter, actual_security_flags)
+
+        # Encrypt using packet header bytes as AAD
+        encrypted = crypto.encrypt(session.encryption_key, application_payload, nonce, packet_header_bytes)
+        unless encrypted
+          Log.error { "Failed to encrypt subscription update" }
+          return
+        end
+
+        # Final UDP packet = packet header + encrypted payload
+        udp_packet = Slice.join([packet_header_bytes, encrypted])
+
+        # Send raw UDP packet
+        @transport.send_raw(udp_packet, subscription.peer)
+
+        Log.info { "📡 Sent subscription update to #{subscription.peer} (#{payload.size} bytes payload, exchange=#{subscription.next_exchange_id})" }
       end
 
       # Main message routing entry point
@@ -436,7 +706,24 @@ module Matter
                 payload: subscribe_response_tlv
               )
 
+              # Move subscription to active subscriptions for ongoing updates
+              active_sub = ActiveSubscription.new(
+                subscription_id: pending.subscription_id,
+                min_interval: pending.min_interval,
+                max_interval: pending.max_interval,
+                peer: pending.peer,
+                session: pending.session,
+                attribute_paths: pending.attribute_paths
+              )
+              @active_subscriptions[pending.subscription_id] = active_sub
+
               Log.info { "Sent SubscribeResponse for subscription #{pending.subscription_id}, maxInterval=#{pending.max_interval}s" }
+              Log.info { "Subscription #{pending.subscription_id} is now active (watching #{pending.attribute_paths.size} path(s))" }
+
+              # Notify device about new subscription for persistence
+              if callback = @on_subscription_established
+                callback.call(active_sub)
+              end
             end
           else
             # Error - subscription failed
@@ -475,7 +762,101 @@ module Matter
             # Error - read failed
             Log.error { "StatusResponse error for read response, aborting" }
           end
+        else
+          # This StatusResponse is not for a pending subscription or read -
+          # it's likely an acknowledgment for a subscription update we sent.
+          # We still need to send an ACK back if required.
+          if original_msg.payload_header.requires_acknowledge?
+            Log.info { "StatusResponse requires ACK (subscription update acknowledgment), sending standalone ACK" }
+            send_encrypted_ack(original_msg, peer, session)
+          end
         end
+      end
+
+      # Send a standalone ACK for an encrypted message
+      # Used when we receive a message that requires acknowledgment but we don't have another response to send
+      private def send_encrypted_ack(
+        original_msg : Codec::MessageCodec::Message,
+        peer : Socket::IPAddress,
+        session : Session::SecureContext,
+      ) : Nil
+        crypto = Crypto::StandardCrypto.new
+
+        # Build security flags byte for outgoing message
+        security_flags = 0_u8
+        security_flags |= Codec::MessageCodec::SessionType::Unicast.value
+
+        # Compute flags - swap source/destination from request
+        flags = Codec::MessageCodec::Base.compute_flags(
+          session.local_node_id, # Our node as source
+          session.peer_node_id,  # Peer as destination
+          nil
+        )
+
+        # Get next message counter
+        message_counter = session.next_message_counter
+
+        # Build packet header
+        packet_header = Codec::MessageCodec::PacketHeader.new(
+          session_id: session.peer_session_id, # Use peer's session ID
+          session_type: Codec::MessageCodec::SessionType::Unicast,
+          message_id: message_counter,
+          privacy_enhancements: false,
+          control_message: false,
+          message_extensions: false,
+          flags: flags,
+          security_flags: security_flags,
+          source_node_id: session.local_node_id,
+          destination_node_id: session.peer_node_id
+        )
+
+        # Build payload header for MRP Standalone Acknowledgement
+        # Use same protocol as original message, with ACK message type
+        payload_header = Codec::MessageCodec::PayloadHeader.new(
+          exchange_id: original_msg.payload_header.exchange_id,
+          protocol_id: PROTOCOL_SECURE_CHANNEL, # ACKs are secure channel protocol
+          message_type: MSG_STANDALONE_ACK,     # 0x10
+          initiator_message: !original_msg.payload_header.initiator_message?,
+          requires_acknowledge: false, # ACKs don't require ACKs
+          acknowledged_message_id: original_msg.packet_header.message_id
+        )
+
+        # Encode payload header
+        payload_header_io = IO::Memory.new
+        Codec::MessageCodec::Base.encode_payload_header(payload_header, payload_header_io)
+        payload_header_bytes = payload_header_io.rewind.to_slice
+
+        # Application payload = payload header only (no TLV payload for ACK)
+        application_payload = payload_header_bytes
+
+        # Encode packet header (needed for AAD)
+        packet_header_io = IO::Memory.new
+        Codec::MessageCodec::Base.encode_packet_header(packet_header, packet_header_io)
+        packet_header_bytes = packet_header_io.rewind.to_slice
+
+        # Extract security_flags from encoded header
+        actual_security_flags = packet_header_bytes[3]
+
+        # Determine source node id for nonce
+        source_node_id = session.local_node_id.try(&.id) || 0_u64
+
+        # Build nonce
+        nonce = Session::SecureMessage.build_nonce(source_node_id, message_counter, actual_security_flags)
+
+        # Encrypt using packet header bytes as AAD
+        encrypted = crypto.encrypt(session.encryption_key, application_payload, nonce, packet_header_bytes)
+        unless encrypted
+          Log.error { "Failed to encrypt standalone ACK" }
+          return
+        end
+
+        # Final UDP packet = packet header + encrypted payload
+        udp_packet = Slice.join([packet_header_bytes, encrypted])
+
+        # Send raw UDP packet
+        @transport.send_raw(udp_packet, peer)
+
+        Log.info { "📨 Sent standalone ACK for message #{original_msg.packet_header.message_id} on exchange #{original_msg.payload_header.exchange_id}" }
       end
 
       # Handle ReadRequest - parse, read attributes, encode response, encrypt and send
@@ -602,18 +983,30 @@ module Matter
 
         Log.info { "Sent initial ReportData chunk for subscription #{subscription_id}" }
 
-        # Calculate actual max interval (we honor the requested ceiling)
+        # Calculate actual intervals (we honor the requested values)
+        min_interval = request.min_interval_floor
         max_interval = request.max_interval_ceiling
+
+        # Convert attribute requests to AttributePath for subscription tracking
+        attribute_paths = request.attribute_requests.map do |req|
+          InteractionModel::AttributePath.new(
+            endpoint: req.endpoint,
+            cluster: req.cluster,
+            attribute: req.attribute
+          )
+        end
 
         # Store pending subscription - we'll send more chunks or SubscribeResponse after receiving StatusResponse
         # The exchange_id is used to correlate the StatusResponse with this subscription
         exchange_id = original_msg.payload_header.exchange_id
         @pending_subscriptions[exchange_id] = PendingSubscription.new(
           subscription_id: subscription_id,
+          min_interval: min_interval,
           max_interval: max_interval,
           peer: peer,
           session: session,
           original_msg: original_msg,
+          attribute_paths: attribute_paths,
           remaining_chunks: remaining_chunks
         )
 
@@ -1202,7 +1595,24 @@ module Matter
               payload: subscribe_response_tlv
             )
 
+            # Move subscription to active subscriptions for ongoing updates
+            active_sub = ActiveSubscription.new(
+              subscription_id: pending.subscription_id,
+              min_interval: pending.min_interval,
+              max_interval: pending.max_interval,
+              peer: pending.peer,
+              session: pending.session,
+              attribute_paths: pending.attribute_paths
+            )
+            @active_subscriptions[pending.subscription_id] = active_sub
+
             Log.info { "Sent SubscribeResponse for subscription #{pending.subscription_id}, maxInterval=#{pending.max_interval}s" }
+            Log.info { "Subscription #{pending.subscription_id} is now active (watching #{pending.attribute_paths.size} path(s))" }
+
+            # Notify device about new subscription for persistence
+            if callback = @on_subscription_established
+              callback.call(active_sub)
+            end
           end
           # Check if this ACK is for a pending read response with remaining chunks
         elsif pending_read = @pending_read_responses[exchange_id]?

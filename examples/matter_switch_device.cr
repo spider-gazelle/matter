@@ -229,11 +229,110 @@ module MatterSwitch
     end
   end
 
+  # Subscription storage for persisting active subscriptions across restarts
+  # This allows controllers to continue receiving updates without re-subscribing
+  class SubscriptionStorage
+    property subscriptions : Hash(UInt32, Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil))))
+
+    def initialize
+      @subscriptions = {} of UInt32 => Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil)))
+    end
+
+    def self.load(path : String) : SubscriptionStorage
+      storage = new
+      if File.exists?(path)
+        json = File.read(path)
+        data = Hash(String, Hash(String, String | Int64 | Array(Hash(String, Int64 | Nil)))).from_json(json)
+        data.each do |sub_id_str, sub_data|
+          # Convert to proper hash types
+          sub_hash = {} of String => (String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil)))
+          sub_data.each do |key, value|
+            if key == "attribute_paths"
+              # Convert paths array
+              paths = value.as(Array(Hash(String, Int64 | Nil))).map do |path_h|
+                converted_path = {} of String => (UInt32 | UInt16 | Nil)
+                path_h.each do |pk, pv|
+                  if pv.nil?
+                    converted_path[pk] = nil
+                  else
+                    case pk
+                    when "endpoint", "list_index"
+                      converted_path[pk] = pv.as(Int64).to_u16
+                    else
+                      converted_path[pk] = pv.as(Int64).to_u32
+                    end
+                  end
+                end
+                converted_path
+              end
+              sub_hash[key] = paths
+            elsif value.is_a?(String)
+              sub_hash[key] = value
+            elsif value.is_a?(Int64)
+              # Convert integers to appropriate types based on key
+              case key
+              when "subscription_id", "cluster", "attribute"
+                sub_hash[key] = value.to_u32
+              when "min_interval", "max_interval", "peer_port", "session_id", "next_exchange_id", "endpoint", "list_index"
+                sub_hash[key] = value.to_u16
+              else
+                sub_hash[key] = value
+              end
+            end
+          end
+          storage.subscriptions[sub_id_str.to_u32] = sub_hash
+        end
+      end
+      storage
+    rescue ex
+      puts "⚠️  Failed to load subscriptions: #{ex.message}"
+      new
+    end
+
+    def save(path : String)
+      File.write(path, @subscriptions.to_pretty_json)
+    end
+
+    def add(subscription : Matter::Protocol::MessageHandler::ActiveSubscription)
+      @subscriptions[subscription.subscription_id] = subscription.to_h
+    end
+
+    def remove(subscription_id : UInt32)
+      @subscriptions.delete(subscription_id)
+    end
+
+    def empty?
+      @subscriptions.empty?
+    end
+
+    def size
+      @subscriptions.size
+    end
+
+    # Restore subscriptions given a session lookup
+    # Returns array of restored subscriptions
+    def restore(sessions : Hash(UInt16, Matter::Session::SecureContext)) : Array(Matter::Protocol::MessageHandler::ActiveSubscription)
+      restored = [] of Matter::Protocol::MessageHandler::ActiveSubscription
+      @subscriptions.each do |sub_id, sub_hash|
+        session_id = sub_hash["session_id"].as(UInt16)
+        if session = sessions[session_id]?
+          sub = Matter::Protocol::MessageHandler::ActiveSubscription.from_h(sub_hash, session)
+          restored << sub
+          puts "   📡 Restored subscription #{sub_id} (session: #{session_id}, #{sub.attribute_paths.size} path(s))"
+        else
+          puts "   ⚠️  Skipping subscription #{sub_id} - session #{session_id} not found"
+        end
+      end
+      restored
+    end
+  end
+
   # Main device class
   class Device
-    STATE_FILE   = "matter_switch_state.json"
-    FABRIC_FILE  = "matter_switch_fabrics.json"
-    SESSION_FILE = "matter_switch_sessions.json"
+    STATE_FILE        = "matter_switch_state.json"
+    FABRIC_FILE       = "matter_switch_fabrics.json"
+    SESSION_FILE      = "matter_switch_sessions.json"
+    SUBSCRIPTION_FILE = "matter_switch_subscriptions.json"
 
     property state : DeviceState
     property switch : Matter::Cluster::OnOffCluster
@@ -254,6 +353,7 @@ module MatterSwitch
     property responder : Matter::MDNS::Responder
     property fabric_storage : FabricStorage
     property session_storage : SessionStorage
+    property subscription_storage : SubscriptionStorage
     property fabric_table : Matter::FabricTable
     property hostname : String
     property ip_addresses : Array(Socket::IPAddress)
@@ -268,19 +368,18 @@ module MatterSwitch
       @ip_addresses = get_local_ips
       @fabric_storage = FabricStorage.load(FABRIC_FILE)
       @session_storage = SessionStorage.load(SESSION_FILE)
+      @subscription_storage = SubscriptionStorage.load(SUBSCRIPTION_FILE)
 
       # Create Basic Information cluster on endpoint 0 (required for root node)
-      # NOTE: nodeLabel and productLabel are what iOS Home app reads for device name
+      # node_label and product_label default to product_name automatically
       root_endpoint = Matter::DataType::EndpointNumber.new(0_u16)
       @basic_info = Matter::Cluster::BasicInformationCluster.new(
         root_endpoint,
         data_model_revision: 1_u16,
         vendor_name: "Spider-Gazelle",
         vendor_id: @state.vendor_id,
-        product_name: @state.device_name, # Product name
+        product_name: @state.device_name,
         product_id: @state.product_id,
-        node_label: @state.device_name,    # User-facing device name (writable)
-        product_label: @state.device_name, # Product label (fixed)
         hardware_version: 1_u16,
         hardware_version_string: "1.0",
         software_version: 1_u32,
@@ -431,6 +530,20 @@ module MatterSwitch
         end
       end
 
+      # Restore persisted subscriptions after sessions are restored
+      # Subscriptions depend on sessions, so they must be restored after sessions
+      if !@subscription_storage.empty?
+        puts "📡 Restoring #{@subscription_storage.size} subscription(s)..."
+        restored_subs = @subscription_storage.restore(@message_handler.sessions)
+        restored_subs.each do |sub|
+          @message_handler.active_subscriptions[sub.subscription_id] = sub
+          # Update next_subscription_id to avoid ID collisions
+          if sub.subscription_id >= @message_handler.next_subscription_id
+            @message_handler.next_subscription_id = sub.subscription_id + 1
+          end
+        end
+      end
+
       # Set up callback to save sessions when new CASE sessions are established
       session_storage = @session_storage
       @message_handler.on_session_established = ->(session : Matter::Session::SecureContext) do
@@ -439,6 +552,14 @@ module MatterSwitch
           session_storage.add_session(session)
           session_storage.save(SESSION_FILE)
         end
+      end
+
+      # Set up callback to save subscriptions when new subscriptions are established
+      subscription_storage = @subscription_storage
+      @message_handler.on_subscription_established = ->(subscription : Matter::Protocol::MessageHandler::ActiveSubscription) do
+        puts "💾 Saving new subscription #{subscription.subscription_id}"
+        subscription_storage.add(subscription)
+        subscription_storage.save(SUBSCRIPTION_FILE)
       end
 
       # Set up on_fabric_added callback to switch to operational mode after commissioning
@@ -540,6 +661,10 @@ module MatterSwitch
       @general_commissioning.on_failsafe_armed = -> {
         @operational_credentials.on_failsafe_armed
       }
+
+      # Wire up cluster notifications for subscription updates
+      # This enables automatic subscription updates when attributes change
+      @message_handler.setup_cluster_notifications
 
       # Create mDNS responder
       @responder = Matter::MDNS::Responder.new(
@@ -862,6 +987,7 @@ module MatterSwitch
       puts "   Commissioned: #{@state.commissioned ? "✅ Yes" : "❌ No"}"
       puts "   Fabrics: #{@fabric_storage.size}"
       puts "   Sessions: #{@message_handler.sessions.size}"
+      puts "   Subscriptions: #{@message_handler.active_subscriptions.size}"
 
       unless @fabric_storage.fabrics.empty?
         puts ""
@@ -870,6 +996,17 @@ module MatterSwitch
           puts "     • Fabric #{fabric.fabric_index}: #{fabric.label}"
           puts "       ID: 0x#{fabric.fabric_id.to_s(16).upcase}"
           puts "       Node: 0x#{fabric.node_id.to_s(16).upcase}"
+        end
+      end
+
+      unless @message_handler.active_subscriptions.empty?
+        puts ""
+        puts "   Active Subscriptions:"
+        @message_handler.active_subscriptions.each do |sub_id, sub|
+          puts "     • Subscription #{sub_id}:"
+          puts "       Peer: #{sub.peer}"
+          puts "       Interval: #{sub.min_interval}s - #{sub.max_interval}s"
+          puts "       Paths: #{sub.attribute_paths.size}"
         end
       end
       puts ""
@@ -898,6 +1035,7 @@ module MatterSwitch
         File.delete(STATE_FILE) if File.exists?(STATE_FILE)
         File.delete(FABRIC_FILE) if File.exists?(FABRIC_FILE)
         File.delete(SESSION_FILE) if File.exists?(SESSION_FILE)
+        File.delete(SUBSCRIPTION_FILE) if File.exists?(SUBSCRIPTION_FILE)
 
         puts "✅ Factory reset complete"
         puts "🔄 Please restart the application"
@@ -923,6 +1061,13 @@ module MatterSwitch
       end
       @session_storage.save(SESSION_FILE)
       puts "   💾 Saved #{@session_storage.size} session(s)"
+
+      # Save all active subscriptions for reconnection after restart
+      @message_handler.active_subscriptions.each do |sub_id, subscription|
+        @subscription_storage.add(subscription)
+      end
+      @subscription_storage.save(SUBSCRIPTION_FILE)
+      puts "   💾 Saved #{@subscription_storage.size} subscription(s)"
 
       puts "🛑 Stopping transport..."
       @transport.close

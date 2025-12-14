@@ -78,6 +78,10 @@ module Matter
       property cluster_id : DataType::ClusterId
       property data_version : UInt32
 
+      # Callback for attribute change notifications (used by subscription system)
+      # Parameters: endpoint_id, cluster_id, attribute_id
+      property on_attribute_changed : Proc(UInt16, UInt32, UInt32, Nil)?
+
       # Macro to add class method for accessing CLUSTER_ID constant
       macro inherited
         def self.cluster_id
@@ -243,6 +247,21 @@ module Matter
       # Increment data version (call when attribute changes)
       protected def increment_version
         @data_version += 1
+      end
+
+      # Notify that a specific attribute has changed (triggers subscription updates)
+      # This should be called after changing an attribute value
+      protected def notify_changed(attribute_id : UInt32)
+        if callback = @on_attribute_changed
+          callback.call(@endpoint_id.number, @cluster_id.id, attribute_id)
+        end
+      end
+
+      # Increment version AND notify about a specific attribute change
+      # This is the preferred method when an attribute value changes
+      protected def increment_version_and_notify(attribute_id : UInt32)
+        increment_version
+        notify_changed(attribute_id)
       end
 
       # Get attribute metadata by ID

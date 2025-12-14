@@ -404,7 +404,7 @@ module Matter
         if @on_off != value
           @on_off = value
           @attribute_values[ATTR_ON_OFF] = encode_bool(value)
-          increment_version
+          increment_version_and_notify(ATTR_ON_OFF)
           @on_state_changed.try &.call(value)
         end
       end

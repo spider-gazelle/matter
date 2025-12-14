@@ -126,7 +126,7 @@ module Matter
                      @vendor_id : UInt16 = 0_u16,
                      @product_name : String = "",
                      @product_id : UInt16 = 0_u16,
-                     @node_label : String = "",
+                     node_label : String? = nil,
                      @location : String = "XX",
                      @hardware_version : UInt16 = 0_u16,
                      @hardware_version_string : String = "1.0",
@@ -135,7 +135,7 @@ module Matter
                      @manufacturing_date : String = "",
                      @part_number : String = "",
                      @product_url : String = "",
-                     @product_label : String = "",
+                     product_label : String? = nil,
                      @serial_number : String = "",
                      @local_config_disabled : Bool = false,
                      @reachable : Bool = true,
@@ -143,6 +143,13 @@ module Matter
                      @capability_minima : CapabilityMinimaStruct = CapabilityMinimaStruct.new,
                      @product_appearance : ProductAppearanceStruct? = nil)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
+
+        # Default node_label to product_name if not explicitly set
+        # This ensures iOS/controllers show a meaningful device name
+        @node_label = node_label || @product_name
+
+        # Default product_label to product_name if not explicitly set
+        @product_label = product_label || @product_name
       end
 
       def name : String
