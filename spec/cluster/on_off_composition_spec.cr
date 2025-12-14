@@ -14,9 +14,16 @@ describe Matter::Cluster::OnOffCluster do
 
         attr_names = cluster.attributes.map(&.name)
 
+        # onOff is a cluster-specific attribute
         attr_names.includes?("onOff").should be_true
-        attr_names.includes?("featureMap").should be_true
-        attr_names.includes?("clusterRevision").should be_true
+
+        # featureMap and clusterRevision are global attributes (handled by base class)
+        # They're accessible via read_attribute, not in the attributes array
+        result = cluster.read_attribute(Matter::Cluster::OnOffCluster::FEATURE_MAP)
+        result.should be_a(Bytes)
+
+        result = cluster.read_attribute(Matter::Cluster::OnOffCluster::CLUSTER_REVISION)
+        result.should be_a(Bytes)
       end
 
       it "does not have Lighting attributes" do

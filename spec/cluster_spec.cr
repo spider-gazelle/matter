@@ -81,14 +81,20 @@ describe Matter::Cluster do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::OnOffCluster.new(endpoint)
 
+      # Only cluster-specific attributes are in attributes array
+      # Global attributes (featureMap, clusterRevision) are handled by base class
       attrs = cluster.attributes
-      attrs.size.should eq(3) # Base cluster: onOff, featureMap, clusterRevision
+      attrs.size.should eq(1) # Just onOff (global attrs handled separately)
 
       on_off_attr = attrs.find { |a| a.id.id == Matter::Cluster::OnOffCluster::ATTR_ON_OFF }
       on_off_attr.should_not be_nil
       on_off_attr.not_nil!.name.should eq("onOff")
       on_off_attr.not_nil!.type.should eq(:bool)
       on_off_attr.not_nil!.writable.should be_false
+
+      # Global attributes can be read via read_attribute
+      result = cluster.read_attribute(0xFFFC_u32) # FeatureMap
+      result.should be_a(Bytes)
     end
 
     it "has required commands" do

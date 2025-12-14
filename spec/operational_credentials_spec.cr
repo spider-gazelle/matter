@@ -45,17 +45,28 @@ module OpCredsTestHelpers
     io.rewind.to_slice
   end
 
-  # Helper to create a dummy DER-encoded root certificate for testing
-  # This creates a minimal valid DER structure (SEQUENCE with some data)
+  # Helper to create a TLV-encoded root certificate for testing
+  # Matter uses TLV-encoded certificates (starting with 0x15)
+  # This creates a certificate with a valid public key field (tag 9)
   def create_test_root_cert : Bytes
-    # Create a minimal DER-encoded certificate structure
-    # Format: SEQUENCE (tag 0x30) + length + dummy data
     io = IO::Memory.new
-    io.write_byte(0x30_u8) # SEQUENCE tag
-    io.write_byte(100_u8)  # Length (100 bytes of content)
-    # Add 100 bytes of dummy data
-    100.times { io.write_byte(0x00_u8) }
-    io.to_slice
+    writer = TLV::Writer.new(io)
+
+    # Create a 65-byte uncompressed EC public key (0x04 || x || y)
+    public_key = Bytes.new(65, 0_u8)
+    public_key[0] = 0x04_u8 # Uncompressed point marker
+    # Fill x and y coordinates with test data
+    (1..32).each { |i| public_key[i] = i.to_u8 }
+    (33..64).each { |i| public_key[i] = (i - 32).to_u8 }
+
+    # Create TLV certificate structure with required fields
+    # Tag 9 is the EC public key field in Matter certificates
+    data = {
+      9_u8 => public_key, # EC public key (required for extraction)
+    } of TLV::Tag => TLV::Value
+
+    writer.put(nil, data)
+    io.rewind.to_slice
   end
 end
 

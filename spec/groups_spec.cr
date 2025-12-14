@@ -33,8 +33,10 @@ describe Matter::Cluster::GroupsCluster do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::GroupsCluster.new(endpoint)
 
+      # Only cluster-specific attributes are in attributes array
+      # Global attributes (featureMap, clusterRevision) are handled by base class
       attrs = cluster.attributes
-      attrs.size.should eq(3)
+      attrs.size.should eq(1) # Just nameSupport
 
       # Check NameSupport attribute
       name_support = attrs.find { |a| a.id.id == Matter::Cluster::GroupsCluster::NAME_SUPPORT }
@@ -42,6 +44,10 @@ describe Matter::Cluster::GroupsCluster do
       name_support.not_nil!.name.should eq("nameSupport")
       name_support.not_nil!.type.should eq(:uint8)
       name_support.not_nil!.writable.should be_false
+
+      # Global attributes can be read via read_attribute
+      result = cluster.read_attribute(0xFFFC_u32) # FeatureMap
+      result.should be_a(Bytes)
     end
 
     it "reads NameSupport attribute when GroupNames feature enabled" do

@@ -25,11 +25,9 @@ describe "DeviceType encoding for HomeKit compatibility" do
       # Should be an array containing one struct with device_type=0x0100 and revision=2
       # TLV format: array_start, struct_start, uint32(tag=0, value=0x0100), uint16(tag=1, value=2), struct_end, array_end
 
-      # Verify the bytes contain the device type 0x0100 (256)
-      # In little-endian: 00 01 00 00
-      # TLV uses compact encoding: 256 fits in 2 bytes (0x0100)
-      # Format: 25 (uint16) 00 (tag 0) 00 01 (value 256 LE)
-      bytes.hexstring.should contain("25000001")
+      # Verify the bytes contain the device type 0x0100 (256) as uint32 per Matter spec
+      # Format: 26 (uint32) 00 (context tag 0) 00010000 (value 256 LE)
+      bytes.hexstring.should contain("260000010000") # uint32 context-tag-0 value-256-LE
     end
 
     it "encodes Root Node device type correctly" do
@@ -48,9 +46,9 @@ describe "DeviceType encoding for HomeKit compatibility" do
       bytes = result.as(Bytes)
       puts "Root Node device_type_list TLV encoding: #{bytes.hexstring}"
 
-      # TLV uses compact encoding: 22 fits in 1 byte (0x16)
-      # Format: 24 (uint8) 00 (tag 0) 16 (value 22)
-      bytes.hexstring.should contain("240016")
+      # Device type is always uint32 per Matter spec
+      # Format: 26 (uint32) 00 (context tag 0) 16000000 (value 22 LE as uint32)
+      bytes.hexstring.should contain("260016000000") # uint32 context-tag-0 value-22-LE
     end
 
     it "encodes server_list correctly for On/Off Light" do
