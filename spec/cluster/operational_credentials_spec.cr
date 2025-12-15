@@ -1,116 +1,114 @@
 require "../spec_helper"
 require "../../src/matter/cluster/operational_credentials_cluster"
+require "../../src/matter/crypto/certificate"
 
 # Helper functions for TLV encoding command data
 def create_attestation_request_tlv(nonce : Bytes) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
-
-  data = {
-    0_u8 => nonce,
-  } of TLV::Tag => TLV::Value
-
-  writer.put(nil, data)
-  io.rewind.to_slice
+  Matter::Cluster::Definitions::OperationalCredentials::AttestationRequest.new(
+    attestation_nonce: nonce
+  ).to_slice
 end
 
 def create_certificate_chain_request_tlv(cert_type : UInt8) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
-
-  data = {
-    0_u8 => cert_type,
-  } of TLV::Tag => TLV::Value
-
-  writer.put(nil, data)
-  io.rewind.to_slice
+  Matter::Cluster::Definitions::OperationalCredentials::CertificateChainRequest.new(
+    certificate_type: Matter::Cluster::Definitions::OperationalCredentials::CertificateChainType.new(cert_type)
+  ).to_slice
 end
 
-# Helper to create a valid TLV certificate with a public key for testing
+# Helper to create a valid TLV certificate with a public key for testing (root cert format)
 def create_test_tlv_certificate(public_key : Bytes, fabric_id : UInt64 = 0x1_u64) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
+  signature = Bytes.new(64, 0xAB_u8)
+  # Root cert has rcac_id in subject (not fabric_id/node_id like NOC)
+  subject = Matter::Crypto::DNAttributes.new(rcac_id: fabric_id)
+  issuer = Matter::Crypto::DNAttributes.new(rcac_id: fabric_id)
 
-  cert_data = {
-     1_u8 => 1_u8,       # Serial number
-     9_u8 => public_key, # EC public key (tag 9)
-    21_u8 => fabric_id,  # Fabric ID
-  } of TLV::Tag => TLV::Value
-
-  writer.put(nil, cert_data)
-  io.rewind.to_slice
+  Matter::Crypto::MatterCertificate.new(
+    serial_number: Bytes[0x01],
+    signature_algorithm: 1_u8,
+    issuer: issuer,
+    not_before: 0_u32,
+    not_after: 0xFFFFFFFF_u32,
+    subject: subject,
+    public_key_algorithm: 1_u8,
+    elliptic_curve_id: 1_u8,
+    ec_public_key: public_key,
+    signature: signature
+  ).to_slice
 end
 
 def create_csr_request_tlv(nonce : Bytes, is_for_update : Bool? = nil) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
-
-  # Start structure
-  writer.start_structure(nil)
-  writer.put(0_u8, nonce)
-  writer.put(1_u8, is_for_update) if is_for_update
-  writer.end_container
-
-  io.rewind.to_slice
+  Matter::Cluster::Definitions::OperationalCredentials::CsrRequest.new(
+    csr_nonce: nonce,
+    is_for_update_noc: is_for_update
+  ).to_slice
 end
 
 def create_add_noc_request_tlv(noc : Bytes, icac : Bytes?, ipk : Bytes, admin_subject : UInt64, admin_vendor : UInt16) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
-
-  # AddNocRequest expects plain UInt64 and UInt16, not DataType wrappers
-  data = {
-    0_u8 => noc,
-    2_u8 => ipk,
-    3_u8 => admin_subject,
-    4_u8 => admin_vendor,
-  } of TLV::Tag => TLV::Value
-  data[1_u8] = icac if icac
-
-  writer.put(nil, data)
-  io.rewind.to_slice
+  Matter::Cluster::Definitions::OperationalCredentials::AddNocRequest.new(
+    noc_value: noc,
+    icac_value: icac,
+    ipk_value: ipk,
+    case_admin_subject: admin_subject,
+    admin_vendor_id: admin_vendor
+  ).to_slice
 end
 
 def create_update_noc_request_tlv(noc : Bytes, icac : Bytes?, fabric_index : UInt8) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
-
-  # TLV layer will convert plain UInt8 to DataType::FabricIndex
-  data = {
-      0_u8 => noc,
-    254_u8 => fabric_index,
-  } of TLV::Tag => TLV::Value
-  data[1_u8] = icac if icac
-
-  writer.put(nil, data)
-  io.rewind.to_slice
+  Matter::Cluster::Definitions::OperationalCredentials::UpdateNocRequest.new(
+    noc_value: noc,
+    fabric_index: fabric_index,
+    icac_value: icac
+  ).to_slice
 end
 
 def create_add_trusted_root_cert_request_tlv(cert : Bytes) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
-
-  data = {
-    0_u8 => cert,
-  } of TLV::Tag => TLV::Value
-
-  writer.put(nil, data)
-  io.rewind.to_slice
+  Matter::Cluster::Definitions::OperationalCredentials::AddTrustedRootCertificateRequest.new(
+    root_certificate: cert
+  ).to_slice
 end
 
 def create_remove_fabric_request_tlv(fabric_index : UInt8) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
+  Matter::Cluster::Definitions::OperationalCredentials::RemoveFabricRequest.new(
+    fabric_index: fabric_index
+  ).to_slice
+end
 
-  # Create FabricIndex wrapper and get its TLV representation
-  fabric_idx = Matter::DataType::FabricIndex.new(fabric_index)
+# Helper to create a mock NOC with node_id and fabric_id
+def create_mock_noc(node_id : UInt64, fabric_id : UInt64) : Bytes
+  # Generate a default public key
+  pub_key = Bytes.new(65)
+  pub_key[0] = 0x04_u8
+  (1...65).each { |i| pub_key[i] = i.to_u8 }
+  create_mock_noc_with_key(node_id, fabric_id, pub_key)
+end
 
-  data = {
-    0_u8 => fabric_idx.to_h,
-  } of TLV::Tag => TLV::Value
+# Helper to create a mock NOC with node_id, fabric_id, and public key
+def create_mock_noc_with_key(node_id : UInt64, fabric_id : UInt64, public_key : Bytes) : Bytes
+  signature = Bytes.new(64, 0xAB_u8)
+  # NOC has fabric_id and node_id in subject
+  subject = Matter::Crypto::DNAttributes.new(fabric_id: fabric_id, node_id: node_id)
+  issuer = Matter::Crypto::DNAttributes.new(rcac_id: 1_u64)
 
-  writer.put(nil, data)
-  io.rewind.to_slice
+  Matter::Crypto::MatterCertificate.new(
+    serial_number: Bytes[0x01],
+    signature_algorithm: 1_u8,
+    issuer: issuer,
+    not_before: 0_u32,
+    not_after: 0xFFFFFFFF_u32,
+    subject: subject,
+    public_key_algorithm: 1_u8,
+    elliptic_curve_id: 1_u8,
+    ec_public_key: public_key,
+    signature: signature
+  ).to_slice
+end
+
+# Helper to create UpdateFabricLabel request TLV
+def create_update_fabric_label_request(label : String, fabric_index : UInt8) : Bytes
+  Matter::Cluster::Definitions::OperationalCredentials::UpdateFabricLabelRequest.new(
+    label: label,
+    fabric_index: fabric_index
+  ).to_slice
 end
 
 describe Matter::Cluster::OperationalCredentialsCluster do
@@ -135,7 +133,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_NOCS)
       value.should be_a(Bytes)
-      # Empty list encoded as TLV: 0x16 (array start) + 0x18 (end container)
+      # Empty array encoded as TLV: 0x16 (array start) + 0x18 (end container)
       value.as(Bytes).should eq(Bytes[0x16, 0x18])
     end
 
@@ -478,15 +476,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster.trusted_root_certificates.size.should eq(1)
 
         # Step 3: Create a mock NOC with embedded fabric_id and node_id
-        # Build a minimal TLV structure with required fields
-        noc_io = IO::Memory.new
-        noc_writer = TLV::Writer.new(noc_io)
-        noc_data = {
-          17_u8 => 0x1234567890ABCDEF_u64, # node_id (field 17)
-          21_u8 => 0x0011223344556677_u64, # fabric_id (field 21)
-        } of TLV::Tag => TLV::Value
-        noc_writer.put(nil, noc_data)
-        noc_bytes = noc_io.rewind.to_slice
+        noc_bytes = create_mock_noc(0x1234567890ABCDEF_u64, 0x0011223344556677_u64)
 
         # Step 4: Add NOC
         ipk = Bytes.new(16, 0x02_u8)
@@ -531,14 +521,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         )
 
         # Try to add NOC without CSR
-        noc_io = IO::Memory.new
-        noc_writer = TLV::Writer.new(noc_io)
-        noc_data = {
-          17_u8 => 0x1234567890ABCDEF_u64,
-          21_u8 => 0x0011223344556677_u64,
-        } of TLV::Tag => TLV::Value
-        noc_writer.put(nil, noc_data)
-        noc_bytes = noc_io.rewind.to_slice
+        noc_bytes = create_mock_noc(0x1234567890ABCDEF_u64, 0x0011223344556677_u64)
 
         ipk = Bytes.new(16, 0x02_u8)
         add_noc_tlv = create_add_noc_request_tlv(noc_bytes, nil, ipk, 0xABCD_u64, 0xFFF1_u16)
@@ -551,10 +534,10 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Should return error response (MissingCsr)
         result.should be_a(Matter::Cluster::CommandResponse)
         # Parse response and check status
-        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
-        response = reader.get
-        status = response["Any"].as(Hash)[0_u8]
-        status.should eq(4_u8) # MissingCsr
+        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        response = parsed.value.as(TLV::Structure)
+        status = response[0_u8].value.as(Int)
+        status.should eq(4) # MissingCsr
       end
 
       it "rejects AddNOC without trusted root" do
@@ -573,14 +556,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         )
 
         # Try to add NOC without trusted root
-        noc_io = IO::Memory.new
-        noc_writer = TLV::Writer.new(noc_io)
-        noc_data = {
-          17_u8 => 0x1234567890ABCDEF_u64,
-          21_u8 => 0x0011223344556677_u64,
-        } of TLV::Tag => TLV::Value
-        noc_writer.put(nil, noc_data)
-        noc_bytes = noc_io.rewind.to_slice
+        noc_bytes = create_mock_noc(0x1234567890ABCDEF_u64, 0x0011223344556677_u64)
 
         ipk = Bytes.new(16, 0x02_u8)
         add_noc_tlv = create_add_noc_request_tlv(noc_bytes, nil, ipk, 0xABCD_u64, 0xFFF1_u16)
@@ -592,10 +568,10 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Should return error response (InvalidNoc - root cert not set)
         result.should be_a(Matter::Cluster::CommandResponse)
-        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
-        response = reader.get
-        status = response["Any"].as(Hash)[0_u8]
-        status.should eq(3_u8) # InvalidNoc
+        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        response = parsed.value.as(TLV::Structure)
+        status = response[0_u8].value.as(Int)
+        status.should eq(3) # InvalidNoc
       end
     end
 
@@ -623,14 +599,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           add_root_tlv
         )
 
-        noc_io = IO::Memory.new
-        noc_writer = TLV::Writer.new(noc_io)
-        noc_data = {
-          17_u8 => 0x1234567890ABCDEF_u64,
-          21_u8 => 0x0011223344556677_u64,
-        } of TLV::Tag => TLV::Value
-        noc_writer.put(nil, noc_data)
-        original_noc = noc_io.rewind.to_slice
+        original_noc = create_mock_noc(0x1234567890ABCDEF_u64, 0x0011223344556677_u64)
 
         ipk = Bytes.new(16, 0x02_u8)
         add_noc_tlv = create_add_noc_request_tlv(original_noc, nil, ipk, 0xABCD_u64, 0xFFF1_u16)
@@ -659,14 +628,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         )
 
         # Step 2: Update NOC with new certificate (same fabric_id)
-        new_noc_io = IO::Memory.new
-        new_noc_writer = TLV::Writer.new(new_noc_io)
-        new_noc_data = {
-          17_u8 => 0xFEDCBA0987654321_u64, # Different node_id
-          21_u8 => 0x0011223344556677_u64, # Same fabric_id
-        } of TLV::Tag => TLV::Value
-        new_noc_writer.put(nil, new_noc_data)
-        new_noc = new_noc_io.rewind.to_slice
+        new_noc = create_mock_noc(0xFEDCBA0987654321_u64, 0x0011223344556677_u64)
 
         update_noc_tlv = create_update_noc_request_tlv(new_noc, nil, initial_fabric_index)
         result = cluster.invoke_command(
@@ -679,10 +641,10 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         result.should be_a(Matter::Cluster::CommandResponse)
 
         # Parse response to check status
-        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
-        response = reader.get
-        status = response["Any"].as(Hash)[0_u8]
-        status.should eq(0_u8) # Success
+        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        response = parsed.value.as(TLV::Structure)
+        status = response[0_u8].value.as(Int)
+        status.should eq(0) # Success
 
         # Verify fabric was updated, not added
         cluster.commissioned_fabrics.should eq(1_u8)
@@ -714,13 +676,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           create_add_trusted_root_cert_request_tlv(root_cert1)
         )
 
-        noc_io1 = IO::Memory.new
-        noc_writer1 = TLV::Writer.new(noc_io1)
-        noc_writer1.put(nil, {
-          17_u8 => 0x1111111111111111_u64,
-          21_u8 => 0xAAAAAAAAAAAAAAAA_u64,
-        } of TLV::Tag => TLV::Value)
-        noc1 = noc_io1.rewind.to_slice
+        noc1 = create_mock_noc(0x1111111111111111_u64, 0xAAAAAAAAAAAAAAAA_u64)
 
         ipk1 = Bytes.new(16, 0x01_u8)
         cluster.invoke_command(
@@ -753,14 +709,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         )
 
         # Try UpdateNOC - should fail because root cert was set
-        noc_io = IO::Memory.new
-        noc_writer = TLV::Writer.new(noc_io)
-        noc_data = {
-          17_u8 => 0x2222222222222222_u64,
-          21_u8 => 0xAAAAAAAAAAAAAAAA_u64, # Same fabric_id
-        } of TLV::Tag => TLV::Value
-        noc_writer.put(nil, noc_data)
-        noc_bytes = noc_io.rewind.to_slice
+        noc_bytes = create_mock_noc(0x2222222222222222_u64, 0xAAAAAAAAAAAAAAAA_u64)
 
         update_noc_tlv = create_update_noc_request_tlv(noc_bytes, nil, fabric_index)
         result = cluster.invoke_command(
@@ -770,10 +719,10 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Should return InvalidNoc error (root cert cannot be set for updates)
         result.should be_a(Matter::Cluster::CommandResponse)
-        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
-        response = reader.get
-        status = response["Any"].as(Hash)[0_u8]
-        status.should eq(3_u8) # InvalidNoc
+        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        response = parsed.value.as(TLV::Structure)
+        status = response[0_u8].value.as(Int)
+        status.should eq(3) # InvalidNoc
       end
     end
 
@@ -800,14 +749,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           add_root_tlv
         )
 
-        noc_io = IO::Memory.new
-        noc_writer = TLV::Writer.new(noc_io)
-        noc_data = {
-          17_u8 => 0x1234567890ABCDEF_u64,
-          21_u8 => 0x0011223344556677_u64,
-        } of TLV::Tag => TLV::Value
-        noc_writer.put(nil, noc_data)
-        noc_bytes = noc_io.rewind.to_slice
+        noc_bytes = create_mock_noc(0x1234567890ABCDEF_u64, 0x0011223344556677_u64)
 
         ipk = Bytes.new(16, 0x02_u8)
         add_noc_tlv = create_add_noc_request_tlv(noc_bytes, nil, ipk, 0xABCD_u64, 0xFFF1_u16)
@@ -825,14 +767,20 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         )
 
         # Should return error response
-        # Parse the response - error responses have tag 0 with a string message
+        # Parse the response - TlvNocResponse has:
+        #   tag 0: status_code (Int/enum)
+        #   tag 1: fabric_index (optional)
+        #   tag 2: debug_text (String, optional)
         result.should be_a(Matter::Cluster::CommandResponse)
-        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
-        response = reader.get
-        # Error responses have a structure with tag 0 containing an error message string
-        error_value = response["Any"].as(Hash)[0_u8]
-        error_value.should be_a(String)
-        error_value.as(String).should contain("AddNOC")
+        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        response = parsed.value.as(TLV::Structure)
+        # Check status code at tag 0 - should be MissingCsr (4)
+        status_code = response[0_u8].value.as(Int)
+        status_code.should eq(4) # NodeOperationalCertStatus::MissingCsr
+        # Check debug_text at tag 2 contains the error message
+        debug_text = response[2_u8]?.try(&.value)
+        debug_text.should be_a(String)
+        debug_text.as(String).should contain("AddNOC")
       end
 
       it "allows CSR after failsafe expiry" do
@@ -890,13 +838,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           create_add_trusted_root_cert_request_tlv(root_cert1)
         )
 
-        noc_io1 = IO::Memory.new
-        noc_writer1 = TLV::Writer.new(noc_io1)
-        noc_writer1.put(nil, {
-          17_u8 => 0x1111111111111111_u64,
-          21_u8 => 0xAAAAAAAAAAAAAAAA_u64,
-        } of TLV::Tag => TLV::Value)
-        noc1 = noc_io1.rewind.to_slice
+        noc1 = create_mock_noc(0x1111111111111111_u64, 0xAAAAAAAAAAAAAAAA_u64)
 
         ipk1 = Bytes.new(16, 0x01_u8)
         cluster.invoke_command(
@@ -922,13 +864,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           create_add_trusted_root_cert_request_tlv(root_cert2)
         )
 
-        noc_io2 = IO::Memory.new
-        noc_writer2 = TLV::Writer.new(noc_io2)
-        noc_writer2.put(nil, {
-          17_u8 => 0x2222222222222222_u64,
-          21_u8 => 0xBBBBBBBBBBBBBBBB_u64,
-        } of TLV::Tag => TLV::Value)
-        noc2 = noc_io2.rewind.to_slice
+        noc2 = create_mock_noc(0x2222222222222222_u64, 0xBBBBBBBBBBBBBBBB_u64)
 
         ipk2 = Bytes.new(16, 0x02_u8)
         cluster.invoke_command(
@@ -969,13 +905,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         same_fabric_id = 0xAAAAAAAAAAAAAAAA_u64
 
-        noc_io1 = IO::Memory.new
-        noc_writer1 = TLV::Writer.new(noc_io1)
-        noc_writer1.put(nil, {
-          17_u8 => 0x1111111111111111_u64,
-          21_u8 => same_fabric_id,
-        } of TLV::Tag => TLV::Value)
-        noc1 = noc_io1.rewind.to_slice
+        noc1 = create_mock_noc(0x1111111111111111_u64, same_fabric_id)
 
         ipk1 = Bytes.new(16, 0x01_u8)
         cluster.invoke_command(
@@ -1000,13 +930,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           create_add_trusted_root_cert_request_tlv(root_cert2)
         )
 
-        noc_io2 = IO::Memory.new
-        noc_writer2 = TLV::Writer.new(noc_io2)
-        noc_writer2.put(nil, {
-          17_u8 => 0x2222222222222222_u64,
-          21_u8 => same_fabric_id, # Same fabric_id!
-        } of TLV::Tag => TLV::Value)
-        noc2 = noc_io2.rewind.to_slice
+        noc2 = create_mock_noc(0x2222222222222222_u64, same_fabric_id)
 
         ipk2 = Bytes.new(16, 0x02_u8)
         result = cluster.invoke_command(
@@ -1016,9 +940,9 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Should return FabricConflict error
         result.should be_a(Matter::Cluster::CommandResponse)
-        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
-        response = reader.get
-        status = response["Any"].as(Hash)[0_u8]
+        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        response = parsed.value.as(TLV::Structure)
+        status = response[0_u8].value.as(Int)
         status.should eq(9_u8) # FabricConflict
       end
     end
@@ -1046,13 +970,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           create_add_trusted_root_cert_request_tlv(root_cert)
         )
 
-        noc_io = IO::Memory.new
-        noc_writer = TLV::Writer.new(noc_io)
-        noc_writer.put(nil, {
-          17_u8 => 0x1234567890ABCDEF_u64,
-          21_u8 => 0x0011223344556677_u64,
-        } of TLV::Tag => TLV::Value)
-        noc = noc_io.rewind.to_slice
+        noc = create_mock_noc(0x1234567890ABCDEF_u64, 0x0011223344556677_u64)
 
         ipk = Bytes.new(16, 0x02_u8)
         cluster.invoke_command(
@@ -1064,19 +982,9 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster.session_fabric_index = fabric_index
 
         # Update label
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        fabric_idx = Matter::DataType::FabricIndex.new(fabric_index)
-        data = {
-            0_u8 => "MyFabricLabel",
-          254_u8 => fabric_idx.to_h,
-        } of TLV::Tag => TLV::Value
-        writer.put(nil, data)
-        update_label_tlv = io.rewind.to_slice
-
         result = cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_FABRIC_LABEL,
-          update_label_tlv
+          create_update_fabric_label_request("MyFabricLabel", fabric_index)
         )
 
         result.should be_a(Matter::Cluster::CommandResponse)
@@ -1110,13 +1018,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
             create_add_trusted_root_cert_request_tlv(root_cert)
           )
 
-          noc_io = IO::Memory.new
-          noc_writer = TLV::Writer.new(noc_io)
-          noc_writer.put(nil, {
-            17_u8 => (0x1111111111111111_u64 + i),
-            21_u8 => (0xAAAAAAAAAAAAAAAA_u64 + i),
-          } of TLV::Tag => TLV::Value)
-          noc = noc_io.rewind.to_slice
+          noc = create_mock_noc(0x1111111111111111_u64 + i, 0xAAAAAAAAAAAAAAAA_u64 + i)
 
           ipk = Bytes.new(16, i.to_u8)
           cluster.invoke_command(
@@ -1129,42 +1031,25 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         fabric1_index = cluster.fabrics[0].fabric_index
         cluster.session_fabric_index = fabric1_index
 
-        io1 = IO::Memory.new
-        writer1 = TLV::Writer.new(io1)
-        fabric_idx1 = Matter::DataType::FabricIndex.new(fabric1_index)
-        data1 = {
-            0_u8 => "SharedLabel",
-          254_u8 => fabric_idx1.to_h,
-        } of TLV::Tag => TLV::Value
-        writer1.put(nil, data1)
         cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_FABRIC_LABEL,
-          io1.rewind.to_slice
+          create_update_fabric_label_request("SharedLabel", fabric1_index)
         )
 
         # Try to set same label on second fabric
         fabric2_index = cluster.fabrics[1].fabric_index
         cluster.session_fabric_index = fabric2_index
 
-        io2 = IO::Memory.new
-        writer2 = TLV::Writer.new(io2)
-        fabric_idx2 = Matter::DataType::FabricIndex.new(fabric2_index)
-        data2 = {
-            0_u8 => "SharedLabel", # Same label!
-          254_u8 => fabric_idx2.to_h,
-        } of TLV::Tag => TLV::Value
-        writer2.put(nil, data2)
-
         result = cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_FABRIC_LABEL,
-          io2.rewind.to_slice
+          create_update_fabric_label_request("SharedLabel", fabric2_index) # Same label!
         )
 
         # Should return LabelConflict error
         result.should be_a(Matter::Cluster::CommandResponse)
-        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
-        response = reader.get
-        status = response["Any"].as(Hash)[0_u8]
+        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        response = parsed.value.as(TLV::Structure)
+        status = response[0_u8].value.as(Int)
         status.should eq(10_u8) # LabelConflict
       end
     end
@@ -1203,14 +1088,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         )
 
         # Step 3: Create and add NOC
-        noc_io = IO::Memory.new
-        noc_writer = TLV::Writer.new(noc_io)
-        noc_data = {
-          17_u8 => 0x1234567890ABCDEF_u64, # node_id
-          21_u8 => 0x0011223344556677_u64, # fabric_id
-        } of TLV::Tag => TLV::Value
-        noc_writer.put(nil, noc_data)
-        noc_bytes = noc_io.rewind.to_slice
+        noc_bytes = create_mock_noc(0x1234567890ABCDEF_u64, 0x0011223344556677_u64)
 
         ipk = Bytes.new(16, 0x02_u8)
         add_noc_tlv = create_add_noc_request_tlv(
@@ -1227,10 +1105,10 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Verify AddNOC succeeded
         noc_result.should be_a(Matter::Cluster::CommandResponse)
-        reader = TLV::Reader.new(noc_result.as(Matter::Cluster::CommandResponse).data)
-        response = reader.get
-        status = response["Any"].as(Hash)[0_u8]
-        status.should eq(0_u8) # Success
+        parsed = TLV::Any.from_slice(noc_result.as(Matter::Cluster::CommandResponse).data)
+        response = parsed.value.as(TLV::Structure)
+        status = response[0_u8].value.as(Int)
+        status.should eq(0) # Success
 
         # Verify fabric was added to fabric_table
         fabric_table.size.should eq(1)
@@ -1256,16 +1134,12 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Parse the TLV to verify it contains the fabric data
         if fabrics_bytes.size > 0
-          fabrics_reader = TLV::Reader.new(fabrics_bytes)
-          fabrics_data = fabrics_reader.get
-          puts "Fabrics TLV parsed: #{fabrics_data.inspect}"
+          fabrics_parsed = TLV::Any.from_slice(fabrics_bytes)
+          puts "Fabrics TLV parsed: #{fabrics_parsed.value.inspect}"
 
           # Should contain an array with one fabric
-          fabrics_hash = fabrics_data.as(Hash(TLV::Tag, TLV::Value))
-          fabrics_hash.has_key?("Any").should be_true
-
-          inner = fabrics_hash["Any"]
-          inner.as(Array(TLV::Value)).size.should eq(1)
+          fabrics_array = fabrics_parsed.value.as(Array(TLV::Any))
+          fabrics_array.size.should eq(1)
         end
       end
     end
@@ -1288,22 +1162,13 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           create_csr_request_tlv(nonce, false)
         )
 
-        # Create a TLV root certificate with tag 9 containing a valid 65-byte EC public key
-        cert_io = IO::Memory.new
-        cert_writer = TLV::Writer.new(cert_io)
-
         # Create a valid 65-byte uncompressed EC public key
         public_key = Bytes.new(65)
         public_key[0] = 0x04_u8
         (1...65).each { |i| public_key[i] = (i % 256).to_u8 }
 
-        cert_data = {
-           1_u8 => 1_u8,             # Serial number
-           9_u8 => public_key,       # EC public key (tag 9) - Matter TLV certificate format
-          21_u8 => 0x1234567890_u64, # Fabric ID
-        } of TLV::Tag => TLV::Value
-        cert_writer.put(nil, cert_data)
-        tlv_cert = cert_io.rewind.to_slice
+        # Create a TLV root certificate with tag 9 containing a valid 65-byte EC public key
+        tlv_cert = create_test_tlv_certificate(public_key, 0x1234567890_u64)
 
         # Add trusted root certificate (TLV format)
         cluster.invoke_command(
@@ -1311,15 +1176,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           create_add_trusted_root_cert_request_tlv(tlv_cert)
         )
 
-        # Create NOC
-        noc_io = IO::Memory.new
-        noc_writer = TLV::Writer.new(noc_io)
-        noc_writer.put(nil, {
-          17_u8 => 0x1111111111111111_u64,
-          21_u8 => 0x1234567890_u64,
-           9_u8 => public_key, # Same public key as root
-        } of TLV::Tag => TLV::Value)
-        noc = noc_io.rewind.to_slice
+        # Create NOC with same public key as root
+        noc = create_mock_noc_with_key(0x1111111111111111_u64, 0x1234567890_u64, public_key)
 
         # Invoke AddNOC - should successfully extract public key from TLV certificate
         ipk = Bytes.new(16, 0_u8)
@@ -1330,10 +1188,10 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Should succeed - verifying that TLV certificate processing worked
         result.should be_a(Matter::Cluster::CommandResponse)
-        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
-        response = reader.get
-        status = response["Any"].as(Hash)[0_u8]
-        status.should eq(0_u8) # Success
+        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        response = parsed.value.as(TLV::Structure)
+        status = response[0_u8].value.as(Int)
+        status.should eq(0) # Success
 
         # Verify fabric was created with correct public key
         cluster.fabrics.size.should eq(1)
@@ -1387,14 +1245,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         )
 
         # Create NOC with same public key
-        noc_io = IO::Memory.new
-        noc_writer = TLV::Writer.new(noc_io)
-        noc_writer.put(nil, {
-          17_u8 => 0x2222222222222222_u64,
-          21_u8 => 0x9876543210_u64,
-           9_u8 => public_key_bytes,
-        } of TLV::Tag => TLV::Value)
-        noc = noc_io.rewind.to_slice
+        noc = create_mock_noc_with_key(0x2222222222222222_u64, 0x9876543210_u64, public_key_bytes)
 
         # Invoke AddNOC - should successfully extract public key from DER certificate
         ipk = Bytes.new(16, 1_u8)
@@ -1405,10 +1256,10 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Should succeed - verifying that DER certificate processing worked
         result.should be_a(Matter::Cluster::CommandResponse)
-        reader = TLV::Reader.new(result.as(Matter::Cluster::CommandResponse).data)
-        response = reader.get
-        status = response["Any"].as(Hash)[0_u8]
-        status.should eq(0_u8) # Success
+        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        response = parsed.value.as(TLV::Structure)
+        status = response[0_u8].value.as(Int)
+        status.should eq(0) # Success
 
         # Verify fabric was created with correct public key
         cluster.fabrics.size.should eq(1)
@@ -1438,29 +1289,15 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         (1...65).each { |i| public_key[i] = i.to_u8 }
 
         # Create TLV root certificate
-        cert_io = IO::Memory.new
-        cert_writer = TLV::Writer.new(cert_io)
-        cert_writer.put(nil, {
-           1_u8 => 1_u8,
-           9_u8 => public_key,
-          21_u8 => 0x1_u64,
-        } of TLV::Tag => TLV::Value)
-        tlv_cert = cert_io.rewind.to_slice
+        tlv_cert = create_test_tlv_certificate(public_key, 0x1_u64)
 
         cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(tlv_cert)
         )
 
-        # Create NOC
-        noc_io = IO::Memory.new
-        noc_writer = TLV::Writer.new(noc_io)
-        noc_writer.put(nil, {
-          17_u8 => 0x1_u64,
-          21_u8 => 0x1_u64,
-           9_u8 => public_key,
-        } of TLV::Tag => TLV::Value)
-        noc = noc_io.rewind.to_slice
+        # Create NOC with same public key
+        noc = create_mock_noc_with_key(0x1_u64, 0x1_u64, public_key)
 
         ipk = Bytes.new(16, 0_u8)
         cluster.invoke_command(

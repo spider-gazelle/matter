@@ -9,34 +9,20 @@ def create_open_commissioning_window_tlv(
   iterations : UInt32,
   salt : Bytes,
 ) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
-
-  # Structure with anonymous tag
-  data = {
-    0_u8 => timeout,
-    1_u8 => verifier,
-    2_u8 => discriminator,
-    3_u8 => iterations,
-    4_u8 => salt,
-  } of TLV::Tag => TLV::Value
-
-  writer.put(nil, data)
-  io.rewind.to_slice
+  Matter::Cluster::Definitions::AdministratorCommissioning::OpenCommissioningWindowRequest.new(
+    commissioning_timeout: timeout,
+    pake_passcode_verifier: verifier,
+    discriminator: discriminator,
+    iterations: iterations,
+    salt: salt
+  ).to_slice
 end
 
 # Helper to create TLV-encoded OpenBasicCommissioningWindowRequest
 def create_open_basic_commissioning_window_tlv(timeout : UInt16) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
-
-  # Structure with anonymous tag
-  data = {
-    0_u8 => timeout,
-  } of TLV::Tag => TLV::Value
-
-  writer.put(nil, data)
-  io.rewind.to_slice
+  Matter::Cluster::Definitions::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+    commissioning_timeout: timeout
+  ).to_slice
 end
 
 describe Matter::Cluster::AdministratorCommissioningCluster do

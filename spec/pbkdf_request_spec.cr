@@ -12,7 +12,7 @@ describe Matter::Session::Pase::Definitions::PbkdfParamRequest do
     end
 
     # Parse the request - this should not crash
-    request = Matter::Session::Pase::Definitions::PbkdfParamRequest.new(payload_bytes)
+    request = Matter::Session::Pase::Definitions::PbkdfParamRequest.from_slice(payload_bytes)
 
     # Verify key fields are parsed correctly
     request.initiator_random.should_not be_nil
@@ -46,10 +46,10 @@ describe Matter::Session::Pase::Definitions::PbkdfParamRequest do
     )
 
     # Encode to bytes
-    encoded = original.to_bytes
+    encoded = original.to_slice
 
     # Decode back
-    decoded = Matter::Session::Pase::Definitions::PbkdfParamRequest.new(encoded)
+    decoded = Matter::Session::Pase::Definitions::PbkdfParamRequest.from_slice(encoded)
 
     # Verify fields match
     decoded.initiator_session_id.should eq(original.initiator_session_id)

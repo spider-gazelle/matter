@@ -155,17 +155,19 @@ module Matter
         end
       end
 
-      # Group Key Map entry
+      # Group Key Map entry (TLV-serializable for attribute encoding)
       # Maps a group ID to a key set ID within a fabric
       # Matter Core Spec §11.2.6.4
       struct GroupKeyMapStruct
-        # Group identifier (1-65535, 0 is invalid)
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property group_id : UInt16
 
-        # Key set to use for this group (0 = IPK, others = operational)
+        @[TLV::Field(tag: 1)]
         property group_key_set_id : UInt16
 
-        # Fabric index for isolation (automatically set by cluster)
+        @[TLV::Field(tag: 254)]
         property fabric_index : UInt8
 
         def initialize(@group_id : UInt16, @group_key_set_id : UInt16, @fabric_index : UInt8 = 0)
@@ -179,20 +181,22 @@ module Matter
         end
       end
 
-      # Group Info Map entry
+      # Group Info Map entry (TLV-serializable for attribute encoding)
       # Represents a group with its endpoints and name
       # Matter Core Spec §11.2.6.5
       struct GroupInfoMapStruct
-        # Group identifier
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 1)]
         property group_id : UInt16
 
-        # List of endpoint IDs that are part of this group
+        @[TLV::Field(tag: 2)]
         property endpoints : Array(UInt16)
 
-        # Optional group name
+        @[TLV::Field(tag: 3, optional: true)]
         property group_name : String?
 
-        # Fabric index for isolation
+        @[TLV::Field(tag: 254)]
         property fabric_index : UInt8
 
         def initialize(
@@ -366,57 +370,18 @@ module Matter
       end
 
       private def encode_group_key_map(fabric_index : UInt8) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         entries = group_key_map(fabric_index)
-
-        # Use explicit start_array/end_container to ensure empty arrays are properly encoded
-        # (writer.put produces 0 bytes for empty arrays, which is incorrect TLV)
-        writer.start_array(nil)
-        entries.each do |entry|
-          writer.start_structure(nil)
-          writer.put_unsigned_int(0_u8, entry.group_id)
-          writer.put_unsigned_int(1_u8, entry.group_key_set_id)
-          writer.put_unsigned_int(254_u8, entry.fabric_index)
-          writer.end_container
-        end
-        writer.end_container
-
-        io.to_slice
+        items = entries.map { |entry| TLV::Any.from_slice(entry.to_slice) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       private def encode_group_table(fabric_index : UInt8) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         entries = group_table(fabric_index)
-
-        # Use explicit start_array/end_container to ensure empty arrays are properly encoded
-        # (writer.put produces 0 bytes for empty arrays, which is incorrect TLV)
-        writer.start_array(nil)
-        entries.each do |entry|
-          writer.start_structure(nil)
-          writer.put_unsigned_int(1_u8, entry.group_id)
-          # Endpoints list
-          writer.start_array(2_u8)
-          entry.endpoints.each { |ep| writer.put_unsigned_int(nil, ep) }
-          writer.end_container
-          if name = entry.group_name
-            writer.put_string(3_u8, name)
-          end
-          writer.put_unsigned_int(254_u8, entry.fabric_index)
-          writer.end_container
-        end
-        writer.end_container
-
-        io.to_slice
+        items = entries.map { |entry| TLV::Any.from_slice(entry.to_slice) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       private def encode_attribute_list : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         attr_ids = [
           ATTR_GROUP_KEY_MAP,
           ATTR_GROUP_TABLE,
@@ -427,9 +392,8 @@ module Matter
           ATTRIBUTE_LIST,
         ]
 
-        attr_array = attr_ids.map { |id| id.as(TLV::Value) }
-        writer.put(nil, attr_array)
-        io.to_slice
+        items = attr_ids.map { |id| TLV::Any.new(id, nil) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       # Get group key map for the specified fabric

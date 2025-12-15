@@ -1,3 +1,4 @@
+require "tlv"
 require "../interaction_model/status_code"
 require "../interaction_model/paths"
 require "../datatype/*"
@@ -157,49 +158,34 @@ module Matter
 
       # Encode AttributeList - override in subclass for custom handling
       protected def encode_attribute_list_global : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        writer.start_array(nil)
+        list = TLV::List.new
         # Add all cluster-specific attributes
         attributes.each do |attr|
-          writer.put_unsigned_int(nil, attr.id.id, force_size: 4)
+          list << TLV::Any.new(attr.id.id, nil, fixed_size: true)
         end
         # Add global attributes
-        writer.put_unsigned_int(nil, GLOBAL_GENERATED_COMMAND_LIST, force_size: 4)
-        writer.put_unsigned_int(nil, GLOBAL_ACCEPTED_COMMAND_LIST, force_size: 4)
-        writer.put_unsigned_int(nil, GLOBAL_ATTRIBUTE_LIST, force_size: 4)
-        writer.put_unsigned_int(nil, GLOBAL_FEATURE_MAP, force_size: 4)
-        writer.put_unsigned_int(nil, GLOBAL_CLUSTER_REVISION, force_size: 4)
-        writer.end_container
+        list << TLV::Any.new(GLOBAL_GENERATED_COMMAND_LIST, nil, fixed_size: true)
+        list << TLV::Any.new(GLOBAL_ACCEPTED_COMMAND_LIST, nil, fixed_size: true)
+        list << TLV::Any.new(GLOBAL_ATTRIBUTE_LIST, nil, fixed_size: true)
+        list << TLV::Any.new(GLOBAL_FEATURE_MAP, nil, fixed_size: true)
+        list << TLV::Any.new(GLOBAL_CLUSTER_REVISION, nil, fixed_size: true)
 
-        io.to_slice
+        TLV::Any.new(list, nil, as_array: true).to_slice
       end
 
       # Encode AcceptedCommandList - override in subclass for custom handling
       protected def encode_accepted_command_list_global : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        writer.start_array(nil)
+        list = TLV::List.new
         commands.each do |cmd|
-          writer.put_unsigned_int(nil, cmd.id.id, force_size: 4)
+          list << TLV::Any.new(cmd.id.id, nil, fixed_size: true)
         end
-        writer.end_container
-
-        io.to_slice
+        TLV::Any.new(list, nil, as_array: true).to_slice
       end
 
       # Encode GeneratedCommandList - override in subclass to add generated commands
       protected def encode_generated_command_list_global : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         # Default: empty array (no generated commands)
-        writer.start_array(nil)
-        writer.end_container
-
-        io.to_slice
+        TLV::Any.new(TLV::List.new, nil, as_array: true).to_slice
       end
 
       # Write an attribute value
@@ -276,45 +262,27 @@ module Matter
 
       # Helper methods for encoding simple values
       protected def encode_uint8(value : UInt8) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, value)
-        io.rewind.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
 
       protected def encode_uint16(value : UInt16) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, value)
-        io.rewind.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
 
       protected def encode_uint32(value : UInt32) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, value)
-        io.rewind.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
 
       protected def encode_bool(value : Bool) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, value)
-        io.rewind.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
 
       protected def encode_null : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, nil)
-        io.rewind.to_slice
+        TLV::Any.new(nil, nil).to_slice
       end
 
       protected def encode_int16(value : Int16) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, value)
-        io.rewind.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
     end
   end

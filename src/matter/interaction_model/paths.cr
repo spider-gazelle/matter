@@ -2,20 +2,21 @@ module Matter
   module InteractionModel
     # Attribute path identifying a specific attribute
     # Supports both list-form [endpoint, cluster, attribute] and structure-form {2=>endpoint, 3=>cluster, 4=>attribute}
-    @[TLV::ListForm]
+    # Note: fixed_size: true ensures proper type widths for iOS compatibility
+    @[TLV::ListFormat]
     struct AttributePath
       include TLV::Serializable
 
-      @[TLV::Field(tag: 2)]
+      @[TLV::Field(tag: 2, fixed_size: true)]
       property endpoint : UInt16?
 
-      @[TLV::Field(tag: 3)]
+      @[TLV::Field(tag: 3, fixed_size: true)]
       property cluster : UInt32?
 
-      @[TLV::Field(tag: 4)]
+      @[TLV::Field(tag: 4, fixed_size: true)]
       property attribute : UInt32?
 
-      @[TLV::Field(tag: 5)]
+      @[TLV::Field(tag: 5, fixed_size: true)]
       property list_index : UInt16?
 
       def initialize(
@@ -55,17 +56,18 @@ module Matter
 
     # Command path identifying a specific command
     # Supports both list-form [endpoint, cluster, command] and structure-form {0=>endpoint, 1=>cluster, 2=>command}
-    @[TLV::ListForm]
+    # Note: fixed_size: true ensures proper type widths for iOS compatibility
+    @[TLV::ListFormat]
     struct CommandPath
       include TLV::Serializable
 
-      @[TLV::Field(tag: 0)]
+      @[TLV::Field(tag: 0, fixed_size: true)]
       property endpoint : UInt16
 
-      @[TLV::Field(tag: 1)]
+      @[TLV::Field(tag: 1, fixed_size: true)]
       property cluster : UInt32
 
-      @[TLV::Field(tag: 2)]
+      @[TLV::Field(tag: 2, fixed_size: true)]
       property command : UInt32
 
       def initialize(@endpoint : UInt16, @cluster : UInt32, @command : UInt32)
@@ -84,17 +86,18 @@ module Matter
 
     # Event path identifying a specific event
     # Supports both list-form [endpoint, cluster, event, is_urgent] and structure-form
-    @[TLV::ListForm]
+    # Note: fixed_size: true ensures proper type widths for iOS compatibility
+    @[TLV::ListFormat]
     struct EventPath
       include TLV::Serializable
 
-      @[TLV::Field(tag: 2)]
+      @[TLV::Field(tag: 2, fixed_size: true)]
       property endpoint : UInt16?
 
-      @[TLV::Field(tag: 3)]
+      @[TLV::Field(tag: 3, fixed_size: true)]
       property cluster : UInt32?
 
-      @[TLV::Field(tag: 4)]
+      @[TLV::Field(tag: 4, fixed_size: true)]
       property event : UInt32?
 
       @[TLV::Field(tag: 5)]

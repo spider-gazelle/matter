@@ -639,14 +639,13 @@ module Matter
         # Parse StatusResponse TLV
         status_code = 0_u8
         begin
-          reader = TLV::Reader.new(decrypted)
-          data = reader.get.as(Hash(TLV::Tag, TLV::Value))
-          request_data = data["Any"].as(Hash(TLV::Tag, TLV::Value))
+          parsed = TLV::Any.from_slice(decrypted)
+          request_data = parsed.value.as(TLV::Structure)
 
           # Extract status code (tag 0)
-          status_value = request_data[0_u8]?
-          status_code = if status_value
-                          case status_value
+          status_any = request_data[0_u8]?
+          status_code = if status_any
+                          case status_value = status_any.value
                           when Int
                             status_value.to_u8
                           when UInt8
@@ -1279,7 +1278,7 @@ module Matter
         @pbkdf_request_payload = msg.payload.dup
 
         # Decode request (TLV::Serializable provides constructor that takes Bytes)
-        request = Session::Pase::Definitions::PbkdfParamRequest.new(msg.payload)
+        request = Session::Pase::Definitions::PbkdfParamRequest.from_slice(msg.payload)
         Log.debug { "  Initiator session ID: #{request.initiator_session_id || "none"}" }
 
         # Store initiator session ID for later use in secure session creation
@@ -1312,7 +1311,7 @@ module Matter
         )
 
         # Store response payload for context hashing (needed for SPAKE2+ context)
-        @pbkdf_response_payload = response.to_bytes
+        @pbkdf_response_payload = response.to_slice
         Log.debug { "PBKDF Response payload (#{@pbkdf_response_payload.not_nil!.size} bytes): #{@pbkdf_response_payload.not_nil!.hexstring}" }
 
         # Send response
@@ -1349,7 +1348,7 @@ module Matter
         Log.info { "Handling PASE Pake1" }
 
         # Decode Pake1 message - TLV library now correctly extracts the EC point
-        pake1 = Session::Pase::Definitions::Pake1.new(msg.payload)
+        pake1 = Session::Pase::Definitions::Pake1.from_slice(msg.payload)
         p_a = pake1.x # Now correctly contains just the 65-byte EC point
 
         Log.info { "  Received pA: #{p_a.size} bytes" }
@@ -1383,7 +1382,7 @@ module Matter
           msg: msg,
           peer: peer,
           message_type: MSG_PASE_PAKE2,
-          payload: pake2.to_bytes
+          payload: pake2.to_slice
         )
 
         Log.info { "Sent PASE Pake2 (pB + cB)" }
@@ -1397,16 +1396,12 @@ module Matter
 
         # Decode Pake3 message - manually parse TLV to extract verifier (cA)
         Log.debug { "  Pake3 payload: #{msg.payload.hexstring}" }
-        reader = TLV::Reader.new(msg.payload)
-        tlv_data = reader.get
-        Log.debug { "  Pake3 TLV keys: #{tlv_data.as(Hash).keys.inspect}" }
-
-        # Unwrap the structure (same pattern as Pake1)
-        wrapper = tlv_data.as(Hash(TLV::Tag, TLV::Value))
-        struct_data = wrapper["Any"].as(Hash(TLV::Tag, TLV::Value))
+        parsed = TLV::Any.from_slice(msg.payload)
+        struct_data = parsed.value.as(TLV::Structure)
+        Log.debug { "  Pake3 TLV keys: #{struct_data.keys.inspect}" }
 
         # Extract cA (verifier) from tag 1
-        c_a = struct_data[1_u8].as(Bytes)
+        c_a = struct_data[1_u8].as_bytes
         Log.debug { "  Received cA: #{c_a.size} bytes" }
         Log.debug { "  cA hex: #{c_a.hexstring}" }
 
@@ -1730,7 +1725,7 @@ module Matter
 
         # Decode Sigma1 message
         begin
-          sigma1 = Session::Case::Definitions::Sigma1.new(msg.payload)
+          sigma1 = Session::Case::Definitions::Sigma1.from_slice(msg.payload)
 
           Log.info { "  Initiator session ID: #{sigma1.initiator_session_id}" }
           Log.info { "  Initiator ephemeral public key: #{sigma1.initiator_eph_pub_key.size} bytes" }
@@ -1844,7 +1839,7 @@ module Matter
             msg: msg,
             peer: peer,
             message_type: MSG_CASE_SIGMA2,
-            payload: sigma2.to_bytes
+            payload: sigma2.to_slice
           )
 
           Log.info { "Sent CASE Sigma2" }
@@ -1859,7 +1854,7 @@ module Matter
 
         begin
           # Decode Sigma3 message
-          sigma3 = Session::Case::Definitions::Sigma3.new(msg.payload)
+          sigma3 = Session::Case::Definitions::Sigma3.from_slice(msg.payload)
 
           Log.debug { "  Encrypted cert: #{sigma3.encrypted3.size} bytes" }
 

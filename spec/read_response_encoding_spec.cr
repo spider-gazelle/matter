@@ -2,6 +2,7 @@ require "./spec_helper"
 require "../src/matter/protocol/im_handler"
 require "../src/matter/interaction_model/messages"
 require "../src/matter/interaction_model/paths"
+require "../src/matter/interaction_model/tlv_messages"
 
 # Test ReadResponse encoding with multiple attributes (reproducing chip-tool issue)
 describe "ReadResponse Encoding" do
@@ -11,17 +12,13 @@ describe "ReadResponse Encoding" do
 
     # Report 1: GeneralCommissioning.Breadcrumb (0x30.0x00)
     path1 = Matter::InteractionModel::AttributePath.new(endpoint: 0_u16, cluster: 0x30_u32, attribute: 0x00_u32)
-    io1 = IO::Memory.new
-    writer1 = TLV::Writer.new(io1)
-    writer1.put(nil, 0_u64) # Breadcrumb value
-    reports << Matter::InteractionModel::AttributeData.new(path1, 0_u32, io1.rewind.to_slice)
+    value1 = TLV::Any.new(0_u64, nil).to_slice # Breadcrumb value
+    reports << Matter::InteractionModel::AttributeData.new(path1, 0_u32, value1)
 
     # Report 2: BasicInformation.VendorID (0x28.0x02)
     path2 = Matter::InteractionModel::AttributePath.new(endpoint: 0_u16, cluster: 0x28_u32, attribute: 0x02_u32)
-    io2 = IO::Memory.new
-    writer2 = TLV::Writer.new(io2)
-    writer2.put(nil, 0xFFF1_u16)
-    reports << Matter::InteractionModel::AttributeData.new(path2, 0_u32, io2.rewind.to_slice)
+    value2 = TLV::Any.new(0xFFF1_u16, nil).to_slice
+    reports << Matter::InteractionModel::AttributeData.new(path2, 0_u32, value2)
 
     # Report 3: Empty value (should be skipped with error handling)
     path3 = Matter::InteractionModel::AttributePath.new(endpoint: 0_u16, cluster: 0x30_u32, attribute: 0x01_u32)
@@ -37,20 +34,14 @@ describe "ReadResponse Encoding" do
     # Should succeed despite empty value in report 3
     encoded.size.should be > 0
 
-    # Decode to verify structure
-    reader = TLV::Reader.new(encoded)
-    data = reader.get
-
-    # Should have root structure
-    data.is_a?(Hash).should be_true
-    root = data.as(Hash(TLV::Tag, TLV::Value))["Any"].as(Hash(TLV::Tag, TLV::Value))
+    # Decode to verify structure using TLV::Serializable
+    decoded = Matter::InteractionModel::ReportDataMessage.from_slice(encoded)
 
     # Should have attribute reports (tag 1)
-    root.has_key?(1_u8).should be_true
+    decoded.attribute_reports.should_not be_nil
 
     # Should have interactionModelRevision (tag 0xFF)
-    root.has_key?(0xFF_u8).should be_true
-    root[0xFF_u8].should eq(12_u8)
+    decoded.interaction_model_revision.should eq(12_u8)
   end
 
   it "handles completely empty response" do
@@ -63,11 +54,10 @@ describe "ReadResponse Encoding" do
     # Should still encode with just interactionModelRevision
     encoded.size.should be > 0
 
-    reader = TLV::Reader.new(encoded)
-    data = reader.get
-    root = data.as(Hash(TLV::Tag, TLV::Value))["Any"].as(Hash(TLV::Tag, TLV::Value))
+    # Decode to verify structure using TLV::Serializable
+    decoded = Matter::InteractionModel::ReportDataMessage.from_slice(encoded)
 
     # Should have interactionModelRevision
-    root[0xFF_u8].should eq(12_u8)
+    decoded.interaction_model_revision.should eq(12_u8)
   end
 end

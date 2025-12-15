@@ -3,6 +3,7 @@ require "../src/matter/protocol/im_handler"
 require "../src/matter/cluster/general_commissioning_cluster"
 require "../src/matter/cluster/basic_information_cluster"
 require "../src/matter/interaction_model/messages"
+require "../src/matter/interaction_model/tlv_messages"
 
 describe "IMHandler - matter.js Compatibility" do
   describe "ReadCommissioningInfo Request/Response" do
@@ -160,23 +161,16 @@ describe "IMHandler - matter.js Compatibility" do
       # Verify encoded response is valid TLV
       encoded.size.should be > 0
 
-      # Should be able to parse it back
-      reader = TLV::Reader.new(encoded)
-      decoded = reader.get
-      decoded.should_not be_nil
-
-      # Verify structure is a hash (anonymous structure)
-      decoded.should be_a(Hash(TLV::Tag, TLV::Value))
-      data = decoded.as(Hash(TLV::Tag, TLV::Value))["Any"].as(Hash(TLV::Tag, TLV::Value))
+      # Should be able to parse it back using TLV::Serializable
+      decoded = Matter::InteractionModel::ReportDataMessage.from_slice(encoded)
 
       # Should have attributeReports array (tag 1) - matches matter.js
-      data[1_u8]?.should_not be_nil
-      attribute_reports = data[1_u8].as(Array)
+      decoded.attribute_reports.should_not be_nil
+      attribute_reports = decoded.attribute_reports.not_nil!
       attribute_reports.size.should eq 1
 
       # Should have interactionModelRevision (tag 0xFF) = 12
-      data[0xFF_u8]?.should_not be_nil
-      data[0xFF_u8].should eq 12_u8
+      decoded.interaction_model_revision.should eq 12_u8
     end
 
     it "generates response TLV byte-compatible with matter.js (structural comparison)" do
@@ -229,28 +223,28 @@ describe "IMHandler - matter.js Compatibility" do
       puts "Hex (first 128): #{matterjs_response_bytes[0...64].hexstring}"
       puts
 
-      # Parse both responses and compare structure
-      crystal_decoded = TLV::Reader.new(encoded).get.as(Hash)["Any"].as(Hash)
-      matterjs_decoded = TLV::Reader.new(matterjs_response_bytes).get.as(Hash)["Any"].as(Hash)
+      # Parse both responses using TLV::Serializable
+      crystal_decoded = Matter::InteractionModel::ReportDataMessage.from_slice(encoded)
+      matterjs_decoded = Matter::InteractionModel::ReportDataMessage.from_slice(matterjs_response_bytes)
 
       # Both should have attributeReports array (tag 1) - matches matter.js
-      crystal_decoded[1_u8]?.should_not be_nil
-      matterjs_decoded[1_u8]?.should_not be_nil
+      crystal_decoded.attribute_reports.should_not be_nil
+      matterjs_decoded.attribute_reports.should_not be_nil
 
-      crystal_reports = crystal_decoded[1_u8].as(Array)
-      matterjs_reports = matterjs_decoded[1_u8].as(Array)
+      crystal_reports = crystal_decoded.attribute_reports.not_nil!
+      matterjs_reports = matterjs_decoded.attribute_reports.not_nil!
 
       # Should have same number of reports
       crystal_reports.size.should eq matterjs_reports.size
       crystal_reports.size.should eq 7
 
       # Both should have interactionModelRevision (tag 0xFF)
-      crystal_decoded[0xFF_u8].should eq 12_u8
-      matterjs_decoded[0xFF_u8].should eq 13_u8 # matter.js uses revision 13 (0x0d)
+      crystal_decoded.interaction_model_revision.should eq 12_u8
+      matterjs_decoded.interaction_model_revision.should eq 13_u8 # matter.js uses revision 13 (0x0d)
 
-      puts "✓ TLV structure matches matter.js!"
-      puts "✓ Both have #{crystal_reports.size} attribute reports"
-      puts "✓ Both have interactionModelRevision tag"
+      puts "TLV structure matches matter.js!"
+      puts "Both have #{crystal_reports.size} attribute reports"
+      puts "Both have interactionModelRevision tag"
     end
   end
 end

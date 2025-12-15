@@ -37,12 +37,12 @@ describe Matter::Cluster::AccessControlCluster do
       cluster.acl.size.should eq(2)
 
       # First entry should be Administer privilege
-      cluster.acl[0].privilege.should eq(5_u8) # Administer
-      cluster.acl[0].auth_mode.should eq(2_u8) # CASE
+      cluster.acl[0].privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer)
+      cluster.acl[0].auth_mode.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
 
       # Second entry should be Operate privilege
-      cluster.acl[1].privilege.should eq(3_u8) # Operate
-      cluster.acl[1].auth_mode.should eq(2_u8) # CASE
+      cluster.acl[1].privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Operate)
+      cluster.acl[1].auth_mode.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
     end
 
     it "decodes ACL TLV value directly" do
@@ -112,15 +112,9 @@ describe Matter::Cluster::AccessControlCluster do
 
       value = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_SUBJECTS_PER_ACCESS_CONTROL_ENTRY)
       value.should be_a(Bytes)
-      # Value is TLV-encoded (may be UInt8 for small values)
-      reader = TLV::Reader.new(value.as(Bytes))
-      tlv_value = reader.get
-      inner = tlv_value.as(Hash(TLV::Tag, TLV::Value))["Any"]
-      subjects = case inner
-                 when UInt8  then inner.to_u16
-                 when UInt16 then inner
-                 else             raise "Unexpected type: #{inner.class}"
-                 end
+      # Value is TLV-encoded
+      parsed = TLV::Any.from_slice(value.as(Bytes))
+      subjects = parsed.value.as(Int).to_u16
       subjects.should eq(4_u16)
     end
 
@@ -130,15 +124,9 @@ describe Matter::Cluster::AccessControlCluster do
 
       value = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_TARGETS_PER_ACCESS_CONTROL_ENTRY)
       value.should be_a(Bytes)
-      # Value is TLV-encoded (may be UInt8 for small values)
-      reader = TLV::Reader.new(value.as(Bytes))
-      tlv_value = reader.get
-      inner = tlv_value.as(Hash(TLV::Tag, TLV::Value))["Any"]
-      targets = case inner
-                when UInt8  then inner.to_u16
-                when UInt16 then inner
-                else             raise "Unexpected type: #{inner.class}"
-                end
+      # Value is TLV-encoded
+      parsed = TLV::Any.from_slice(value.as(Bytes))
+      targets = parsed.value.as(Int).to_u16
       targets.should eq(3_u16)
     end
 
@@ -148,15 +136,9 @@ describe Matter::Cluster::AccessControlCluster do
 
       value = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACCESS_CONTROL_ENTRIES_PER_FABRIC)
       value.should be_a(Bytes)
-      # Value is TLV-encoded (may be UInt8 for small values)
-      reader = TLV::Reader.new(value.as(Bytes))
-      tlv_value = reader.get
-      inner = tlv_value.as(Hash(TLV::Tag, TLV::Value))["Any"]
-      entries = case inner
-                when UInt8  then inner.to_u16
-                when UInt16 then inner
-                else             raise "Unexpected type: #{inner.class}"
-                end
+      # Value is TLV-encoded
+      parsed = TLV::Any.from_slice(value.as(Bytes))
+      entries = parsed.value.as(Int).to_u16
       entries.should eq(4_u16)
     end
 
@@ -199,10 +181,8 @@ describe Matter::Cluster::AccessControlCluster do
         fabric_index: 1_u8
       )
 
-      entry.privilege.should eq(5_u8)
-      entry.auth_mode.should eq(2_u8)
-      entry.privilege_enum.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer)
-      entry.auth_mode_enum.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
+      entry.privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer)
+      entry.auth_mode.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
       entry.subjects.should eq([0x1122334455667788_u64])
       entry.targets.should be_nil
       entry.fabric_index.should eq(1_u8)
@@ -650,8 +630,8 @@ describe Matter::Cluster::AccessControlCluster do
         # Verify decoded entry
         cluster2.acl.size.should eq(1)
         decoded_entry = cluster2.acl[0]
-        decoded_entry.privilege.should eq(5_u8)
-        decoded_entry.auth_mode.should eq(2_u8)
+        decoded_entry.privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer)
+        decoded_entry.auth_mode.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
         decoded_entry.subjects.should eq([0x1111_u64])
         decoded_entry.targets.should be_nil
         decoded_entry.fabric_index.should eq(1_u8)

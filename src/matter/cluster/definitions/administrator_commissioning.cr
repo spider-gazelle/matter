@@ -67,12 +67,15 @@ module Matter
           # within the definition of the Crypto_PBKDFParameterSet.
           #
           # When a Node receives the Open Commissioning Window command, it shall begin advertising on DNS-SD as
-          # described in Section 4.3.1, “Commissionable Node Discovery” and for a time period as described in Section
-          # 11.18.8.1.1, “CommissioningTimeout Field”. When the command is received by a SED, it shall enter into active
+          # described in Section 4.3.1, "Commissionable Node Discovery" and for a time period as described in Section
+          # 11.18.8.1.1, "CommissioningTimeout Field". When the command is received by a SED, it shall enter into active
           # mode and set its fast-polling interval to SLEEPY_ACTIVE_INTERVAL for at least the entire duration of the
           # CommissioningTimeout.
           @[TLV::Field(tag: 4)]
           property salt : Slice(UInt8)
+
+          def initialize(@commissioning_timeout : UInt16, @pake_passcode_verifier : Slice(UInt8), @discriminator : UInt16, @iterations : UInt32, @salt : Slice(UInt8))
+          end
         end
 
         # Input to the AdministratorCommissioning openBasicCommissioningWindow command
@@ -81,6 +84,9 @@ module Matter
 
           @[TLV::Field(tag: 0)]
           property commissioning_timeout : UInt16
+
+          def initialize(@commissioning_timeout : UInt16)
+          end
         end
       end
     end

@@ -529,19 +529,16 @@ module Matter
 
       # Encode the Networks attribute as TLV array
       private def encode_networks : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        writer.start_array(nil)
-        @networks.each do |network|
-          writer.start_structure(nil)
-          writer.put(0_u8, network.network_id) # networkID
-          writer.put(1_u8, network.connected)  # connected
-          writer.end_container
+        network_infos = @networks.map do |network|
+          Definitions::NetworkCommissioning::NetworkInformation.new(
+            network_id: network.network_id,
+            connected: network.connected
+          )
         end
-        writer.end_container
 
-        io.to_slice
+        # Encode array of NetworkInformation structs
+        items = network_infos.map { |info| TLV::Any.from_slice(info.to_slice) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       # NOTE: encode_uint16 and encode_uint32 are inherited from Base class
@@ -943,7 +940,7 @@ module Matter
 
       private def handle_scan_networks_tlv(fields : Bytes) : Bytes
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::ScanAvailableNetworksRequest.new(fields)
+        tlv_req = Definitions::NetworkCommissioning::ScanAvailableNetworksRequest.from_slice(fields)
 
         # Convert to simple struct
         req = ScanNetworksRequest.new(
@@ -954,69 +951,54 @@ module Matter
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
         response = handle_scan_networks(req, failsafe_armed: true)
 
-        # Convert internal response to TLV Definitions response
-        # Build response using TLV::Serializable struct .to_h method then encode
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
+        # Convert internal WiFi results to Definitions struct (skip incomplete results)
+        wifi_results = if results = response.wifi_scan_results
+                         results.compact_map do |r|
+                           next nil unless r.ssid && r.bssid && r.channel
+                           band = r.wifi_band.try { |b| Definitions::NetworkCommissioning::Band.new(b.value) }
+                           Definitions::NetworkCommissioning::WiFiInterfaceScanResult.new(
+                             security: r.security.try(&.value) || 0_u8,
+                             ssid: r.ssid.not_nil!,
+                             bssid: r.bssid.not_nil!,
+                             channel: r.channel.not_nil!,
+                             band: band,
+                             rssi: r.rssi
+                           )
+                         end
+                       else
+                         nil
+                       end
 
-        # Start structure
-        writer.start_structure(nil)
+        # Convert internal Thread results to Definitions struct
+        thread_results = if results = response.thread_scan_results
+                           results.map do |r|
+                             Definitions::NetworkCommissioning::ThreadInterfaceScanResult.new(
+                               pan_id: r.pan_id,
+                               extended_pan_id: r.extended_pan_id,
+                               network_name: r.network_name,
+                               channel: r.channel,
+                               version: r.version,
+                               extended_address: r.extended_address,
+                               rssi: r.rssi,
+                               lqi: r.lqi
+                             )
+                           end
+                         else
+                           nil
+                         end
 
-        # status_code (tag 0, required)
-        writer.put(0_u8, response.networking_status.value)
-
-        # debug_text (tag 1, optional)
-        writer.put(1_u8, response.debug_text) if response.debug_text
-
-        # wifi_scan_results (tag 2, optional array)
-        if wifi_results = response.wifi_scan_results
-          if !wifi_results.empty?
-            writer.start_array(2_u8)
-            wifi_results.each do |r|
-              # Skip results with missing required fields
-              next unless r.ssid && r.bssid && r.channel
-
-              # Each array element is an anonymous structure
-              writer.start_structure(nil)
-              writer.put(0_u8, r.security.try(&.value) || 0_u8)         # security
-              writer.put(1_u8, r.ssid.not_nil!)                         # ssid
-              writer.put(2_u8, r.bssid.not_nil!)                        # bssid
-              writer.put(3_u8, r.channel.not_nil!)                      # channel
-              writer.put(4_u8, r.wifi_band.try(&.value)) if r.wifi_band # band (optional)
-              writer.put(5_u8, r.rssi) if r.rssi                        # rssi (optional)
-              writer.end_container                                      # End WiFiInterfaceScanResult structure
-            end
-            writer.end_container # End array
-          end
-        end
-
-        # thread_scan_results (tag 3, optional array)
-        if thread_results = response.thread_scan_results
-          if !thread_results.empty?
-            writer.start_array(3_u8)
-            thread_results.each do |r|
-              writer.start_structure(nil)
-              writer.put(0_u8, r.pan_id) if r.pan_id
-              writer.put(1_u8, r.extended_pan_id) if r.extended_pan_id
-              writer.put(2_u8, r.network_name) if r.network_name
-              writer.put(3_u8, r.channel) if r.channel
-              writer.put(4_u8, r.version) if r.version
-              writer.put(5_u8, r.extended_address) if r.extended_address
-              writer.put(6_u8, r.rssi) if r.rssi
-              writer.put(7_u8, r.lqi) if r.lqi
-              writer.end_container # End ThreadInterfaceScanResult structure
-            end
-            writer.end_container # End array
-          end
-        end
-
-        writer.end_container # End ScanNetworksResponse structure
-        io.rewind.to_slice
+        # Use TLV::Serializable struct for response
+        Definitions::NetworkCommissioning::ScanNetworksResponse.new(
+          status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
+          debug_text: response.debug_text,
+          wifi_scan_results: wifi_results.try { |r| r.empty? ? nil : r },
+          thread_scan_results: thread_results.try { |r| r.empty? ? nil : r }
+        ).to_slice
       end
 
       private def handle_add_or_update_wifi_network_tlv(fields : Bytes) : Bytes
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest.new(fields)
+        tlv_req = Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest.from_slice(fields)
 
         # Convert to simple struct
         req = AddOrUpdateWiFiNetworkRequest.new(
@@ -1028,22 +1010,17 @@ module Matter
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
         response = handle_add_or_update_wifi_network(req, failsafe_armed: true)
 
-        # Build TLV response hash
-        response_fields = {} of TLV::Tag => TLV::Value
-        response_fields[0_u8] = response.networking_status.value                 # networking_status
-        response_fields[1_u8] = response.debug_text if response.debug_text       # debug_text
-        response_fields[2_u8] = response.network_index if response.network_index # network_index
-
-        # Encode to bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, response_fields)
-        io.rewind.to_slice
+        # Use TLV::Serializable struct for response
+        Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
+          status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
+          debug_text: response.debug_text,
+          networkIndex: response.network_index
+        ).to_slice
       end
 
       private def handle_add_or_update_thread_network_tlv(fields : Bytes) : Bytes
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::AddOrUpdateThreadNetworkRequest.new(fields)
+        tlv_req = Definitions::NetworkCommissioning::AddOrUpdateThreadNetworkRequest.from_slice(fields)
 
         # Convert to simple struct
         req = AddOrUpdateThreadNetworkRequest.new(
@@ -1054,22 +1031,17 @@ module Matter
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
         response = handle_add_or_update_thread_network(req, failsafe_armed: true)
 
-        # Build TLV response hash
-        response_fields = {} of TLV::Tag => TLV::Value
-        response_fields[0_u8] = response.networking_status.value                 # networking_status
-        response_fields[1_u8] = response.debug_text if response.debug_text       # debug_text
-        response_fields[2_u8] = response.network_index if response.network_index # network_index
-
-        # Encode to bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, response_fields)
-        io.rewind.to_slice
+        # Use TLV::Serializable struct for response
+        Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
+          status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
+          debug_text: response.debug_text,
+          networkIndex: response.network_index
+        ).to_slice
       end
 
       private def handle_remove_network_tlv(fields : Bytes) : Bytes
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::RemoveNetworkRequest.new(fields)
+        tlv_req = Definitions::NetworkCommissioning::RemoveNetworkRequest.from_slice(fields)
 
         # Convert to simple struct
         req = RemoveNetworkRequest.new(
@@ -1080,22 +1052,17 @@ module Matter
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
         response = handle_remove_network(req, failsafe_armed: true)
 
-        # Build TLV response hash
-        response_fields = {} of TLV::Tag => TLV::Value
-        response_fields[0_u8] = response.networking_status.value                 # networking_status
-        response_fields[1_u8] = response.debug_text if response.debug_text       # debug_text
-        response_fields[2_u8] = response.network_index if response.network_index # network_index
-
-        # Encode to bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, response_fields)
-        io.rewind.to_slice
+        # Use TLV::Serializable struct for response
+        Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
+          status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
+          debug_text: response.debug_text,
+          networkIndex: response.network_index
+        ).to_slice
       end
 
       private def handle_connect_network_tlv(fields : Bytes) : Bytes
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::ConnectNetworkRequest.new(fields)
+        tlv_req = Definitions::NetworkCommissioning::ConnectNetworkRequest.from_slice(fields)
 
         # Convert to simple struct
         req = ConnectNetworkRequest.new(
@@ -1106,22 +1073,17 @@ module Matter
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
         response = handle_connect_network(req, failsafe_armed: true)
 
-        # Build TLV response hash
-        response_fields = {} of TLV::Tag => TLV::Value
-        response_fields[0_u8] = response.networking_status.value           # networking_status (required)
-        response_fields[1_u8] = response.debug_text if response.debug_text # debug_text (optional)
-        response_fields[2_u8] = response.error_value                       # error_value (required nullable - always include even if nil)
-
-        # Encode to bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, response_fields)
-        io.rewind.to_slice
+        # Use TLV::Serializable struct for response
+        Definitions::NetworkCommissioning::ConnectNetworkResponse.new(
+          status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
+          debug_text: response.debug_text,
+          error_value: response.error_value
+        ).to_slice
       end
 
       private def handle_reorder_network_tlv(fields : Bytes) : Bytes
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::ReorderNetworkRequest.new(fields)
+        tlv_req = Definitions::NetworkCommissioning::ReorderNetworkRequest.from_slice(fields)
 
         # Convert to simple struct
         req = ReorderNetworkRequest.new(
@@ -1133,17 +1095,12 @@ module Matter
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
         response = handle_reorder_network(req, failsafe_armed: true)
 
-        # Build TLV response hash
-        response_fields = {} of TLV::Tag => TLV::Value
-        response_fields[0_u8] = response.networking_status.value                 # networking_status
-        response_fields[1_u8] = response.debug_text if response.debug_text       # debug_text
-        response_fields[2_u8] = response.network_index if response.network_index # network_index
-
-        # Encode to bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, response_fields)
-        io.rewind.to_slice
+        # Use TLV::Serializable struct for response
+        Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
+          status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
+          debug_text: response.debug_text,
+          networkIndex: response.network_index
+        ).to_slice
       end
 
       # Restore network state from snapshot (used during failsafe rollback)
@@ -1257,10 +1214,7 @@ module Matter
 
       # encode_int32 uses TLV encoding for attribute responses
       private def encode_int32(value : Int32) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, value)
-        io.rewind.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
     end
 

@@ -4,12 +4,16 @@ require "../fabric"
 require "../fabric_table"
 require "../crypto/key"
 require "../crypto/crypto"
+require "../crypto/certificate"
 require "../storage/memory_backend"
 require "../certificate/attestation_certificate_manager"
 require "../certificate/certification_declaration"
 
 module Matter
   module Cluster
+    # Alias for operational credentials definitions
+    alias OpCredDefs = Definitions::OperationalCredentials
+
     # Operational Credentials Cluster (0x003E)
     #
     # Functionality to manage operational certificates and fabric membership.
@@ -230,6 +234,36 @@ module Matter
 
         def success?
           @status_code == NodeOperationalCertStatus::Ok
+        end
+      end
+
+      # TLV structures for attestation and CSR elements
+      struct AttestationElements
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 1)]
+        property certification_declaration : Bytes
+
+        @[TLV::Field(tag: 2)]
+        property attestation_nonce : Bytes
+
+        @[TLV::Field(tag: 3, fixed_size: true)]
+        property timestamp : UInt32
+
+        def initialize(@certification_declaration : Bytes, @attestation_nonce : Bytes, @timestamp : UInt32)
+        end
+      end
+
+      struct CSRElements
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 1)]
+        property csr : Bytes
+
+        @[TLV::Field(tag: 2)]
+        property csr_nonce : Bytes
+
+        def initialize(@csr : Bytes, @csr_nonce : Bytes)
         end
       end
 
@@ -602,7 +636,7 @@ module Matter
 
       private def handle_attestation_request(fields : Bytes) : Bytes
         # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::AttestationRequest.new(fields)
+        request = Definitions::OperationalCredentials::AttestationRequest.from_slice(fields)
 
         # Build attestation elements (TLV structure containing certification declaration, nonce, timestamp)
         attestation_elements = build_attestation_elements(request.attestation_nonce)
@@ -611,19 +645,13 @@ module Matter
         attestation_signature = sign_attestation(attestation_elements, @session_id)
 
         # Encode response as TLV
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        data = {
-          0_u8 => attestation_elements,
-          1_u8 => attestation_signature,
-        } of TLV::Tag => TLV::Value
-        writer.put(nil, data)
-        io.rewind.to_slice
+        response = OpCredDefs::AttestationResponse.new(attestation_elements, attestation_signature)
+        response.to_slice
       end
 
       private def handle_certificate_chain_request(fields : Bytes) : Bytes
         # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::CertificateChainRequest.new(fields)
+        request = Definitions::OperationalCredentials::CertificateChainRequest.from_slice(fields)
 
         # Get the appropriate certificate
         certificate = case request.certificate_type
@@ -636,29 +664,24 @@ module Matter
                       end
 
         # Encode response as TLV
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        data = {
-          0_u8 => certificate || Bytes.new(0),
-        } of TLV::Tag => TLV::Value
-        writer.put(nil, data)
-        io.rewind.to_slice
+        response = OpCredDefs::CertificateChainResponse.new(certificate || Bytes.new(0))
+        response.to_slice
       end
 
       private def handle_csr_request(fields : Bytes) : Bytes
         # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::CsrRequest.new(fields)
+        request = Definitions::OperationalCredentials::CsrRequest.from_slice(fields)
 
         # Validate failsafe is armed
         # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
         unless @failsafe_armed
-          return encode_error_response("Failsafe not armed")
+          return encode_noc_response(NodeOperationalCertStatus::MissingCsr, nil, "Failsafe not armed")
         end
 
         # Check if NOC already added/updated in current failsafe
         if @failsafe_context.noc_added_or_updated
           # Return error - cannot call CSR after AddNOC/UpdateNOC
-          return encode_error_response("Cannot generate CSR after AddNOC/UpdateNOC")
+          return encode_noc_response(NodeOperationalCertStatus::MissingCsr, nil, "Cannot generate CSR after AddNOC/UpdateNOC")
         end
 
         # Generate new operational key pair
@@ -677,19 +700,13 @@ module Matter
         @failsafe_context.set_csr(session_id, is_for_update)
 
         # Encode response as TLV
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        data = {
-          0_u8 => csr_elements,
-          1_u8 => csr_signature,
-        } of TLV::Tag => TLV::Value
-        writer.put(nil, data)
-        io.rewind.to_slice
+        response = OpCredDefs::CsrResponse.new(csr_elements, csr_signature)
+        response.to_slice
       end
 
       private def handle_add_noc(fields : Bytes) : Bytes
         # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::AddNocRequest.new(fields)
+        request = Definitions::OperationalCredentials::AddNocRequest.from_slice(fields)
 
         # Validate failsafe is armed
         # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
@@ -820,7 +837,7 @@ module Matter
 
       private def handle_update_noc(fields : Bytes) : Bytes
         # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::UpdateNocRequest.new(fields)
+        request = Definitions::OperationalCredentials::UpdateNocRequest.from_slice(fields)
 
         # Validate failsafe is armed
         # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
@@ -830,7 +847,7 @@ module Matter
 
         # Get session fabric index from instance variable or request
         # NOTE: @session_fabric_index should be set by protocol layer
-        session_fabric_index = @session_fabric_index || request.fabric_index.index || 0_u8
+        session_fabric_index = @session_fabric_index || request.fabric_index || 0_u8
 
         # Cannot call UpdateNOC after AddNOC in same failsafe
         if @failsafe_context.noc_added_or_updated
@@ -884,12 +901,12 @@ module Matter
 
       private def handle_update_fabric_label(fields : Bytes) : Bytes
         # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::UpdateFabricLabelRequest.new(fields)
+        request = Definitions::OperationalCredentials::UpdateFabricLabelRequest.from_slice(fields)
 
         # Get session fabric index from instance variable or request
         # NOTE: @session_fabric_index should be set by protocol layer
         # Per Matter spec, fabric_index in command is optional - use session context if not provided
-        fabric_idx = @session_fabric_index || request.fabric_index.try(&.index)
+        fabric_idx = @session_fabric_index || request.fabric_index
 
         unless fabric_idx
           return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Invalid fabric index")
@@ -919,26 +936,21 @@ module Matter
       private def handle_remove_fabric(fields : Bytes) : Bytes
         Log.debug { "RemoveFabric: received #{fields.size} bytes: #{fields.hexstring}" }
 
-        # Parse TLV manually to extract fabric_index since the nested struct parsing has issues
+        # Parse TLV manually to extract fabric_index
         # Expected format: 15 24 00 XX 18 (structure with tag 0 = fabric_index)
         fabric_idx : UInt8? = nil
         begin
-          reader = TLV::Reader.new(fields)
-          data = reader.get
-          Log.debug { "RemoveFabric: TLV parsed: #{data.inspect}" }
+          parsed = TLV::Any.from_slice(fields)
+          Log.debug { "RemoveFabric: TLV parsed: #{parsed.inspect}" }
 
-          if data.is_a?(Hash)
-            # Look for the fabric_index value
-            wrapper = data.as(Hash(TLV::Tag, TLV::Value))
-            if wrapper.has_key?("Any")
-              struct_data = wrapper["Any"]
-              if struct_data.is_a?(Hash)
-                struct_hash = struct_data.as(Hash(TLV::Tag, TLV::Value))
-                if val = struct_hash[0_u8]?
-                  fabric_idx = val.as(Int).to_u8
-                end
-              end
-            end
+          # Try to get fabric_index from tag 0
+          if val = parsed[0_u8]?
+            fabric_idx = case v = val.value
+                         when Int
+                           v.to_u8
+                         else
+                           nil
+                         end
           end
         rescue ex
           Log.error { "RemoveFabric: TLV parsing error: #{ex.message}" }
@@ -985,7 +997,7 @@ module Matter
 
       private def handle_add_trusted_root_certificate(fields : Bytes) : Bytes
         # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::AddTrustedRootCertificateRequest.new(fields)
+        request = Definitions::OperationalCredentials::AddTrustedRootCertificateRequest.from_slice(fields)
 
         Log.debug { "Received AddTrustedRootCertificate: #{request.root_certificate.size} bytes" }
         Log.debug { "Root cert hex (first 100): #{request.root_certificate[0, [100, request.root_certificate.size].min].hexstring}" }
@@ -1438,29 +1450,17 @@ module Matter
       # Helper methods for certificate operations
 
       private def build_attestation_elements(nonce : Bytes) : Bytes
-        # Build TLV structure for attestation elements
-        # TLV structure: {
-        #   1 => declaration (bytes - PKCS#7 SignedData)
-        #   2 => attestationNonce (32 bytes)
-        #   3 => timestamp (UInt32)
-        # }
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         # Generate Certification Declaration using our certificate manager
         declaration = Certificate::CertificationDeclaration.generate(@vendor_id, @product_id)
         # Note: timestamp is set to 0 to match matter.js implementation
         # The Matter spec allows this field to be 0
-        timestamp = 0_u32
 
-        data = {
-          1_u8 => declaration,
-          2_u8 => nonce,
-          3_u8 => timestamp,
-        } of TLV::Tag => TLV::Value
-
-        writer.put(nil, data)
-        io.rewind.to_slice
+        elements = AttestationElements.new(
+          certification_declaration: declaration,
+          attestation_nonce: nonce,
+          timestamp: 0_u32
+        )
+        elements.to_slice
       end
 
       private def sign_attestation(data : Bytes, session_id : UInt64? = nil) : Bytes
@@ -1506,12 +1506,6 @@ module Matter
       end
 
       private def build_csr_elements(nonce : Bytes, key : Crypto::Key) : Bytes
-        # Build TLV structure for CSR elements
-        # TLV structure: {
-        #   1 => certSigningRequest (bytes - DER-encoded CSR)
-        #   2 => csrNonce (32 bytes)
-        # }
-
         # Create a DER-encoded CSR with the public key
         csr = build_csr_der(key)
 
@@ -1524,16 +1518,8 @@ module Matter
         File.write("/tmp/device_csr.der", csr)
         Log.debug { "CSR saved to /tmp/device_csr.der for inspection" }
 
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        data = {
-          1_u8 => csr,
-          2_u8 => nonce,
-        } of TLV::Tag => TLV::Value
-
-        writer.put(nil, data)
-        io.rewind.to_slice
+        elements = CSRElements.new(csr: csr, csr_nonce: nonce)
+        elements.to_slice
       end
 
       private def build_csr_der(key : Crypto::Key) : Bytes
@@ -1626,78 +1612,33 @@ module Matter
       end
 
       private def extract_fabric_id_from_noc(noc : Bytes) : UInt64
-        # Parse Matter certificate TLV to extract fabricId (field 21)
-        # Matter certificates are TLV-encoded structures
+        # Parse Matter certificate TLV using the MatterCertificate struct
         begin
-          reader = TLV::Reader.new(noc)
-          cert_data = reader.get
+          cert = Crypto::MatterCertificate.from_slice(noc)
+          Log.debug { "Parsed NOC certificate: fabric_id=#{cert.fabric_id}, node_id=#{cert.node_id}" }
 
-          Log.debug { "NOC TLV structure: #{cert_data.inspect}" }
-          if cert_data.is_a?(Hash)
-            Log.debug { "NOC TLV keys: #{cert_data.keys.inspect}" }
-          end
-
-          # Unwrap "Any" container if present
-          if cert_data.is_a?(Hash) && cert_data.has_key?("Any")
-            cert_data = cert_data["Any"]
-            Log.debug { "Unwrapped 'Any' container, new keys: #{cert_data.is_a?(Hash) ? cert_data.keys.inspect : cert_data.class}" }
-          end
-
-          # Navigate to the certificate structure
-          # The NOC is a TLV structure containing subject fields
-          # Look for field 21 (fabricId) in the certificate data
-          Log.debug { "Searching for fabricId (field 21) in: #{cert_data.inspect[0..200]}" }
-          fabric_id = find_tlv_field(cert_data, 21_u8)
-          Log.debug { "Found fabricId: #{fabric_id.inspect}" }
-
+          fabric_id = cert.fabric_id
           unless fabric_id
-            raise "fabricId not found in NOC certificate"
+            raise "fabricId not found in NOC certificate subject"
           end
-
-          # fabricId should be a UInt64
-          case fabric_id
-          when UInt64
-            fabric_id
-          when Int
-            fabric_id.to_u64
-          else
-            raise "Invalid fabricId type: #{fabric_id.class}"
-          end
+          fabric_id
         rescue ex
-          # If parsing fails, raise with context
           raise "Failed to parse NOC certificate: #{ex.message}"
         end
       end
 
       private def extract_node_id_from_noc(noc : Bytes) : UInt64
-        # Parse Matter certificate TLV to extract nodeId (field 17)
+        # Parse Matter certificate TLV using the MatterCertificate struct
         begin
-          reader = TLV::Reader.new(noc)
-          cert_data = reader.get
+          cert = Crypto::MatterCertificate.from_slice(noc)
+          Log.debug { "Parsed NOC certificate: fabric_id=#{cert.fabric_id}, node_id=#{cert.node_id}" }
 
-          # Unwrap "Any" container if present
-          if cert_data.is_a?(Hash) && cert_data.has_key?("Any")
-            cert_data = cert_data["Any"]
-          end
-
-          # Look for field 17 (nodeId) in the certificate data
-          node_id = find_tlv_field(cert_data, 17_u8)
-
+          node_id = cert.node_id
           unless node_id
-            raise "nodeId not found in NOC certificate"
+            raise "nodeId not found in NOC certificate subject"
           end
-
-          # nodeId should be a UInt64
-          case node_id
-          when UInt64
-            node_id
-          when Int
-            node_id.to_u64
-          else
-            raise "Invalid nodeId type: #{node_id.class}"
-          end
+          node_id
         rescue ex
-          # If parsing fails, raise with context
           raise "Failed to parse NOC certificate: #{ex.message}"
         end
       end
@@ -1722,31 +1663,9 @@ module Matter
       # Matter TLV certificates have tag 9 for the EC public key field
       private def extract_public_key_from_tlv_certificate(cert_tlv : Bytes) : Bytes
         begin
-          # Parse the TLV certificate using TLV::Reader
-          reader = TLV::Reader.new(cert_tlv)
-          parsed = reader.get
-
-          Log.debug { "Parsed TLV certificate structure: #{parsed.class}" }
-
-          # Matter certificate format has tag 9 for elliptic curve public key
-          # The public key should be 65 bytes: 0x04 || x (32 bytes) || y (32 bytes)
-          public_key_value = find_tlv_field(parsed, 9_u8)
-
-          if public_key_value.nil?
-            raise "Could not find public key field (tag 9) in TLV certificate"
-          end
-
-          # Extract bytes from the TLV value
-          public_key_bytes = case public_key_value
-                             when Bytes
-                               public_key_value
-                             when Slice(UInt8)
-                               public_key_value.to_a.to_slice
-                             when String
-                               public_key_value.to_slice
-                             else
-                               raise "Unexpected public key type: #{public_key_value.class}"
-                             end
+          # Parse the TLV certificate using the MatterCertificate struct
+          cert = Crypto::MatterCertificate.from_slice(cert_tlv)
+          public_key_bytes = cert.ec_public_key
 
           # Validate that it's the correct format (65 bytes starting with 0x04)
           if public_key_bytes.size != 65
@@ -1798,50 +1717,24 @@ module Matter
       end
 
       # Helper method to recursively find a TLV field by tag
-      private def find_tlv_field(data : TLV::Value, tag : UInt8) : TLV::Value?
-        case data
-        when Hash
-          # TLV library stores tags as strings, so convert tag to string
-          tag_str = tag.to_s
+      private def find_tlv_field(data : TLV::Any, tag : UInt8) : TLV::Any?
+        value = data.value
+        case value
+        when TLV::Structure
+          # Check if the tag exists in the hash
+          return value[tag]? if value.has_key?(tag)
 
-          # Check if the tag exists in the hash as string
-          return data[tag_str]? if data.has_key?(tag_str)
-
-          # Also check numeric tag (UInt8)
-          return data[tag]? if data.has_key?(tag)
-
-          # Recursively search in nested hashes
-          data.each_value do |value|
-            if found = find_tlv_field(value, tag)
+          # Recursively search in nested structures
+          value.each_value do |inner_value|
+            if found = find_tlv_field(inner_value, tag)
               return found
             end
           end
-        when Array
+        when Array(TLV::Any)
           # Recursively search in array elements
-          data.each do |value|
-            if found = find_tlv_field(value, tag)
+          value.each do |inner_value|
+            if found = find_tlv_field(inner_value, tag)
               return found
-            end
-          end
-        else
-          # Handle PathContainer and other hash-like objects
-          # Check if the object responds to hash-like methods
-          if data.responds_to?(:has_key?) && data.responds_to?(:[])
-            tag_str = tag.to_s
-            # Try both string and numeric keys
-            if data.has_key?(tag_str)
-              return data[tag_str]
-            elsif data.has_key?(tag)
-              return data[tag]
-            end
-          end
-
-          # Try to iterate if it responds to each
-          if data.responds_to?(:each)
-            data.each do |value|
-              if found = find_tlv_field(value, tag)
-                return found
-              end
             end
           end
         end
@@ -1895,95 +1788,62 @@ module Matter
       # TLV Encoding methods
 
       private def encode_noc_list : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        # Encode array of NOCStruct for all fabrics
-        # Must explicitly cast to Array(TLV::Value) for TLV writer type matching
-        array_data = [] of TLV::Value
+        # Build array of NOC structs for all fabrics
+        noc_array = [] of OpCredDefs::NOC
         @fabric_table.all_fabrics.each do |fabric|
           nocs(fabric.fabric_index).each do |noc_struct|
-            array_data << {
-                1_u8 => noc_struct.noc,
-                2_u8 => noc_struct.icac,
-              254_u8 => noc_struct.fabric_index,
-            } of TLV::Tag => TLV::Value
+            noc_array << OpCredDefs::NOC.new(
+              noc: noc_struct.noc,
+              icac: noc_struct.icac,
+              fabric_index: noc_struct.fabric_index
+            )
           end
         end
-
-        writer.put(nil, array_data)
-        io.rewind.to_slice
+        # Serialize the array - TLV::Serializable handles arrays properly
+        TLV::Serializable.serialize_value(noc_array, nil).to_slice
       end
 
       private def encode_fabric_list : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         fabric_list = fabrics
         Log.debug { "encode_fabric_list: fabric_table has #{@fabric_table.size} fabrics, fabrics() returned #{fabric_list.size}" }
 
-        # Encode array of FabricDescriptorStruct
-        # Must explicitly cast to Array(TLV::Value) for TLV writer type matching
-        array_data = [] of TLV::Value
-        fabric_list.each do |fabric|
+        # Build array of FabricDescriptor structs
+        fabric_array = fabric_list.map do |fabric|
           Log.debug { "encode_fabric_list: encoding fabric #{fabric.fabric_index}: id=0x#{fabric.fabric_id.to_s(16)}, node=0x#{fabric.node_id.to_s(16)}" }
-          array_data << {
-              1_u8 => fabric.root_public_key,
-              2_u8 => fabric.vendor_id,
-              3_u8 => fabric.fabric_id,
-              4_u8 => fabric.node_id,
-              5_u8 => fabric.label,
-            254_u8 => fabric.fabric_index,
-          } of TLV::Tag => TLV::Value
+          OpCredDefs::FabricDescriptor.new(
+            root_public_key: fabric.root_public_key,
+            vendor_id: fabric.vendor_id,
+            fabric_id: fabric.fabric_id,
+            node_id: fabric.node_id,
+            label: fabric.label,
+            fabric_index: fabric.fabric_index
+          )
         end
 
-        writer.put(nil, array_data)
-        result = io.rewind.to_slice
+        # Serialize the array
+        result = TLV::Serializable.serialize_value(fabric_array, nil).to_slice
         Log.debug { "encode_fabric_list: encoded #{result.size} bytes" }
         result
       end
 
       private def encode_certificate_list : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         # Encode array of certificate bytes
-        # Must explicitly cast to Array(TLV::Value) for TLV writer type matching
-        array_data = [] of TLV::Value
-        @trusted_root_certs.each { |cert| array_data << cert }
-        writer.put(nil, array_data)
-        io.rewind.to_slice
+        TLV::Serializable.serialize_value(@trusted_root_certs, nil).to_slice
       end
 
       private def encode_noc_response(status : NodeOperationalCertStatus, fabric_index : UInt8?, debug_text : String? = nil) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        data = {
-          0_u8 => status.value,
-        } of TLV::Tag => TLV::Value
-
-        if fabric_index
-          data[1_u8] = fabric_index
-        end
-
-        if debug_text
-          data[2_u8] = debug_text
-        end
-
-        writer.put(nil, data)
-        io.rewind.to_slice
+        response = OpCredDefs::TlvNocResponse.new(
+          status_code: OpCredDefs::NodeOperationalCertificateStatus.from_value(status.value.to_i64),
+          fabric_index: fabric_index,
+          debug_text: debug_text
+        )
+        response.to_slice
       end
 
+      @[Deprecated("Use encode_noc_response directly with appropriate status code")]
       private def encode_error_response(message : String) : Bytes
-        # Return a simple error response
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        data = {
-          0_u8 => message,
-        } of TLV::Tag => TLV::Value
-        writer.put(nil, data)
-        io.rewind.to_slice
+        # Encode error as NOC response with MissingCsr status and debug text
+        encode_noc_response(NodeOperationalCertStatus::MissingCsr, nil, message)
       end
     end
   end

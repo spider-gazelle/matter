@@ -18,7 +18,7 @@ module Matter
           # This is the attribute value as part of an extension field set. See AttributeID to determine the data type
           # for this field.
           @[TLV::Field(tag: 1)]
-          property attribute_value : TLV::Value
+          property attribute_value : TLV::Any
         end
 
         # This data type indicates for a given cluster a set of attributes and their values. Only attributes which have

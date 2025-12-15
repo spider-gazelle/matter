@@ -46,8 +46,15 @@ module Matter
 
       # ArmFailSafe command request
       struct ArmFailSafeRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property expiry_length_seconds : UInt16
+
+        @[TLV::Field(tag: 1)]
         property breadcrumb : UInt64
+
+        @[TLV::Field(tag: 2)]
         property timeout_ms : UInt32 = 0_u32 # Deprecated, kept for compatibility
 
         def initialize(@expiry_length_seconds, @breadcrumb, @timeout_ms = 0_u32)
@@ -56,44 +63,71 @@ module Matter
 
       # ArmFailSafe command response
       struct ArmFailSafeResponse
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property error_code : CommissioningError
+
+        @[TLV::Field(tag: 1)]
         property debug_text : String = ""
 
-        def initialize(@error_code, @debug_text = "")
+        def initialize(@error_code : CommissioningError, @debug_text = "")
         end
       end
 
       # SetRegulatoryConfig command request
       struct SetRegulatoryConfigRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property new_regulatory_config : RegulatoryLocationType
+
+        @[TLV::Field(tag: 1)]
         property country_code : String
+
+        @[TLV::Field(tag: 2)]
         property breadcrumb : UInt64
 
-        def initialize(@new_regulatory_config, @country_code, @breadcrumb)
+        def initialize(@new_regulatory_config : RegulatoryLocationType, @country_code : String, @breadcrumb : UInt64)
         end
       end
 
       # SetRegulatoryConfig command response
       struct SetRegulatoryConfigResponse
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property error_code : CommissioningError
+
+        @[TLV::Field(tag: 1)]
         property debug_text : String = ""
 
-        def initialize(@error_code, @debug_text = "")
+        def initialize(@error_code : CommissioningError, @debug_text = "")
         end
       end
 
       # CommissioningComplete command response
       struct CommissioningCompleteResponse
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property error_code : CommissioningError
+
+        @[TLV::Field(tag: 1)]
         property debug_text : String = ""
 
-        def initialize(@error_code, @debug_text = "")
+        def initialize(@error_code : CommissioningError, @debug_text = "")
         end
       end
 
       # BasicCommissioningInfo - returned by BasicCommissioningInfo attribute
       struct BasicCommissioningInfo
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property fail_safe_expiry_length : UInt16
+
+        @[TLV::Field(tag: 1)]
         property max_cumulative_failsafe_seconds : UInt16
 
         def initialize(@fail_safe_expiry_length, @max_cumulative_failsafe_seconds)
@@ -321,7 +355,7 @@ module Matter
 
       private def handle_arm_fail_safe_tlv(fields : Bytes) : Cluster::CommandResponse
         # Parse TLV-encoded request
-        request_def = Definitions::GeneralCommissioning::ArmFailSafeRequest.new(fields)
+        request_def = Definitions::GeneralCommissioning::ArmFailSafeRequest.from_slice(fields)
 
         # Convert to cluster request struct
         request = ArmFailSafeRequest.new(
@@ -346,7 +380,7 @@ module Matter
 
       private def handle_set_regulatory_config_tlv(fields : Bytes) : Cluster::CommandResponse
         # Parse TLV-encoded request
-        request_def = Definitions::GeneralCommissioning::SetRegularConfigurationRequest.new(fields)
+        request_def = Definitions::GeneralCommissioning::SetRegularConfigurationRequest.from_slice(fields)
 
         # Convert to cluster request struct
         request = SetRegulatoryConfigRequest.new(
@@ -814,58 +848,28 @@ module Matter
 
       # Helper: Encode UInt64 as TLV bytes
       private def encode_uint64(value : UInt64) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, value)
-        io.rewind.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
 
       # Helper: Encode BasicCommissioningInfo as TLV structure
       private def encode_basic_commissioning_info : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        data = {
-          0_u8 => @max_cumulative_failsafe_seconds,
-          1_u8 => @max_network_commissioning_seconds,
-        } of TLV::Tag => TLV::Value
-        writer.put(nil, data)
-        io.rewind.to_slice
+        info = BasicCommissioningInfo.new(@max_cumulative_failsafe_seconds, @max_network_commissioning_seconds)
+        info.to_slice
       end
 
       # Encode ArmFailSafeResponse as TLV
       private def encode_arm_fail_safe_response(response : ArmFailSafeResponse) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        data = {
-          0_u8 => response.error_code.value,
-          1_u8 => response.debug_text,
-        } of TLV::Tag => TLV::Value
-        writer.put(nil, data)
-        io.rewind.to_slice
+        response.to_slice
       end
 
       # Encode SetRegulatoryConfigResponse as TLV
       private def encode_set_regulatory_config_response(response : SetRegulatoryConfigResponse) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        data = {
-          0_u8 => response.error_code.value,
-          1_u8 => response.debug_text,
-        } of TLV::Tag => TLV::Value
-        writer.put(nil, data)
-        io.rewind.to_slice
+        response.to_slice
       end
 
       # Encode CommissioningCompleteResponse as TLV
       private def encode_commissioning_complete_response(response : CommissioningCompleteResponse) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        data = {
-          0_u8 => response.error_code.value,
-          1_u8 => response.debug_text,
-        } of TLV::Tag => TLV::Value
-        writer.put(nil, data)
-        io.rewind.to_slice
+        response.to_slice
       end
     end
 

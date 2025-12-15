@@ -412,10 +412,7 @@ module Matter
 
       # encode_float uses TLV encoding for attribute responses
       private def encode_float(value : Float32) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, value)
-        io.rewind.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
     end
   end

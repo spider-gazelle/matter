@@ -770,6 +770,16 @@ module MatterSwitch
       puts "   Name: #{@state.device_name}"
       puts "   Switch: #{@state.on_off ? "🟢 ON" : "⚫ OFF"}"
       puts "   Data Version: #{@state.data_version}"
+
+      # Determine commissioning state from actual fabric count, not saved flag
+      # This handles cases where state files are partially deleted
+      actual_commissioned = !@fabric_storage.empty?
+      if @state.commissioned != actual_commissioned
+        puts "   ⚠️  Correcting commissioned state: #{@state.commissioned} -> #{actual_commissioned}"
+        @state.commissioned = actual_commissioned
+        @state.save(STATE_FILE)
+      end
+
       puts "   Commissioned: #{@state.commissioned ? "✅ Yes" : "❌ No"}"
       puts "   Fabrics: #{@fabric_storage.size}"
       puts "   Discriminator: #{@state.discriminator}"

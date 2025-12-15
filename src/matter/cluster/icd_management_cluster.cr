@@ -141,9 +141,6 @@ module Matter
 
       # Helper to encode attribute list
       private def encode_attribute_list : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         attr_ids = [
           ATTR_IDLE_MODE_DURATION,
           ATTR_ACTIVE_MODE_DURATION,
@@ -153,10 +150,8 @@ module Matter
           ATTR_ATTRIBUTE_LIST,
         ]
 
-        attr_array = attr_ids.map { |id| id.as(TLV::Value) }
-        writer.put(nil, attr_array)
-
-        io.to_slice
+        items = attr_ids.map { |id| TLV::Any.new(id, nil) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
     end
 

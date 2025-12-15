@@ -79,52 +79,9 @@ module Matter
       CMD_REVOKE_COMMISSIONING            = 0x02_u32
 
       # ========================================================================
-      # Command Structs
-      # ========================================================================
-
-      # OpenCommissioningWindow command request (Enhanced)
-      struct OpenCommissioningWindowRequest
-        property commissioning_timeout : UInt16
-        property pake_passcode_verifier : Bytes
-        property discriminator : UInt16
-        property iterations : UInt32
-        property salt : Bytes
-
-        def initialize(
-          @commissioning_timeout,
-          @pake_passcode_verifier,
-          @discriminator,
-          @iterations,
-          @salt,
-        )
-        end
-
-        # Alternative constructor from TLV bytes
-        def initialize(tlv_bytes : Bytes)
-          request = Definitions::AdministratorCommissioning::OpenCommissioningWindowRequest.new(tlv_bytes)
-          @commissioning_timeout = request.commissioning_timeout
-          @pake_passcode_verifier = request.pake_passcode_verifier
-          @discriminator = request.discriminator
-          @iterations = request.iterations
-          @salt = request.salt
-        end
-      end
-
-      # OpenBasicCommissioningWindow command request (Basic)
-      struct OpenBasicCommissioningWindowRequest
-        property commissioning_timeout : UInt16
-        property discriminator : UInt16 # Device discriminator
-
-        def initialize(@commissioning_timeout, @discriminator = 0_u16)
-        end
-
-        # Alternative constructor from TLV bytes
-        def initialize(tlv_bytes : Bytes)
-          request = Definitions::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(tlv_bytes)
-          @commissioning_timeout = request.commissioning_timeout
-          @discriminator = 0_u16 # Basic doesn't have discriminator in TLV, use default
-        end
-      end
+      # Use definitions for command structs (they have TLV::Serializable)
+      alias OpenCommissioningWindowRequest = Definitions::AdministratorCommissioning::OpenCommissioningWindowRequest
+      alias OpenBasicCommissioningWindowRequest = Definitions::AdministratorCommissioning::OpenBasicCommissioningWindowRequest
 
       # ========================================================================
       # Attributes
@@ -416,12 +373,13 @@ module Matter
         end
 
         # Initialize commissioning window
+        # Note: Basic commissioning doesn't include discriminator in request, use default
         initialize_commissioning_window(
           timeout: request.commissioning_timeout,
           status: CommissioningWindowStatus::BasicWindowOpen,
           admin_fabric_index: session_fabric_index,
           admin_vendor_id: session_vendor_id,
-          discriminator: request.discriminator
+          discriminator: 0_u16
         )
 
         # Configure PASE server with default PIN (if callback provided)
@@ -464,7 +422,7 @@ module Matter
       private def handle_open_commissioning_window(fields : Bytes) : InteractionModel::Status
         # Parse TLV-encoded command using the TLV library
         begin
-          request = OpenCommissioningWindowRequest.new(fields)
+          request = OpenCommissioningWindowRequest.from_slice(fields)
 
           # Invoke new-style handler
           fabric_index = @session_fabric_index
@@ -510,7 +468,7 @@ module Matter
       private def handle_open_basic_commissioning_window(fields : Bytes) : InteractionModel::Status
         # Parse TLV-encoded command using the TLV library
         begin
-          request = OpenBasicCommissioningWindowRequest.new(fields)
+          request = OpenBasicCommissioningWindowRequest.from_slice(fields)
 
           # Invoke new-style handler
           fabric_index = @session_fabric_index

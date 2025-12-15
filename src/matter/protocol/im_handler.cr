@@ -25,103 +25,18 @@ module Matter
 
       # Parse ReadRequest from decrypted TLV payload
       def self.parse_read_request(payload : Bytes) : InteractionModel::ReadRequest?
-        reader = TLV::Reader.new(payload)
-        data = reader.get.as(Hash(TLV::Tag, TLV::Value))
+        msg = InteractionModel::ReadRequestMessage.from_slice(payload)
 
-        # ReadRequest structure (TLV anonymous)
-        request_data = data["Any"].as(Hash(TLV::Tag, TLV::Value))
+        attribute_requests = msg.attribute_requests || [] of InteractionModel::AttributePath
+        Log.debug { "ReadRequest parsed: #{attribute_requests.size} attribute request(s)" }
 
-        Log.debug { "ReadRequest TLV structure: #{request_data.keys.inspect}" }
-
-        # Extract attribute requests (tag 0, array)
-        # Each request is a PathContainer with tags: 2=endpoint, 3=cluster, 4=attribute
-        # Missing tags indicate wildcards
-        attribute_requests = [] of InteractionModel::AttributePath
-        if attr_req_array = request_data[0_u8]?.as?(Array)
-          Log.debug { "Found #{attr_req_array.size} attribute request(s)" }
-
-          attr_req_array.each_with_index do |attr_req, idx|
-            # Extract from PathContainer - values are stored as Int32
-            # PathContainer is a wrapper with []? method
-            endpoint_raw = case attr_req
-                           when TLV::PathContainer
-                             attr_req[2_u8]?
-                           when Hash
-                             attr_req.as(Hash(TLV::Tag, TLV::Value))[2_u8]?
-                           else
-                             nil
-                           end
-
-            cluster_raw = case attr_req
-                          when TLV::PathContainer
-                            attr_req[3_u8]?
-                          when Hash
-                            attr_req.as(Hash(TLV::Tag, TLV::Value))[3_u8]?
-                          else
-                            nil
-                          end
-
-            attribute_raw = case attr_req
-                            when TLV::PathContainer
-                              attr_req[4_u8]?
-                            when Hash
-                              attr_req.as(Hash(TLV::Tag, TLV::Value))[4_u8]?
-                            else
-                              nil
-                            end
-
-            # Convert to proper types - TLV may store as Int32
-            endpoint = if endpoint_raw
-                         case endpoint_raw
-                         when Int
-                           endpoint_raw.to_u16
-                         when UInt8, UInt16, UInt32
-                           endpoint_raw.to_u16
-                         else
-                           nil
-                         end
-                       end
-
-            cluster = if cluster_raw
-                        case cluster_raw
-                        when Int
-                          cluster_raw.to_u32
-                        when UInt8, UInt16, UInt32
-                          cluster_raw.to_u32
-                        else
-                          nil
-                        end
-                      end
-
-            attribute = if attribute_raw
-                          case attribute_raw
-                          when Int
-                            attribute_raw.to_u32
-                          when UInt8, UInt16, UInt32
-                            attribute_raw.to_u32
-                          else
-                            nil
-                          end
-                        end
-
-            path = InteractionModel::AttributePath.new(
-              endpoint: endpoint,
-              cluster: cluster,
-              attribute: attribute
-            )
-
-            Log.debug { "  Request #{idx}: endpoint=#{path.endpoint || "nil"}, cluster=0x#{path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}" }
-
-            attribute_requests << path
-          end
+        attribute_requests.each_with_index do |path, idx|
+          Log.debug { "  Request #{idx}: endpoint=#{path.endpoint || "nil"}, cluster=0x#{path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}" }
         end
-
-        # Extract fabric_filtered flag (tag 3, optional, defaults to true)
-        fabric_filtered = request_data[3_u8]?.as?(Bool) || true
 
         InteractionModel::ReadRequest.new(
           attribute_requests: attribute_requests,
-          fabric_filtered: fabric_filtered
+          fabric_filtered: msg.fabric_filtered || true
         )
       rescue ex
         Log.error(exception: ex) { "Failed to parse ReadRequest: #{ex.message}" }
@@ -258,27 +173,11 @@ module Matter
         )
       end
 
-      # Encode ReadResponse manually to preserve PATH container types
-      # TLV::Serializable loses container type metadata, so we build manually
+      # Encode ReadResponse using TLV::Serializable structs
       def self.encode_read_response(response : InteractionModel::ReadResponse) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
+        attribute_reports = [] of InteractionModel::AttributeReportIB
 
-        # Start root structure (anonymous) - ReportData/ReadResponse
-        # Per Matter spec ReportDataMessage tags:
-        #   Tag 0: SubscriptionId (optional)
-        #   Tag 1: AttributeReports (array)
-        #   Tag 2: EventReports (optional array)
-        #   Tag 3: MoreChunkedMessages (optional bool)
-        #   Tag 4: SuppressResponse (optional bool)
-        #   Tag 0xFF: InteractionModelRevision
-        writer.start_structure(nil)
-
-        # Tag 0: subscriptionId (optional) - not included for regular reads
-
-        # Tag 1: attributeReports (array)
-        writer.start_array(1_u8)
-
+        # Convert attribute data reports
         response.attribute_reports.each_with_index do |report, idx|
           begin
             # Validate attribute value
@@ -287,18 +186,7 @@ module Matter
               next
             end
 
-            # Start AttributeReportIB
-            writer.start_structure(nil)
-
-            # Tag 1: AttributeDataIB
-            writer.start_structure(1_u8)
-
-            # Tag 0: dataVersion
-            writer.put(0_u8, report.data_version)
-
-            # Tag 1: path (using PATH container!)
             # IMPORTANT: Response paths MUST always have concrete endpoint/cluster/attribute
-            # Missing fields cause iOS Home to show "Not Supported"
             ep = report.path.endpoint
             cl = report.path.cluster
             at = report.path.attribute
@@ -307,17 +195,27 @@ module Matter
               next
             end
 
-            writer.start_path(1_u8)
-            writer.put(2_u8, ep)
-            writer.put(3_u8, cl)
-            writer.put(4_u8, at)
-            writer.end_container # End path
+            # Create the path
+            path = InteractionModel::AttributePath.new(
+              endpoint: ep,
+              cluster: cl,
+              attribute: at
+            )
 
-            # Tag 2: data - use raw bytes to preserve exact TLV encoding (integer widths)
-            writer.put_raw_element(2_u8, report.value)
+            # Parse the raw value bytes as TLV::Any to preserve encoding
+            data = TLV::Any.from_slice(report.value)
 
-            writer.end_container # End AttributeDataIB
-            writer.end_container # End AttributeReportIB
+            # Create AttributeDataIB
+            attr_data = InteractionModel::AttributeDataIB.new(
+              path: path,
+              data: data,
+              data_version: report.data_version
+            )
+
+            # Wrap in AttributeReportIB
+            attribute_reports << InteractionModel::AttributeReportIB.new(
+              attribute_data: attr_data
+            )
 
             Log.debug { "Encoded attribute report #{idx}: endpoint=#{ep}, cluster=0x#{cl.to_s(16)}, attr=0x#{at.to_s(16)}" }
           rescue ex
@@ -325,17 +223,9 @@ module Matter
           end
         end
 
-        # Add AttributeStatus entries to the same array
+        # Convert attribute status entries (errors)
         response.attribute_status.each_with_index do |status, idx|
           begin
-            # Start AttributeReportIB
-            writer.start_structure(nil)
-
-            # Tag 0: AttributeStatusIB (for errors)
-            writer.start_structure(0_u8)
-
-            # Tag 0: path (using PATH container!)
-            # IMPORTANT: Response paths MUST always have concrete endpoint/cluster/attribute
             ep = status.path.endpoint
             cl = status.path.cluster
             at = status.path.attribute
@@ -344,20 +234,28 @@ module Matter
               next
             end
 
-            writer.start_path(0_u8)
-            writer.put(2_u8, ep)
-            writer.put(3_u8, cl)
-            writer.put(4_u8, at)
-            writer.end_container # End path
+            # Create the path
+            path = InteractionModel::AttributePath.new(
+              endpoint: ep,
+              cluster: cl,
+              attribute: at
+            )
 
-            # Tag 1: status (StatusIB structure)
-            writer.start_structure(1_u8)
-            writer.put(0_u8, status.status.status.value) # Tag 0: status code
-            # Tag 1: cluster-status (optional) - not implemented
-            writer.end_container # End StatusIB
+            # Create StatusIB
+            status_ib = InteractionModel::StatusIB.new(
+              status: status.status.status.value
+            )
 
-            writer.end_container # End AttributeStatusIB
-            writer.end_container # End AttributeReportIB
+            # Create AttributeStatusIB
+            attr_status = InteractionModel::AttributeStatusIB.new(
+              path: path,
+              status: status_ib
+            )
+
+            # Wrap in AttributeReportIB
+            attribute_reports << InteractionModel::AttributeReportIB.new(
+              attribute_status: attr_status
+            )
 
             Log.debug { "Encoded attribute status #{idx}: endpoint=#{ep}, cluster=0x#{cl.to_s(16)}, attr=0x#{at.to_s(16)}, status=#{status.status.status}" }
           rescue ex
@@ -365,62 +263,52 @@ module Matter
           end
         end
 
-        writer.end_container # End attributeReports array
+        # Build ReportDataMessage
+        report_msg = InteractionModel::ReportDataMessage.new(
+          attribute_reports: attribute_reports.empty? ? nil : attribute_reports,
+          more_chunked_messages: response.more_chunks ? true : nil,
+          suppress_response: response.suppress_response ? true : nil,
+          interaction_model_revision: 12_u8
+        )
 
-        # Tag 2: eventReports (array, optional) - not implemented yet
-
-        # Tag 3: moreChunkedMessages (optional, defaults to false)
-        # Per Matter spec: tag 3 = MoreChunkedMessages, tag 4 = SuppressResponse
-        if response.more_chunks
-          writer.put(3_u8, true)
-        end
-
-        # Tag 4: suppressResponse (optional, defaults to false)
-        if response.suppress_response
-          writer.put(4_u8, true)
-        end
-
-        # Tag 0xFF: interactionModelRevision (REQUIRED, Matter 1.3 = revision 12)
-        writer.put(0xFF_u8, 12_u8)
-
-        writer.end_container # End root structure
-
-        io.rewind.to_slice
+        report_msg.to_slice
       end
 
       # Parse WriteRequest from decrypted TLV payload
       def self.parse_write_request(payload : Bytes) : InteractionModel::WriteRequest?
-        reader = TLV::Reader.new(payload)
-        data = reader.get.as(Hash(TLV::Tag, TLV::Value))
-
-        # WriteRequest structure (TLV anonymous)
-        request_data = data["Any"].as(Hash(TLV::Tag, TLV::Value))
+        parsed = TLV::Any.from_slice(payload)
+        request_data = parsed.value.as(TLV::Structure)
 
         Log.debug { "WriteRequest TLV structure: #{request_data.keys.inspect}" }
 
         # Extract suppressResponse (tag 0, optional, defaults to false)
-        suppress_response = request_data[0_u8]?.as?(Bool) || false
+        suppress_response = if sr_any = request_data[0_u8]?
+                              sr_any.value.as?(Bool) || false
+                            else
+                              false
+                            end
 
         # Extract timedRequest (tag 1, required)
-        timed_request = request_data[1_u8]?.as?(Bool) || false
+        timed_request = if tr_any = request_data[1_u8]?
+                          tr_any.value.as?(Bool) || false
+                        else
+                          false
+                        end
 
         # Extract writeRequests (tag 2, array of AttributeDataIB)
         write_requests = [] of InteractionModel::AttributeWriteRequest
-        if write_req_array = request_data[2_u8]?.as?(Array)
-          Log.debug { "Found #{write_req_array.size} write request(s)" }
+        if write_req_any = request_data[2_u8]?
+          write_req_list = write_req_any.value.as(TLV::List)
+          Log.debug { "Found #{write_req_list.size} write request(s)" }
 
-          write_req_array.each_with_index do |write_req, idx|
+          write_req_list.each_with_index do |write_req_elem, idx|
             # Extract AttributeDataIB structure
-            attr_data = case write_req
-                        when Hash
-                          write_req.as(Hash(TLV::Tag, TLV::Value))
-                        else
-                          next
-                        end
+            attr_data = write_req_elem.value.as?(TLV::Structure)
+            next unless attr_data
 
             # Extract dataVersion (tag 0, optional)
-            data_version = if dv = attr_data[0_u8]?
-                             case dv
+            data_version = if dv_any = attr_data[0_u8]?
+                             case dv = dv_any.value
                              when Int
                                dv.to_u32
                              when UInt32
@@ -430,90 +318,30 @@ module Matter
                              end
                            end
 
-            # Extract path (tag 1, PATH container with endpoint/cluster/attribute)
-            path_raw = attr_data[1_u8]?
-            unless path_raw
+            # Extract path (tag 1, PATH/LIST container with endpoint/cluster/attribute)
+            path_any = attr_data[1_u8]?
+            unless path_any
               Log.warn { "Write request #{idx} missing path" }
               next
             end
 
-            path_data = case path_raw
-                        when TLV::PathContainer
-                          {
-                            endpoint:  path_raw[2_u8]?,
-                            cluster:   path_raw[3_u8]?,
-                            attribute: path_raw[4_u8]?,
-                          }
-                        when Hash
-                          hash = path_raw.as(Hash(TLV::Tag, TLV::Value))
-                          {
-                            endpoint:  hash[2_u8]?,
-                            cluster:   hash[3_u8]?,
-                            attribute: hash[4_u8]?,
-                          }
-                        else
-                          Log.warn { "Write request #{idx} has unexpected path type: #{path_raw.class}" }
-                          next
-                        end
+            # Parse path using AttributePath TLV::Serializable
+            path = InteractionModel::AttributePath.from_slice(path_any.to_slice)
 
-            # Convert to proper types
-            endpoint = if ep = path_data[:endpoint]
-                         case ep
-                         when Int
-                           ep.to_u16
-                         when UInt16
-                           ep
-                         else
-                           nil
-                         end
-                       end
-
-            cluster = if cl = path_data[:cluster]
-                        case cl
-                        when Int
-                          cl.to_u32
-                        when UInt32
-                          cl
-                        else
-                          nil
-                        end
-                      end
-
-            attribute = if at = path_data[:attribute]
-                          case at
-                          when Int
-                            at.to_u32
-                          when UInt32
-                            at
-                          else
-                            nil
-                          end
-                        end
-
-            unless cluster && attribute
+            unless path.cluster && path.attribute
               Log.warn { "Write request #{idx} missing cluster or attribute" }
               next
             end
 
-            path = InteractionModel::AttributePath.new(
-              endpoint: endpoint,
-              cluster: cluster,
-              attribute: attribute
-            )
-
             # Extract data (tag 2)
-            value_data = attr_data[2_u8]?
-            value = if value_data
-                      # Encode the TLV value back to bytes for cluster processing
-                      io = IO::Memory.new
-                      writer = TLV::Writer.new(io)
-                      writer.put(nil, value_data)
-                      io.rewind.to_slice
+            value = if value_any = attr_data[2_u8]?
+                      # Use to_slice directly since value_any is already TLV::Any
+                      value_any.to_slice
                     else
                       Bytes.empty
                     end
 
-            Log.debug { "  Write #{idx}: endpoint=#{endpoint || "nil"}, cluster=0x#{cluster.to_s(16)}, attribute=0x#{attribute.to_s(16)}, value=#{value.size} bytes" }
+            Log.debug { "  Write #{idx}: endpoint=#{path.endpoint || "nil"}, cluster=0x#{path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}, value=#{value.size} bytes" }
 
             write_requests << InteractionModel::AttributeWriteRequest.new(
               path: path,
@@ -524,7 +352,11 @@ module Matter
         end
 
         # Extract moreChunkedMessages (tag 3, optional, defaults to false)
-        more_chunked_messages = request_data[3_u8]?.as?(Bool) || false
+        more_chunked_messages = if mc_any = request_data[3_u8]?
+                                  mc_any.value.as?(Bool) || false
+                                else
+                                  false
+                                end
 
         InteractionModel::WriteRequest.new(
           write_requests: write_requests,
@@ -595,20 +427,21 @@ module Matter
 
       # Parse SubscribeRequest from decrypted TLV payload
       def self.parse_subscribe_request(payload : Bytes) : InteractionModel::SubscribeRequest?
-        reader = TLV::Reader.new(payload)
-        data = reader.get.as(Hash(TLV::Tag, TLV::Value))
-
-        # SubscribeRequest structure (TLV anonymous)
-        request_data = data["Any"].as(Hash(TLV::Tag, TLV::Value))
+        parsed = TLV::Any.from_slice(payload)
+        request_data = parsed.value.as(TLV::Structure)
 
         Log.debug { "SubscribeRequest TLV structure: #{request_data.keys.inspect}" }
 
         # Extract keepSubscriptions (tag 0, required)
-        keep_subscriptions = request_data[0_u8]?.as?(Bool) || false
+        keep_subscriptions = if ks_any = request_data[0_u8]?
+                               ks_any.value.as?(Bool) || false
+                             else
+                               false
+                             end
 
         # Extract minIntervalFloorSeconds (tag 1, required)
-        min_interval_floor = if mi = request_data[1_u8]?
-                               case mi
+        min_interval_floor = if mi_any = request_data[1_u8]?
+                               case mi = mi_any.value
                                when Int
                                  mi.to_u16
                                when UInt16
@@ -621,8 +454,8 @@ module Matter
                              end
 
         # Extract maxIntervalCeilingSeconds (tag 2, required)
-        max_interval_ceiling = if mx = request_data[2_u8]?
-                                 case mx
+        max_interval_ceiling = if mx_any = request_data[2_u8]?
+                                 case mx = mx_any.value
                                  when Int
                                    mx.to_u16
                                  when UInt16
@@ -636,77 +469,13 @@ module Matter
 
         # Extract attributeRequests (tag 3, optional array)
         attribute_requests = [] of InteractionModel::AttributePath
-        if attr_req_array = request_data[3_u8]?.as?(Array)
-          Log.debug { "Found #{attr_req_array.size} attribute request(s)" }
+        if attr_req_any = request_data[3_u8]?
+          attr_req_list = attr_req_any.value.as(TLV::List)
+          Log.debug { "Found #{attr_req_list.size} attribute request(s)" }
 
-          attr_req_array.each_with_index do |attr_req, idx|
-            # Extract from PathContainer
-            endpoint_raw = case attr_req
-                           when TLV::PathContainer
-                             attr_req[2_u8]?
-                           when Hash
-                             attr_req.as(Hash(TLV::Tag, TLV::Value))[2_u8]?
-                           else
-                             nil
-                           end
-
-            cluster_raw = case attr_req
-                          when TLV::PathContainer
-                            attr_req[3_u8]?
-                          when Hash
-                            attr_req.as(Hash(TLV::Tag, TLV::Value))[3_u8]?
-                          else
-                            nil
-                          end
-
-            attribute_raw = case attr_req
-                            when TLV::PathContainer
-                              attr_req[4_u8]?
-                            when Hash
-                              attr_req.as(Hash(TLV::Tag, TLV::Value))[4_u8]?
-                            else
-                              nil
-                            end
-
-            # Convert to proper types
-            endpoint = if endpoint_raw
-                         case endpoint_raw
-                         when Int
-                           endpoint_raw.to_u16
-                         when UInt8, UInt16, UInt32
-                           endpoint_raw.to_u16
-                         else
-                           nil
-                         end
-                       end
-
-            cluster = if cluster_raw
-                        case cluster_raw
-                        when Int
-                          cluster_raw.to_u32
-                        when UInt8, UInt16, UInt32
-                          cluster_raw.to_u32
-                        else
-                          nil
-                        end
-                      end
-
-            attribute = if attribute_raw
-                          case attribute_raw
-                          when Int
-                            attribute_raw.to_u32
-                          when UInt8, UInt16, UInt32
-                            attribute_raw.to_u32
-                          else
-                            nil
-                          end
-                        end
-
-            path = InteractionModel::AttributePath.new(
-              endpoint: endpoint,
-              cluster: cluster,
-              attribute: attribute
-            )
+          attr_req_list.each_with_index do |attr_req_elem, idx|
+            # Parse path using AttributePath TLV::Serializable
+            path = InteractionModel::AttributePath.from_slice(attr_req_elem.to_slice)
 
             Log.debug { "  Request #{idx}: endpoint=#{path.endpoint || "nil"}, cluster=0x#{path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}" }
 
@@ -715,7 +484,11 @@ module Matter
         end
 
         # Extract isFabricFiltered (tag 7, required)
-        fabric_filtered = request_data[7_u8]?.as?(Bool) || true
+        fabric_filtered = if ff_any = request_data[7_u8]?
+                            ff_any.value.as?(Bool) || true
+                          else
+                            true
+                          end
 
         InteractionModel::SubscribeRequest.new(
           attribute_requests: attribute_requests,
@@ -734,40 +507,16 @@ module Matter
         response : InteractionModel::ReadResponse,
         subscription_id : UInt32? = nil,
       ) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
+        attribute_reports = [] of InteractionModel::AttributeReportIB
 
-        # Start root structure (anonymous) - ReportData
-        writer.start_structure(nil)
-
-        # Tag 0: subscriptionId (optional, only for subscriptions)
-        if sub_id = subscription_id
-          writer.put(0_u8, sub_id)
-        end
-
-        # Tag 1: attributeReports (array)
-        writer.start_array(1_u8)
-
+        # Convert attribute data reports
         response.attribute_reports.each_with_index do |report, idx|
           begin
-            # Validate attribute value
             if report.value.empty?
               Log.warn { "Skipping empty report #{idx}" }
               next
             end
 
-            # Start AttributeReportIB
-            writer.start_structure(nil)
-
-            # Tag 1: AttributeDataIB
-            writer.start_structure(1_u8)
-
-            # Tag 0: dataVersion
-            writer.put(0_u8, report.data_version)
-
-            # Tag 1: path (using PATH container!)
-            # IMPORTANT: Response paths MUST always have concrete endpoint/cluster/attribute
-            # Missing fields cause iOS Home to show "Not Supported"
             ep = report.path.endpoint
             cl = report.path.cluster
             at = report.path.attribute
@@ -776,73 +525,50 @@ module Matter
               next
             end
 
-            writer.start_path(1_u8)
-            writer.put(2_u8, ep)
-            writer.put(3_u8, cl)
-            writer.put(4_u8, at)
-            writer.end_container # End path
+            path = InteractionModel::AttributePath.new(endpoint: ep, cluster: cl, attribute: at)
+            data = TLV::Any.from_slice(report.value)
 
-            # Tag 2: data - use raw bytes to preserve exact TLV encoding (integer widths)
-            writer.put_raw_element(2_u8, report.value)
+            attr_data = InteractionModel::AttributeDataIB.new(
+              path: path,
+              data: data,
+              data_version: report.data_version
+            )
 
-            writer.end_container # End AttributeDataIB
-            writer.end_container # End AttributeReportIB
-
+            attribute_reports << InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
             Log.debug { "Encoded attribute report #{idx}: endpoint=#{ep}, cluster=0x#{cl.to_s(16)}, attr=0x#{at.to_s(16)}" }
           rescue ex
             Log.error { "Failed to encode report #{idx}: #{ex.message}" }
           end
         end
 
-        # Add AttributeStatus entries to the same array
+        # Convert attribute status entries (errors)
         response.attribute_status.each_with_index do |status, idx|
           begin
-            # Start AttributeReportIB
-            writer.start_structure(nil)
+            path = InteractionModel::AttributePath.new(
+              endpoint: status.path.endpoint,
+              cluster: status.path.cluster,
+              attribute: status.path.attribute
+            )
 
-            # Tag 0: AttributeStatusIB (for errors)
-            writer.start_structure(0_u8)
+            status_ib = InteractionModel::StatusIB.new(status: status.status.status.value)
+            attr_status = InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
 
-            # Tag 0: path (using PATH container!)
-            writer.start_path(0_u8)
-            writer.put(2_u8, status.path.endpoint.not_nil!) if status.path.endpoint
-            writer.put(3_u8, status.path.cluster.not_nil!) if status.path.cluster
-            writer.put(4_u8, status.path.attribute.not_nil!) if status.path.attribute
-            writer.end_container # End path
-
-            # Tag 1: status (StatusIB structure)
-            writer.start_structure(1_u8)
-            writer.put(0_u8, status.status.status.value) # Tag 0: status code
-            writer.end_container                         # End StatusIB
-
-            writer.end_container # End AttributeStatusIB
-            writer.end_container # End AttributeReportIB
-
+            attribute_reports << InteractionModel::AttributeReportIB.new(attribute_status: attr_status)
             Log.debug { "Encoded attribute status #{idx}: endpoint=#{status.path.endpoint}, cluster=0x#{status.path.cluster.try(&.to_s(16))}, attr=#{status.path.attribute}, status=#{status.status.status}" }
           rescue ex
             Log.error { "Failed to encode status #{idx}: #{ex.message}" }
           end
         end
 
-        writer.end_container # End attributeReports array
+        # Build ReportDataMessage
+        report_msg = InteractionModel::ReportDataMessage.new(
+          subscription_id: subscription_id,
+          attribute_reports: attribute_reports.empty? ? nil : attribute_reports,
+          more_chunked_messages: response.more_chunks ? true : nil,
+          interaction_model_revision: 12_u8
+        )
 
-        # Tag 2: eventReports (array, optional) - not implemented yet
-
-        # Tag 3: moreChunkedMessages (optional, defaults to false)
-        # Per Matter spec: tag 3 = MoreChunkedMessages, tag 4 = SuppressResponse
-        if response.more_chunks
-          writer.put(3_u8, true)
-        end
-
-        # Tag 4: suppressResponse (optional, for subscriptions - set to false to get ACK)
-        # Note: We don't suppress to ensure we get the ACK before sending SubscribeResponse
-
-        # Tag 0xFF: interactionModelRevision (REQUIRED, Matter 1.3 = revision 12)
-        writer.put(0xFF_u8, 12_u8)
-
-        writer.end_container # End root structure
-
-        io.rewind.to_slice
+        report_msg.to_slice
       end
 
       # Maximum TLV payload size per message (conservative value to stay under IPv6 MTU of 1280)
@@ -861,68 +587,34 @@ module Matter
         at = report.path.attribute
         return nil unless ep && cl && at
 
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
+        path = InteractionModel::AttributePath.new(endpoint: ep, cluster: cl, attribute: at)
+        data = TLV::Any.from_slice(report.value)
 
-        # Start AttributeReportIB
-        writer.start_structure(nil)
+        attr_data = InteractionModel::AttributeDataIB.new(
+          path: path,
+          data: data,
+          data_version: report.data_version
+        )
 
-        # Tag 1: AttributeDataIB
-        writer.start_structure(1_u8)
-
-        # Tag 0: dataVersion
-        writer.put(0_u8, report.data_version)
-
-        # Tag 1: path (using PATH container!)
-        writer.start_path(1_u8)
-        writer.put(2_u8, ep)
-        writer.put(3_u8, cl)
-        writer.put(4_u8, at)
-        writer.end_container # End path
-
-        # Tag 2: data - use raw bytes to preserve exact TLV encoding (integer widths)
-        writer.put_raw_element(2_u8, report.value)
-
-        writer.end_container # End AttributeDataIB
-        writer.end_container # End AttributeReportIB
-
-        io.rewind.to_slice
+        report_ib = InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
+        report_ib.to_slice
       rescue
         nil
       end
 
       # Encode a single attribute status to TLV bytes (for size estimation)
       private def self.encode_single_attribute_status(status : InteractionModel::AttributeStatus) : Bytes
-        # Response paths MUST have concrete endpoint/cluster/attribute
-        ep = status.path.endpoint
-        cl = status.path.cluster
-        at = status.path.attribute
+        path = InteractionModel::AttributePath.new(
+          endpoint: status.path.endpoint,
+          cluster: status.path.cluster,
+          attribute: status.path.attribute
+        )
 
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
+        status_ib = InteractionModel::StatusIB.new(status: status.status.status.value)
+        attr_status = InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
 
-        # Start AttributeReportIB
-        writer.start_structure(nil)
-
-        # Tag 0: AttributeStatusIB (for errors)
-        writer.start_structure(0_u8)
-
-        # Tag 0: path (using PATH container!)
-        writer.start_path(0_u8)
-        writer.put(2_u8, ep) if ep
-        writer.put(3_u8, cl) if cl
-        writer.put(4_u8, at) if at
-        writer.end_container # End path
-
-        # Tag 1: status (StatusIB structure)
-        writer.start_structure(1_u8)
-        writer.put(0_u8, status.status.status.value) # Tag 0: status code
-        writer.end_container                         # End StatusIB
-
-        writer.end_container # End AttributeStatusIB
-        writer.end_container # End AttributeReportIB
-
-        io.rewind.to_slice
+        report_ib = InteractionModel::AttributeReportIB.new(attribute_status: attr_status)
+        report_ib.to_slice
       end
 
       # Chunk attributes into multiple ReportData messages that fit within MTU
@@ -1050,209 +742,74 @@ module Matter
         subscription_id : UInt32,
         max_interval : UInt16,
       ) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        # Start root structure (anonymous) - SubscribeResponse
-        writer.start_structure(nil)
-
-        # Tag 0: subscriptionId (required)
-        writer.put(0_u8, subscription_id)
-
-        # Tag 2: maxInterval (required) - Note: tag 1 is not used
-        writer.put(2_u8, max_interval)
-
-        # Tag 0xFF: interactionModelRevision (REQUIRED, Matter 1.3 = revision 12)
-        writer.put(0xFF_u8, 12_u8)
-
-        writer.end_container # End root structure
-
-        io.rewind.to_slice
+        msg = InteractionModel::SubscribeResponseMessage.new(
+          subscription_id: subscription_id,
+          max_interval: max_interval,
+          interaction_model_revision: 12_u8
+        )
+        msg.to_slice
       end
 
-      # Encode WriteResponse manually to preserve PATH container types
+      # Encode WriteResponse using TLV::Serializable
       def self.encode_write_response(response : InteractionModel::WriteResponse) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
+        write_responses = response.write_responses.compact_map do |status|
+          # Response paths MUST have concrete endpoint/cluster/attribute
+          ep = status.path.endpoint
+          cl = status.path.cluster
+          at = status.path.attribute
+          next unless ep && cl && at
 
-        # Start root structure (anonymous) - WriteResponseMessage
-        writer.start_structure(nil)
-
-        # Tag 0: writeResponses (array of AttributeStatusIB)
-        writer.start_array(0_u8)
-
-        response.write_responses.each_with_index do |status, idx|
-          begin
-            # Response paths MUST have concrete endpoint/cluster/attribute
-            ep = status.path.endpoint
-            cl = status.path.cluster
-            at = status.path.attribute
-            unless ep && cl && at
-              Log.error { "Skipping write status #{idx} with incomplete path: endpoint=#{ep}, cluster=#{cl}, attribute=#{at}" }
-              next
-            end
-
-            # Start AttributeStatusIB
-            writer.start_structure(nil)
-
-            # Tag 0: path (using PATH container!)
-            writer.start_path(0_u8)
-            writer.put(2_u8, ep)
-            writer.put(3_u8, cl)
-            writer.put(4_u8, at)
-            writer.end_container # End path
-
-            # Tag 1: status (StatusIB structure)
-            writer.start_structure(1_u8)
-            writer.put(0_u8, status.status.status.value) # Tag 0: status code
-            # Tag 1: cluster-status (optional) - not implemented
-            writer.end_container # End StatusIB
-
-            writer.end_container # End AttributeStatusIB
-
-            Log.debug { "Encoded write status #{idx}: endpoint=#{ep}, cluster=0x#{cl.to_s(16)}, attr=0x#{at.to_s(16)}, status=#{status.status.status}" }
-          rescue ex
-            Log.error { "Failed to encode write status #{idx}: #{ex.message}" }
-          end
+          path = InteractionModel::AttributePath.new(
+            endpoint: ep,
+            cluster: cl,
+            attribute: at
+          )
+          status_ib = InteractionModel::StatusIB.new(status: status.status.status.value)
+          InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
         end
 
-        writer.end_container # End writeResponses array
-
-        # Tag 0xFF: interactionModelRevision (REQUIRED, Matter 1.3 = revision 12)
-        writer.put(0xFF_u8, 12_u8)
-
-        writer.end_container # End root structure
-
-        io.rewind.to_slice
+        msg = InteractionModel::WriteResponseMessage.new(
+          write_responses: write_responses,
+          interaction_model_revision: 12_u8
+        )
+        msg.to_slice
       end
 
       # Parse InvokeRequest from decrypted TLV payload
       def self.parse_invoke_request(payload : Bytes) : InteractionModel::InvokeRequest?
-        reader = TLV::Reader.new(payload)
-        data = reader.get.as(Hash(TLV::Tag, TLV::Value))
+        msg = InteractionModel::InvokeRequestMessage.from_slice(payload)
+        Log.debug { "InvokeRequest parsed: #{msg.invoke_requests.size} invoke request(s)" }
 
-        # InvokeRequest structure (TLV anonymous)
-        request_data = data["Any"].as(Hash(TLV::Tag, TLV::Value))
+        invoke_requests = msg.invoke_requests.compact_map do |cmd_data|
+          path = cmd_data.command_path
+          cluster = path.cluster
+          command = path.command
 
-        Log.debug { "InvokeRequest TLV structure: #{request_data.keys.inspect}" }
+          command_path = InteractionModel::CommandPath.new(
+            endpoint: path.endpoint,
+            cluster: cluster,
+            command: command
+          )
 
-        # Extract suppressResponse (tag 0, optional, defaults to false)
-        suppress_response = request_data[0_u8]?.as?(Bool) || false
+          # Convert command fields TLV::Any to bytes for cluster processing
+          command_fields = if fields = cmd_data.command_fields
+                             fields.to_slice
+                           else
+                             Bytes.empty
+                           end
 
-        # Extract timedRequest (tag 1, optional, defaults to false)
-        timed_request = request_data[1_u8]?.as?(Bool) || false
+          Log.debug { "  Invoke: endpoint=#{path.endpoint}, cluster=0x#{cluster.to_s(16)}, command=0x#{command.to_s(16)}, fields=#{command_fields.size} bytes" }
 
-        # Extract invokeRequests (tag 2, array)
-        invoke_requests = [] of InteractionModel::CommandDataIB
-        if invoke_req_array = request_data[2_u8]?.as?(Array)
-          Log.debug { "Found #{invoke_req_array.size} invoke request(s)" }
-
-          invoke_req_array.each_with_index do |invoke_req, idx|
-            # Extract CommandDataIB structure
-            cmd_data = case invoke_req
-                       when Hash
-                         invoke_req.as(Hash(TLV::Tag, TLV::Value))
-                       else
-                         next
-                       end
-
-            # Extract commandPath (tag 0, LIST container with endpoint/cluster/command)
-            cmd_path_raw = cmd_data[0_u8]?
-            unless cmd_path_raw
-              Log.warn { "Invoke request #{idx} missing commandPath" }
-              next
-            end
-
-            cmd_path_data = case cmd_path_raw
-                            when TLV::PathContainer
-                              # PathContainer wrapper
-                              {
-                                endpoint: cmd_path_raw[0_u8]?,
-                                cluster:  cmd_path_raw[1_u8]?,
-                                command:  cmd_path_raw[2_u8]?,
-                              }
-                            when Hash
-                              # Direct hash
-                              hash = cmd_path_raw.as(Hash(TLV::Tag, TLV::Value))
-                              {
-                                endpoint: hash[0_u8]?,
-                                cluster:  hash[1_u8]?,
-                                command:  hash[2_u8]?,
-                              }
-                            else
-                              Log.warn { "Invoke request #{idx} has unexpected commandPath type: #{cmd_path_raw.class}" }
-                              next
-                            end
-
-            # Convert to proper types
-            endpoint = if ep = cmd_path_data[:endpoint]
-                         case ep
-                         when Int
-                           ep.to_u16
-                         when UInt16
-                           ep
-                         else
-                           nil
-                         end
-                       end
-
-            cluster = if cl = cmd_path_data[:cluster]
-                        case cl
-                        when Int
-                          cl.to_u32
-                        when UInt32
-                          cl
-                        else
-                          nil
-                        end
-                      end
-
-            command = if cm = cmd_path_data[:command]
-                        case cm
-                        when Int
-                          cm.to_u32
-                        when UInt32
-                          cm
-                        else
-                          nil
-                        end
-                      end
-
-            unless cluster && command
-              Log.warn { "Invoke request #{idx} missing cluster or command" }
-              next
-            end
-
-            command_path = InteractionModel::CommandPath.new(
-              endpoint: endpoint || 0_u16, # Default to endpoint 0 if not specified
-              cluster: cluster,
-              command: command
-            )
-
-            # Extract commandFields (tag 1, optional)
-            command_fields = if fields = cmd_data[1_u8]?
-                               # Encode the TLV value back to bytes for cluster processing
-                               io = IO::Memory.new
-                               writer = TLV::Writer.new(io)
-                               writer.put(nil, fields)
-                               io.rewind.to_slice
-                             else
-                               Bytes.empty
-                             end
-
-            Log.debug { "  Invoke #{idx}: endpoint=#{endpoint || "nil"}, cluster=0x#{cluster.to_s(16)}, command=0x#{command.to_s(16)}, fields=#{command_fields.size} bytes: #{command_fields.hexstring}" }
-
-            invoke_requests << InteractionModel::CommandDataIB.new(
-              path: command_path,
-              fields: command_fields
-            )
-          end
+          InteractionModel::CommandDataIB.new(
+            path: command_path,
+            fields: command_fields
+          )
         end
 
         InteractionModel::InvokeRequest.new(
           invoke_requests: invoke_requests,
-          timed_request: timed_request,
-          suppress_response: suppress_response
+          timed_request: msg.timed_request || false,
+          suppress_response: msg.suppress_response || false
         )
       rescue ex
         Log.error(exception: ex) { "Failed to parse InvokeRequest: #{ex.message}" }
@@ -1319,99 +876,54 @@ module Matter
         )
       end
 
-      # Encode InvokeResponse manually to preserve PATH container types
+      # Encode InvokeResponse using TLV::Serializable
       def self.encode_invoke_response(response : InteractionModel::InvokeResponse) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        # Start root structure (anonymous) - InvokeResponseMessage
-        writer.start_structure(nil)
-
-        # Tag 0: suppressResponse (required, even though deprecated)
-        writer.put(0_u8, response.suppress_response)
-
-        # Tag 1: invokeResponses (array)
-        writer.start_array(1_u8)
+        invoke_responses = [] of InteractionModel::InvokeResponseIB
 
         # Add command response data
-        response.invoke_responses.each_with_index do |cmd_response, idx|
-          begin
-            # Parse command response fields
-            reader = TLV::Reader.new(cmd_response.fields)
-            fields_data = reader.get
-            actual_fields = fields_data.is_a?(Hash) && fields_data.has_key?("Any") ? fields_data["Any"] : fields_data
+        response.invoke_responses.each do |cmd_response|
+          command_path = InteractionModel::CommandPath.new(
+            endpoint: cmd_response.path.endpoint || 0_u16,
+            cluster: cmd_response.path.cluster,
+            command: cmd_response.path.command
+          )
 
-            # Start InvokeResponseIB
-            writer.start_structure(nil)
-
-            # Tag 0: CommandDataIB
-            writer.start_structure(0_u8)
-
-            # Tag 0: commandPath (using PATH container!)
-            writer.start_path(0_u8)
-            writer.put(0_u8, cmd_response.path.endpoint) if cmd_response.path.endpoint
-            writer.put(1_u8, cmd_response.path.cluster)
-            writer.put(2_u8, cmd_response.path.command)
-            writer.end_container # End commandPath
-
-            # Tag 1: commandFields (optional)
-            unless cmd_response.fields.empty?
-              writer.put(1_u8, actual_fields)
-            end
-
-            writer.end_container # End CommandDataIB
-            writer.end_container # End InvokeResponseIB
-
-            Log.debug { "Encoded command response #{idx}: endpoint=#{cmd_response.path.endpoint}, cluster=0x#{cmd_response.path.cluster.to_s(16)}, command=0x#{cmd_response.path.command.to_s(16)}" }
-          rescue ex
-            Log.error { "Failed to encode response #{idx}: #{ex.message}" }
+          # Parse command fields if present
+          command_fields = unless cmd_response.fields.empty?
+            TLV::Any.from_slice(cmd_response.fields)
           end
+
+          command_data = InteractionModel::CommandDataIBTlv.new(
+            command_path: command_path,
+            command_fields: command_fields
+          )
+
+          invoke_responses << InteractionModel::InvokeResponseIB.new(command_data: command_data)
         end
 
         # Add command status entries
-        response.invoke_status.each_with_index do |cmd_status, idx|
-          begin
-            # Start InvokeResponseIB
-            writer.start_structure(nil)
+        response.invoke_status.each do |cmd_status|
+          command_path = InteractionModel::CommandPath.new(
+            endpoint: cmd_status.path.endpoint || 0_u16,
+            cluster: cmd_status.path.cluster,
+            command: cmd_status.path.command
+          )
+          status_ib = InteractionModel::StatusIB.new(status: cmd_status.status.status.value)
+          command_status = InteractionModel::CommandStatusIB.new(
+            command_path: command_path,
+            status: status_ib
+          )
 
-            # Tag 1: CommandStatusIB (for errors)
-            writer.start_structure(1_u8)
-
-            # Tag 0: commandPath (using PATH container!)
-            writer.start_path(0_u8)
-            writer.put(0_u8, cmd_status.path.endpoint) if cmd_status.path.endpoint
-            writer.put(1_u8, cmd_status.path.cluster)
-            writer.put(2_u8, cmd_status.path.command)
-            writer.end_container # End commandPath
-
-            # Tag 1: status (StatusIB structure)
-            writer.start_structure(1_u8)
-            writer.put(0_u8, cmd_status.status.status.value) # Tag 0: status code
-            # Tag 1: cluster-status (optional) - not implemented
-            writer.end_container # End StatusIB
-
-            writer.end_container # End CommandStatusIB
-            writer.end_container # End InvokeResponseIB
-
-            Log.debug { "Encoded command status #{idx}: endpoint=#{cmd_status.path.endpoint}, cluster=0x#{cmd_status.path.cluster.to_s(16)}, command=0x#{cmd_status.path.command.to_s(16)}, status=#{cmd_status.status.status}" }
-          rescue ex
-            Log.error { "Failed to encode status #{idx}: #{ex.message}" }
-          end
+          invoke_responses << InteractionModel::InvokeResponseIB.new(command_status: command_status)
         end
 
-        writer.end_container # End invokeResponses array
-
-        # Tag 2: moreChunkedMessages (optional)
-        if response.more_chunked_messages
-          writer.put(2_u8, true)
-        end
-
-        # Tag 0xFF: interactionModelRevision (REQUIRED, Matter 1.3 = revision 12)
-        writer.put(0xFF_u8, 12_u8)
-
-        writer.end_container # End root structure
-
-        io.rewind.to_slice
+        msg = InteractionModel::InvokeResponseMessage.new(
+          suppress_response: response.suppress_response,
+          invoke_responses: invoke_responses,
+          more_chunked_messages: response.more_chunked_messages ? true : nil,
+          interaction_model_revision: 12_u8
+        )
+        msg.to_slice
       end
     end
   end

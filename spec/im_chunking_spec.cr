@@ -29,6 +29,12 @@ private def create_test_clusters : Hash(Tuple(UInt16, UInt32), Matter::Cluster::
   clusters
 end
 
+# Helper to decode chunk TLV and get the root structure
+private def decode_chunk(chunk_bytes : Bytes) : TLV::Structure
+  decoded = TLV::Any.from_slice(chunk_bytes)
+  decoded.value.as(TLV::Structure)
+end
+
 describe "IMHandler - Message Chunking" do
   describe "encode_chunked_report_data" do
     it "returns a single chunk for small responses" do
@@ -64,17 +70,16 @@ describe "IMHandler - Message Chunking" do
       chunk_bytes.size.should be < Matter::Protocol::IMHandler::MAX_REPORT_PAYLOAD_SIZE
 
       # Verify it's valid TLV
-      reader = TLV::Reader.new(chunk_bytes)
-      decoded = reader.get.as(Hash)["Any"].as(Hash)
-      decoded[0_u8]?.should eq 12345_u32 # subscriptionId
-      decoded[1_u8]?.should_not be_nil   # attributeReports should exist
+      root = decode_chunk(chunk_bytes)
+      root[0_u8].value.as(Int).should eq 12345 # subscriptionId
+      root[1_u8]?.should_not be_nil            # attributeReports should exist
 
       # Note: TLV library has a quirk with anonymous structures in arrays,
       # but the encoded data is correct (confirmed by log output showing 2 reports encoded)
-      # We verify the hex contains both attribute IDs
+      # We verify the hex contains both attribute IDs (encoded as UInt32 with fixed_size)
       hex = chunk_bytes.hexstring
-      hex.should contain("240400") # attribute 0x0000
-      hex.should contain("240401") # attribute 0x0001
+      hex.should contain("2604000000") # attribute 0x0000 as UInt32
+      hex.should contain("2604010000") # attribute 0x0001 as UInt32
     end
 
     it "chunks large responses into multiple messages" do
@@ -85,10 +90,7 @@ describe "IMHandler - Message Chunking" do
       # Each attribute with ~100 bytes should force chunking around 10-11 attributes
       50.times do |i|
         # Create a largish value (100 bytes of TLV data)
-        large_value = IO::Memory.new
-        writer = TLV::Writer.new(large_value)
-        writer.put(nil, "A" * 90) # ~90 byte string plus TLV overhead
-        value_bytes = large_value.rewind.to_slice
+        value_bytes = TLV::Any.new("A" * 90, nil).to_slice
 
         reports << Matter::InteractionModel::AttributeData.new(
           path: Matter::InteractionModel::AttributePath.new(
@@ -124,23 +126,22 @@ describe "IMHandler - Message Chunking" do
         chunk_bytes.size.should be < 1500 # Allow some margin above MAX_REPORT_PAYLOAD_SIZE
 
         # Verify it's valid TLV
-        reader = TLV::Reader.new(chunk_bytes)
-        decoded = reader.get.as(Hash)["Any"].as(Hash)
+        root = decode_chunk(chunk_bytes)
 
         # Should have subscriptionId
-        decoded[0_u8]?.should eq 99999_u32
+        root[0_u8].value.as(Int).should eq 99999
 
         # Should have attributeReports array
-        reports_array = decoded[1_u8].as(Array)
+        reports_array = root[1_u8].value.as(Array(TLV::Any))
         total_reports += reports_array.size
 
         # Check moreChunkedMessages flag (tag 3 per Matter spec)
         if is_last
           # Last chunk should not have moreChunkedMessages set (or false)
-          decoded[3_u8]?.should be_nil
+          root[3_u8]?.should be_nil
         else
           # Non-last chunks must have moreChunkedMessages = true
-          decoded[3_u8]?.should eq true
+          root[3_u8].value.should eq true
         end
 
         # Last chunk marker should match position
@@ -157,10 +158,7 @@ describe "IMHandler - Message Chunking" do
       reports = [] of Matter::InteractionModel::AttributeData
 
       30.times do |i|
-        large_value = IO::Memory.new
-        writer = TLV::Writer.new(large_value)
-        writer.put(nil, "B" * 80)
-        value_bytes = large_value.rewind.to_slice
+        value_bytes = TLV::Any.new("B" * 80, nil).to_slice
 
         reports << Matter::InteractionModel::AttributeData.new(
           path: Matter::InteractionModel::AttributePath.new(
@@ -185,18 +183,16 @@ describe "IMHandler - Message Chunking" do
       chunks[0...-1].each_with_index do |(chunk_bytes, is_last), idx|
         is_last.should be_false
 
-        reader = TLV::Reader.new(chunk_bytes)
-        decoded = reader.get.as(Hash)["Any"].as(Hash)
-        decoded[3_u8]?.should eq true # moreChunkedMessages (tag 3 per Matter spec)
+        root = decode_chunk(chunk_bytes)
+        root[3_u8].value.should eq true # moreChunkedMessages (tag 3 per Matter spec)
       end
 
       # Last chunk should have more_chunks = false (field omitted)
       last_chunk_bytes, is_last = chunks.last
       is_last.should be_true
 
-      reader = TLV::Reader.new(last_chunk_bytes)
-      decoded = reader.get.as(Hash)["Any"].as(Hash)
-      decoded[3_u8]?.should be_nil # moreChunkedMessages not set (tag 3)
+      root = decode_chunk(last_chunk_bytes)
+      root[3_u8]?.should be_nil # moreChunkedMessages not set (tag 3)
     end
 
     it "handles empty response" do
@@ -213,12 +209,16 @@ describe "IMHandler - Message Chunking" do
       chunk_bytes, is_last = chunks[0]
       is_last.should be_true
 
-      # Verify it's valid TLV with empty array
-      reader = TLV::Reader.new(chunk_bytes)
-      decoded = reader.get.as(Hash)["Any"].as(Hash)
-      decoded[0_u8]?.should eq 1_u32 # subscriptionId
-      reports_array = decoded[1_u8].as(Array)
-      reports_array.size.should eq 0
+      # Verify it's valid TLV - empty attribute_reports is omitted (nil) per TLV encoding rules
+      root = decode_chunk(chunk_bytes)
+      root[0_u8].value.as(Int).should eq 1 # subscriptionId
+      # When there are no reports, the attribute_reports field is omitted (set to nil)
+      # So either tag 1 doesn't exist, or if it exists it's an empty array
+      reports_entry = root[1_u8]?
+      if reports_entry
+        reports_array = reports_entry.value.as(Array(TLV::Any))
+        reports_array.size.should eq 0
+      end
     end
 
     it "works without subscription ID" do
@@ -241,10 +241,9 @@ describe "IMHandler - Message Chunking" do
       is_last.should be_true
 
       # Verify no subscriptionId in output
-      reader = TLV::Reader.new(chunk_bytes)
-      decoded = reader.get.as(Hash)["Any"].as(Hash)
-      decoded[0_u8]?.should be_nil     # No subscriptionId
-      decoded[1_u8]?.should_not be_nil # attributeReports should exist
+      root = decode_chunk(chunk_bytes)
+      root[0_u8]?.should be_nil     # No subscriptionId
+      root[1_u8]?.should_not be_nil # attributeReports should exist
     end
 
     it "handles attribute status entries" do
@@ -268,9 +267,8 @@ describe "IMHandler - Message Chunking" do
       is_last.should be_true
 
       # Verify status is included in the reports array
-      reader = TLV::Reader.new(chunk_bytes)
-      decoded = reader.get.as(Hash)["Any"].as(Hash)
-      reports_array = decoded[1_u8].as(Array)
+      root = decode_chunk(chunk_bytes)
+      reports_array = root[1_u8].value.as(Array(TLV::Any))
       reports_array.size.should eq 1
     end
   end
@@ -315,9 +313,8 @@ describe "IMHandler - Message Chunking" do
       chunks.each_with_index do |(chunk_bytes, is_last), idx|
         puts "  Chunk #{idx + 1}: #{chunk_bytes.size} bytes"
 
-        reader = TLV::Reader.new(chunk_bytes)
-        decoded = reader.get.as(Hash)["Any"].as(Hash)
-        reports_array = decoded[1_u8].as(Array)
+        root = decode_chunk(chunk_bytes)
+        reports_array = root[1_u8].value.as(Array(TLV::Any))
         total_items += reports_array.size
       end
 

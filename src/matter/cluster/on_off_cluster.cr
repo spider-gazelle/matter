@@ -209,11 +209,7 @@ module Matter
           if suo = @start_up_on_off
             encode_uint8(suo.value)
           else
-            # Return null
-            io = IO::Memory.new
-            writer = TLV::Writer.new(io)
-            writer.put_null(nil)
-            io.rewind.to_slice
+            encode_null
           end
         when FEATURE_MAP
           encode_uint32(feature_map.value)
@@ -232,9 +228,6 @@ module Matter
 
       # Encode list of supported attribute IDs as TLV array
       private def encode_attribute_list : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         # Build list of supported attributes
         attr_ids = [ATTR_ON_OFF]
 
@@ -253,20 +246,12 @@ module Matter
         attr_ids << FEATURE_MAP
         attr_ids << CLUSTER_REVISION
 
-        writer.start_array(nil)
-        attr_ids.each do |id|
-          writer.put_unsigned_int(nil, id, force_size: 4)
-        end
-        writer.end_container
-
-        io.to_slice
+        items = attr_ids.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       # Encode list of accepted command IDs as TLV array
       private def encode_accepted_command_list : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         cmd_ids = [CMD_OFF]
 
         # On and Toggle only available without OffOnly feature
@@ -282,25 +267,14 @@ module Matter
           cmd_ids << CMD_ON_WITH_TIMED_OFF
         end
 
-        writer.start_array(nil)
-        cmd_ids.each do |id|
-          writer.put_unsigned_int(nil, id, force_size: 4)
-        end
-        writer.end_container
-
-        io.to_slice
+        items = cmd_ids.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       # Encode list of generated command IDs as TLV array (empty for OnOff)
       private def encode_generated_command_list : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         # OnOff cluster doesn't generate any response commands
-        writer.start_array(nil)
-        writer.end_container
-
-        io.to_slice
+        TLV::Any.new([] of TLV::Any, nil, as_array: true).to_slice
       end
 
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status

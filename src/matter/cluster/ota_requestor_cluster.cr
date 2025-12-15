@@ -148,29 +148,16 @@ module Matter
 
       # Helper to encode empty array
       private def encode_empty_array : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, [] of TLV::Value)
-        io.to_slice
+        TLV::Any.new([] of TLV::Any, nil, as_array: true).to_slice
       end
 
       # Helper to encode nullable uint8
       private def encode_nullable_uint8(value : UInt8?) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        if value
-          writer.put(nil, value)
-        else
-          writer.put_null(nil)
-        end
-        io.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
 
       # Helper to encode attribute list
       private def encode_attribute_list : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         attr_ids = [
           ATTR_DEFAULT_OTA_PROVIDERS,
           ATTR_UPDATE_POSSIBLE,
@@ -181,10 +168,8 @@ module Matter
           ATTR_ATTRIBUTE_LIST,
         ]
 
-        attr_array = attr_ids.map { |id| id.as(TLV::Value) }
-        writer.put(nil, attr_array)
-
-        io.to_slice
+        items = attr_ids.map { |id| TLV::Any.new(id, nil) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
     end
 

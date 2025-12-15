@@ -376,7 +376,7 @@ module Matter
           )
 
           # Sign the TLV-encoded SignedData structure
-          signed_data_bytes = signed_data.to_bytes
+          signed_data_bytes = signed_data.to_slice
           Log.debug { "CASE Sigma2 TBS_Data2: #{signed_data_bytes.size} bytes" }
           Log.debug { "  TBS_Data2 FULL hex: #{signed_data_bytes.hexstring}" }
           Log.debug { "  TBS_Data2 first 10 bytes: #{signed_data_bytes[0, [10, signed_data_bytes.size].min].map { |b| "0x%02x" % b }.join(" ")}" }
@@ -430,7 +430,7 @@ module Matter
           )
 
           # Encode the TLV structure to bytes
-          encrypted_data_bytes = encrypted_data.to_bytes
+          encrypted_data_bytes = encrypted_data.to_slice
           Log.debug { "CASE Sigma2 TBE_Data2 (plaintext): #{encrypted_data_bytes.size} bytes" }
           Log.debug { "CASE Sigma2 TBE_Data2 hex: #{encrypted_data_bytes.hexstring}" }
 
@@ -458,7 +458,7 @@ module Matter
             responder_eph_pub_key: ephemeral_public,
             encrypted2: encrypted_cert
           )
-          sigma2_bytes = sigma2_msg.to_bytes
+          sigma2_bytes = sigma2_msg.to_slice
           @sigma2_bytes = sigma2_bytes
 
           # Add sigma2_bytes to progressive hash (like chip-tool's AddData(Sigma2))
@@ -529,7 +529,7 @@ module Matter
             Log.debug { "CASE Sigma3 decrypted TBE_Data3: #{decrypted_data.size} bytes" }
 
             # Parse TBE_Data3 TLV structure
-            encrypted_data3 = Definitions::EncryptedDataSigma3.from_bytes(decrypted_data)
+            encrypted_data3 = Definitions::EncryptedDataSigma3.from_slice(decrypted_data)
 
             # Store peer NOC
             @peer_cert = encrypted_data3.responder_noc
@@ -559,7 +559,7 @@ module Matter
               responder_public_key: peer_eph_key, # Initiator's ephemeral key
               initiator_public_key: our_eph_key   # Responder's ephemeral key
             )
-            signed_data_bytes = signed_data.to_bytes
+            signed_data_bytes = signed_data.to_slice
             Log.debug { "CASE Sigma3 TBS_Data3: #{signed_data_bytes.size} bytes" }
 
             # TODO: Verify signature using peer's NOC public key
@@ -617,22 +617,14 @@ module Matter
 
         # Extract public key from Matter TLV certificate (tag 9)
         private def extract_public_key_from_tlv_cert(cert_tlv : Bytes) : Bytes
-          reader = TLV::Reader.new(cert_tlv)
-          parsed = reader.get
+          parsed = TLV::Any.from_slice(cert_tlv)
 
           # Matter TLV certificates have tag 9 for the EC public key
-          public_key_value = find_tlv_field(parsed, 9_u8)
+          public_key_any = find_tlv_field(parsed, 9_u8)
 
-          raise "Could not find public key field (tag 9) in TLV certificate" if public_key_value.nil?
+          raise "Could not find public key field (tag 9) in TLV certificate" if public_key_any.nil?
 
-          case public_key_value
-          when Bytes
-            public_key_value
-          when Slice(UInt8)
-            public_key_value.to_a.to_slice
-          else
-            raise "Unexpected public key type: #{public_key_value.class}"
-          end
+          public_key_any.as_bytes
         end
 
         # Extract node ID from Matter TLV certificate
@@ -641,109 +633,64 @@ module Matter
         #   - Tag 17 (0x11): Node ID
         #   - Tag 18 (0x12): Fabric ID
         def extract_node_id_from_tlv_cert(cert_tlv : Bytes) : UInt64?
-          reader = TLV::Reader.new(cert_tlv)
-          parsed = reader.get
+          parsed = TLV::Any.from_slice(cert_tlv)
 
-          Log.debug { "CASE: Parsed TLV cert type: #{parsed.class}" }
+          Log.debug { "CASE: Parsed TLV cert type: #{parsed.value.class}" }
 
           # First find the subject field (tag 6)
-          subject = find_tlv_field_any_key(parsed, 6)
+          subject = find_tlv_field(parsed, 6_u8)
           if subject.nil?
             Log.warn { "CASE: Could not find subject field (tag 6) in TLV cert" }
-            if parsed.is_a?(Hash)
-              Log.debug { "CASE: Available keys in cert: #{parsed.keys.map { |k| "#{k.inspect}:#{k.class}" }.join(", ")}" }
+            if structure = parsed.value.as?(TLV::Structure)
+              Log.debug { "CASE: Available keys in cert: #{structure.keys.map { |k| "#{k.inspect}:#{k.class}" }.join(", ")}" }
             end
             return nil
           end
 
-          Log.debug { "CASE: Found subject field, type: #{subject.class}" }
-
-          # Debug: print the keys in PathContainer's elements
-          if subject.is_a?(TLV::PathContainer)
-            Log.debug { "CASE: PathContainer elements keys: #{subject.elements.keys.map { |k| "#{k.inspect}:#{k.class}" }.join(", ")}" }
-          end
+          Log.debug { "CASE: Found subject field, type: #{subject.value.class}" }
 
           # Within subject, find the node ID (tag 17 = 0x11)
-          node_id_value = find_tlv_field_any_key(subject, 17)
-          if node_id_value.nil?
+          node_id_any = find_tlv_field(subject, 17_u8)
+          if node_id_any.nil?
             Log.warn { "CASE: Could not find node ID field (tag 17) in subject" }
-            if subject.is_a?(Hash)
-              Log.debug { "CASE: Available keys in subject: #{subject.keys.map { |k| "#{k.inspect}:#{k.class}" }.join(", ")}" }
-            elsif subject.is_a?(TLV::PathContainer)
-              Log.debug { "CASE: Available keys in PathContainer subject: #{subject.elements.keys.map { |k| "#{k.inspect}:#{k.class}" }.join(", ")}" }
+            if structure = subject.value.as?(TLV::Structure)
+              Log.debug { "CASE: Available keys in subject: #{structure.keys.map { |k| "#{k.inspect}:#{k.class}" }.join(", ")}" }
             end
             return nil
           end
 
-          Log.debug { "CASE: Found node ID value: #{node_id_value.inspect}, type: #{node_id_value.class}" }
+          Log.debug { "CASE: Found node ID value: #{node_id_any.value.inspect}, type: #{node_id_any.value.class}" }
 
           # Convert to UInt64
-          case node_id_value
+          case value = node_id_any.value
           when Int
-            node_id_value.to_u64
+            value.to_u64
           else
-            Log.warn { "Unexpected node ID type in TLV cert: #{node_id_value.class}" }
+            Log.warn { "Unexpected node ID type in TLV cert: #{value.class}" }
             nil
           end
         end
 
-        # Find a field by tag, trying multiple key types
-        private def find_tlv_field_any_key(data : TLV::Value, tag : Int) : TLV::Value?
-          case data
-          when TLV::PathContainer
-            # PathContainer wraps a Hash - search its elements
-            return find_tlv_field_any_key(data.elements, tag)
-          when Hash
-            # Try direct UInt8 key first (most common for TLV tags)
-            uint8_key = tag.to_u8
-            return data[uint8_key]? if data.has_key?(uint8_key)
-
-            # Try various key types that TLV library might use
-            [tag.to_u16, tag.to_u32, tag.to_i8, tag.to_i16, tag.to_i32, tag.to_i64, tag.to_s].each do |key|
-              return data[key]? if data.has_key?(key)
-            end
-
-            # Also try direct lookup
-            return data[tag]? if data.has_key?(tag)
-
-            # Recursively search nested structures
-            data.each_value do |value|
-              if found = find_tlv_field_any_key(value, tag)
-                return found
-              end
-            end
-          when Array
-            data.each do |elem|
-              if found = find_tlv_field_any_key(elem, tag)
-                return found
-              end
-            end
-          end
-          nil
-        end
-
         # Recursively search TLV structure for a field by tag
-        private def find_tlv_field(data : TLV::Value, tag : UInt8) : TLV::Value?
-          case data
-          when TLV::PathContainer
-            # PathContainer wraps a Hash - search its elements
-            return find_tlv_field(data.elements, tag)
-          when Hash
-            # Check for numeric tag directly
-            return data[tag]? if data.has_key?(tag)
-
-            # Also check string version of tag
-            tag_str = tag.to_s
-            return data[tag_str]? if data.has_key?(tag_str)
+        private def find_tlv_field(data : TLV::Any, tag : UInt8) : TLV::Any?
+          case value = data.value
+          when TLV::Structure
+            # Check for tag directly
+            return value[tag]? if value.has_key?(tag)
 
             # Recursively search nested structures
-            data.each_value do |value|
-              if found = find_tlv_field(value, tag)
+            value.each_value do |nested|
+              if found = find_tlv_field(nested, tag)
                 return found
               end
             end
-          when Array
-            data.each do |elem|
+          when TLV::List
+            value.each do |elem|
+              # Check if this list element has the tag we're looking for
+              if elem.header.ids == tag
+                return elem
+              end
+              # Also recurse in case it's a nested container
               if found = find_tlv_field(elem, tag)
                 return found
               end

@@ -57,23 +57,13 @@ module Matter
         # Step 2: Process PBKDF parameters from responder
         def process_pbkdf_param_response(response : Bytes)
           # Decode the TLV-encoded response to get PBKDF parameters
-          resp = Definitions::PbkdfParamResponse.new(response)
+          resp = Definitions::PbkdfParamResponse.from_slice(response)
 
           # Extract iterations and salt from nested pbkdf_parameters
-          pbkdf_params = resp.pbkdf_parameters
-          if pbkdf_params
-            pbkdf_hash = pbkdf_params.as(Hash(TLV::Tag, TLV::Value))
-            # TLV encodes integers using the smallest type that fits, so we need to handle all unsigned integer types
-            iterations_value = pbkdf_hash[1_u8]
-            iterations = case iterations_value
-                         when Int then iterations_value.to_u32
-                         else          raise "Invalid iterations type: #{iterations_value.class}"
-                         end
-            salt = pbkdf_hash[2_u8].as(Bytes)
-
+          if pbkdf_params = resp.pbkdf_parameters
             @pbkdf_params = PbkdfParameters.new(
-              iterations: iterations.to_i32,
-              salt: salt
+              iterations: pbkdf_params.iterations.to_i32,
+              salt: pbkdf_params.salt
             )
 
             # Compute w0 and w1 from PIN using PBKDF2
@@ -180,7 +170,7 @@ module Matter
         def process_pbkdf_param_request(request : Bytes) : Bytes
           # Parse the TLV-encoded request (if not empty)
           initiator_random = if request.size > 0
-                               req = Definitions::PbkdfParamRequest.new(request)
+                               req = Definitions::PbkdfParamRequest.from_slice(request)
                                req.initiator_random || Random::Secure.random_bytes(32)
                              else
                                Random::Secure.random_bytes(32)

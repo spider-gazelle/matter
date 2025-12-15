@@ -43,21 +43,48 @@ module Matter
 
       # Network interface information
       struct NetworkInterfaceInfo
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property name : String
+
+        @[TLV::Field(tag: 1)]
         property is_operational : Bool
+
+        @[TLV::Field(tag: 2)]
+        property off_premise_services_reachable_ipv4 : Bool?
+
+        @[TLV::Field(tag: 3)]
+        property off_premise_services_reachable_ipv6 : Bool?
+
+        @[TLV::Field(tag: 4)]
         property hardware_address : Bytes
-        property type : InterfaceType
+
+        @[TLV::Field(tag: 5)]
         property ipv4_addresses : Array(Bytes)
+
+        @[TLV::Field(tag: 6)]
         property ipv6_addresses : Array(Bytes)
+
+        @[TLV::Field(tag: 7)]
+        property type : UInt8 # InterfaceType enum value
 
         def initialize(
           @name : String,
           @is_operational : Bool,
           @hardware_address : Bytes,
-          @type : InterfaceType,
+          interface_type : InterfaceType,
           @ipv4_addresses : Array(Bytes) = [] of Bytes,
           @ipv6_addresses : Array(Bytes) = [] of Bytes,
+          @off_premise_services_reachable_ipv4 : Bool? = nil,
+          @off_premise_services_reachable_ipv6 : Bool? = nil,
         )
+          @type = interface_type.value
+        end
+
+        # Getter to convert back to InterfaceType enum
+        def interface_type : InterfaceType
+          InterfaceType.from_value(@type)
         end
       end
 
@@ -222,47 +249,18 @@ module Matter
 
       # Helper to encode network interfaces as TLV array
       private def encode_network_interfaces : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        writer.start_array(nil)
-        @network_interfaces.each do |iface|
-          writer.start_structure(nil)
-          writer.put(0_u8, iface.name)             # name
-          writer.put(1_u8, iface.is_operational)   # isOperational
-          writer.put(2_u8, nil.as(Bool?))          # offPremiseServicesReachableIPv4 (null)
-          writer.put(3_u8, nil.as(Bool?))          # offPremiseServicesReachableIPv6 (null)
-          writer.put(4_u8, iface.hardware_address) # hardwareAddress
-          writer.start_array(5_u8)                 # IPv4Addresses array
-          iface.ipv4_addresses.each { |addr| writer.put(nil, addr) }
-          writer.end_container
-          writer.start_array(6_u8) # IPv6Addresses array
-          iface.ipv6_addresses.each { |addr| writer.put(nil, addr) }
-          writer.end_container
-          writer.put(7_u8, iface.type.value) # type
-          writer.end_container
-        end
-        writer.end_container
-
-        io.to_slice
+        items = @network_interfaces.map { |iface| TLV::Any.from_slice(iface.to_slice) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       # Helper to encode fault array
       private def encode_fault_array(faults : Array(UInt8)) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        fault_array = faults.map { |f| f.as(TLV::Value) }
-        writer.put(nil, fault_array)
-
-        io.to_slice
+        items = faults.map { |f| TLV::Any.new(f, nil) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       # Helper to encode attribute list
       private def encode_attribute_list : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         attr_ids = [
           ATTR_NETWORK_INTERFACES,
           ATTR_REBOOT_COUNT,
@@ -278,10 +276,8 @@ module Matter
           ATTR_ATTRIBUTE_LIST,
         ]
 
-        attr_array = attr_ids.map { |id| id.as(TLV::Value) }
-        writer.put(nil, attr_array)
-
-        io.to_slice
+        items = attr_ids.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       # NOTE: encode_uint16, encode_uint32 inherited from Base class with proper TLV encoding
@@ -289,10 +285,7 @@ module Matter
 
       # encode_uint64 uses TLV encoding for attribute responses
       private def encode_uint64(value : UInt64) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, value)
-        io.rewind.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
     end
 

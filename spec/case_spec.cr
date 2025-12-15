@@ -4,10 +4,10 @@ require "tlv"
 
 describe Matter::Session::Case do
   describe "extract_node_id_from_tlv_cert" do
-    it "extracts node ID from TLV cert with PathContainer subject" do
-      # Create a TLV cert with a PathContainer subject field
+    it "extracts node ID from TLV cert with nested structure subject" do
+      # Create a TLV cert with a nested structure subject field
       # Matter TLV cert structure:
-      # - Tag 6: Subject (PathContainer/LIST)
+      # - Tag 6: Subject (nested structure)
       #   - Tag 17 (0x11): Node ID
       #   - Tag 18 (0x12): Fabric ID
       # - Tag 9: Public Key (for completeness)
@@ -15,24 +15,18 @@ describe Matter::Session::Case do
       expected_node_id = 0xDFC02ECA70EBC76F_u64
       fabric_id = 0x0000000000000001_u64
 
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
+      # Build the nested subject structure
+      subject = TLV::Structure.new
+      subject[17_u8] = TLV::Any.new(expected_node_id, 17_u8)
+      subject[18_u8] = TLV::Any.new(fabric_id, 18_u8)
 
-      # Start structure
-      writer.start_structure(nil)
+      # Build the outer cert structure
+      cert = TLV::Structure.new
+      cert[6_u8] = TLV::Any.new(subject, 6_u8)
+      cert[9_u8] = TLV::Any.new(Bytes.new(65, 0x04_u8), 9_u8)
 
-      # Tag 6: Subject as a LIST (PathContainer)
-      writer.start_path(6_u8)
-      writer.put(17_u8, expected_node_id) # Node ID
-      writer.put(18_u8, fabric_id)        # Fabric ID
-      writer.end_container
-
-      # Tag 9: Public key (just placeholder bytes)
-      writer.put(9_u8, Bytes.new(65, 0x04_u8))
-
-      writer.end_container
-
-      cert_tlv = io.to_slice
+      # Encode to bytes
+      cert_tlv = TLV::Any.new(cert, nil).to_slice
 
       # Create a responder to test the extraction method
       crypto = Matter::Crypto::StandardCrypto.new
@@ -55,29 +49,23 @@ describe Matter::Session::Case do
       extracted.should eq(expected_node_id)
     end
 
-    it "extracts node ID from TLV cert with Hash subject (regular struct)" do
-      # Test with a regular struct (Hash) subject for completeness
+    it "extracts node ID from TLV cert with List subject" do
+      # Test with a List subject (like PathContainer)
       expected_node_id = 0x123456789ABCDEF0_u64
       fabric_id = 0x0000000000000002_u64
 
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
+      # Build the subject as a List with tagged elements
+      subject_list = TLV::List.new
+      subject_list << TLV::Any.new(expected_node_id, 17_u8)
+      subject_list << TLV::Any.new(fabric_id, 18_u8)
 
-      # Start structure
-      writer.start_structure(nil)
+      # Build the outer cert structure
+      cert = TLV::Structure.new
+      cert[6_u8] = TLV::Any.new(subject_list, 6_u8)
+      cert[9_u8] = TLV::Any.new(Bytes.new(65, 0x04_u8), 9_u8)
 
-      # Tag 6: Subject as a STRUCT (Hash in Crystal)
-      writer.start_structure(6_u8)
-      writer.put(17_u8, expected_node_id) # Node ID
-      writer.put(18_u8, fabric_id)        # Fabric ID
-      writer.end_container
-
-      # Tag 9: Public key
-      writer.put(9_u8, Bytes.new(65, 0x04_u8))
-
-      writer.end_container
-
-      cert_tlv = io.to_slice
+      # Encode to bytes
+      cert_tlv = TLV::Any.new(cert, nil).to_slice
 
       crypto = Matter::Crypto::StandardCrypto.new
       key = crypto.create_key_pair
@@ -99,15 +87,11 @@ describe Matter::Session::Case do
     end
 
     it "returns nil when subject field is missing" do
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-
       # Create a cert without subject field (tag 6)
-      writer.start_structure(nil)
-      writer.put(9_u8, Bytes.new(65, 0x04_u8)) # Only public key
-      writer.end_container
+      cert = TLV::Structure.new
+      cert[9_u8] = TLV::Any.new(Bytes.new(65, 0x04_u8), 9_u8)
 
-      cert_tlv = io.to_slice
+      cert_tlv = TLV::Any.new(cert, nil).to_slice
 
       crypto = Matter::Crypto::StandardCrypto.new
       key = crypto.create_key_pair
@@ -129,18 +113,15 @@ describe Matter::Session::Case do
     end
 
     it "returns nil when node ID field is missing in subject" do
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-
       # Create a cert with subject but no node ID (only fabric ID)
-      writer.start_structure(nil)
-      writer.start_path(6_u8)    # Subject as LIST
-      writer.put(18_u8, 0x1_u64) # Only Fabric ID, no Node ID
-      writer.end_container
-      writer.put(9_u8, Bytes.new(65, 0x04_u8))
-      writer.end_container
+      subject = TLV::Structure.new
+      subject[18_u8] = TLV::Any.new(0x1_u64, 18_u8) # Only Fabric ID, no Node ID
 
-      cert_tlv = io.to_slice
+      cert = TLV::Structure.new
+      cert[6_u8] = TLV::Any.new(subject, 6_u8)
+      cert[9_u8] = TLV::Any.new(Bytes.new(65, 0x04_u8), 9_u8)
+
+      cert_tlv = TLV::Any.new(cert, nil).to_slice
 
       crypto = Matter::Crypto::StandardCrypto.new
       key = crypto.create_key_pair

@@ -72,11 +72,8 @@ module Matter
 
       def hexstring : String
         io = IO::Memory.new
-        writer = TLV::Writer.new(io, IO::ByteFormat::BigEndian)
-
-        writer.put(nil, id)
-
-        io.rewind.to_slice.hexstring.upcase
+        IO::ByteFormat::BigEndian.encode(@id, io)
+        io.to_slice.hexstring.upcase
       end
     end
   end

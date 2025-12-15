@@ -74,10 +74,8 @@ describe Matter::Cluster::BasicInformationCluster do
       result.should be_a(Bytes)
 
       # Parse TLV
-      reader = TLV::Reader.new(result.as(Bytes))
-      data = reader.get
-      parsed_value = data.is_a?(Hash) ? data["Any"] : data
-      parsed_value.should eq(17)
+      parsed = TLV::Any.from_slice(result.as(Bytes))
+      parsed.value.should eq(17)
     end
 
     it "reads VENDOR_NAME with TLV encoding" do
@@ -89,10 +87,8 @@ describe Matter::Cluster::BasicInformationCluster do
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME)
       result.should be_a(Bytes)
 
-      reader = TLV::Reader.new(result.as(Bytes))
-      data = reader.get
-      parsed_value = data.is_a?(Hash) ? data["Any"] : data
-      parsed_value.should eq("Test Vendor")
+      parsed = TLV::Any.from_slice(result.as(Bytes))
+      parsed.value.should eq("Test Vendor")
     end
 
     it "reads VENDOR_ID with TLV encoding" do
@@ -104,10 +100,8 @@ describe Matter::Cluster::BasicInformationCluster do
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_ID)
       result.should be_a(Bytes)
 
-      reader = TLV::Reader.new(result.as(Bytes))
-      data = reader.get
-      parsed_value = data.is_a?(Hash) ? data["Any"] : data
-      parsed_value.should eq(0xFFF1)
+      parsed = TLV::Any.from_slice(result.as(Bytes))
+      parsed.value.should eq(0xFFF1)
     end
 
     it "reads SOFTWARE_VERSION with TLV encoding" do
@@ -119,10 +113,8 @@ describe Matter::Cluster::BasicInformationCluster do
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_SOFTWARE_VERSION)
       result.should be_a(Bytes)
 
-      reader = TLV::Reader.new(result.as(Bytes))
-      data = reader.get
-      parsed_value = data.is_a?(Hash) ? data["Any"] : data
-      parsed_value.should eq(0x01020304)
+      parsed = TLV::Any.from_slice(result.as(Bytes))
+      parsed.value.should eq(0x01020304)
     end
 
     it "reads LOCAL_CONFIG_DISABLED with TLV encoding" do
@@ -134,10 +126,8 @@ describe Matter::Cluster::BasicInformationCluster do
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCAL_CONFIG_DISABLED)
       result.should be_a(Bytes)
 
-      reader = TLV::Reader.new(result.as(Bytes))
-      data = reader.get
-      parsed_value = data.is_a?(Hash) ? data["Any"] : data
-      parsed_value.should eq(true)
+      parsed = TLV::Any.from_slice(result.as(Bytes))
+      parsed.value.should eq(true)
     end
 
     it "reads CAPABILITY_MINIMA with TLV struct encoding" do
@@ -154,15 +144,10 @@ describe Matter::Cluster::BasicInformationCluster do
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_CAPABILITY_MINIMA)
       result.should be_a(Bytes)
 
-      # Parse TLV structure
-      reader = TLV::Reader.new(result.as(Bytes))
-      data = reader.get
-
-      # Extract struct data
-      any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
-      struct_data = any_data.as(Hash(TLV::Tag, TLV::Value))
-      struct_data[0_u8].should eq(5)  # case_sessions_per_fabric
-      struct_data[1_u8].should eq(10) # subscriptions_per_fabric
+      # Parse TLV structure using TLV::Serializable
+      parsed = Matter::Cluster::BasicInformationCluster::CapabilityMinimaStruct.from_slice(result.as(Bytes))
+      parsed.case_sessions_per_fabric.should eq(5)
+      parsed.subscriptions_per_fabric.should eq(10)
     end
 
     it "reads PRODUCT_APPEARANCE with TLV struct encoding" do
@@ -179,14 +164,10 @@ describe Matter::Cluster::BasicInformationCluster do
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE)
       result.should be_a(Bytes)
 
-      reader = TLV::Reader.new(result.as(Bytes))
-      data = reader.get
-
-      # Extract struct data
-      any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
-      struct_data = any_data.as(Hash(TLV::Tag, TLV::Value))
-      struct_data[0_u8].should eq(1) # Matte finish
-      struct_data[1_u8].should eq(8) # Blue color
+      # Parse TLV structure using TLV::Serializable
+      parsed = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.from_slice(result.as(Bytes))
+      parsed.finish.should eq(Matter::Cluster::BasicInformationCluster::ProductFinish::Matte)
+      parsed.primary_color.should eq(Matter::Cluster::BasicInformationCluster::Color::Blue)
     end
 
     it "reads PRODUCT_APPEARANCE with nullable primary_color omitted" do
@@ -203,15 +184,10 @@ describe Matter::Cluster::BasicInformationCluster do
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE)
       result.should be_a(Bytes)
 
-      reader = TLV::Reader.new(result.as(Bytes))
-      data = reader.get
-
-      # Extract struct data
-      any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
-      struct_data = any_data.as(Hash(TLV::Tag, TLV::Value))
-
-      struct_data[0_u8].should eq(3)            # Polished finish
-      struct_data.has_key?("1").should be_false # No primary color
+      # Parse TLV structure using TLV::Serializable
+      parsed = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.from_slice(result.as(Bytes))
+      parsed.finish.should eq(Matter::Cluster::BasicInformationCluster::ProductFinish::Polished)
+      parsed.primary_color.should be_nil
     end
 
     it "returns UnsupportedAttribute for missing PRODUCT_APPEARANCE" do
@@ -234,10 +210,7 @@ describe Matter::Cluster::BasicInformationCluster do
       )
 
       # Encode new label as TLV
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-      writer.put(nil, "My Device")
-      tlv_value = io.rewind.to_slice
+      tlv_value = TLV::Any.new("My Device", nil).to_slice
 
       initial_version = cluster.data_version
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL, tlv_value)
@@ -254,11 +227,7 @@ describe Matter::Cluster::BasicInformationCluster do
       )
 
       long_label = "a" * 33
-
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-      writer.put(nil, long_label)
-      tlv_value = io.rewind.to_slice
+      tlv_value = TLV::Any.new(long_label, nil).to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL, tlv_value)
 
@@ -270,10 +239,7 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-      writer.put(nil, "US")
-      tlv_value = io.rewind.to_slice
+      tlv_value = TLV::Any.new("US", nil).to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
@@ -286,10 +252,7 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-      writer.put(nil, "gb")
-      tlv_value = io.rewind.to_slice
+      tlv_value = TLV::Any.new("gb", nil).to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
@@ -302,10 +265,7 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-      writer.put(nil, "XX")
-      tlv_value = io.rewind.to_slice
+      tlv_value = TLV::Any.new("XX", nil).to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
@@ -318,10 +278,7 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-      writer.put(nil, "USA")
-      tlv_value = io.rewind.to_slice
+      tlv_value = TLV::Any.new("USA", nil).to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
@@ -333,10 +290,7 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-      writer.put(nil, "U1")
-      tlv_value = io.rewind.to_slice
+      tlv_value = TLV::Any.new("U1", nil).to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
@@ -349,10 +303,7 @@ describe Matter::Cluster::BasicInformationCluster do
         local_config_disabled: false
       )
 
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-      writer.put(nil, true)
-      tlv_value = io.rewind.to_slice
+      tlv_value = TLV::Any.new(true, nil).to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCAL_CONFIG_DISABLED, tlv_value)
 
@@ -365,10 +316,7 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-      writer.put(nil, "New Vendor")
-      tlv_value = io.rewind.to_slice
+      tlv_value = TLV::Any.new("New Vendor", nil).to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME, tlv_value)
 
@@ -386,13 +334,9 @@ describe Matter::Cluster::BasicInformationCluster do
       event_data = cluster.emit_start_up_event(0x01000000_u32)
       event_data.should be_a(Bytes)
 
-      reader = TLV::Reader.new(event_data)
-      data = reader.get
-
-      # Extract event struct
-      any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
-      event_struct = any_data.as(Hash(TLV::Tag, TLV::Value))
-      event_struct[0_u8].should eq(0x01000000)
+      # Parse using TLV::Serializable
+      parsed = Matter::Cluster::BasicInformationCluster::StartUpEvent.from_slice(event_data)
+      parsed.software_version.should eq(0x01000000)
     end
 
     it "emits ShutDown event with empty TLV structure" do
@@ -403,13 +347,9 @@ describe Matter::Cluster::BasicInformationCluster do
       event_data = cluster.emit_shut_down_event
       event_data.should be_a(Bytes)
 
-      reader = TLV::Reader.new(event_data)
-      data = reader.get
-
-      # Extract event struct (should be empty)
-      any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
-      event_struct = any_data.as(Hash(TLV::Tag, TLV::Value))
-      event_struct.should be_empty
+      # ShutDown event is an empty structure - just verify it deserializes
+      parsed = Matter::Cluster::BasicInformationCluster::ShutDownEvent.from_slice(event_data)
+      parsed.should_not be_nil
     end
 
     it "emits Leave event with fabric index" do
@@ -420,13 +360,9 @@ describe Matter::Cluster::BasicInformationCluster do
       event_data = cluster.emit_leave_event(1_u8)
       event_data.should be_a(Bytes)
 
-      reader = TLV::Reader.new(event_data)
-      data = reader.get
-
-      # Extract event struct
-      any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
-      event_struct = any_data.as(Hash(TLV::Tag, TLV::Value))
-      event_struct[0_u8].should eq(1)
+      # Parse using TLV::Serializable
+      parsed = Matter::Cluster::BasicInformationCluster::LeaveEvent.from_slice(event_data)
+      parsed.fabric_index.should eq(1)
     end
 
     it "emits ReachableChanged event and updates reachable attribute" do
@@ -442,13 +378,9 @@ describe Matter::Cluster::BasicInformationCluster do
       cluster.reachable.should eq(false)
       cluster.data_version.should eq(initial_version + 1)
 
-      reader = TLV::Reader.new(event_data)
-      data = reader.get
-
-      # Extract event struct
-      any_data = data.as(Hash(TLV::Tag, TLV::Value))["Any"]
-      event_struct = any_data.as(Hash(TLV::Tag, TLV::Value))
-      event_struct[0_u8].should eq(false)
+      # Parse using TLV::Serializable
+      parsed = Matter::Cluster::BasicInformationCluster::ReachableChangedEvent.from_slice(event_data)
+      parsed.reachable_new_value.should eq(false)
     end
   end
 

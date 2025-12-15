@@ -2,19 +2,6 @@ require "../spec_helper"
 require "../../src/matter/cluster/network_commissioning_cluster"
 require "tlv"
 
-# Helper to decode TLV-encoded attribute value
-# Returns the actual value from the TLV-encoded bytes
-def decode_tlv_value(bytes : Bytes)
-  reader = TLV::Reader.new(bytes)
-  result = reader.get
-  # Anonymous TLV values are wrapped in {"Any" => value}
-  if result.is_a?(Hash) && result.has_key?("Any")
-    result["Any"]
-  else
-    result
-  end
-end
-
 describe Matter::Cluster::NetworkCommissioningCluster do
   describe "initialization" do
     it "creates WiFi network commissioning cluster" do
@@ -336,19 +323,15 @@ describe Matter::Cluster::NetworkCommissioningCluster do
         backend: backend
       )
 
-      # Create TLV request bytes manually
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-      # Empty structure for ScanNetworks with no parameters
-      writer.put(nil, {} of TLV::Tag => TLV::Value)
-      request_bytes = io.rewind.to_slice
+      # Use TLV::Serializable struct for request
+      request_bytes = Matter::Cluster::Definitions::NetworkCommissioning::ScanAvailableNetworksRequest.new.to_slice
 
       # Invoke command
       result = cluster.invoke_command(Matter::Cluster::NetworkCommissioningCluster::CMD_SCAN_NETWORKS, request_bytes)
       result.should be_a(Matter::Cluster::CommandResponse)
 
-      # Parse response
-      response = Matter::Cluster::Definitions::NetworkCommissioning::ScanNetworksResponse.new(result.as(Matter::Cluster::CommandResponse).data)
+      # Parse response using TLV::Serializable
+      response = Matter::Cluster::Definitions::NetworkCommissioning::ScanNetworksResponse.from_slice(result.as(Matter::Cluster::CommandResponse).data)
       response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::Success)
       response.wifi_scan_results.should_not be_nil
     end
@@ -361,22 +344,18 @@ describe Matter::Cluster::NetworkCommissioningCluster do
         backend: backend
       )
 
-      # Create TLV request bytes manually
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-      fields = {
-        0_u8 => "TestSSID".to_slice, # ssid (tag 0)
-        1_u8 => "password".to_slice, # credentials (tag 1)
-      } of TLV::Tag => TLV::Value
-      writer.put(nil, fields)
-      request_bytes = io.rewind.to_slice
+      # Use TLV::Serializable struct for request
+      request_bytes = Matter::Cluster::Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest.new(
+        ssid: "TestSSID".to_slice,
+        credentials: "password".to_slice
+      ).to_slice
 
       # Invoke command
       result = cluster.invoke_command(Matter::Cluster::NetworkCommissioningCluster::CMD_ADD_OR_UPDATE_WIFI_NETWORK, request_bytes)
       result.should be_a(Matter::Cluster::CommandResponse)
 
-      # Parse response
-      response = Matter::Cluster::Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(result.as(Matter::Cluster::CommandResponse).data)
+      # Parse response using TLV::Serializable
+      response = Matter::Cluster::Definitions::NetworkCommissioning::NetworkConfigurationResponse.from_slice(result.as(Matter::Cluster::CommandResponse).data)
       response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::Success)
     end
 
@@ -395,21 +374,17 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       )
       cluster.handle_add_or_update_wifi_network(add_req, failsafe_armed: true)
 
-      # Create TLV connect request bytes manually
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-      fields = {
-        0_u8 => "TestNet".to_slice, # network_id (tag 0)
-      } of TLV::Tag => TLV::Value
-      writer.put(nil, fields)
-      request_bytes = io.rewind.to_slice
+      # Use TLV::Serializable struct for request
+      request_bytes = Matter::Cluster::Definitions::NetworkCommissioning::ConnectNetworkRequest.new(
+        network_id: "TestNet".to_slice
+      ).to_slice
 
       # Invoke command
       result = cluster.invoke_command(Matter::Cluster::NetworkCommissioningCluster::CMD_CONNECT_NETWORK, request_bytes)
       result.should be_a(Matter::Cluster::CommandResponse)
 
-      # Parse response
-      response = Matter::Cluster::Definitions::NetworkCommissioning::ConnectNetworkResponse.new(result.as(Matter::Cluster::CommandResponse).data)
+      # Parse response using TLV::Serializable
+      response = Matter::Cluster::Definitions::NetworkCommissioning::ConnectNetworkResponse.from_slice(result.as(Matter::Cluster::CommandResponse).data)
       response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::Success)
     end
   end

@@ -14,11 +14,8 @@ describe "ReadResponse matter.js Compatibility" do
       attribute: 0x0002_u32 # VendorID
     )
 
-    # Encode value as TLV
-    io = IO::Memory.new
-    writer = TLV::Writer.new(io)
-    writer.put(nil, 0xFFF1_u16)
-    value_bytes = io.rewind.to_slice
+    # Encode value as TLV using TLV::Any
+    value_bytes = TLV::Any.new(0xFFF1_u16, nil).to_slice
 
     # Create AttributeData
     attr_data = Matter::InteractionModel::AttributeData.new(path, 0_u32, value_bytes)
@@ -31,49 +28,41 @@ describe "ReadResponse matter.js Compatibility" do
     encoded = Matter::Protocol::IMHandler.encode_read_response(response)
 
     # Decode and verify structure matches matter.js TlvDataReportForSend
-    reader = TLV::Reader.new(encoded)
-    decoded = reader.get
-    root = decoded.as(Hash(TLV::Tag, TLV::Value))["Any"].as(Hash(TLV::Tag, TLV::Value))
+    decoded = Matter::InteractionModel::ReportDataMessage.from_slice(encoded)
 
     # Verify structure
     # Tag 1: attributeReports (array)
-    root.has_key?(1_u8).should be_true
-    attr_reports = root[1_u8].as(Array(TLV::Value))
+    decoded.attribute_reports.should_not be_nil
+    attr_reports = decoded.attribute_reports.not_nil!
     attr_reports.size.should eq(1)
 
     # Each report is AttributeReport: {1: AttributeData}
-    report = attr_reports[0].as(Hash(TLV::Tag, TLV::Value))
+    report = attr_reports[0]
 
     # AttributeReport contains AttributeData at tag 1
-    report.has_key?(1_u8).should be_true
-    attr_data = report[1_u8].as(Hash(TLV::Tag, TLV::Value))
+    report.attribute_data.should_not be_nil
+    attr_data_ib = report.attribute_data.not_nil!
 
-    puts "AttributeData structure: #{attr_data.inspect[0, 150]}"
+    puts "AttributeDataIB: path=#{attr_data_ib.path.inspect[0, 100]}"
 
     # Per matter.js TlvAttributeData:
     # Tag 0: dataVersion (optional)
     # Tag 1: path
     # Tag 2: data
 
-    # Verify all expected tags present
-    attr_data.has_key?(0_u8).should be_true # dataVersion
-    attr_data.has_key?(1_u8).should be_true # path
-    attr_data.has_key?(2_u8).should be_true # data
-
     # Verify dataVersion value
-    attr_data[0_u8].should eq(0_u32)
+    attr_data_ib.data_version.should eq(0_u32)
 
     # Verify path structure
-    path_data = attr_data[1_u8].as(TLV::PathContainer)
-    path_data[2_u8].should eq(0_u16)      # endpoint
-    path_data[3_u8].should eq(0x0028_u32) # cluster
-    path_data[4_u8].should eq(0x0002_u32) # attribute
+    attr_data_ib.path.endpoint.should eq(0_u16)
+    attr_data_ib.path.cluster.should eq(0x0028_u32)
+    attr_data_ib.path.attribute.should eq(0x0002_u32)
 
     # Verify data value
-    attr_data[2_u8].should eq(0xFFF1_u16)
+    attr_data_ib.data.value.as(Int).should eq(0xFFF1)
 
     # Tag 0xFF: interactionModelRevision
-    root[0xFF_u8].should eq(12_u8)
+    decoded.interaction_model_revision.should eq(12_u8)
   end
 
   it "matches matter.js TlvDataReportForSend schema exactly" do
@@ -94,15 +83,12 @@ describe "ReadResponse matter.js Compatibility" do
     encoded = report_msg.to_slice
 
     # Should encode to just interactionModelRevision when no reports
-    reader = TLV::Reader.new(encoded)
-    decoded = reader.get
-    root = decoded.as(Hash(TLV::Tag, TLV::Value))["Any"].as(Hash(TLV::Tag, TLV::Value))
+    decoded = Matter::InteractionModel::ReportDataMessage.from_slice(encoded)
 
     # Should have tag 0xFF
-    root.has_key?(0xFF_u8).should be_true
-    root[0xFF_u8].should eq(12_u8)
+    decoded.interaction_model_revision.should eq(12_u8)
 
-    # Should not have tag 1 (no attribute reports)
-    root.has_key?(1_u8).should be_false
+    # Should not have attribute reports (nil)
+    decoded.attribute_reports.should be_nil
   end
 end

@@ -78,7 +78,12 @@ module Matter
 
       # Product Appearance Structure
       struct ProductAppearanceStruct
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property finish : ProductFinish
+
+        @[TLV::Field(tag: 1)]
         property primary_color : Color?
 
         def initialize(@finish : ProductFinish, @primary_color : Color? = nil)
@@ -87,11 +92,55 @@ module Matter
 
       # Capability Minima Structure
       struct CapabilityMinimaStruct
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property case_sessions_per_fabric : UInt16
+
+        @[TLV::Field(tag: 1)]
         property subscriptions_per_fabric : UInt16
 
         def initialize(@case_sessions_per_fabric : UInt16 = 3_u16,
                        @subscriptions_per_fabric : UInt16 = 3_u16)
+        end
+      end
+
+      # Event structures
+      struct StartUpEvent
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property software_version : UInt32
+
+        def initialize(@software_version : UInt32)
+        end
+      end
+
+      struct LeaveEvent
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property fabric_index : UInt8
+
+        def initialize(@fabric_index : UInt8)
+        end
+      end
+
+      struct ShutDownEvent
+        include TLV::Serializable
+
+        # ShutDown event has no fields
+        def initialize
+        end
+      end
+
+      struct ReachableChangedEvent
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property reachable_new_value : Bool
+
+        def initialize(@reachable_new_value : Bool)
         end
       end
 
@@ -374,39 +423,42 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_NODE_LABEL
-          decoded = decode_tlv_string(value)
-          return decoded if decoded.is_a?(InteractionModel::Status)
+          parsed = TLV::Any.from_slice(value)
+          str = parsed.value.as?(String)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless str
 
           # Validate max length (32 chars per Matter spec)
-          if decoded.bytesize > 32
+          if str.bytesize > 32
             return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
           end
 
-          @node_label = decoded
+          @node_label = str
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_LOCATION
-          decoded = decode_tlv_string(value)
-          return decoded if decoded.is_a?(InteractionModel::Status)
+          parsed = TLV::Any.from_slice(value)
+          str = parsed.value.as?(String)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless str
 
           # Validate ISO 3166-1 alpha-2 format (must be exactly 2 characters)
-          if decoded.size != 2
+          if str.size != 2
             return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
           end
 
           # Validate it contains only ASCII letters or is "XX" (region-agnostic)
-          unless decoded == "XX" || decoded.chars.all? { |c| c.ascii_letter? }
+          unless str == "XX" || str.chars.all? { |c| c.ascii_letter? }
             return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
           end
 
-          @location = decoded.upcase
+          @location = str.upcase
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_LOCAL_CONFIG_DISABLED
-          decoded = decode_tlv_bool(value)
-          return decoded if decoded.is_a?(InteractionModel::Status)
+          parsed = TLV::Any.from_slice(value)
+          bool = parsed.value.as?(Bool)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if bool.nil?
 
-          @local_config_disabled = decoded
+          @local_config_disabled = bool
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         else
@@ -416,45 +468,20 @@ module Matter
 
       # Helper: Trigger StartUp event (call when node boots)
       def emit_start_up_event(software_version : UInt32)
-        # Encode StartUpEvent structure (tag 0 = softwareVersion)
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.start_structure(nil)
-        writer.put(0_u8, software_version)
-        writer.end_container
-        event_data = io.rewind.to_slice
-
         # NOTE: Event emission would be handled by the event management system
-        # For now, we just return the encoded event data
-        # In a real implementation, this would be sent to subscribers
-        event_data
+        StartUpEvent.new(software_version).to_slice
       end
 
       # Helper: Trigger ShutDown event (call when node shuts down)
       def emit_shut_down_event
-        # ShutDown event has no fields (TlvNoArguments)
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.start_structure(nil)
-        writer.end_container
-        event_data = io.rewind.to_slice
-
         # NOTE: Event emission would be handled by the event management system
-        event_data
+        ShutDownEvent.new.to_slice
       end
 
       # Helper: Trigger Leave event (call when leaving fabric)
       def emit_leave_event(fabric_index : UInt8)
-        # Encode LeaveEvent structure (tag 0 = fabricIndex)
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.start_structure(nil)
-        writer.put(0_u8, fabric_index)
-        writer.end_container
-        event_data = io.rewind.to_slice
-
         # NOTE: Event emission would be handled by the event management system
-        event_data
+        LeaveEvent.new(fabric_index).to_slice
       end
 
       # Helper: Trigger ReachableChanged event (call when reachability changes)
@@ -462,107 +489,33 @@ module Matter
         @reachable = reachable_new_value
         increment_version
 
-        # Encode ReachableChangedEvent structure (tag 0 = reachableNewValue)
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.start_structure(nil)
-        writer.put(0_u8, reachable_new_value)
-        writer.end_container
-        event_data = io.rewind.to_slice
-
         # NOTE: Event emission would be handled by the event management system
-        event_data
+        ReachableChangedEvent.new(reachable_new_value).to_slice
       end
 
       # TLV encoding helpers
       private def encode_tlv_string(value : String) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, value)
-        io.rewind.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
 
       private def encode_tlv_uint16(value : UInt16) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, value)
-        io.rewind.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
 
       private def encode_tlv_uint32(value : UInt32) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, value)
-        io.rewind.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
 
       private def encode_tlv_bool(value : Bool) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, value)
-        io.rewind.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
 
       private def encode_capability_minima(capability : CapabilityMinimaStruct) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.start_structure(nil)
-        writer.put(0_u8, capability.case_sessions_per_fabric) # Tag 0: caseSessionsPerFabric
-        writer.put(1_u8, capability.subscriptions_per_fabric) # Tag 1: subscriptionsPerFabric
-        writer.end_container
-        io.rewind.to_slice
+        capability.to_slice
       end
 
       private def encode_product_appearance(appearance : ProductAppearanceStruct) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.start_structure(nil)
-        writer.put(0_u8, appearance.finish.value) # Tag 0: finish (enum as uint8)
-        if color = appearance.primary_color
-          writer.put(1_u8, color.value) # Tag 1: primaryColor (nullable enum)
-        end
-        writer.end_container
-        io.rewind.to_slice
-      end
-
-      # TLV decoding helpers
-      private def decode_tlv_string(value : Bytes) : String | InteractionModel::Status
-        reader = TLV::Reader.new(value)
-        data = reader.get
-
-        # Extract string value
-        if data.is_a?(Hash)
-          # Check for "Any" key (anonymous tag)
-          if data.has_key?("Any")
-            str_val = data["Any"]
-            return str_val.to_s if str_val.responds_to?(:to_s)
-          end
-        elsif data.is_a?(String)
-          return data
-        end
-
-        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
-      rescue
-        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
-      end
-
-      private def decode_tlv_bool(value : Bytes) : Bool | InteractionModel::Status
-        reader = TLV::Reader.new(value)
-        data = reader.get
-
-        # Extract boolean value
-        if data.is_a?(Hash)
-          if data.has_key?("Any")
-            bool_val = data["Any"]
-            return bool_val.as(Bool) if bool_val.is_a?(Bool)
-          end
-        elsif data.is_a?(Bool)
-          return data
-        end
-
-        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
-      rescue
-        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+        appearance.to_slice
       end
     end
   end

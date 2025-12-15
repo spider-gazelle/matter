@@ -303,11 +303,9 @@ describe Matter::Endpoint do
       endpoint.add_cluster(identify)
 
       # Encode as TLV uint16
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-      writer.put(nil, 10_u16)
+      value = TLV::Any.new(10_u16, nil).to_slice
 
-      status = endpoint.write_attribute(0x0003_u32, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME, io.to_slice)
+      status = endpoint.write_attribute(0x0003_u32, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME, value)
       status.should be_a(Matter::InteractionModel::Status)
       status.as(Matter::InteractionModel::Status).success?.should be_true
 
@@ -508,11 +506,9 @@ describe Matter::MatterNode do
       node.add_endpoint(endpoint)
 
       # Encode as TLV uint16
-      io = IO::Memory.new
-      writer = TLV::Writer.new(io)
-      writer.put(nil, 15_u16)
+      value = TLV::Any.new(15_u16, nil).to_slice
 
-      status = node.write_attribute(1_u16, 0x0003_u32, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME, io.to_slice)
+      status = node.write_attribute(1_u16, 0x0003_u32, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME, value)
       status.success?.should be_true
 
       identify.identify_time.should eq(15_u16)

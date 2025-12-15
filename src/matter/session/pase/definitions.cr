@@ -6,6 +6,41 @@ module Matter
       module Definitions
         Log = ::Log.for("matter.pase")
 
+        # MRP (Message Reliability Protocol) parameters
+        struct MrpParameters
+          include TLV::Serializable
+
+          # Idle retransmit timeout (optional, tag 1)
+          @[TLV::Field(tag: 1, optional: true)]
+          property idle_retransmit_timeout_ms : UInt32?
+
+          # Active retransmit timeout (optional, tag 2)
+          @[TLV::Field(tag: 2, optional: true)]
+          property active_retransmit_timeout_ms : UInt32?
+
+          def initialize(
+            @idle_retransmit_timeout_ms = nil,
+            @active_retransmit_timeout_ms = nil,
+          )
+          end
+        end
+
+        # PBKDF parameters nested structure (tag 4 in PbkdfParamResponse)
+        struct PbkdfParametersTLV
+          include TLV::Serializable
+
+          # Iterations (tag 1)
+          @[TLV::Field(tag: 1)]
+          property iterations : UInt32
+
+          # Salt (tag 2)
+          @[TLV::Field(tag: 2)]
+          property salt : Bytes
+
+          def initialize(@iterations : UInt32, @salt : Bytes)
+          end
+        end
+
         # PBKDF Parameter Request message
         # Sent by commissioner to request PBKDF parameters from the device
         struct PbkdfParamRequest
@@ -27,9 +62,9 @@ module Matter
           @[TLV::Field(tag: 4, optional: true)]
           property has_pbkdf_parameters : Bool?
 
-          # MRP parameters (optional, tag 5) - we'll store as raw TLV for now
+          # MRP parameters (optional, tag 5)
           @[TLV::Field(tag: 5, optional: true)]
-          property mrp_parameters : Hash(String | Tuple(Int32 | Nil, Int32) | UInt8 | Nil, TLV::Value)?
+          property mrp_parameters : MrpParameters?
 
           def initialize(
             @initiator_random = nil,
@@ -40,110 +75,65 @@ module Matter
           )
           end
 
-          # Encode to TLV bytes
+          @[Deprecated("Use `#to_slice` instead")]
           def to_bytes : Bytes
-            io = IO::Memory.new
-            writer = TLV::Writer.new(io)
-            data = {} of TLV::Tag => TLV::Value
-
-            if random = @initiator_random
-              data[1_u8] = random
-            end
-
-            if session_id = @initiator_session_id
-              data[2_u8] = session_id
-            end
-
-            if passcode = @passcode_id
-              data[3_u8] = passcode
-            end
-
-            if has_pbkdf = @has_pbkdf_parameters
-              data[4_u8] = has_pbkdf
-            end
-
-            if mrp = @mrp_parameters
-              data[5_u8] = mrp
-            end
-
-            writer.put(nil, data)
-            io.rewind.to_slice
+            to_slice
           end
         end
 
         # PBKDF Parameter Response message
         # Sent by device in response to PbkdfParamRequest
-        # Note: Not using TLV::Serializable due to nested TLV::Value field
         struct PbkdfParamResponse
-          # Initiator random (echo from request)
+          include TLV::Serializable
+
+          # Initiator random (echo from request, tag 1)
+          @[TLV::Field(tag: 1)]
           property initiator_random : Bytes
 
-          # Responder random (new 32-byte random)
+          # Responder random (new 32-byte random, tag 2)
+          @[TLV::Field(tag: 2)]
           property responder_random : Bytes
 
-          # Responder session ID
+          # Responder session ID (tag 3)
+          @[TLV::Field(tag: 3)]
           property responder_session_id : UInt16
 
-          # PBKDF parameters (nested structure)
-          property pbkdf_parameters : TLV::Value?
+          # PBKDF parameters (nested structure, optional, tag 4)
+          @[TLV::Field(tag: 4, optional: true)]
+          property pbkdf_parameters : PbkdfParametersTLV?
+
+          # MRP parameters (optional, tag 5)
+          @[TLV::Field(tag: 5, optional: true)]
+          property mrp_parameters : MrpParameters?
 
           def initialize(
             @initiator_random : Bytes,
             @responder_random : Bytes,
             @responder_session_id : UInt16,
-            iterations : UInt32? = nil,
-            salt : Bytes? = nil,
+            @pbkdf_parameters : PbkdfParametersTLV? = nil,
+            @mrp_parameters : MrpParameters? = nil,
           )
-            if iterations && salt
-              @pbkdf_parameters = {
-                1_u8 => iterations,
-                2_u8 => salt,
-              } of TLV::Tag => TLV::Value
-            else
-              @pbkdf_parameters = nil
-            end
           end
 
-          # Constructor from TLV bytes - manual deserialization
-          def initialize(data : Bytes)
-            reader = TLV::Reader.new(data)
-            tlv_data = reader.get
-
-            # Unwrap the anonymous structure (tagged with "Any")
-            wrapper = tlv_data.as(Hash(TLV::Tag, TLV::Value))
-            hash = wrapper["Any"].as(Hash(TLV::Tag, TLV::Value))
-
-            # Extract required fields
-            @initiator_random = hash[1_u8].as(Bytes)
-            @responder_random = hash[2_u8].as(Bytes)
-
-            # TLV encodes integers using the smallest type that fits, so handle flexible types
-            responder_session_id_value = hash[3_u8]
-            @responder_session_id = case responder_session_id_value
-                                    when Int then responder_session_id_value.to_u16
-                                    else          raise "Invalid responder_session_id type: #{responder_session_id_value.class}"
-                                    end
-
-            # Extract optional pbkdf_parameters
-            @pbkdf_parameters = hash[4_u8]? if hash.has_key?(4_u8)
+          # Convenience constructor with iterations and salt directly
+          def self.new(
+            initiator_random : Bytes,
+            responder_random : Bytes,
+            responder_session_id : UInt16,
+            iterations : UInt32,
+            salt : Bytes,
+          )
+            new(
+              initiator_random: initiator_random,
+              responder_random: responder_random,
+              responder_session_id: responder_session_id,
+              pbkdf_parameters: PbkdfParametersTLV.new(iterations, salt),
+            )
           end
 
-          # Encode to TLV bytes
+          @[Deprecated("Use `#to_slice` instead")]
           def to_bytes : Bytes
-            io = IO::Memory.new
-            writer = TLV::Writer.new(io)
-            data = {
-              1_u8 => @initiator_random,
-              2_u8 => @responder_random,
-              3_u8 => @responder_session_id,
-            } of TLV::Tag => TLV::Value
-
-            if pbkdf = @pbkdf_parameters
-              data[4_u8] = pbkdf
-            end
-
-            writer.put(nil, data)
-            io.rewind.to_slice
+            to_slice
           end
         end
 
@@ -156,12 +146,9 @@ module Matter
           @[TLV::Field(tag: 1)]
           property x : Bytes
 
-          # Encode to TLV bytes
+          @[Deprecated("Use `#to_slice` instead")]
           def to_bytes : Bytes
-            io = IO::Memory.new
-            writer = TLV::Writer.new(io)
-            writer.put(nil, {1_u8 => @x} of TLV::Tag => TLV::Value)
-            io.rewind.to_slice
+            to_slice
           end
         end
 
@@ -181,16 +168,9 @@ module Matter
           def initialize(@y : Bytes, @verifier : Bytes)
           end
 
-          # Encode to TLV bytes
+          @[Deprecated("Use `#to_slice` instead")]
           def to_bytes : Bytes
-            io = IO::Memory.new
-            writer = TLV::Writer.new(io)
-            data = {
-              1_u8 => @y,
-              2_u8 => @verifier,
-            } of TLV::Tag => TLV::Value
-            writer.put(nil, data)
-            io.rewind.to_slice
+            to_slice
           end
         end
 
@@ -203,12 +183,9 @@ module Matter
           @[TLV::Field(tag: 1)]
           property verifier : Bytes
 
-          # Encode to TLV bytes
+          @[Deprecated("Use `#to_slice` instead")]
           def to_bytes : Bytes
-            io = IO::Memory.new
-            writer = TLV::Writer.new(io)
-            writer.put(nil, {1_u8 => @verifier} of TLV::Tag => TLV::Value)
-            io.rewind.to_slice
+            to_slice
           end
         end
 

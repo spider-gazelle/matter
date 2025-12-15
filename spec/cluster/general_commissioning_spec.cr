@@ -3,30 +3,20 @@ require "../../src/matter/cluster/general_commissioning_cluster"
 
 # Helper functions for TLV encoding command data
 def create_arm_failsafe_request_tlv(expiry_length : UInt16, breadcrumb : UInt64) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
-
-  data = {
-    0_u8 => expiry_length,
-    1_u8 => breadcrumb,
-  } of TLV::Tag => TLV::Value
-
-  writer.put(nil, data)
-  io.rewind.to_slice
+  request = Matter::Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
+    expiry_length_seconds: expiry_length,
+    breadcrumb: breadcrumb
+  )
+  request.to_slice
 end
 
 def create_set_regulatory_config_request_tlv(regulatory_config : UInt8, country_code : String, breadcrumb : UInt64) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
-
-  data = {
-    0_u8 => regulatory_config,
-    1_u8 => country_code,
-    2_u8 => breadcrumb,
-  } of TLV::Tag => TLV::Value
-
-  writer.put(nil, data)
-  io.rewind.to_slice
+  request = Matter::Cluster::GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+    new_regulatory_config: Matter::Cluster::GeneralCommissioningCluster::RegulatoryLocationType.new(regulatory_config),
+    country_code: country_code,
+    breadcrumb: breadcrumb
+  )
+  request.to_slice
 end
 
 describe Matter::Cluster::GeneralCommissioningCluster do

@@ -1,6 +1,7 @@
 require "./spec_helper"
 require "../src/matter/cluster/operational_credentials_cluster"
 require "../src/matter/storage/memory_backend"
+require "../src/matter/crypto/certificate"
 
 module OpCredsTestHelpers
   extend self
@@ -28,30 +29,36 @@ module OpCredsTestHelpers
   end
 
   # Helper to create a TLV-encoded test NOC certificate
-  # This creates a minimal valid Matter NOC with fabricId (field 21) and nodeId (field 17)
+  # This creates a valid Matter NOC with proper subject DN containing fabricId and nodeId
   def create_test_noc(fabric_id : UInt64 = 0x1234567890_u64, node_id : UInt64 = 0xABCDEF_u64) : Bytes
-    io = IO::Memory.new
-    writer = TLV::Writer.new(io)
+    # Create a 65-byte uncompressed EC public key (0x04 || x || y)
+    public_key = Bytes.new(65, 0_u8)
+    public_key[0] = 0x04_u8
+    (1..32).each { |i| public_key[i] = i.to_u8 }
+    (33..64).each { |i| public_key[i] = (i - 32).to_u8 }
 
-    # Create a simplified NOC structure with the required fields
-    # In a real NOC, these would be nested in subject fields, but for testing
-    # we just need the parser to find fields 17 and 21
-    data = {
-      17_u8 => node_id,   # nodeId
-      21_u8 => fabric_id, # fabricId
-    } of TLV::Tag => TLV::Value
+    signature = Bytes.new(64, 0xAB_u8)
+    subject = Matter::Crypto::DNAttributes.new(fabric_id: fabric_id, node_id: node_id)
+    issuer = Matter::Crypto::DNAttributes.new(rcac_id: 1_u64)
 
-    writer.put(nil, data)
-    io.rewind.to_slice
+    Matter::Crypto::MatterCertificate.new(
+      serial_number: Bytes[0x01],
+      signature_algorithm: 1_u8,
+      issuer: issuer,
+      not_before: 0_u32,
+      not_after: 0xFFFFFFFF_u32,
+      subject: subject,
+      public_key_algorithm: 1_u8,
+      elliptic_curve_id: 1_u8,
+      ec_public_key: public_key,
+      signature: signature
+    ).to_slice
   end
 
   # Helper to create a TLV-encoded root certificate for testing
   # Matter uses TLV-encoded certificates (starting with 0x15)
   # This creates a certificate with a valid public key field (tag 9)
   def create_test_root_cert : Bytes
-    io = IO::Memory.new
-    writer = TLV::Writer.new(io)
-
     # Create a 65-byte uncompressed EC public key (0x04 || x || y)
     public_key = Bytes.new(65, 0_u8)
     public_key[0] = 0x04_u8 # Uncompressed point marker
@@ -59,14 +66,22 @@ module OpCredsTestHelpers
     (1..32).each { |i| public_key[i] = i.to_u8 }
     (33..64).each { |i| public_key[i] = (i - 32).to_u8 }
 
-    # Create TLV certificate structure with required fields
-    # Tag 9 is the EC public key field in Matter certificates
-    data = {
-      9_u8 => public_key, # EC public key (required for extraction)
-    } of TLV::Tag => TLV::Value
+    signature = Bytes.new(64, 0xCD_u8)
+    subject = Matter::Crypto::DNAttributes.new(rcac_id: 1_u64)
+    issuer = Matter::Crypto::DNAttributes.new(rcac_id: 1_u64)
 
-    writer.put(nil, data)
-    io.rewind.to_slice
+    Matter::Crypto::MatterCertificate.new(
+      serial_number: Bytes[0x01],
+      signature_algorithm: 1_u8,
+      issuer: issuer,
+      not_before: 0_u32,
+      not_after: 0xFFFFFFFF_u32,
+      subject: subject,
+      public_key_algorithm: 1_u8,
+      elliptic_curve_id: 1_u8,
+      ec_public_key: public_key,
+      signature: signature
+    ).to_slice
   end
 end
 
@@ -546,10 +561,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       # Verify default ACL entry was created
       acl_cluster.acl.size.should eq(1)
       acl_entry = acl_cluster.acl.first
-      acl_entry.privilege.should eq(5_u8) # Administer
-      acl_entry.auth_mode.should eq(2_u8) # CASE
-      acl_entry.privilege_enum.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer)
-      acl_entry.auth_mode_enum.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
+      acl_entry.privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer)
+      acl_entry.auth_mode.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
       acl_entry.subjects.should eq([admin_subject])
       acl_entry.targets.should be_nil # All targets
       acl_entry.fabric_index.should eq(response.fabric_index)

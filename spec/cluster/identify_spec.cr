@@ -3,31 +3,20 @@ require "../../src/matter/cluster/identify_cluster"
 
 # Helper to encode a uint16 as TLV for attribute writes
 def encode_tlv_uint16(value : UInt16) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
-  writer.put(nil, value)
-  io.rewind.to_slice
+  TLV::Any.new(value, nil).to_slice
 end
 
 # Helper to encode Identify command (tag 0 = IdentifyTime)
 def encode_identify_command(time : UInt16) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
-  writer.start_structure(nil)
-  writer.put(0_u8, time)
-  writer.end_container
-  io.rewind.to_slice
+  Matter::Cluster::Definitions::Identify::Request.new(time).to_slice
 end
 
 # Helper to encode TriggerEffect command (tag 0 = EffectIdentifier, tag 1 = EffectVariant)
 def encode_trigger_effect_command(effect : UInt8, variant : UInt8) : Bytes
-  io = IO::Memory.new
-  writer = TLV::Writer.new(io)
-  writer.start_structure(nil)
-  writer.put(0_u8, effect)
-  writer.put(1_u8, variant)
-  writer.end_container
-  io.rewind.to_slice
+  Matter::Cluster::Definitions::Identify::TriggerEffectRequest.new(
+    effect_identifier: Matter::Cluster::Definitions::Identify::EffectIdentifier.new(effect),
+    effect_variany: Matter::Cluster::Definitions::Identify::EffectVariant.new(variant)
+  ).to_slice
 end
 
 describe Matter::Cluster::IdentifyCluster do

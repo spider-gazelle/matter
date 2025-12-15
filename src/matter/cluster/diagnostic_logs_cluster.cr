@@ -33,6 +33,34 @@ module Matter
         BDX             = 1 # Use BDX protocol
       end
 
+      # Request struct for RetrieveLogsRequest command
+      struct RetrieveLogsRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property intent : UInt8 = 0_u8
+
+        @[TLV::Field(tag: 1)]
+        property requested_protocol : UInt8 = 0_u8
+
+        @[TLV::Field(tag: 2)]
+        property transfer_file_designator : String?
+      end
+
+      # Response struct for RetrieveLogsResponse
+      struct RetrieveLogsResponse
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property status : UInt8
+
+        @[TLV::Field(tag: 1)]
+        property log_content : Bytes
+
+        def initialize(@status : UInt8, @log_content : Bytes)
+        end
+      end
+
       # Command IDs
       CMD_RETRIEVE_LOGS_REQUEST = 0x00_u32
 
@@ -98,9 +126,6 @@ module Matter
       end
 
       private def encode_attribute_list : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         # Global attributes only
         attr_ids = [
           GENERATED_COMMAND_LIST,
@@ -110,26 +135,13 @@ module Matter
           CLUSTER_REVISION,
         ]
 
-        writer.start_array(nil)
-        attr_ids.each do |id|
-          writer.put_unsigned_int(nil, id, force_size: 4)
-        end
-        writer.end_container
-
-        io.to_slice
+        items = attr_ids.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       private def encode_command_list(cmd_ids : Array(UInt32)) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        writer.start_array(nil)
-        cmd_ids.each do |id|
-          writer.put_unsigned_int(nil, id, force_size: 4)
-        end
-        writer.end_container
-
-        io.to_slice
+        items = cmd_ids.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
@@ -142,30 +154,12 @@ module Matter
       end
 
       private def handle_retrieve_logs_request(fields : Bytes) : Cluster::CommandResponse
-        # Parse request - Intent (tag 0), RequestedProtocol (tag 1), TransferFileDesignator (tag 2)
+        # Parse request using TLV::Serializable
         intent = Intent::EndUserSupport
-        protocol = TransferProtocol::ResponsePayload
 
         begin
-          reader = TLV::Reader.new(fields)
-          data = reader.get
-
-          if data.is_a?(Hash)
-            wrapper = data.as(Hash(TLV::Tag, TLV::Value))
-            struct_hash = if wrapper.has_key?("Any")
-                            inner = wrapper["Any"]
-                            inner.is_a?(Hash) ? inner.as(Hash(TLV::Tag, TLV::Value)) : wrapper
-                          else
-                            wrapper
-                          end
-
-            if val = struct_hash[0_u8]?
-              intent = Intent.from_value(val.as(Int).to_u8)
-            end
-            if val = struct_hash[1_u8]?
-              protocol = TransferProtocol.from_value(val.as(Int).to_u8)
-            end
-          end
+          req = RetrieveLogsRequest.from_slice(fields)
+          intent = Intent.from_value(req.intent)
         rescue
           # Use defaults
         end
@@ -175,26 +169,13 @@ module Matter
       end
 
       private def encode_retrieve_logs_response(intent : Intent) : Cluster::CommandResponse
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         # Build log content
         log_content = build_log_content(intent)
 
-        writer.start_structure(nil)
-        # Status (tag 0)
-        if log_content.empty?
-          writer.put_unsigned_int(0_u8, LogsStatus::NoLogs.value.to_u32)
-        else
-          writer.put_unsigned_int(0_u8, LogsStatus::Success.value.to_u32)
-        end
-        # LogContent (tag 1) - octet string
-        writer.put_slice(1_u8, log_content.to_slice)
-        # UTCTimeStamp (tag 2) - optional, omit
-        # TimeSinceBoot (tag 3) - optional, omit
-        writer.end_container
+        status = log_content.empty? ? LogsStatus::NoLogs.value : LogsStatus::Success.value
+        response = RetrieveLogsResponse.new(status, log_content.to_slice)
 
-        Cluster::CommandResponse.new(CMD_RETRIEVE_LOGS_RESPONSE, io.to_slice)
+        Cluster::CommandResponse.new(CMD_RETRIEVE_LOGS_RESPONSE, response.to_slice)
       end
 
       private def build_log_content(intent : Intent) : String

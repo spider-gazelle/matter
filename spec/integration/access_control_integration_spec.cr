@@ -162,11 +162,11 @@ describe "Access Control Integration" do
       # (This would be enforced at a higher level by filtering ACLs by fabric)
       fabric1_acls = acl_cluster.get_acl_for_fabric(fabric1)
       fabric1_acls.size.should eq(1)
-      fabric1_acls[0].privilege.should eq(5_u8) # Administer
+      fabric1_acls[0].privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer)
 
       fabric2_acls = acl_cluster.get_acl_for_fabric(fabric2)
       fabric2_acls.size.should eq(1)
-      fabric2_acls[0].privilege.should eq(1_u8) # View
+      fabric2_acls[0].privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::View)
     end
 
     it "removes fabric ACLs when fabric is removed" do
@@ -458,15 +458,15 @@ describe "Access Control Integration" do
       cluster2.acl.size.should eq(2)
 
       # First entry
-      cluster2.acl[0].privilege.should eq(5_u8)
-      cluster2.acl[0].auth_mode.should eq(2_u8)
+      cluster2.acl[0].privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer)
+      cluster2.acl[0].auth_mode.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
       cluster2.acl[0].subjects.should eq([0x1111_u64, 0x2222_u64])
       cluster2.acl[0].targets.should be_nil
       cluster2.acl[0].fabric_index.should eq(1_u8)
 
       # Second entry
-      cluster2.acl[1].privilege.should eq(4_u8)
-      cluster2.acl[1].auth_mode.should eq(2_u8)
+      cluster2.acl[1].privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Manage)
+      cluster2.acl[1].auth_mode.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
       cluster2.acl[1].subjects.should eq([0x3333_u64])
       cluster2.acl[1].targets.not_nil!.size.should eq(1)
       cluster2.acl[1].targets.not_nil![0].cluster.should eq(0x0006_u32)

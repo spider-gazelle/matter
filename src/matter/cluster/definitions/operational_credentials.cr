@@ -56,18 +56,21 @@ module Matter
         struct NOC
           include TLV::Serializable
 
-          # This field shall contain the NOC for the struct’s associated fabric, encoded using Matter Certificate
+          # This field shall contain the NOC for the struct's associated fabric, encoded using Matter Certificate
           # Encoding.
           @[TLV::Field(tag: 1)]
           property noc : Slice(UInt8)
 
-          # This field shall contain the ICAC or the struct’s associated fabric, encoded using Matter Certificate
+          # This field shall contain the ICAC or the struct's associated fabric, encoded using Matter Certificate
           # Encoding. If no ICAC is present in the chain, this field shall be set to null.
           @[TLV::Field(tag: 2)]
           property icac : Slice(UInt8)?
 
           @[TLV::Field(tag: 254)]
-          property fabric_index : DataType::FabricIndex
+          property fabric_index : UInt8
+
+          def initialize(@noc : Slice(UInt8), @icac : Slice(UInt8)?, @fabric_index : UInt8)
+          end
         end
 
         # This structure encodes a Fabric Reference for a fabric within which a given Node is currently commissioned.
@@ -75,32 +78,24 @@ module Matter
           include TLV::Serializable
 
           # This field shall contain the public key for the trusted root that scopes the fabric referenced by
-          # FabricIndex and its associated operational credential (see Section 6.4.5.3, “Trusted Root CA Certificates”).
+          # FabricIndex and its associated operational credential (see Section 6.4.5.3, "Trusted Root CA Certificates").
           # The format for the key shall be the same as that used in the ec-pub-key field of the Matter Certificate
           # Encoding for the root in the operational certificate chain.
           @[TLV::Field(tag: 1)]
           property root_public_key : Slice(UInt8)
 
           # This field shall contain the value of AdminVendorID provided in the AddNOC command that led to the creation
-          # of this FabricDescriptorStruct. The set of allowed values is defined in Section 11.17.6.8.3, “AdminVendorID
-          # Field”.
-          #
-          # The intent is to provide some measure of user transparency about which entities have Administer privileges
-          # on the Node.
+          # of this FabricDescriptorStruct.
           @[TLV::Field(tag: 2)]
-          property vendor_id : DataType::VendorId
+          property vendor_id : UInt16
 
-          # This field shall contain the FabricID allocated to the fabric referenced by FabricIndex. This field shall
-          # match the value found in the matter-fabric-id field from the operational certificate providing the
-          # operational identity under this Fabric.
+          # This field shall contain the FabricID allocated to the fabric referenced by FabricIndex.
           @[TLV::Field(tag: 3)]
-          property fabric_id : DataType::FabricId
+          property fabric_id : UInt64
 
-          # This field shall contain the NodeID in use within the fabric referenced by FabricIndex. This field shall
-          # match the value found in the matter-node-id field from the operational certificate providing this
-          # operational identity.
+          # This field shall contain the NodeID in use within the fabric referenced by FabricIndex.
           @[TLV::Field(tag: 4)]
-          property node_id : DataType::NodeId
+          property node_id : UInt64
 
           # This field shall contain a commissioner-set label for the fabric referenced by FabricIndex. This label is
           # set by the UpdateFabricLabel command.
@@ -108,7 +103,17 @@ module Matter
           property label : String
 
           @[TLV::Field(tag: 254)]
-          property fabric_index : DataType::FabricIndex
+          property fabric_index : UInt8
+
+          def initialize(
+            @root_public_key : Slice(UInt8),
+            @vendor_id : UInt16,
+            @fabric_id : UInt64,
+            @node_id : UInt64,
+            @label : String,
+            @fabric_index : UInt8,
+          )
+          end
         end
 
         # Input to the OperationalCredentials attestationRequest command
@@ -117,6 +122,9 @@ module Matter
 
           @[TLV::Field(tag: 0)]
           property attestation_nonce : Slice(UInt8)
+
+          def initialize(@attestation_nonce : Slice(UInt8))
+          end
         end
 
         # This command shall be generated in response to an Attestation Request command.
@@ -133,9 +141,12 @@ module Matter
           property attestation_elements : Slice(UInt8)
 
           # This field shall contain the octet string of the necessary attestation_signature as described in Section
-          # 11.17.4.7, “Attestation Information”.
+          # 11.17.4.7, "Attestation Information".
           @[TLV::Field(tag: 1)]
           property attestation_signature : Slice(UInt8)
+
+          def initialize(@attestation_elements : Slice(UInt8), @attestation_signature : Slice(UInt8))
+          end
         end
 
         # Input to the OperationalCredentials certificateChainRequest command
@@ -143,6 +154,9 @@ module Matter
           include TLV::Serializable
           @[TLV::Field(tag: 0)]
           property certificate_type : CertificateChainType
+
+          def initialize(@certificate_type : CertificateChainType)
+          end
         end
 
         # This command shall be generated in response to a CertificateChainRequest command.
@@ -153,6 +167,9 @@ module Matter
           # CertificateChainRequest command.
           @[TLV::Field(tag: 0)]
           property certificate : Slice(UInt8)
+
+          def initialize(@certificate : Slice(UInt8))
+          end
         end
 
         # Input to the OperationalCredentials csrRequest command
@@ -164,6 +181,9 @@ module Matter
 
           @[TLV::Field(tag: 1)]
           property is_for_update_noc : Bool?
+
+          def initialize(@csr_nonce : Slice(UInt8), @is_for_update_noc : Bool? = nil)
+          end
         end
 
         # This command shall be generated in response to a CSRRequest Command.
@@ -178,12 +198,15 @@ module Matter
           # This field shall contain the octet string of the serialized nocsr_elements_message.
           #
           # This field shall contain the octet string of the necessary attestation_signature as described in Section
-          # 11.17.4.9, “NOCSR Information”.
+          # 11.17.4.9, "NOCSR Information".
           @[TLV::Field(tag: 0)]
           property nocsr_elements : Slice(UInt8)
 
           @[TLV::Field(tag: 1)]
           property attestation_signature : Slice(UInt8)
+
+          def initialize(@nocsr_elements : Slice(UInt8), @attestation_signature : Slice(UInt8))
+          end
         end
 
         # Input to the OperationalCredentials addNoc command
@@ -316,6 +339,9 @@ module Matter
           # matching the FabricIndex under which the new Node Operational Certificate (NOC) is scoped.
           @[TLV::Field(tag: 4)]
           property admin_vendor_id : UInt16
+
+          def initialize(@noc_value : Slice(UInt8), @icac_value : Slice(UInt8)?, @ipk_value : Slice(UInt8), @case_admin_subject : UInt64, @admin_vendor_id : UInt16)
+          end
         end
 
         # This command shall be generated in response to the following commands:
@@ -339,13 +365,20 @@ module Matter
           # This field shall be present whenever StatusCode has a value of OK. If present, it shall contain the Fabric
           # Index of the Fabric last added, removed or updated.
           @[TLV::Field(tag: 1)]
-          property fabric_index : DataType::FabricIndex?
+          property fabric_index : UInt8?
 
           # This field may contain debugging textual information from the cluster implementation, which SHOULD NOT be
           # presented to user interfaces in any way. Its purpose is to help developers in troubleshooting errors and the
           # contents may go into logs or crash reports.
           @[TLV::Field(tag: 2)]
           property debug_text : String?
+
+          def initialize(
+            @status_code : NodeOperationalCertificateStatus,
+            @fabric_index : UInt8? = nil,
+            @debug_text : String? = nil,
+          )
+          end
         end
 
         # Input to the OperationalCredentials updateNoc command
@@ -359,7 +392,10 @@ module Matter
           property icac_value : Slice(UInt8)?
 
           @[TLV::Field(tag: 254)]
-          property fabric_index : DataType::FabricIndex
+          property fabric_index : UInt8
+
+          def initialize(@noc_value : Slice(UInt8), @fabric_index : UInt8, @icac_value : Slice(UInt8)? = nil)
+          end
         end
 
         # Input to the OperationalCredentials updateFabricLabel command
@@ -371,7 +407,10 @@ module Matter
           property label : String
 
           @[TLV::Field(tag: 254)]
-          property fabric_index : DataType::FabricIndex?
+          property fabric_index : UInt8?
+
+          def initialize(@label : String, @fabric_index : UInt8? = nil)
+          end
         end
 
         # Input to the OperationalCredentials removeFabric command
@@ -379,7 +418,10 @@ module Matter
           include TLV::Serializable
 
           @[TLV::Field(tag: 0)]
-          property fabric_index : DataType::FabricIndex
+          property fabric_index : UInt8
+
+          def initialize(@fabric_index : UInt8)
+          end
         end
 
         # Input to the OperationalCredentials addTrustedRootCertificate command
@@ -388,6 +430,9 @@ module Matter
 
           @[TLV::Field(tag: 0)]
           property root_certificate : Slice(UInt8)
+
+          def initialize(@root_certificate : Slice(UInt8))
+          end
         end
       end
     end

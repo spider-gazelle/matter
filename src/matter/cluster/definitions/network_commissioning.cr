@@ -93,6 +93,9 @@ module Matter
           # network).
           @[TLV::Field(tag: 1)]
           property connected : Bool
+
+          def initialize(@network_id : Slice(UInt8), @connected : Bool)
+          end
         end
 
         # Input to the NetworkCommissioning scanNetworks command
@@ -110,6 +113,9 @@ module Matter
           # in the General Commissioning cluster shall be left unchanged.
           @[TLV::Field(tag: 1)]
           property breadcrumb : UInt64?
+
+          def initialize(@ssid : Slice(UInt8)? = nil, @breadcrumb : UInt64? = nil)
+          end
         end
 
         # WiFiInterfaceScanResultStruct represents a single Wi-Fi network scan result.
@@ -136,6 +142,9 @@ module Matter
           # This field, if present, shall denote the signal strength in dBm of the associated scan result.
           @[TLV::Field(tag: 5)]
           property rssi : Int8?
+
+          def initialize(@security : UInt8, @ssid : Slice(UInt8), @bssid : Slice(UInt8), @channel : UInt16, @band : Band? = nil, @rssi : Int8? = nil)
+          end
         end
 
         # ThreadInterfaceScanResultStruct represents a single Thread network scan result.
@@ -166,6 +175,11 @@ module Matter
 
           @[TLV::Field(tag: 7)]
           property lqi : UInt8?
+
+          def initialize(@pan_id : UInt16? = nil, @extended_pan_id : UInt64? = nil, @network_name : String? = nil,
+                         @channel : UInt16? = nil, @version : UInt8? = nil, @extended_address : Slice(UInt8)? = nil,
+                         @rssi : Int8? = nil, @lqi : UInt8? = nil)
+          end
         end
 
         # This command shall contain the status of the last ScanNetworks command, and the associated scan results if the
@@ -189,6 +203,9 @@ module Matter
 
           @[TLV::Field(tag: 3)]
           property thread_scan_results : Array(ThreadInterfaceScanResult)?
+
+          def initialize(@status_code : StatusCode, @debug_text : String? = nil, @wifi_scan_results : Array(WiFiInterfaceScanResult)? = nil, @thread_scan_results : Array(ThreadInterfaceScanResult)? = nil)
+          end
         end
 
         # Input to the NetworkCommissioning removeNetwork command
@@ -200,6 +217,9 @@ module Matter
 
           @[TLV::Field(tag: 1)]
           property breadcrumb : UInt64?
+
+          def initialize(@network_id : Slice(UInt8), @breadcrumb : UInt64? = nil)
+          end
         end
 
         # This response command relates status information for some commands which require it as their response command.
@@ -242,6 +262,9 @@ module Matter
           # request command.
           @[TLV::Field(tag: 2)]
           property networkIndex : UInt8?
+
+          def initialize(@status_code : StatusCode, @debug_text : String? = nil, @networkIndex : UInt8? = nil)
+          end
         end
 
         # Input to the NetworkCommissioning connectNetwork command
@@ -253,6 +276,9 @@ module Matter
 
           @[TLV::Field(tag: 1)]
           property breadcrumb : UInt64?
+
+          def initialize(@network_id : Slice(UInt8), @breadcrumb : UInt64? = nil)
+          end
         end
 
         # Before generating a ConnectNetworkResponse, the server shall:
@@ -314,6 +340,9 @@ module Matter
           #     reader of the structure to record, report or diagnose the failure.
           @[TLV::Field(tag: 2)]
           property error_value : Int32?
+
+          def initialize(@status_code : StatusCode, @debug_text : String? = nil, @error_value : Int32? = nil)
+          end
         end
 
         # Input to the NetworkCommissioning reorderNetwork command
@@ -328,6 +357,9 @@ module Matter
 
           @[TLV::Field(tag: 2)]
           property breadcrumb : UInt64
+
+          def initialize(@network_id : Slice(UInt8), @networkIndex : UInt8, @breadcrumb : UInt64)
+          end
         end
 
         struct AddOrUpdateWiFiNetworkRequest
@@ -376,6 +408,9 @@ module Matter
 
           @[TLV::Field(tag: 2)]
           property breadcrumb : UInt64?
+
+          def initialize(@ssid : Slice(UInt8), @credentials : Slice(UInt8), @breadcrumb : UInt64? = nil)
+          end
         end
 
         struct AddOrUpdateThreadNetworkRequest
@@ -387,12 +422,15 @@ module Matter
           # The encoding for the OperationalDataset field is defined in the Thread specification. The client shall pass
           # the OperationalDataset as an opaque octet string.
           #
-          # See Section 11.8.7.1.2, “Breadcrumb Field” for usage.
+          # See Section 11.8.7.1.2, "Breadcrumb Field" for usage.
           @[TLV::Field(tag: 0)]
           property operational_dataset : Slice(UInt8)
 
           @[TLV::Field(tag: 1)]
           property breadcrumb : UInt64
+
+          def initialize(@operational_dataset : Slice(UInt8), @breadcrumb : UInt64)
+          end
         end
       end
     end

@@ -22,4 +22,4 @@
 
 ## Contributors
 
-- [Giorgi Kavrelishvili](https://github.com/grkek) - creator and maintainer
+- [Stephen von Takach](https://github.com/stakach) - creator and maintainer

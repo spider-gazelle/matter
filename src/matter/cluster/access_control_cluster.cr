@@ -62,10 +62,10 @@ module Matter
         include TLV::Serializable
 
         @[TLV::Field(tag: 1)]
-        property privilege : UInt8
+        property privilege : AccessControlEntryPrivilege
 
         @[TLV::Field(tag: 2)]
-        property auth_mode : UInt8
+        property auth_mode : AccessControlEntryAuthMode
 
         @[TLV::Field(tag: 3)]
         property subjects : Array(UInt64) # Node IDs or group IDs
@@ -73,25 +73,17 @@ module Matter
         @[TLV::Field(tag: 4, optional: true)]
         property targets : Array(Target)? # nil means all targets
 
-        @[TLV::Field(tag: 254)]
-        property fabric_index : UInt8
+        # fabric_index is optional during deserialization (client doesn't send it),
+        # but required when stored (server fills it in)
+        @[TLV::Field(tag: 254, optional: true)]
+        property fabric_index : UInt8?
 
-        def initialize(privilege : AccessControlEntryPrivilege,
-                       auth_mode : AccessControlEntryAuthMode,
+        def initialize(@privilege : AccessControlEntryPrivilege,
+                       @auth_mode : AccessControlEntryAuthMode,
                        @subjects : Array(UInt64),
                        @targets : Array(Target)?,
-                       @fabric_index : UInt8)
-          @privilege = privilege.value
-          @auth_mode = auth_mode.value
-        end
-
-        # Helper methods to get enum values
-        def privilege_enum : AccessControlEntryPrivilege
-          AccessControlEntryPrivilege.from_value(@privilege)
-        end
-
-        def auth_mode_enum : AccessControlEntryAuthMode
-          AccessControlEntryAuthMode.from_value(@auth_mode)
+                       fabric_index : UInt8)
+          @fabric_index = fabric_index
         end
       end
 
@@ -211,7 +203,7 @@ module Matter
         # Check if any entry grants sufficient privilege
         matching_entries.any? do |entry|
           # Check privilege level (higher privilege includes lower)
-          has_privilege = entry.privilege >= privilege.value
+          has_privilege = entry.privilege >= privilege
 
           # Check target matching
           has_target_access = if targets = entry.targets
@@ -268,31 +260,9 @@ module Matter
 
       # Encode ACL list as TLV array
       private def encode_acl_list : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        # Convert each ACL entry to TLV hash format
-        acl_array = @acl.map do |entry|
-          entry_hash = {
-              1_u8 => entry.privilege,
-              2_u8 => entry.auth_mode,
-              3_u8 => entry.subjects.map { |s| s.as(TLV::Value) }.as(TLV::Value),
-            254_u8 => entry.fabric_index,
-          } of TLV::Tag => TLV::Value
-
-          # Add targets if present
-          if targets = entry.targets
-            targets_array = targets.map do |target|
-              target.to_h.as(TLV::Value)
-            end
-            entry_hash[4_u8] = targets_array.as(TLV::Value)
-          end
-
-          entry_hash.as(TLV::Value)
-        end
-
-        writer.put(nil, acl_array)
-        io.to_slice
+        # AccessControlEntry has TLV::Serializable, use it directly
+        items = @acl.map { |entry| TLV::Any.from_slice(entry.to_slice) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       # Decode ACL list from TLV array
@@ -300,14 +270,13 @@ module Matter
         begin
           Log.debug { "decode_acl_list: received #{value.size} bytes: #{value.hexstring}" }
 
-          reader = TLV::Reader.new(value)
-          data = reader.get
+          parsed = TLV::Any.from_slice(value)
 
-          Log.debug { "decode_acl_list: parsed TLV: #{data.inspect}" }
+          Log.debug { "decode_acl_list: parsed TLV: #{parsed.inspect}" }
 
           # Extract the array from the parsed data
           # The TLV structure can vary - handle multiple cases
-          acl_array = extract_acl_array(data)
+          acl_array = extract_acl_array(parsed)
 
           Log.debug { "decode_acl_list: extracted #{acl_array.size} ACL entries" }
 
@@ -315,87 +284,11 @@ module Matter
 
           acl_array.each_with_index do |entry_value, idx|
             Log.debug { "decode_acl_list: parsing entry #{idx}: #{entry_value.inspect}" }
-            entry_hash = entry_value.as(Hash(TLV::Tag, TLV::Value))
 
-            # Handle privilege
-            privilege = case val = entry_hash[1_u8]
-                        when Int then val.to_u8
-                        else          raise "Invalid privilege type: #{val.class}"
-                        end
-
-            # Handle auth_mode
-            auth_mode = case val = entry_hash[2_u8]
-                        when Int then val.to_u8
-                        else          raise "Invalid auth_mode type: #{val.class}"
-                        end
-
-            # Parse subjects array - may be nil for empty array
-            subjects_value = entry_hash[3_u8]?
-            subjects = if subjects_value.nil?
-                         [] of UInt64
-                       else
-                         subjects_array = subjects_value.as(Array(TLV::Value))
-                         subjects_array.map do |s|
-                           case s
-                           when Int then s.to_u64
-                           else          raise "Invalid subject type: #{s.class}"
-                           end
-                         end
-                       end
-
-            # Parse targets array (optional - nil means all targets)
-            targets = nil.as(Array(Target)?)
-            if entry_hash.has_key?(4_u8) && (targets_value = entry_hash[4_u8]?)
-              if targets_value.is_a?(Array)
-                targets_array = targets_value.as(Array(TLV::Value))
-                targets = targets_array.map do |target_value|
-                  target_hash = target_value.as(Hash(TLV::Tag, TLV::Value))
-
-                  cluster = if target_hash.has_key?(0_u8)
-                              case val = target_hash[0_u8]
-                              when Int then val.to_u32
-                              else          nil
-                              end
-                            end
-
-                  endpoint = if target_hash.has_key?(1_u8)
-                               case val = target_hash[1_u8]
-                               when Int then val.to_u16
-                               else          nil
-                               end
-                             end
-
-                  device_type = if target_hash.has_key?(2_u8)
-                                  case val = target_hash[2_u8]
-                                  when Int then val.to_u32
-                                  else          nil
-                                  end
-                                end
-
-                  Target.new(cluster, endpoint, device_type)
-                end
-              end
-            end
-
-            # Handle fabric_index - may be omitted by client (fabric-scoped attribute)
-            fabric_index = if entry_hash.has_key?(254_u8)
-                             case val = entry_hash[254_u8]
-                             when Int then val.to_u8
-                             else          1_u8
-                             end
-                           else
-                             1_u8 # Default to fabric 1 when not provided
-                           end
-
-            Log.debug { "decode_acl_list: entry #{idx}: privilege=#{privilege}, auth_mode=#{auth_mode}, subjects=#{subjects}, fabric_index=#{fabric_index}" }
-
-            new_acl << AccessControlEntry.new(
-              AccessControlEntryPrivilege.from_value(privilege),
-              AccessControlEntryAuthMode.from_value(auth_mode),
-              subjects,
-              targets,
-              fabric_index
-            )
+            # Serialize entry back to bytes and deserialize with from_slice
+            entry_bytes = entry_value.to_slice
+            entry = AccessControlEntry.from_slice(entry_bytes)
+            new_acl << entry
           end
 
           @acl = new_acl
@@ -409,79 +302,72 @@ module Matter
       end
 
       # Helper to extract ACL array from various TLV structures
-      private def extract_acl_array(data : TLV::Value) : Array(TLV::Value)
-        case data
-        when Array
+      private def extract_acl_array(data : TLV::Any) : Array(TLV::Any)
+        value = data.value
+        case value
+        when Array(TLV::Any)
           # Direct array
-          data.as(Array(TLV::Value))
-        when Hash
-          hash = data.as(Hash(TLV::Tag, TLV::Value))
+          value
+        when TLV::Structure
+          hash = value
           # Check for "Any" wrapper (anonymous structure)
           if hash.has_key?("Any")
             inner = hash["Any"]
-            case inner
-            when Array
-              inner.as(Array(TLV::Value))
-            when Hash
+            case inner_val = inner.value
+            when Array(TLV::Any)
+              inner_val
+            when TLV::Structure
               # Nested hash - might contain the array
-              inner_hash = inner.as(Hash(TLV::Tag, TLV::Value))
+              inner_hash = inner_val
               if inner_hash.has_key?("Any")
                 nested = inner_hash["Any"]
-                if nested.is_a?(Array)
-                  nested.as(Array(TLV::Value))
+                case nested_val = nested.value
+                when Array(TLV::Any)
+                  nested_val
                 else
-                  [inner.as(TLV::Value)]
+                  [inner]
                 end
               else
                 # Single entry wrapped in hash
-                [inner.as(TLV::Value)]
+                [inner]
               end
             else
-              [] of TLV::Value
+              [] of TLV::Any
             end
           else
             # Hash without "Any" - might be a single entry
-            [data.as(TLV::Value)]
+            [data]
           end
         else
-          [] of TLV::Value
+          [] of TLV::Any
         end
       end
 
       # Encode Extension list as TLV array
       private def encode_extension_list : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        # Convert each extension entry to TLV hash format
-        extension_array = @extension.map do |entry|
-          entry.to_h.as(TLV::Value)
-        end
-
-        writer.put(nil, extension_array)
-        io.to_slice
+        # ExtensionEntry has TLV::Serializable, use it directly
+        items = @extension.map { |entry| TLV::Any.from_slice(entry.to_slice) }
+        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       # Decode Extension list from TLV array
       private def decode_extension_list(value : Bytes) : InteractionModel::Status
         begin
-          reader = TLV::Reader.new(value)
-          data = reader.get
+          parsed = TLV::Any.from_slice(value)
 
           # Extract the array from the parsed data
-          extension_array = if data.has_key?("Any")
-                              data["Any"].as(Array(TLV::Value))
+          extension_array = case v = parsed.value
+                            when Array
+                              v.as(Array(TLV::Any))
                             else
                               # Empty array case
-                              [] of TLV::Value
+                              [] of TLV::Any
                             end
 
           new_extension = extension_array.map do |entry_value|
-            # Convert entry hash to TLV bytes and parse with ExtensionEntry
-            entry_io = IO::Memory.new
-            entry_writer = TLV::Writer.new(entry_io)
-            entry_writer.put(nil, entry_value)
-            ExtensionEntry.new(entry_io.rewind.to_slice)
+            # Serialize entry back to bytes and deserialize with from_slice
+            entry_bytes = entry_value.to_slice
+            ExtensionEntry.from_slice(entry_bytes)
           end
 
           @extension = new_extension
@@ -494,10 +380,7 @@ module Matter
 
       # Helper: Encode UInt16 as TLV bytes
       private def encode_uint16(value : UInt16) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put(nil, value)
-        io.rewind.to_slice
+        TLV::Any.new(value, nil).to_slice
       end
     end
   end

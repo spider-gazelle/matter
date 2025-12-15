@@ -28,7 +28,7 @@ describe Matter::Session::Pase do
       encoded.should be_a(Bytes)
 
       # Decode from TLV bytes
-      decoded = Matter::Session::Pase::Definitions::PbkdfParamRequest.new(encoded)
+      decoded = Matter::Session::Pase::Definitions::PbkdfParamRequest.from_slice(encoded)
       decoded.initiator_random.should be_nil
       decoded.initiator_session_id.should be_nil
     end
@@ -53,7 +53,7 @@ describe Matter::Session::Pase do
       encoded.should be_a(Bytes)
 
       # Decode from TLV bytes
-      decoded = Matter::Session::Pase::Definitions::PbkdfParamResponse.new(encoded)
+      decoded = Matter::Session::Pase::Definitions::PbkdfParamResponse.from_slice(encoded)
       decoded.initiator_random.should eq(initiator_random)
       decoded.responder_random.should eq(responder_random)
       decoded.responder_session_id.should eq(responder_session_id)
@@ -61,9 +61,8 @@ describe Matter::Session::Pase do
       # Check pbkdf_parameters
       pbkdf = decoded.pbkdf_parameters
       pbkdf.should_not be_nil
-      pbkdf_hash = pbkdf.as(Hash(TLV::Tag, TLV::Value))
-      pbkdf_hash[1_u8].should eq(1000_u32)
-      pbkdf_hash[2_u8].as(Bytes).should eq(salt)
+      pbkdf.not_nil!.iterations.should eq(1000_u32)
+      pbkdf.not_nil!.salt.should eq(salt)
     end
 
     it "round-trips PBKDF parameter request and response" do

@@ -12,6 +12,243 @@ module Matter
     # - SceneNames (SN): Store names for scenes
     #
     # Specification: Matter 1.4 § 1.4
+
+    # TLV-serializable SceneInfo for FabricSceneInfo attribute
+    struct SceneInfoTlv
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property scene_count : UInt8
+
+      @[TLV::Field(tag: 1)]
+      property current_scene : UInt8
+
+      @[TLV::Field(tag: 2)]
+      property current_group : UInt16
+
+      @[TLV::Field(tag: 3)]
+      property scene_valid : Bool
+
+      @[TLV::Field(tag: 4)]
+      property remaining_capacity : UInt8
+
+      @[TLV::Field(tag: 254)]
+      property fabric_index : UInt8
+
+      def initialize(
+        @scene_count = 0_u8,
+        @current_scene = 0xFF_u8,
+        @current_group = 0_u16,
+        @scene_valid = false,
+        @remaining_capacity = 16_u8,
+        @fabric_index = 1_u8,
+      )
+      end
+    end
+
+    # Standard scene status response (AddScene, RemoveScene, StoreScene)
+    struct SceneStatusResponse
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property status : UInt8
+
+      @[TLV::Field(tag: 1)]
+      property group_id : UInt16
+
+      @[TLV::Field(tag: 2)]
+      property scene_id : UInt8
+
+      def initialize(@status : UInt8, @group_id : UInt16, @scene_id : UInt8)
+      end
+    end
+
+    # ViewScene response
+    struct ViewSceneResponseTlv
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property status : UInt8
+
+      @[TLV::Field(tag: 1)]
+      property group_id : UInt16
+
+      @[TLV::Field(tag: 2)]
+      property scene_id : UInt8
+
+      @[TLV::Field(tag: 3, optional: true)]
+      property transition_time : UInt32?
+
+      @[TLV::Field(tag: 4, optional: true)]
+      property scene_name : String?
+
+      @[TLV::Field(tag: 5, optional: true)]
+      property extension_field_sets : Array(TLV::Any)?
+
+      def initialize(
+        @status : UInt8,
+        @group_id : UInt16,
+        @scene_id : UInt8,
+        @transition_time : UInt32? = nil,
+        @scene_name : String? = nil,
+        @extension_field_sets : Array(TLV::Any)? = nil,
+      )
+      end
+    end
+
+    # RemoveAllScenes response
+    struct RemoveAllScenesResponse
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property status : UInt8
+
+      @[TLV::Field(tag: 1)]
+      property group_id : UInt16
+
+      def initialize(@status : UInt8, @group_id : UInt16)
+      end
+    end
+
+    # GetSceneMembership response
+    struct GetSceneMembershipResponse
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property status : UInt8
+
+      @[TLV::Field(tag: 1, optional: true)]
+      property capacity : UInt8?
+
+      @[TLV::Field(tag: 2)]
+      property group_id : UInt16
+
+      @[TLV::Field(tag: 3, optional: true)]
+      property scene_list : Array(UInt8)?
+
+      def initialize(
+        @status : UInt8,
+        @group_id : UInt16,
+        @capacity : UInt8? = nil,
+        @scene_list : Array(UInt8)? = nil,
+      )
+      end
+    end
+
+    # CopyScene response
+    struct CopySceneResponse
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property status : UInt8
+
+      @[TLV::Field(tag: 1)]
+      property group_identifier_from : UInt16
+
+      @[TLV::Field(tag: 2)]
+      property scene_identifier_from : UInt8
+
+      def initialize(@status : UInt8, @group_identifier_from : UInt16, @scene_identifier_from : UInt8)
+      end
+    end
+
+    # Command request structs
+
+    struct AddSceneRequest
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property group_id : UInt16
+
+      @[TLV::Field(tag: 1)]
+      property scene_id : UInt8
+
+      @[TLV::Field(tag: 2)]
+      property transition_time : UInt32
+
+      @[TLV::Field(tag: 3, optional: true)]
+      property scene_name : String?
+
+      @[TLV::Field(tag: 4, optional: true)]
+      property extension_field_sets : Array(TLV::Any)?
+    end
+
+    struct ViewSceneRequest
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property group_id : UInt16
+
+      @[TLV::Field(tag: 1)]
+      property scene_id : UInt8
+    end
+
+    struct RemoveSceneRequest
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property group_id : UInt16
+
+      @[TLV::Field(tag: 1)]
+      property scene_id : UInt8
+    end
+
+    struct RemoveAllScenesRequest
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property group_id : UInt16
+    end
+
+    struct StoreSceneRequest
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property group_id : UInt16
+
+      @[TLV::Field(tag: 1)]
+      property scene_id : UInt8
+    end
+
+    struct RecallSceneRequest
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property group_id : UInt16
+
+      @[TLV::Field(tag: 1)]
+      property scene_id : UInt8
+
+      @[TLV::Field(tag: 2, optional: true)]
+      property transition_time : UInt32?
+    end
+
+    struct GetSceneMembershipRequest
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property group_id : UInt16
+    end
+
+    struct CopySceneRequest
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property mode : UInt8
+
+      @[TLV::Field(tag: 1)]
+      property group_identifier_from : UInt16
+
+      @[TLV::Field(tag: 2)]
+      property scene_identifier_from : UInt8
+
+      @[TLV::Field(tag: 3)]
+      property group_identifier_to : UInt16
+
+      @[TLV::Field(tag: 4)]
+      property scene_identifier_to : UInt8
+    end
+
     class ScenesManagementCluster < Base
       CLUSTER_ID = 0x0062_u32
 
@@ -204,25 +441,20 @@ module Matter
 
       # Encode FabricSceneInfo as TLV array
       private def encode_fabric_scene_info(fabric_index : UInt8) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
         # Get or create scene info for this fabric
         scene_info = @fabric_scene_info[fabric_index]? || SceneInfo.new(fabric_index: fabric_index)
 
-        writer.start_array(nil)
-        # Encode single SceneInfo struct for this fabric
-        writer.start_structure(nil)
-        writer.put_unsigned_int(0_u8, scene_info.scene_count.to_u32)                  # sceneCount
-        writer.put_unsigned_int(1_u8, scene_info.current_scene.to_u32)                # currentScene
-        writer.put_unsigned_int(2_u8, scene_info.current_group.to_u32, force_size: 2) # currentGroup (GroupId)
-        writer.put(3_u8, scene_info.scene_valid)                                      # sceneValid
-        writer.put_unsigned_int(4_u8, scene_info.remaining_capacity.to_u32)           # remainingCapacity
-        writer.put_unsigned_int(254_u8, fabric_index.to_u32)                          # fabricIndex
-        writer.end_container
-        writer.end_container
+        tlv_info = SceneInfoTlv.new(
+          scene_count: scene_info.scene_count,
+          current_scene: scene_info.current_scene,
+          current_group: scene_info.current_group,
+          scene_valid: scene_info.scene_valid,
+          remaining_capacity: scene_info.remaining_capacity,
+          fabric_index: fabric_index
+        )
 
-        io.to_slice
+        # Wrap in array
+        TLV::Any.new([TLV::Any.from_slice(tlv_info.to_slice)], nil, as_array: true).to_slice
       end
 
       protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
@@ -249,188 +481,128 @@ module Matter
         end
       end
 
-      # Parse TLV command fields
-      private def parse_command_fields(fields : Bytes) : Hash(UInt8, TLV::Value)?
-        return nil if fields.empty?
-
-        begin
-          reader = TLV::Reader.new(fields)
-          data = reader.get
-
-          if data.is_a?(Hash)
-            wrapper = data.as(Hash(TLV::Tag, TLV::Value))
-            if wrapper.has_key?("Any")
-              inner = wrapper["Any"]
-              if inner.is_a?(Hash)
-                # Convert TLV::Tag keys to UInt8
-                result = {} of UInt8 => TLV::Value
-                inner.as(Hash(TLV::Tag, TLV::Value)).each do |k, v|
-                  if k.is_a?(UInt8)
-                    result[k] = v
-                  end
-                end
-                return result
-              end
-            end
-          end
-        rescue
-        end
-        nil
-      end
-
       # Handle AddScene command
       private def handle_add_scene(fields : Bytes) : Bytes
-        parsed = parse_command_fields(fields)
-        unless parsed
-          return encode_status_response(CMD_ADD_SCENE_RESPONSE, InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
-        end
+        req = AddSceneRequest.from_slice(fields)
 
-        group_id = parsed[0_u8]?.try { |v| v.as(Int).to_u16 } || 0_u16
-        scene_id = parsed[1_u8]?.try { |v| v.as(Int).to_u8 } || 0_u8
-        transition_time = parsed[2_u8]?.try { |v| v.as(Int).to_u32 } || 0_u32
-        scene_name = parsed[3_u8]?.try { |v| v.as(String) } || ""
-
-        # Add scene (simplified - using fabric_index 1)
         fabric_index = 1_u8
-        key = {fabric_index, group_id, scene_id}
+        key = {fabric_index, req.group_id, req.scene_id}
 
         # Check capacity
         fabric_scenes = @scenes.count { |k, _| k[0] == fabric_index }
         if fabric_scenes >= @scene_table_size && !@scenes.has_key?(key)
-          return encode_status_response(CMD_ADD_SCENE_RESPONSE, InteractionModel::StatusCode::ResourceExhausted, group_id, scene_id)
+          return encode_status_response(InteractionModel::StatusCode::ResourceExhausted, req.group_id, req.scene_id)
         end
 
-        @scenes[key] = SceneData.new(transition_time, scene_name)
+        @scenes[key] = SceneData.new(req.transition_time, req.scene_name || "")
         update_fabric_scene_info(fabric_index)
 
-        encode_status_response(CMD_ADD_SCENE_RESPONSE, InteractionModel::StatusCode::Success, group_id, scene_id)
+        encode_status_response(InteractionModel::StatusCode::Success, req.group_id, req.scene_id)
+      rescue
+        encode_status_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
       end
 
       # Handle ViewScene command
       private def handle_view_scene(fields : Bytes) : Bytes
-        parsed = parse_command_fields(fields)
-        unless parsed
-          return encode_view_scene_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8, nil)
-        end
-
-        group_id = parsed[0_u8]?.try { |v| v.as(Int).to_u16 } || 0_u16
-        scene_id = parsed[1_u8]?.try { |v| v.as(Int).to_u8 } || 0_u8
+        req = ViewSceneRequest.from_slice(fields)
 
         fabric_index = 1_u8
-        key = {fabric_index, group_id, scene_id}
+        key = {fabric_index, req.group_id, req.scene_id}
 
         if scene = @scenes[key]?
-          encode_view_scene_response(InteractionModel::StatusCode::Success, group_id, scene_id, scene)
+          encode_view_scene_response(InteractionModel::StatusCode::Success, req.group_id, req.scene_id, scene)
         else
-          encode_view_scene_response(InteractionModel::StatusCode::NotFound, group_id, scene_id, nil)
+          encode_view_scene_response(InteractionModel::StatusCode::NotFound, req.group_id, req.scene_id, nil)
         end
+      rescue
+        encode_view_scene_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8, nil)
       end
 
       # Handle RemoveScene command
       private def handle_remove_scene(fields : Bytes) : Bytes
-        parsed = parse_command_fields(fields)
-        unless parsed
-          return encode_status_response(CMD_REMOVE_SCENE_RESPONSE, InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
-        end
-
-        group_id = parsed[0_u8]?.try { |v| v.as(Int).to_u16 } || 0_u16
-        scene_id = parsed[1_u8]?.try { |v| v.as(Int).to_u8 } || 0_u8
+        req = RemoveSceneRequest.from_slice(fields)
 
         fabric_index = 1_u8
-        key = {fabric_index, group_id, scene_id}
+        key = {fabric_index, req.group_id, req.scene_id}
 
         if @scenes.delete(key)
           update_fabric_scene_info(fabric_index)
-          encode_status_response(CMD_REMOVE_SCENE_RESPONSE, InteractionModel::StatusCode::Success, group_id, scene_id)
+          encode_status_response(InteractionModel::StatusCode::Success, req.group_id, req.scene_id)
         else
-          encode_status_response(CMD_REMOVE_SCENE_RESPONSE, InteractionModel::StatusCode::NotFound, group_id, scene_id)
+          encode_status_response(InteractionModel::StatusCode::NotFound, req.group_id, req.scene_id)
         end
+      rescue
+        encode_status_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
       end
 
       # Handle RemoveAllScenes command
       private def handle_remove_all_scenes(fields : Bytes) : Bytes
-        parsed = parse_command_fields(fields)
-        unless parsed
-          return encode_remove_all_response(InteractionModel::StatusCode::InvalidCommand, 0_u16)
-        end
-
-        group_id = parsed[0_u8]?.try { |v| v.as(Int).to_u16 } || 0_u16
+        req = RemoveAllScenesRequest.from_slice(fields)
 
         fabric_index = 1_u8
-        @scenes.reject! { |k, _| k[0] == fabric_index && k[1] == group_id }
+        @scenes.reject! { |k, _| k[0] == fabric_index && k[1] == req.group_id }
         update_fabric_scene_info(fabric_index)
 
-        encode_remove_all_response(InteractionModel::StatusCode::Success, group_id)
+        encode_remove_all_response(InteractionModel::StatusCode::Success, req.group_id)
+      rescue
+        encode_remove_all_response(InteractionModel::StatusCode::InvalidCommand, 0_u16)
       end
 
       # Handle StoreScene command
       private def handle_store_scene(fields : Bytes) : Bytes
-        parsed = parse_command_fields(fields)
-        unless parsed
-          return encode_status_response(CMD_STORE_SCENE_RESPONSE, InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
-        end
-
-        group_id = parsed[0_u8]?.try { |v| v.as(Int).to_u16 } || 0_u16
-        scene_id = parsed[1_u8]?.try { |v| v.as(Int).to_u8 } || 0_u8
+        req = StoreSceneRequest.from_slice(fields)
 
         fabric_index = 1_u8
-        key = {fabric_index, group_id, scene_id}
+        key = {fabric_index, req.group_id, req.scene_id}
 
         # Check capacity
         fabric_scenes = @scenes.count { |k, _| k[0] == fabric_index }
         if fabric_scenes >= @scene_table_size && !@scenes.has_key?(key)
-          return encode_status_response(CMD_STORE_SCENE_RESPONSE, InteractionModel::StatusCode::ResourceExhausted, group_id, scene_id)
+          return encode_status_response(InteractionModel::StatusCode::ResourceExhausted, req.group_id, req.scene_id)
         end
 
         @scenes[key] = SceneData.new
         update_fabric_scene_info(fabric_index)
 
-        encode_status_response(CMD_STORE_SCENE_RESPONSE, InteractionModel::StatusCode::Success, group_id, scene_id)
+        encode_status_response(InteractionModel::StatusCode::Success, req.group_id, req.scene_id)
+      rescue
+        encode_status_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
       end
 
       # Handle RecallScene command
       private def handle_recall_scene(fields : Bytes) : InteractionModel::Status
-        parsed = parse_command_fields(fields)
-        unless parsed
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
-        end
-
-        group_id = parsed[0_u8]?.try { |v| v.as(Int).to_u16 } || 0_u16
-        scene_id = parsed[1_u8]?.try { |v| v.as(Int).to_u8 } || 0_u8
+        req = RecallSceneRequest.from_slice(fields)
 
         fabric_index = 1_u8
-        key = {fabric_index, group_id, scene_id}
+        key = {fabric_index, req.group_id, req.scene_id}
 
         if @scenes.has_key?(key)
           # Update scene info
           info = @fabric_scene_info[fabric_index]? || SceneInfo.new(fabric_index: fabric_index)
-          info.current_scene = scene_id
-          info.current_group = group_id
+          info.current_scene = req.scene_id
+          info.current_group = req.group_id
           info.scene_valid = true
           @fabric_scene_info[fabric_index] = info
 
           # Trigger callback
-          @on_recall_scene.try(&.call(group_id, scene_id))
+          @on_recall_scene.try(&.call(req.group_id, req.scene_id))
 
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         else
           InteractionModel::Status.new(InteractionModel::StatusCode::NotFound)
         end
+      rescue
+        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
       end
 
       # Handle GetSceneMembership command
       private def handle_get_scene_membership(fields : Bytes) : Bytes
-        parsed = parse_command_fields(fields)
-        unless parsed
-          return encode_membership_response(InteractionModel::StatusCode::InvalidCommand, nil, 0_u16, nil)
-        end
-
-        group_id = parsed[0_u8]?.try { |v| v.as(Int).to_u16 } || 0_u16
+        req = GetSceneMembershipRequest.from_slice(fields)
 
         fabric_index = 1_u8
         scene_list = [] of UInt8
         @scenes.each do |key, _|
-          if key[0] == fabric_index && key[1] == group_id
+          if key[0] == fabric_index && key[1] == req.group_id
             scene_list << key[2]
           end
         end
@@ -438,44 +610,39 @@ module Matter
         fabric_scenes = @scenes.count { |k, _| k[0] == fabric_index }
         remaining = (@scene_table_size - fabric_scenes).clamp(0, 253).to_u8
 
-        encode_membership_response(InteractionModel::StatusCode::Success, remaining, group_id, scene_list)
+        encode_membership_response(InteractionModel::StatusCode::Success, remaining, req.group_id, scene_list)
+      rescue
+        encode_membership_response(InteractionModel::StatusCode::InvalidCommand, nil, 0_u16, nil)
       end
 
       # Handle CopyScene command
       private def handle_copy_scene(fields : Bytes) : Bytes
-        parsed = parse_command_fields(fields)
-        unless parsed
-          return encode_copy_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
-        end
-
-        mode = parsed[0_u8]?.try { |v| v.as(Int).to_u8 } || 0_u8
-        group_from = parsed[1_u8]?.try { |v| v.as(Int).to_u16 } || 0_u16
-        scene_from = parsed[2_u8]?.try { |v| v.as(Int).to_u8 } || 0_u8
-        group_to = parsed[3_u8]?.try { |v| v.as(Int).to_u16 } || 0_u16
-        scene_to = parsed[4_u8]?.try { |v| v.as(Int).to_u8 } || 0_u8
+        req = CopySceneRequest.from_slice(fields)
 
         fabric_index = 1_u8
-        copy_all = (mode & 0x01) != 0
+        copy_all = (req.mode & 0x01) != 0
 
         if copy_all
           # Copy all scenes from group_from to group_to
-          @scenes.select { |k, _| k[0] == fabric_index && k[1] == group_from }.each do |key, data|
-            new_key = {fabric_index, group_to, key[2]}
+          @scenes.select { |k, _| k[0] == fabric_index && k[1] == req.group_identifier_from }.each do |key, data|
+            new_key = {fabric_index, req.group_identifier_to, key[2]}
             @scenes[new_key] = SceneData.new(data.transition_time, data.scene_name, data.extension_field_sets)
           end
         else
           # Copy single scene
-          source_key = {fabric_index, group_from, scene_from}
+          source_key = {fabric_index, req.group_identifier_from, req.scene_identifier_from}
           if data = @scenes[source_key]?
-            dest_key = {fabric_index, group_to, scene_to}
+            dest_key = {fabric_index, req.group_identifier_to, req.scene_identifier_to}
             @scenes[dest_key] = SceneData.new(data.transition_time, data.scene_name, data.extension_field_sets)
           else
-            return encode_copy_response(InteractionModel::StatusCode::NotFound, group_from, scene_from)
+            return encode_copy_response(InteractionModel::StatusCode::NotFound, req.group_identifier_from, req.scene_identifier_from)
           end
         end
 
         update_fabric_scene_info(fabric_index)
-        encode_copy_response(InteractionModel::StatusCode::Success, group_from, scene_from)
+        encode_copy_response(InteractionModel::StatusCode::Success, req.group_identifier_from, req.scene_identifier_from)
+      rescue
+        encode_copy_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
       end
 
       # Update fabric scene info after changes
@@ -488,90 +655,51 @@ module Matter
         increment_version
       end
 
-      # Response encoding methods using TLV
+      # Response encoding methods using TLV::Serializable
 
-      private def encode_status_response(response_id : UInt32, status : InteractionModel::StatusCode, group_id : UInt16, scene_id : UInt8) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        writer.start_structure(nil)
-        writer.put_unsigned_int(0_u8, status.value.to_u32)            # status
-        writer.put_unsigned_int(1_u8, group_id.to_u32, force_size: 2) # groupId
-        writer.put_unsigned_int(2_u8, scene_id.to_u32)                # sceneId
-        writer.end_container
-
-        io.to_slice
+      private def encode_status_response(status : InteractionModel::StatusCode, group_id : UInt16, scene_id : UInt8) : Bytes
+        SceneStatusResponse.new(status.value, group_id, scene_id).to_slice
       end
 
       private def encode_view_scene_response(status : InteractionModel::StatusCode, group_id : UInt16, scene_id : UInt8, scene : SceneData?) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        writer.start_structure(nil)
-        writer.put_unsigned_int(0_u8, status.value.to_u32)            # status
-        writer.put_unsigned_int(1_u8, group_id.to_u32, force_size: 2) # groupId
-        writer.put_unsigned_int(2_u8, scene_id.to_u32)                # sceneId
-
         if scene && status == InteractionModel::StatusCode::Success
-          writer.put_unsigned_int(3_u8, scene.transition_time, force_size: 4) # transitionTime
-          writer.put(4_u8, scene.scene_name)                                  # sceneName
-          # extensionFieldSetStructs (5) - empty array for now
-          writer.start_array(5_u8)
-          writer.end_container
+          ViewSceneResponseTlv.new(
+            status: status.value,
+            group_id: group_id,
+            scene_id: scene_id,
+            transition_time: scene.transition_time,
+            scene_name: scene.scene_name,
+            extension_field_sets: [] of TLV::Any
+          ).to_slice
+        else
+          ViewSceneResponseTlv.new(
+            status: status.value,
+            group_id: group_id,
+            scene_id: scene_id
+          ).to_slice
         end
-
-        writer.end_container
-        io.to_slice
       end
 
       private def encode_remove_all_response(status : InteractionModel::StatusCode, group_id : UInt16) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        writer.start_structure(nil)
-        writer.put_unsigned_int(0_u8, status.value.to_u32)            # status
-        writer.put_unsigned_int(1_u8, group_id.to_u32, force_size: 2) # groupId
-        writer.end_container
-
-        io.to_slice
+        RemoveAllScenesResponse.new(status.value, group_id).to_slice
       end
 
       private def encode_membership_response(status : InteractionModel::StatusCode, capacity : UInt8?, group_id : UInt16, scene_list : Array(UInt8)?) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        writer.start_structure(nil)
-        writer.put_unsigned_int(0_u8, status.value.to_u32) # status
-
-        if capacity
-          writer.put_unsigned_int(1_u8, capacity.to_u32) # capacity
-        else
-          writer.put(1_u8, nil) # null capacity
-        end
-
-        writer.put_unsigned_int(2_u8, group_id.to_u32, force_size: 2) # groupId
-
-        if scene_list && status == InteractionModel::StatusCode::Success
-          writer.start_array(3_u8)
-          scene_list.each { |s| writer.put_unsigned_int(nil, s.to_u32) }
-          writer.end_container
-        end
-
-        writer.end_container
-        io.to_slice
+        list = if scene_list && status == InteractionModel::StatusCode::Success
+                 scene_list
+               else
+                 nil
+               end
+        GetSceneMembershipResponse.new(
+          status: status.value,
+          group_id: group_id,
+          capacity: capacity,
+          scene_list: list
+        ).to_slice
       end
 
       private def encode_copy_response(status : InteractionModel::StatusCode, group_from : UInt16, scene_from : UInt8) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        writer.start_structure(nil)
-        writer.put_unsigned_int(0_u8, status.value.to_u32)              # status
-        writer.put_unsigned_int(1_u8, group_from.to_u32, force_size: 2) # groupIdentifierFrom
-        writer.put_unsigned_int(2_u8, scene_from.to_u32)                # sceneIdentifierFrom
-        writer.end_container
-
-        io.to_slice
+        CopySceneResponse.new(status.value, group_from, scene_from).to_slice
       end
 
       # Public API

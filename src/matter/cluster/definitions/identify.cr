@@ -54,6 +54,9 @@ module Matter
 
           @[TLV::Field(tag: 0)]
           property identify_time : UInt16
+
+          def initialize(@identify_time : UInt16)
+          end
         end
 
         # Input to the Identify triggerEffect command
@@ -77,6 +80,9 @@ module Matter
           # Table 4. Values of the EffectVariant Field of the TriggerEffect Command
           @[TLV::Field(tag: 1)]
           property effect_variany : EffectVariant
+
+          def initialize(@effect_identifier : EffectIdentifier, @effect_variany : EffectVariant)
+          end
         end
 
         # This command is generated in response to receiving an IdentifyQuery command, see IdentifyQuery Command, in the

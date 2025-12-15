@@ -333,10 +333,9 @@ describe Matter::Cluster::DescriptorCluster do
         encoded.should be_a(Bytes)
         encoded.as(Bytes).size.should be > 0
 
-        # Decode and verify empty
-        reader = TLV::Reader.new(encoded.as(Bytes))
-        data = reader.get
-        device_types = data["Any"].as(Array(TLV::Value))
+        # Decode and verify empty array
+        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        device_types = parsed.value.as(Array(TLV::Any))
         device_types.should be_empty
       end
 
@@ -353,28 +352,14 @@ describe Matter::Cluster::DescriptorCluster do
         encoded.should be_a(Bytes)
 
         # Decode and verify
-        reader = TLV::Reader.new(encoded.as(Bytes))
-        data = reader.get
-        device_types = data["Any"].as(Array(TLV::Value))
+        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        device_types = parsed.value.as(Array(TLV::Any))
         device_types.size.should eq(1)
 
-        device_type_hash = device_types[0].as(Hash(TLV::Tag, TLV::Value))
-
-        # Handle TLV encoding integers as smallest size
-        device_type_id = case device_type_hash[0_u8]
-                         when UInt8  then device_type_hash[0_u8].as(UInt8).to_u32
-                         when UInt16 then device_type_hash[0_u8].as(UInt16).to_u32
-                         when UInt32 then device_type_hash[0_u8].as(UInt32)
-                         else             raise "Unexpected type"
-                         end
-        device_type_id.should eq(0x0100_u32)
-
-        revision = case device_type_hash[1_u8]
-                   when UInt8  then device_type_hash[1_u8].as(UInt8).to_u16
-                   when UInt16 then device_type_hash[1_u8].as(UInt16)
-                   else             raise "Unexpected type"
-                   end
-        revision.should eq(2_u16)
+        # Parse the DeviceTypeStruct from the first element
+        dt = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.from_slice(device_types[0].to_slice)
+        dt.device_type.should eq(0x0100_u32)
+        dt.revision.should eq(2_u16)
       end
 
       it "encodes multiple device types" do
@@ -393,44 +378,19 @@ describe Matter::Cluster::DescriptorCluster do
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
 
         # Decode and verify
-        reader = TLV::Reader.new(encoded.as(Bytes))
-        data = reader.get
-        device_types = data["Any"].as(Array(TLV::Value))
+        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        device_types = parsed.value.as(Array(TLV::Any))
         device_types.size.should eq(2)
 
-        # First device type - handle integer size conversions
-        dt1 = device_types[0].as(Hash(TLV::Tag, TLV::Value))
-        dt1_id = case dt1[0_u8]
-                 when UInt8  then dt1[0_u8].as(UInt8).to_u32
-                 when UInt16 then dt1[0_u8].as(UInt16).to_u32
-                 when UInt32 then dt1[0_u8].as(UInt32)
-                 else             raise "Unexpected type"
-                 end
-        dt1_id.should eq(0x0016_u32)
-
-        dt1_rev = case dt1[1_u8]
-                  when UInt8  then dt1[1_u8].as(UInt8).to_u16
-                  when UInt16 then dt1[1_u8].as(UInt16)
-                  else             raise "Unexpected type"
-                  end
-        dt1_rev.should eq(1_u16)
+        # First device type
+        dt1 = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.from_slice(device_types[0].to_slice)
+        dt1.device_type.should eq(0x0016_u32)
+        dt1.revision.should eq(1_u16)
 
         # Second device type
-        dt2 = device_types[1].as(Hash(TLV::Tag, TLV::Value))
-        dt2_id = case dt2[0_u8]
-                 when UInt8  then dt2[0_u8].as(UInt8).to_u32
-                 when UInt16 then dt2[0_u8].as(UInt16).to_u32
-                 when UInt32 then dt2[0_u8].as(UInt32)
-                 else             raise "Unexpected type"
-                 end
-        dt2_id.should eq(0x000E_u32)
-
-        dt2_rev = case dt2[1_u8]
-                  when UInt8  then dt2[1_u8].as(UInt8).to_u16
-                  when UInt16 then dt2[1_u8].as(UInt16)
-                  else             raise "Unexpected type"
-                  end
-        dt2_rev.should eq(1_u16)
+        dt2 = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.from_slice(device_types[1].to_slice)
+        dt2.device_type.should eq(0x000E_u32)
+        dt2.revision.should eq(1_u16)
       end
     end
 
@@ -447,20 +407,12 @@ describe Matter::Cluster::DescriptorCluster do
         encoded.should be_a(Bytes)
 
         # Decode and verify
-        reader = TLV::Reader.new(encoded.as(Bytes))
-        data = reader.get
-        clusters = data["Any"].as(Array(TLV::Value))
+        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        clusters = parsed.value.as(Array(TLV::Any))
         clusters.size.should eq(3)
 
-        # Check cluster IDs (may be UInt8, UInt16, or UInt32 depending on TLV encoding)
-        cluster_ids = clusters.map do |c|
-          case c
-          when UInt8  then c.to_u32
-          when UInt16 then c.to_u32
-          when UInt32 then c
-          else             raise "Unexpected type"
-          end
-        end
+        # Check cluster IDs
+        cluster_ids = clusters.map { |c| c.value.as(Int).to_u32 }
 
         cluster_ids.should contain(0x001D_u32) # Descriptor
         cluster_ids.should contain(0x0006_u32) # On/Off
@@ -473,17 +425,11 @@ describe Matter::Cluster::DescriptorCluster do
 
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
 
-        reader = TLV::Reader.new(encoded.as(Bytes))
-        data = reader.get
-        clusters = data["Any"].as(Array(TLV::Value))
+        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        clusters = parsed.value.as(Array(TLV::Any))
         clusters.size.should eq(1) # Just Descriptor itself
 
-        cluster_id = case clusters[0]
-                     when UInt8  then clusters[0].as(UInt8).to_u32
-                     when UInt16 then clusters[0].as(UInt16).to_u32
-                     when UInt32 then clusters[0].as(UInt32)
-                     else             raise "Unexpected type"
-                     end
+        cluster_id = clusters[0].value.as(Int).to_u32
         cluster_id.should eq(0x001D_u32)
       end
     end
@@ -496,9 +442,8 @@ describe Matter::Cluster::DescriptorCluster do
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_CLIENT_LIST)
         encoded.should be_a(Bytes)
 
-        reader = TLV::Reader.new(encoded.as(Bytes))
-        data = reader.get
-        clusters = data["Any"].as(Array(TLV::Value))
+        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        clusters = parsed.value.as(Array(TLV::Any))
         clusters.should be_empty
       end
 
@@ -511,19 +456,11 @@ describe Matter::Cluster::DescriptorCluster do
 
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_CLIENT_LIST)
 
-        reader = TLV::Reader.new(encoded.as(Bytes))
-        data = reader.get
-        clusters = data["Any"].as(Array(TLV::Value))
+        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        clusters = parsed.value.as(Array(TLV::Any))
         clusters.size.should eq(2)
 
-        cluster_ids = clusters.map do |c|
-          case c
-          when UInt8  then c.to_u32
-          when UInt16 then c.to_u32
-          when UInt32 then c
-          else             raise "Unexpected type"
-          end
-        end
+        cluster_ids = clusters.map { |c| c.value.as(Int).to_u32 }
 
         cluster_ids.should contain(0x0006_u32)
         cluster_ids.should contain(0x0008_u32)
@@ -538,9 +475,8 @@ describe Matter::Cluster::DescriptorCluster do
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
         encoded.should be_a(Bytes)
 
-        reader = TLV::Reader.new(encoded.as(Bytes))
-        data = reader.get
-        parts = data["Any"].as(Array(TLV::Value))
+        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        parts = parsed.value.as(Array(TLV::Any))
         parts.should be_empty
       end
 
@@ -554,18 +490,11 @@ describe Matter::Cluster::DescriptorCluster do
 
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
 
-        reader = TLV::Reader.new(encoded.as(Bytes))
-        data = reader.get
-        parts = data["Any"].as(Array(TLV::Value))
+        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        parts = parsed.value.as(Array(TLV::Any))
         parts.size.should eq(3)
 
-        endpoint_ids = parts.map do |p|
-          case p
-          when UInt8  then p.to_u16
-          when UInt16 then p
-          else             raise "Unexpected type"
-          end
-        end
+        endpoint_ids = parts.map { |p| p.value.as(Int).to_u16 }
 
         endpoint_ids.should contain(1_u16)
         endpoint_ids.should contain(2_u16)
@@ -628,16 +557,14 @@ describe Matter::Cluster::DescriptorCluster do
 
         # Decode device types
         device_types = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-        reader = TLV::Reader.new(device_types.as(Bytes))
-        data = reader.get
-        dt_array = data["Any"].as(Array(TLV::Value))
+        parsed = TLV::Any.from_slice(device_types.as(Bytes))
+        dt_array = parsed.value.as(Array(TLV::Any))
         dt_array.size.should eq(1)
 
         # Decode servers
         servers = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-        reader = TLV::Reader.new(servers.as(Bytes))
-        data = reader.get
-        server_array = data["Any"].as(Array(TLV::Value))
+        parsed = TLV::Any.from_slice(servers.as(Bytes))
+        server_array = parsed.value.as(Array(TLV::Any))
         server_array.size.should eq(3) # Descriptor + Identify + On/Off
       end
     end

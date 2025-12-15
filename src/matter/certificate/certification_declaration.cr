@@ -17,6 +17,52 @@ module Matter
       # Subject Key Identifier for the test CMS signer certificate
       TEST_CMS_SIGNER_SKI = "62FA823359ACFAA9963E1CFA140ADDF504F37160"
 
+      # CD TLV content structure
+      # Based on Matter Core Spec section 6.3.1
+      struct CDContent
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property format_version : UInt8
+
+        @[TLV::Field(tag: 1, fixed_size: true)]
+        property vendor_id : UInt16
+
+        @[TLV::Field(tag: 2)]
+        property product_ids : Array(UInt16)
+
+        @[TLV::Field(tag: 3, fixed_size: true)]
+        property device_type_id : UInt32
+
+        @[TLV::Field(tag: 4)]
+        property certificate_id : String
+
+        @[TLV::Field(tag: 5)]
+        property security_level : UInt8
+
+        @[TLV::Field(tag: 6, fixed_size: true)]
+        property security_information : UInt16
+
+        @[TLV::Field(tag: 7, fixed_size: true)]
+        property version_number : UInt16
+
+        @[TLV::Field(tag: 8)]
+        property certification_type : UInt8
+
+        def initialize(
+          @format_version : UInt8,
+          @vendor_id : UInt16,
+          @product_ids : Array(UInt16),
+          @device_type_id : UInt32,
+          @certificate_id : String,
+          @security_level : UInt8,
+          @security_information : UInt16,
+          @version_number : UInt16,
+          @certification_type : UInt8,
+        )
+        end
+      end
+
       # Generate a Certification Declaration for a device
       def self.generate(vendor_id : UInt16, product_id : UInt16) : Bytes
         # Build CD content as TLV
@@ -28,48 +74,19 @@ module Matter
 
       # Build the CD TLV structure
       # Based on Matter Core Spec section 6.3.1
-      # Note: Matter spec uses 0-based field tags (0-8), not 1-based
-      # Note: Matter spec requires specific integer sizes - must use force_size
       private def self.build_cd_tlv(vendor_id : UInt16, product_id : UInt16) : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-
-        # Start structure (anonymous)
-        writer.start_structure(nil)
-
-        # Field 0: formatVersion (uint8)
-        writer.put_unsigned_int(0_u8, 1_u8)
-
-        # Field 1: vendorId (uint16)
-        writer.put_unsigned_int(1_u8, vendor_id, force_size: 2)
-
-        # Field 2: productIdArray (array of uint16)
-        writer.start_array(2_u8)
-        writer.put_unsigned_int(nil, product_id, force_size: 2)
-        writer.end_container
-
-        # Field 3: deviceTypeId (uint32 - MUST be 4 bytes)
-        writer.put_unsigned_int(3_u8, 22_u32, force_size: 4)
-
-        # Field 4: certificateId (string)
-        writer.put_string(4_u8, "CSA00000SWC00000-00")
-
-        # Field 5: securityLevel (uint8)
-        writer.put_unsigned_int(5_u8, 0_u8)
-
-        # Field 6: securityInformation (uint16 - MUST be 2 bytes)
-        writer.put_unsigned_int(6_u8, 0_u16, force_size: 2)
-
-        # Field 7: versionNumber (uint16 - MUST be 2 bytes)
-        writer.put_unsigned_int(7_u8, 1_u16, force_size: 2)
-
-        # Field 8: certificationType (uint8)
-        writer.put_unsigned_int(8_u8, 0_u8)
-
-        # End structure
-        writer.end_container
-
-        io.rewind.to_slice
+        content = CDContent.new(
+          format_version: 1_u8,
+          vendor_id: vendor_id,
+          product_ids: [product_id],
+          device_type_id: 22_u32,
+          certificate_id: "CSA00000SWC00000-00",
+          security_level: 0_u8,
+          security_information: 0_u16,
+          version_number: 1_u16,
+          certification_type: 0_u8
+        )
+        content.to_slice
       end
 
       # Build PKCS#7 SignedData ASN.1 structure

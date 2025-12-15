@@ -591,10 +591,7 @@ module Matter
       end
 
       private def encode_null : Bytes
-        io = IO::Memory.new
-        writer = TLV::Writer.new(io)
-        writer.put_null(nil)
-        io.rewind.to_slice
+        TLV::Any.new(nil, nil).to_slice
       end
     end
   end
