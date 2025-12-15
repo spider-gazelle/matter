@@ -103,18 +103,25 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_IDLE_MODE_DURATION
-          encode_uint32(@idle_mode_duration)
+          @idle_mode_duration.to_tlv
         when ATTR_ACTIVE_MODE_DURATION
-          encode_uint32(@active_mode_duration)
+          @active_mode_duration.to_tlv
         when ATTR_ACTIVE_MODE_THRESHOLD
-          encode_uint16(@active_mode_threshold)
+          @active_mode_threshold.to_tlv
         when ATTR_CLUSTER_REVISION
-          encode_uint16(3_u16) # Cluster revision 3 per Matter 1.4
+          3_u16.to_tlv # Cluster revision 3 per Matter 1.4
         when ATTR_FEATURE_MAP
           # No features enabled - this is an always-on device, not a true ICD
-          encode_uint32(0_u32)
+          0_u32.to_tlv
         when ATTR_ATTRIBUTE_LIST
-          encode_attribute_list
+          [
+            ATTR_IDLE_MODE_DURATION,
+            ATTR_ACTIVE_MODE_DURATION,
+            ATTR_ACTIVE_MODE_THRESHOLD,
+            ATTR_CLUSTER_REVISION,
+            ATTR_FEATURE_MAP,
+            ATTR_ATTRIBUTE_LIST,
+          ].to_tlv
         else
           super
         end
@@ -137,21 +144,6 @@ module Matter
         else
           super
         end
-      end
-
-      # Helper to encode attribute list
-      private def encode_attribute_list : Bytes
-        attr_ids = [
-          ATTR_IDLE_MODE_DURATION,
-          ATTR_ACTIVE_MODE_DURATION,
-          ATTR_ACTIVE_MODE_THRESHOLD,
-          ATTR_CLUSTER_REVISION,
-          ATTR_FEATURE_MAP,
-          ATTR_ATTRIBUTE_LIST,
-        ]
-
-        items = attr_ids.map { |id| TLV::Any.new(id, nil) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
       end
     end
 

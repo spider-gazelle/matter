@@ -165,15 +165,15 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_ACL
-          encode_acl_list
+          @acl.to_tlv
         when ATTR_EXTENSION
-          encode_extension_list
+          @extension.to_tlv
         when ATTR_SUBJECTS_PER_ACCESS_CONTROL_ENTRY
-          encode_uint16(@subjects_per_access_control_entry)
+          @subjects_per_access_control_entry.to_tlv
         when ATTR_TARGETS_PER_ACCESS_CONTROL_ENTRY
-          encode_uint16(@targets_per_access_control_entry)
+          @targets_per_access_control_entry.to_tlv
         when ATTR_ACCESS_CONTROL_ENTRIES_PER_FABRIC
-          encode_uint16(@access_control_entries_per_fabric)
+          @access_control_entries_per_fabric.to_tlv
         else
           super
         end
@@ -258,13 +258,6 @@ module Matter
         increment_version
       end
 
-      # Encode ACL list as TLV array
-      private def encode_acl_list : Bytes
-        # AccessControlEntry has TLV::Serializable, use it directly
-        items = @acl.map { |entry| TLV::Any.from_slice(entry.to_slice) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
-      end
-
       # Decode ACL list from TLV array
       private def decode_acl_list(value : Bytes) : InteractionModel::Status
         begin
@@ -343,13 +336,6 @@ module Matter
         end
       end
 
-      # Encode Extension list as TLV array
-      private def encode_extension_list : Bytes
-        # ExtensionEntry has TLV::Serializable, use it directly
-        items = @extension.map { |entry| TLV::Any.from_slice(entry.to_slice) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
-      end
-
       # Decode Extension list from TLV array
       private def decode_extension_list(value : Bytes) : InteractionModel::Status
         begin
@@ -376,11 +362,6 @@ module Matter
         rescue ex
           InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
         end
-      end
-
-      # Helper: Encode UInt16 as TLV bytes
-      private def encode_uint16(value : UInt16) : Bytes
-        TLV::Any.new(value, nil).to_slice
       end
     end
   end

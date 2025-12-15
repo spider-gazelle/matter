@@ -494,34 +494,25 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_MAX_NETWORKS
-          encode_uint8(@max_networks)
+          @max_networks.to_tlv
         when ATTR_SCAN_MAX_TIME_SECONDS
-          encode_uint8(@scan_max_time_seconds)
+          @scan_max_time_seconds.to_tlv
         when ATTR_CONNECT_MAX_TIME_SECONDS
-          encode_uint8(@connect_max_time_seconds)
+          @connect_max_time_seconds.to_tlv
         when ATTR_INTERFACE_ENABLED
-          encode_bool(@interface_enabled)
+          @interface_enabled.to_tlv
         when ATTR_LAST_NETWORKING_STATUS
-          if status = @last_networking_status
-            encode_uint8(status.value)
-          else
-            Bytes.new(0) # Null
-          end
+          @last_networking_status.try(&.value).to_tlv
         when ATTR_LAST_NETWORK_ID
-          @last_network_id || Bytes.new(0) # Null
+          @last_network_id.to_tlv
         when ATTR_LAST_CONNECT_ERROR_VALUE
-          if error = @last_connect_error_value
-            encode_int32(error)
-          else
-            Bytes.new(0) # Null
-          end
+          @last_connect_error_value.to_tlv
         when ATTR_NETWORKS
           encode_networks
         when ATTR_FEATURE_MAP
-          # Return the feature map (WiFi=0x01, Thread=0x02, Ethernet=0x04)
-          encode_uint32(@feature_map.value)
+          @feature_map.value.to_tlv
         when ATTR_CLUSTER_REVISION
-          encode_uint16(1_u16) # Cluster revision 1
+          1_u16.to_tlv # Cluster revision 1
         else
           super
         end
@@ -529,16 +520,12 @@ module Matter
 
       # Encode the Networks attribute as TLV array
       private def encode_networks : Bytes
-        network_infos = @networks.map do |network|
+        @networks.map do |network|
           Definitions::NetworkCommissioning::NetworkInformation.new(
             network_id: network.network_id,
             connected: network.connected
           )
-        end
-
-        # Encode array of NetworkInformation structs
-        items = network_infos.map { |info| TLV::Any.from_slice(info.to_slice) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
+        end.to_tlv
       end
 
       # NOTE: encode_uint16 and encode_uint32 are inherited from Base class
@@ -1207,14 +1194,6 @@ module Matter
       # Helper: Check if network exists
       def has_network?(network_id : Bytes) : Bool
         @networks.any? { |n| n.network_id == network_id }
-      end
-
-      # NOTE: encode_uint8, encode_bool inherited from Base class with proper TLV encoding
-      # Do NOT override them with raw byte encoding
-
-      # encode_int32 uses TLV encoding for attribute responses
-      private def encode_int32(value : Int32) : Bytes
-        TLV::Any.new(value, nil).to_slice
       end
     end
 

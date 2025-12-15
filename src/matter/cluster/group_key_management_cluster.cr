@@ -351,49 +351,30 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_GROUP_KEY_MAP
-          encode_group_key_map(fabric_index || 0_u8)
+          group_key_map(fabric_index || 0_u8).to_tlv
         when ATTR_GROUP_TABLE
-          encode_group_table(fabric_index || 0_u8)
+          group_table(fabric_index || 0_u8).to_tlv
         when ATTR_MAX_GROUPS_PER_FABRIC
-          encode_uint16(@max_groups_per_fabric)
+          @max_groups_per_fabric.to_tlv
         when ATTR_MAX_GROUP_KEYS_PER_FABRIC
-          encode_uint16(@max_group_keys_per_fabric)
+          @max_group_keys_per_fabric.to_tlv
         when CLUSTER_REVISION
-          encode_uint16(2_u16) # GroupKeyManagement cluster revision
+          2_u16.to_tlv # GroupKeyManagement cluster revision
         when FEATURE_MAP
-          encode_uint32(@features.value)
+          @features.value.to_tlv
         when ATTRIBUTE_LIST
-          encode_attribute_list
+          [
+            ATTR_GROUP_KEY_MAP,
+            ATTR_GROUP_TABLE,
+            ATTR_MAX_GROUPS_PER_FABRIC,
+            ATTR_MAX_GROUP_KEYS_PER_FABRIC,
+            CLUSTER_REVISION,
+            FEATURE_MAP,
+            ATTRIBUTE_LIST,
+          ].to_tlv
         else
           super
         end
-      end
-
-      private def encode_group_key_map(fabric_index : UInt8) : Bytes
-        entries = group_key_map(fabric_index)
-        items = entries.map { |entry| TLV::Any.from_slice(entry.to_slice) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
-      end
-
-      private def encode_group_table(fabric_index : UInt8) : Bytes
-        entries = group_table(fabric_index)
-        items = entries.map { |entry| TLV::Any.from_slice(entry.to_slice) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
-      end
-
-      private def encode_attribute_list : Bytes
-        attr_ids = [
-          ATTR_GROUP_KEY_MAP,
-          ATTR_GROUP_TABLE,
-          ATTR_MAX_GROUPS_PER_FABRIC,
-          ATTR_MAX_GROUP_KEYS_PER_FABRIC,
-          CLUSTER_REVISION,
-          FEATURE_MAP,
-          ATTRIBUTE_LIST,
-        ]
-
-        items = attr_ids.map { |id| TLV::Any.new(id, nil) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       # Get group key map for the specified fabric

@@ -104,19 +104,27 @@ module Matter
         case attribute_id
         when ATTR_DEFAULT_OTA_PROVIDERS
           # Return empty list - no default OTA providers configured
-          encode_empty_array
+          ([] of UInt8).to_tlv
         when ATTR_UPDATE_POSSIBLE
-          encode_bool(@update_possible)
+          @update_possible.to_tlv
         when ATTR_UPDATE_STATE
-          encode_uint8(@update_state.value)
+          @update_state.value.to_tlv
         when ATTR_UPDATE_STATE_PROGRESS
-          encode_nullable_uint8(@update_state_progress)
+          @update_state_progress.to_tlv
         when ATTR_CLUSTER_REVISION
-          encode_uint16(1_u16) # Cluster revision 1
+          1_u16.to_tlv # Cluster revision 1
         when ATTR_FEATURE_MAP
-          encode_uint32(0_u32) # No features
+          0_u32.to_tlv # No features
         when ATTR_ATTRIBUTE_LIST
-          encode_attribute_list
+          [
+            ATTR_DEFAULT_OTA_PROVIDERS,
+            ATTR_UPDATE_POSSIBLE,
+            ATTR_UPDATE_STATE,
+            ATTR_UPDATE_STATE_PROGRESS,
+            ATTR_CLUSTER_REVISION,
+            ATTR_FEATURE_MAP,
+            ATTR_ATTRIBUTE_LIST,
+          ].to_tlv
         else
           super
         end
@@ -144,32 +152,6 @@ module Matter
         else
           super
         end
-      end
-
-      # Helper to encode empty array
-      private def encode_empty_array : Bytes
-        TLV::Any.new([] of TLV::Any, nil, as_array: true).to_slice
-      end
-
-      # Helper to encode nullable uint8
-      private def encode_nullable_uint8(value : UInt8?) : Bytes
-        TLV::Any.new(value, nil).to_slice
-      end
-
-      # Helper to encode attribute list
-      private def encode_attribute_list : Bytes
-        attr_ids = [
-          ATTR_DEFAULT_OTA_PROVIDERS,
-          ATTR_UPDATE_POSSIBLE,
-          ATTR_UPDATE_STATE,
-          ATTR_UPDATE_STATE_PROGRESS,
-          ATTR_CLUSTER_REVISION,
-          ATTR_FEATURE_MAP,
-          ATTR_ATTRIBUTE_LIST,
-        ]
-
-        items = attr_ids.map { |id| TLV::Any.new(id, nil) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
       end
     end
 

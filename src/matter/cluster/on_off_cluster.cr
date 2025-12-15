@@ -246,8 +246,7 @@ module Matter
         attr_ids << FEATURE_MAP
         attr_ids << CLUSTER_REVISION
 
-        items = attr_ids.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
+        attr_ids.to_tlv
       end
 
       # Encode list of accepted command IDs as TLV array
@@ -267,14 +266,13 @@ module Matter
           cmd_ids << CMD_ON_WITH_TIMED_OFF
         end
 
-        items = cmd_ids.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
+        cmd_ids.to_tlv
       end
 
       # Encode list of generated command IDs as TLV array (empty for OnOff)
       private def encode_generated_command_list : Bytes
         # OnOff cluster doesn't generate any response commands
-        TLV::Any.new([] of TLV::Any, nil, as_array: true).to_slice
+        ([] of UInt32).to_tlv
       end
 
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status

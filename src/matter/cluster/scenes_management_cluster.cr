@@ -421,22 +421,22 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_SCENE_TABLE_SIZE
-          encode_uint16(@scene_table_size)
+          @scene_table_size.to_tlv
         when ATTR_FABRIC_SCENE_INFO
           encode_fabric_scene_info(fabric_index || 1_u8)
         when FEATURE_MAP_ATTR
-          encode_uint32(@feature_map.value)
+          @feature_map.value.to_tlv
         else
           super(attribute_id, fabric_index)
         end
       end
 
       protected def encode_cluster_revision_global : Bytes
-        encode_uint16(1_u16) # ScenesManagement revision 1
+        1_u16.to_tlv # ScenesManagement revision 1
       end
 
       protected def encode_feature_map_global : Bytes
-        encode_uint32(@feature_map.value)
+        @feature_map.value.to_tlv
       end
 
       # Encode FabricSceneInfo as TLV array
@@ -454,7 +454,7 @@ module Matter
         )
 
         # Wrap in array
-        TLV::Any.new([TLV::Any.from_slice(tlv_info.to_slice)], nil, as_array: true).to_slice
+        [tlv_info].to_tlv
       end
 
       protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse

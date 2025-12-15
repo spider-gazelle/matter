@@ -110,9 +110,9 @@ module Matter
         when ATTR_PARTS_LIST
           encode_parts_list
         when CLUSTER_REVISION
-          encode_uint16(2_u16) # Descriptor cluster revision 2
+          2_u16.to_tlv # Descriptor cluster revision 2
         when FEATURE_MAP
-          encode_uint32(0_u32) # No features for Descriptor cluster
+          0_u32.to_tlv # No features for Descriptor cluster
         when ATTRIBUTE_LIST
           encode_attribute_list
         else
@@ -124,7 +124,7 @@ module Matter
       private def encode_attribute_list : Bytes
         # All supported attribute IDs including global attributes
         # Order: cluster-specific first, then global attributes
-        attr_ids = [
+        [
           ATTR_DEVICE_TYPE_LIST,
           ATTR_SERVER_LIST,
           ATTR_CLIENT_LIST,
@@ -135,12 +135,7 @@ module Matter
           ATTRIBUTE_LIST,                # 0xFFFB
           FEATURE_MAP,                   # 0xFFFC
           CLUSTER_REVISION,              # 0xFFFD
-        ]
-
-        # Attribute IDs must be encoded as UInt32 per Matter spec
-        # IMPORTANT: Must use as_array: true to encode as TLV Array (0x16), not List (0x17)
-        items = attr_ids.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
+        ].to_tlv
       end
 
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
@@ -221,27 +216,20 @@ module Matter
 
       # Encode device type list as TLV array
       # DeviceTypeStruct uses fixed_size: true for proper Matter spec encoding
-      # IMPORTANT: Must use as_array: true to encode as TLV Array (0x16), not List (0x17)
       private def encode_device_type_list : Bytes
-        items = @device_type_list.map { |dt| TLV::Any.from_slice(dt.to_slice) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
+        @device_type_list.to_tlv
       end
 
       # Encode cluster list (server or client) as TLV array
-      # IMPORTANT: Cluster IDs MUST be encoded as UInt32 per Matter spec,
-      # even if the value fits in a smaller type. iOS is strict about this.
-      # IMPORTANT: Must use as_array: true to encode as TLV Array (0x16), not List (0x17)
+      # Cluster IDs are encoded as UInt32 per Matter spec
       private def encode_cluster_list(list : Array(UInt32)) : Bytes
-        items = list.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
+        list.to_tlv
       end
 
       # Encode parts list as TLV array
-      # IMPORTANT: Endpoint IDs MUST be encoded as UInt16 per Matter spec.
-      # IMPORTANT: Must use as_array: true to encode as TLV Array (0x16), not List (0x17)
+      # Endpoint IDs are encoded as UInt16 per Matter spec
       private def encode_parts_list : Bytes
-        items = @parts_list.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
+        @parts_list.to_tlv
       end
     end
   end

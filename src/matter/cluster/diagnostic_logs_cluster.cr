@@ -111,37 +111,24 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when CLUSTER_REVISION
-          encode_uint16(1_u16) # DiagnosticLogs cluster revision 1
+          1_u16.to_tlv # DiagnosticLogs cluster revision 1
         when FEATURE_MAP
-          encode_uint32(0_u32) # No features
+          0_u32.to_tlv # No features
         when ATTRIBUTE_LIST
-          encode_attribute_list
+          [
+            GENERATED_COMMAND_LIST,
+            ACCEPTED_COMMAND_LIST,
+            ATTRIBUTE_LIST,
+            FEATURE_MAP,
+            CLUSTER_REVISION,
+          ].to_tlv
         when ACCEPTED_COMMAND_LIST
-          encode_command_list([CMD_RETRIEVE_LOGS_REQUEST])
+          [CMD_RETRIEVE_LOGS_REQUEST].to_tlv
         when GENERATED_COMMAND_LIST
-          encode_command_list([CMD_RETRIEVE_LOGS_RESPONSE])
+          [CMD_RETRIEVE_LOGS_RESPONSE].to_tlv
         else
           super
         end
-      end
-
-      private def encode_attribute_list : Bytes
-        # Global attributes only
-        attr_ids = [
-          GENERATED_COMMAND_LIST,
-          ACCEPTED_COMMAND_LIST,
-          ATTRIBUTE_LIST,
-          FEATURE_MAP,
-          CLUSTER_REVISION,
-        ]
-
-        items = attr_ids.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
-      end
-
-      private def encode_command_list(cmd_ids : Array(UInt32)) : Bytes
-        items = cmd_ids.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
       end
 
       protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse

@@ -148,44 +148,35 @@ module Matter
 
       # Encode FeatureMap - override in subclass if cluster has features
       protected def encode_feature_map_global : Bytes
-        encode_uint32(0_u32) # Default: no features
+        0_u32.to_tlv # Default: no features
       end
 
       # Encode ClusterRevision - override in subclass for specific revision
       protected def encode_cluster_revision_global : Bytes
-        encode_uint16(1_u16) # Default: revision 1
+        1_u16.to_tlv # Default: revision 1
       end
 
       # Encode AttributeList - override in subclass for custom handling
       protected def encode_attribute_list_global : Bytes
-        list = TLV::List.new
-        # Add all cluster-specific attributes
-        attributes.each do |attr|
-          list << TLV::Any.new(attr.id.id, nil, fixed_size: true)
-        end
-        # Add global attributes
-        list << TLV::Any.new(GLOBAL_GENERATED_COMMAND_LIST, nil, fixed_size: true)
-        list << TLV::Any.new(GLOBAL_ACCEPTED_COMMAND_LIST, nil, fixed_size: true)
-        list << TLV::Any.new(GLOBAL_ATTRIBUTE_LIST, nil, fixed_size: true)
-        list << TLV::Any.new(GLOBAL_FEATURE_MAP, nil, fixed_size: true)
-        list << TLV::Any.new(GLOBAL_CLUSTER_REVISION, nil, fixed_size: true)
-
-        TLV::Any.new(list, nil, as_array: true).to_slice
+        # Collect all attribute IDs (cluster-specific + global)
+        attr_ids = attributes.map(&.id.id)
+        attr_ids << GLOBAL_GENERATED_COMMAND_LIST
+        attr_ids << GLOBAL_ACCEPTED_COMMAND_LIST
+        attr_ids << GLOBAL_ATTRIBUTE_LIST
+        attr_ids << GLOBAL_FEATURE_MAP
+        attr_ids << GLOBAL_CLUSTER_REVISION
+        attr_ids.to_tlv
       end
 
       # Encode AcceptedCommandList - override in subclass for custom handling
       protected def encode_accepted_command_list_global : Bytes
-        list = TLV::List.new
-        commands.each do |cmd|
-          list << TLV::Any.new(cmd.id.id, nil, fixed_size: true)
-        end
-        TLV::Any.new(list, nil, as_array: true).to_slice
+        commands.map(&.id.id).to_tlv
       end
 
       # Encode GeneratedCommandList - override in subclass to add generated commands
       protected def encode_generated_command_list_global : Bytes
         # Default: empty array (no generated commands)
-        TLV::Any.new(TLV::List.new, nil, as_array: true).to_slice
+        ([] of UInt32).to_tlv
       end
 
       # Write an attribute value
@@ -261,28 +252,34 @@ module Matter
       end
 
       # Helper methods for encoding simple values
+      # @deprecated Use `value.to_tlv` instead
       protected def encode_uint8(value : UInt8) : Bytes
-        TLV::Any.new(value, nil).to_slice
+        value.to_tlv
       end
 
+      # @deprecated Use `value.to_tlv` instead
       protected def encode_uint16(value : UInt16) : Bytes
-        TLV::Any.new(value, nil).to_slice
+        value.to_tlv
       end
 
+      # @deprecated Use `value.to_tlv` instead
       protected def encode_uint32(value : UInt32) : Bytes
-        TLV::Any.new(value, nil).to_slice
+        value.to_tlv
       end
 
+      # @deprecated Use `value.to_tlv` instead
       protected def encode_bool(value : Bool) : Bytes
-        TLV::Any.new(value, nil).to_slice
+        value.to_tlv
       end
 
+      # @deprecated Use `nil.to_tlv` instead
       protected def encode_null : Bytes
-        TLV::Any.new(nil, nil).to_slice
+        nil.to_tlv
       end
 
+      # @deprecated Use `value.to_tlv` instead
       protected def encode_int16(value : Int16) : Bytes
-        TLV::Any.new(value, nil).to_slice
+        value.to_tlv
       end
     end
   end

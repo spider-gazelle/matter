@@ -193,31 +193,30 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_NETWORK_INTERFACES
-          encode_network_interfaces
+          @network_interfaces.to_tlv
         when ATTR_REBOOT_COUNT
-          encode_uint16(@reboot_count)
+          @reboot_count.to_tlv
         when ATTR_UP_TIME
           # Calculate uptime in seconds since start
-          uptime_seconds = (Time.utc - @start_time).total_seconds.to_u64
-          encode_uint64(uptime_seconds)
+          (Time.utc - @start_time).total_seconds.to_u64.to_tlv
         when ATTR_TOTAL_OPERATIONAL_HOURS
           # Calculate hours from uptime
           uptime_hours = ((Time.utc - @start_time).total_hours).to_u32
-          encode_uint32(@total_operational_hours + uptime_hours)
+          (@total_operational_hours + uptime_hours).to_tlv
         when ATTR_BOOT_REASON
-          encode_uint8(@boot_reason.value)
+          @boot_reason.value.to_tlv
         when ATTR_ACTIVE_HARDWARE_FAULTS
-          encode_fault_array(@active_hardware_faults.map(&.value))
+          @active_hardware_faults.map(&.value).to_tlv
         when ATTR_ACTIVE_RADIO_FAULTS
-          encode_fault_array(@active_radio_faults.map(&.value))
+          @active_radio_faults.map(&.value).to_tlv
         when ATTR_ACTIVE_NETWORK_FAULTS
-          encode_fault_array(@active_network_faults.map(&.value))
+          @active_network_faults.map(&.value).to_tlv
         when ATTR_TEST_EVENT_TRIGGERS_ENABLED
-          encode_bool(@test_event_triggers_enabled)
+          @test_event_triggers_enabled.to_tlv
         when ATTR_CLUSTER_REVISION
-          encode_uint16(1_u16) # Cluster revision 1
+          1_u16.to_tlv # Cluster revision 1
         when ATTR_FEATURE_MAP
-          encode_uint32(0_u32) # No features
+          0_u32.to_tlv # No features
         when ATTR_ATTRIBUTE_LIST
           encode_attribute_list
         else
@@ -247,21 +246,9 @@ module Matter
         increment_version
       end
 
-      # Helper to encode network interfaces as TLV array
-      private def encode_network_interfaces : Bytes
-        items = @network_interfaces.map { |iface| TLV::Any.from_slice(iface.to_slice) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
-      end
-
-      # Helper to encode fault array
-      private def encode_fault_array(faults : Array(UInt8)) : Bytes
-        items = faults.map { |f| TLV::Any.new(f, nil) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
-      end
-
       # Helper to encode attribute list
       private def encode_attribute_list : Bytes
-        attr_ids = [
+        [
           ATTR_NETWORK_INTERFACES,
           ATTR_REBOOT_COUNT,
           ATTR_UP_TIME,
@@ -274,18 +261,7 @@ module Matter
           ATTR_CLUSTER_REVISION,
           ATTR_FEATURE_MAP,
           ATTR_ATTRIBUTE_LIST,
-        ]
-
-        items = attr_ids.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
-      end
-
-      # NOTE: encode_uint16, encode_uint32 inherited from Base class with proper TLV encoding
-      # Do NOT override them with raw byte encoding
-
-      # encode_uint64 uses TLV encoding for attribute responses
-      private def encode_uint64(value : UInt64) : Bytes
-        TLV::Any.new(value, nil).to_slice
+        ].to_tlv
       end
     end
 

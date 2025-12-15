@@ -190,61 +190,41 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_PHY_RATE
-          if rate = @phy_rate
-            encode_uint8(rate.value)
-          else
-            encode_null
-          end
+          @phy_rate.try(&.value).to_tlv
         when ATTR_FULL_DUPLEX
-          if fd = @full_duplex
-            encode_bool(fd)
-          else
-            encode_null
-          end
+          @full_duplex.to_tlv
         when ATTR_PACKET_RX_COUNT
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.packet_counts?
-          encode_uint64(@packet_rx_count)
+          @packet_rx_count.to_tlv
         when ATTR_PACKET_TX_COUNT
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.packet_counts?
-          encode_uint64(@packet_tx_count)
+          @packet_tx_count.to_tlv
         when ATTR_TX_ERR_COUNT
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.error_counts?
-          encode_uint64(@tx_err_count)
+          @tx_err_count.to_tlv
         when ATTR_COLLISION_COUNT
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.error_counts?
-          encode_uint64(@collision_count)
+          @collision_count.to_tlv
         when ATTR_OVERRUN_COUNT
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.error_counts?
-          encode_uint64(@overrun_count)
+          @overrun_count.to_tlv
         when ATTR_CARRIER_DETECT
-          if cd = @carrier_detect
-            encode_bool(cd)
-          else
-            encode_null
-          end
+          @carrier_detect.to_tlv
         when ATTR_TIME_SINCE_RESET
-          encode_uint64(time_since_reset)
+          time_since_reset.to_tlv
         when CLUSTER_REVISION
-          encode_uint16(1_u16) # EthernetNetworkDiagnostics cluster revision 1
+          1_u16.to_tlv # EthernetNetworkDiagnostics cluster revision 1
         when FEATURE_MAP
-          encode_uint32(@feature_map.value)
+          @feature_map.value.to_tlv
         when ATTRIBUTE_LIST
           encode_attribute_list
         when ACCEPTED_COMMAND_LIST
           encode_accepted_command_list
         when GENERATED_COMMAND_LIST
-          encode_generated_command_list
+          ([] of UInt32).to_tlv
         else
           super
         end
-      end
-
-      private def encode_null : Bytes
-        TLV::Any.new(nil, nil).to_slice
-      end
-
-      private def encode_uint64(value : UInt64) : Bytes
-        TLV::Any.new(value, nil).to_slice
       end
 
       private def time_since_reset : UInt64
@@ -276,8 +256,7 @@ module Matter
         attr_ids << FEATURE_MAP
         attr_ids << CLUSTER_REVISION
 
-        items = attr_ids.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
+        attr_ids.to_tlv
       end
 
       private def encode_accepted_command_list : Bytes
@@ -285,14 +264,7 @@ module Matter
         if @feature_map.packet_counts? || @feature_map.error_counts?
           cmd_ids << CMD_RESET_COUNTS
         end
-
-        items = cmd_ids.map { |id| TLV::Any.new(id, nil, fixed_size: true) }
-        TLV::Any.new(items, nil, as_array: true).to_slice
-      end
-
-      private def encode_generated_command_list : Bytes
-        # No generated commands
-        TLV::Any.new([] of TLV::Any, nil, as_array: true).to_slice
+        cmd_ids.to_tlv
       end
 
       protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse

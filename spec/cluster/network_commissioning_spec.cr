@@ -124,7 +124,9 @@ describe Matter::Cluster::NetworkCommissioningCluster do
 
       value = cluster.read_attribute(Matter::Cluster::NetworkCommissioningCluster::ATTR_LAST_NETWORKING_STATUS)
       value.should be_a(Bytes)
-      value.as(Bytes).should eq(Bytes.new(0))
+      # TLV null encoding - parse and check it's a null type
+      tlv = TLV::Any.from_slice(value.as(Bytes))
+      tlv.as_nil.should be_nil
     end
 
     it "returns status for unsupported attribute write" do
