@@ -328,6 +328,10 @@ module Matter
       # This allows the application to save fabric state and trigger operational advertisement
       @on_fabric_added : Proc(Fabric, Nil)? = nil
 
+      # Callback fired when a fabric is removed via RemoveFabric
+      # This allows the application to update persistent storage and stop operational advertisement
+      @on_fabric_removed : Proc(UInt8, Nil)? = nil
+
       getter fabric_table : FabricTable
       property current_fabric_index : UInt8
       property session_id : UInt64?
@@ -342,6 +346,7 @@ module Matter
 
       property session_lookup : Proc(UInt64, Bytes?)?
       property on_fabric_added : Proc(Fabric, Nil)?
+      property on_fabric_removed : Proc(UInt8, Nil)?
       property general_commissioning_cluster : GeneralCommissioningCluster?
 
       # CurrentFabricIndex helper method (returns passed value or stored value)
@@ -985,6 +990,21 @@ module Matter
           # Remove ACL entries for this fabric
           if acl_cluster = @access_control_cluster
             acl_cluster.remove_fabric_acl(fabric_idx)
+          end
+
+          # Notify application that fabric was removed
+          # This allows the application to update persistent storage and stop operational advertisement
+          Log.info { "RemoveFabric: About to call on_fabric_removed callback (callback set: #{!@on_fabric_removed.nil?})" }
+          if callback = @on_fabric_removed
+            Log.info { "RemoveFabric: Calling on_fabric_removed callback for fabric #{fabric_idx}" }
+            begin
+              callback.call(fabric_idx)
+              Log.info { "RemoveFabric: on_fabric_removed callback completed successfully" }
+            rescue ex
+              Log.error { "RemoveFabric: on_fabric_removed callback raised exception: #{ex.message}" }
+            end
+          else
+            Log.warn { "RemoveFabric: No on_fabric_removed callback registered!" }
           end
 
           increment_version

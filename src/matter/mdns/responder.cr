@@ -252,6 +252,16 @@ module Matter
         end
       end
 
+      # Stop all operational advertisements
+      def stop_operational_advertisement : Nil
+        # Find and remove all operational services
+        operational_instances = @advertised_services.select { |_, v| v[0] == ServiceType::Operational }.keys
+        operational_instances.each do |instance|
+          Log.info { "Stopping operational advertisement for: #{instance}" }
+          send_goodbye(ServiceType::Operational, instance)
+        end
+      end
+
       # Send goodbye announcement (TTL=0) to remove service
       def send_goodbye(service_type : ServiceType, instance : String) : Nil
         service = ServiceNames.service_name(service_type)

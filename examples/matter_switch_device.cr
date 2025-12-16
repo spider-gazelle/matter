@@ -155,6 +155,12 @@ module MatterSwitch
       @fabrics << fabric
     end
 
+    def remove_fabric(fabric_index : UInt8) : Bool
+      original_size = @fabrics.size
+      @fabrics.reject! { |f| f.fabric_index == fabric_index }
+      @fabrics.size < original_size
+    end
+
     def empty?
       @fabrics.empty?
     end
@@ -210,6 +216,10 @@ module MatterSwitch
 
     def add_session(session : Matter::Session::SecureContext)
       @sessions[session.session_id] = session
+    end
+
+    def remove_session(session_id : UInt16) : Bool
+      @sessions.delete(session_id) != nil
     end
 
     def get(session_id : UInt16) : Matter::Session::SecureContext?
@@ -655,6 +665,10 @@ module MatterSwitch
         handle_fabric_added(fabric)
       }
 
+      @operational_credentials.on_fabric_removed = ->(fabric_index : UInt8) {
+        handle_fabric_removed(fabric_index)
+      }
+
       # Configure failsafe armed callback to reset OperationalCredentials state
       # When a new failsafe is armed (new commissioning session), we need to reset
       # OperationalCredentials failsafe context to avoid "Cannot generate CSR after AddNOC"
@@ -909,6 +923,75 @@ module MatterSwitch
       puts "   Node ID: 0x#{fabric.node_id.to_s(16).upcase.rjust(16, '0')}"
       puts ""
       puts "✅ Commissioning Complete! Device is now operational."
+      puts ""
+    end
+
+    def handle_fabric_removed(fabric_index : UInt8)
+      puts ""
+      puts "🗑️  Fabric Removed!"
+      puts "   Fabric Index: #{fabric_index}"
+      puts ""
+
+      # 1. Remove fabric from persistent storage
+      if @fabric_storage.remove_fabric(fabric_index)
+        @fabric_storage.save(FABRIC_FILE)
+        puts "💾 Fabric removed from #{FABRIC_FILE}"
+      else
+        puts "⚠️  Fabric #{fabric_index} not found in storage"
+      end
+
+      # 2. Remove all CASE sessions associated with this fabric
+      sessions_to_remove = @message_handler.sessions.select { |_, session| session.fabric_index == fabric_index }
+      session_ids_removed = [] of UInt16
+      sessions_to_remove.each do |session_id, _|
+        @message_handler.sessions.delete(session_id)
+        @session_storage.remove_session(session_id)
+        session_ids_removed << session_id
+      end
+      if !session_ids_removed.empty?
+        @session_storage.save(SESSION_FILE)
+        puts "🗑️  Removed #{session_ids_removed.size} session(s): #{session_ids_removed.join(", ")}"
+      end
+
+      # 3. Remove all subscriptions that used those sessions
+      subscriptions_to_remove = @message_handler.active_subscriptions.select do |_, sub|
+        session_ids_removed.includes?(sub.session.session_id)
+      end
+      sub_ids_removed = [] of UInt32
+      subscriptions_to_remove.each do |sub_id, _|
+        @message_handler.active_subscriptions.delete(sub_id)
+        @subscription_storage.remove(sub_id)
+        sub_ids_removed << sub_id
+      end
+      if !sub_ids_removed.empty?
+        @subscription_storage.save(SUBSCRIPTION_FILE)
+        puts "🗑️  Removed #{sub_ids_removed.size} subscription(s): #{sub_ids_removed.join(", ")}"
+      end
+
+      # 4. Update commissioned state if no fabrics remain
+      if @fabric_storage.empty?
+        @state.commissioned = false
+        @state.save(STATE_FILE)
+        puts "💾 Device state updated - no longer commissioned"
+
+        # 5. Stop operational advertisement and restart commissionable advertisement
+        @responder.stop_operational_advertisement
+        puts "📡 Stopped operational advertisement"
+
+        # Restart commissionable advertisement so device can be re-commissioned
+        info = Matter::MDNS::CommissioningInfo.new(
+          device_name: @state.device_name,
+          vendor_id: @state.vendor_id,
+          product_id: @state.product_id,
+          discriminator: @state.discriminator,
+          device_type: Matter::DeviceTypes::ON_OFF_LIGHT,
+          commissioning_mode: Matter::MDNS::CommissioningMode::Basic
+        )
+        @responder.advertise_commissioning(info, port: @port)
+        puts "📡 Started commissionable advertisement - device can be re-paired"
+      end
+
+      puts "✅ Fabric removal complete."
       puts ""
     end
 
