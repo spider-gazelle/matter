@@ -108,6 +108,24 @@ module Matter
 
       @pending_read_responses : Hash(UInt16, PendingReadResponse) = {} of UInt16 => PendingReadResponse
 
+      # Session pending cleanup (with grace period for subscription migration)
+      # When a new CASE session supersedes an old one, we don't immediately remove the old
+      # session if it has active subscriptions - we give subscribers time to migrate.
+      class PendingSessionCleanup
+        property session_id : UInt16
+        property cleanup_at : Time
+
+        def initialize(@session_id, grace_period : Time::Span = 30.seconds)
+          @cleanup_at = Time.utc + grace_period
+        end
+
+        def ready? : Bool
+          Time.utc >= @cleanup_at
+        end
+      end
+
+      @pending_session_cleanups : Array(PendingSessionCleanup) = [] of PendingSessionCleanup
+
       # Active subscriptions - keyed by subscription_id
       # After SubscribeResponse is sent, subscriptions are moved here for ongoing updates
       class ActiveSubscription
@@ -1848,6 +1866,162 @@ module Matter
         end
       end
 
+      # ========================================================================
+      # Session Cleanup - Superseded Session Management
+      # ========================================================================
+      #
+      # When a new CASE session is established from the same peer (same fabric_index
+      # and peer_node_id), the old session is considered "superseded". The old session
+      # should be cleaned up, but with a grace period if it has active subscriptions
+      # to allow subscription migration.
+      #
+      # Matter spec section 4.13.2.5 states that when a new session is established
+      # that supersedes an existing session, the node SHOULD close the old session.
+
+      # Find sessions that are superseded by a new session
+      # A session is superseded if:
+      # - It has the same fabric_index as the new session
+      # - It has the same peer_node_id as the new session
+      # - It has a lower session_id than the new session (new > old)
+      # - It is a CASE session (not PASE)
+      private def find_superseded_sessions(new_session : Session::SecureContext) : Array(Session::SecureContext)
+        return [] of Session::SecureContext unless new_session.is_case
+        return [] of Session::SecureContext unless new_session.fabric_index
+
+        new_fabric = new_session.fabric_index.not_nil!
+        new_peer_node = new_session.peer_node_id
+
+        @sessions.values.select do |session|
+          next false unless session.is_case                              # Only CASE sessions
+          next false unless session.fabric_index == new_fabric           # Same fabric
+          next false unless session.session_id != new_session.session_id # Not the new session itself
+          next false if new_peer_node.nil? || session.peer_node_id.nil?  # Both must have peer_node_id
+
+                        # Check same peer node
+          same_peer = session.peer_node_id.not_nil!.id == new_peer_node.not_nil!.id
+
+          # For supersession, typically the new session ID > old session ID
+          # However, session IDs can wrap around, so we compare creation time as tiebreaker
+          older_session = session.creation_time < new_session.creation_time
+
+          same_peer && older_session
+        end
+      end
+
+      # Check if a session has any active subscriptions
+      private def session_has_subscriptions?(session_id : UInt16) : Bool
+        @active_subscriptions.values.any? { |sub| sub.session.session_id == session_id }
+      end
+
+      # Get all subscriptions for a session
+      private def get_session_subscriptions(session_id : UInt16) : Array(ActiveSubscription)
+        @active_subscriptions.values.select { |sub| sub.session.session_id == session_id }
+      end
+
+      # Clean up superseded sessions after a new CASE session is established
+      #
+      # Sessions without active subscriptions are removed immediately.
+      # Sessions with active subscriptions are scheduled for deferred cleanup
+      # after a grace period to allow subscription migration.
+      private def cleanup_superseded_sessions(new_session : Session::SecureContext) : Nil
+        superseded = find_superseded_sessions(new_session)
+        return if superseded.empty?
+
+        Log.info { "Found #{superseded.size} superseded session(s) to clean up" }
+
+        superseded.each do |old_session|
+          session_id = old_session.session_id
+          has_subs = session_has_subscriptions?(session_id)
+
+          if has_subs
+            # Schedule for deferred cleanup with 30 second grace period
+            Log.info { "Session #{session_id} has active subscriptions - scheduling cleanup in 30s" }
+            @pending_session_cleanups << PendingSessionCleanup.new(session_id, 30.seconds)
+          else
+            # No subscriptions - remove immediately
+            Log.info { "Session #{session_id} has no subscriptions - removing immediately" }
+            remove_session_and_subscriptions(session_id)
+          end
+        end
+
+        # Spawn a fiber to process pending cleanups if we have any
+        if !@pending_session_cleanups.empty?
+          spawn_cleanup_fiber
+        end
+      end
+
+      # Remove a session and all its associated subscriptions
+      private def remove_session_and_subscriptions(session_id : UInt16) : Nil
+        # Remove subscriptions first
+        subs_to_remove = @active_subscriptions.select { |_, sub| sub.session.session_id == session_id }
+        subs_to_remove.each do |sub_id, _|
+          @active_subscriptions.delete(sub_id)
+          Log.info { "Removed subscription #{sub_id} (from superseded session #{session_id})" }
+        end
+
+        # Remove the session
+        if session = @sessions.delete(session_id)
+          Log.info { "Removed superseded session #{session_id} (fabric=#{session.fabric_index}, peer=#{session.peer_node_id.try(&.id)})" }
+        end
+      end
+
+      # Callback fired when a superseded session is cleaned up
+      # Device can use this to remove session from persistent storage
+      property on_session_removed : Proc(UInt16, Nil)?
+
+      # Spawn a fiber to process pending session cleanups
+      # This runs in the background and checks periodically for sessions
+      # whose grace period has expired
+      @cleanup_fiber_running : Bool = false
+
+      private def spawn_cleanup_fiber : Nil
+        return if @cleanup_fiber_running
+        @cleanup_fiber_running = true
+
+        spawn do
+          while !@pending_session_cleanups.empty?
+            # Find cleanups that are ready
+            ready = @pending_session_cleanups.select(&.ready?)
+
+            ready.each do |pending|
+              @pending_session_cleanups.delete(pending)
+              Log.info { "Grace period expired for session #{pending.session_id} - cleaning up" }
+              remove_session_and_subscriptions(pending.session_id)
+
+              # Notify device to update persistent storage
+              if callback = @on_session_removed
+                callback.call(pending.session_id)
+              end
+            end
+
+            # Sleep before checking again
+            sleep(5.seconds) unless @pending_session_cleanups.empty?
+          end
+
+          @cleanup_fiber_running = false
+        end
+      end
+
+      # Manually trigger cleanup of expired pending sessions (useful for testing)
+      def process_pending_cleanups : Int32
+        count = 0
+        ready = @pending_session_cleanups.select(&.ready?)
+
+        ready.each do |pending|
+          @pending_session_cleanups.delete(pending)
+          Log.info { "Processing pending cleanup for session #{pending.session_id}" }
+          remove_session_and_subscriptions(pending.session_id)
+
+          # Notify device
+          if callback = @on_session_removed
+            callback.call(pending.session_id)
+          end
+          count += 1
+        end
+
+        count
+      end
+
       # Handle CASE Sigma3 (final step of CASE)
       private def handle_case_sigma3(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
         Log.info { "Handling CASE Sigma3" }
@@ -1933,6 +2107,11 @@ module Matter
 
           Log.info { "✅ CASE secure session established! Session ID: #{session_id}" }
           Log.info { "   Operational messages can now be encrypted/decrypted" }
+
+          # Clean up any superseded sessions (same fabric, same peer, older)
+          # This is done AFTER storing the new session so the cleanup logic
+          # correctly identifies the new session as the replacement
+          cleanup_superseded_sessions(secure_context)
 
           # Notify device of new session (for persistence)
           if callback = @on_session_established
