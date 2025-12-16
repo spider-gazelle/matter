@@ -31,6 +31,12 @@ module Matter
       PROTOCOL_BDX                = 0x0002_u16
       PROTOCOL_USER_DIRECTED_COMM = 0x0003_u16
 
+      # Session management defaults
+      DEFAULT_MAX_SESSIONS              = 32_u16     # Maximum sessions per device
+      DEFAULT_SUBSCRIPTION_GRACE_PERIOD = 30.seconds # Grace period after subscription expiry
+      DEFAULT_TRANSPORT_RETRY_WINDOW    = 4.seconds  # Retry window before transport failure cleanup
+      DEFAULT_SESSION_CLEANUP_INTERVAL  = 5.seconds  # How often to check for expired sessions
+
       # Secure Channel Message Types
       MSG_STANDALONE_ACK       = 0x10_u8
       MSG_PBKDF_PARAM_REQUEST  = 0x20_u8
@@ -108,14 +114,29 @@ module Matter
 
       @pending_read_responses : Hash(UInt16, PendingReadResponse) = {} of UInt16 => PendingReadResponse
 
+      # Reason for pending session cleanup
+      enum CleanupReason
+        Superseded           # New session from same peer superseded this one
+        SubscriptionExpired  # All subscriptions on session expired
+        TransportFailure     # Transport reported unreachable
+        CaseResumptionFailed # CASE resumption failed
+      end
+
       # Session pending cleanup (with grace period for subscription migration)
       # When a new CASE session supersedes an old one, we don't immediately remove the old
       # session if it has active subscriptions - we give subscribers time to migrate.
       class PendingSessionCleanup
         property session_id : UInt16
         property cleanup_at : Time
+        property reason : CleanupReason
+        property cancel_on_traffic : Bool
 
-        def initialize(@session_id, grace_period : Time::Span = 30.seconds)
+        def initialize(
+          @session_id,
+          grace_period : Time::Span = 30.seconds,
+          @reason : CleanupReason = CleanupReason::Superseded,
+          @cancel_on_traffic : Bool = false,
+        )
           @cleanup_at = Time.utc + grace_period
         end
 
@@ -245,6 +266,15 @@ module Matter
       # and without synchronization, responses could get interleaved or state corrupted
       @message_mutex : Mutex = Mutex.new
 
+      # Session management configuration
+      property max_sessions : UInt16
+      property subscription_grace_period : Time::Span
+      property transport_retry_window : Time::Span
+
+      # Background cleanup fiber control
+      @session_cleanup_fiber_running : Bool = false
+      @subscription_cleanup_fiber_running : Bool = false
+
       def initialize(
         @transport : Transport::UDPTransport,
         @setup_pin : UInt32,
@@ -254,6 +284,9 @@ module Matter
         @salt : Bytes = Random::Secure.random_bytes(32),
         @vendor_id : UInt16 = 0xFFF1_u16,
         @product_id : UInt16 = 0x8001_u16,
+        @max_sessions : UInt16 = DEFAULT_MAX_SESSIONS,
+        @subscription_grace_period : Time::Span = DEFAULT_SUBSCRIPTION_GRACE_PERIOD,
+        @transport_retry_window : Time::Span = DEFAULT_TRANSPORT_RETRY_WINDOW,
       )
         @sessions = {} of UInt16 => Session::SecureContext
         @pase_responder = nil
@@ -274,6 +307,9 @@ module Matter
         @transport.on_message = ->(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) do
           handle_message(msg, peer)
         end
+
+        # Start background cleanup fibers
+        spawn_subscription_cleanup_fiber
       end
 
       # Initialize device clusters (called during construction)
@@ -524,6 +560,9 @@ module Matter
               Log.error { "No session found for ID: #{session_id}" }
               return
             end
+
+            # Cancel any pending cleanup for this session since we received traffic
+            cancel_cleanup_on_traffic(session_id)
 
             # Decrypt the payload
             msg = decrypt_message(msg, session)
@@ -1480,6 +1519,9 @@ module Matter
           is_initiator: false # We're the responder
         )
 
+        # Enforce session table size limit before adding new session
+        enforce_session_limit
+
         # Store session for future encrypted communication
         @sessions[session_id] = secure_context
 
@@ -2009,7 +2051,7 @@ module Matter
 
         ready.each do |pending|
           @pending_session_cleanups.delete(pending)
-          Log.info { "Processing pending cleanup for session #{pending.session_id}" }
+          Log.info { "Processing pending cleanup for session #{pending.session_id} (reason: #{pending.reason})" }
           remove_session_and_subscriptions(pending.session_id)
 
           # Notify device
@@ -2020,6 +2062,210 @@ module Matter
         end
 
         count
+      end
+
+      # ========================================================================
+      # Session Table Size Management
+      # ========================================================================
+
+      # Enforce session table size limit by evicting oldest sessions
+      # Called before adding a new session to ensure we don't exceed max_sessions
+      private def enforce_session_limit : Nil
+        return if @sessions.size < @max_sessions
+
+        # Find oldest sessions to evict (PASE sessions first, then oldest CASE)
+        sessions_to_evict = @sessions.values.sort_by do |s|
+          # PASE sessions get higher priority for eviction (lower sort value)
+          # Then sort by creation time (oldest first)
+          pase_priority = s.is_case ? 1 : 0
+          {pase_priority, s.creation_time}
+        end
+
+        # Evict oldest sessions until we're under the limit
+        while @sessions.size >= @max_sessions && !sessions_to_evict.empty?
+          session = sessions_to_evict.shift
+          Log.info { "Evicting oldest session #{session.session_id} to stay under limit of #{@max_sessions}" }
+          remove_session_and_subscriptions(session.session_id)
+
+          # Notify device
+          if callback = @on_session_removed
+            callback.call(session.session_id)
+          end
+        end
+      end
+
+      # ========================================================================
+      # Subscription Timeout Management
+      # ========================================================================
+
+      # Callback fired when a subscription is removed (expired or renewed)
+      property on_subscription_removed : Proc(UInt32, Nil)?
+
+      # Check if a subscription has expired
+      # Subscription expires when: current_time > last_report_time + max_interval
+      private def subscription_expired?(subscription : ActiveSubscription) : Bool
+        expiry_time = subscription.last_report_time + subscription.max_interval.seconds
+        Time.utc > expiry_time
+      end
+
+      # Process expired subscriptions and schedule session cleanup if needed
+      def process_expired_subscriptions : Int32
+        count = 0
+        expired_subs = @active_subscriptions.values.select { |sub| subscription_expired?(sub) }
+
+        expired_subs.each do |sub|
+          session_id = sub.session.session_id
+          Log.info { "Subscription #{sub.subscription_id} expired (session #{session_id})" }
+
+          # Remove the subscription
+          @active_subscriptions.delete(sub.subscription_id)
+          count += 1
+
+          # Notify device
+          if callback = @on_subscription_removed
+            callback.call(sub.subscription_id)
+          end
+
+          # Check if session should be scheduled for cleanup
+          # If no subscriptions remain and no traffic for grace period, cleanup session
+          unless session_has_subscriptions?(session_id)
+            # Schedule session for cleanup with grace period
+            # Use cancel_on_traffic=true so new traffic cancels the cleanup
+            already_pending = @pending_session_cleanups.any? { |p| p.session_id == session_id }
+            unless already_pending
+              Log.info { "Session #{session_id} has no more subscriptions - scheduling cleanup with #{@subscription_grace_period} grace period" }
+              @pending_session_cleanups << PendingSessionCleanup.new(
+                session_id,
+                @subscription_grace_period,
+                CleanupReason::SubscriptionExpired,
+                cancel_on_traffic: true
+              )
+              spawn_cleanup_fiber
+            end
+          end
+        end
+
+        count
+      end
+
+      # Spawn background fiber to periodically check for expired subscriptions
+      private def spawn_subscription_cleanup_fiber : Nil
+        return if @subscription_cleanup_fiber_running
+        @subscription_cleanup_fiber_running = true
+
+        spawn do
+          loop do
+            sleep(DEFAULT_SESSION_CLEANUP_INTERVAL)
+            process_expired_subscriptions
+            process_pending_cleanups
+          end
+        rescue ex
+          Log.error(exception: ex) { "Subscription cleanup fiber crashed: #{ex.message}" }
+          @subscription_cleanup_fiber_running = false
+        end
+      end
+
+      # Handle subscription renewal - called when a new SubscribeRequest comes in
+      # for the same attribute paths from the same session
+      def renew_subscription(old_subscription_id : UInt32, new_subscription : ActiveSubscription) : Nil
+        if old_sub = @active_subscriptions.delete(old_subscription_id)
+          Log.info { "Renewed subscription #{old_subscription_id} -> #{new_subscription.subscription_id}" }
+
+          # Notify device about old subscription removal
+          if callback = @on_subscription_removed
+            callback.call(old_subscription_id)
+          end
+        end
+
+        # Add new subscription
+        @active_subscriptions[new_subscription.subscription_id] = new_subscription
+      end
+
+      # Find existing subscription that matches a new subscription request
+      # (same session, overlapping paths)
+      def find_matching_subscription(session_id : UInt16, paths : Array(InteractionModel::AttributePath)) : ActiveSubscription?
+        @active_subscriptions.values.find do |sub|
+          next false unless sub.session.session_id == session_id
+
+          # Check if paths overlap significantly (same endpoint/cluster combinations)
+          paths.any? do |new_path|
+            sub.attribute_paths.any? do |existing_path|
+              new_path.endpoint == existing_path.endpoint &&
+                new_path.cluster == existing_path.cluster
+            end
+          end
+        end
+      end
+
+      # ========================================================================
+      # Traffic-Based Cleanup Cancellation
+      # ========================================================================
+
+      # Cancel pending cleanup for a session if traffic is detected
+      # Called when we receive a message on a session that has cancel_on_traffic=true
+      def cancel_cleanup_on_traffic(session_id : UInt16) : Bool
+        canceled = false
+        @pending_session_cleanups.reject! do |pending|
+          if pending.session_id == session_id && pending.cancel_on_traffic
+            Log.info { "Canceling pending cleanup for session #{session_id} - traffic detected" }
+            canceled = true
+            true # Remove from array
+          else
+            false
+          end
+        end
+        canceled
+      end
+
+      # ========================================================================
+      # Transport Failure Cleanup
+      # ========================================================================
+
+      # Mark a session as having transport failure and schedule cleanup
+      # Called when transport reports the peer is unreachable after retries
+      def mark_transport_failure(session_id : UInt16) : Nil
+        return unless @sessions.has_key?(session_id)
+
+        # Check if already pending cleanup
+        already_pending = @pending_session_cleanups.any? { |p| p.session_id == session_id }
+        return if already_pending
+
+        Log.warn { "Transport failure for session #{session_id} - scheduling cleanup after #{@transport_retry_window}" }
+
+        @pending_session_cleanups << PendingSessionCleanup.new(
+          session_id,
+          @transport_retry_window,
+          CleanupReason::TransportFailure,
+          cancel_on_traffic: true # Cancel if peer becomes reachable again
+        )
+
+        spawn_cleanup_fiber
+      end
+
+      # ========================================================================
+      # CASE Resumption Failure Cleanup
+      # ========================================================================
+
+      # Mark a session for cleanup due to CASE resumption failure
+      # Called when CASE resumption is attempted but fails
+      def mark_case_resumption_failed(session_id : UInt16) : Nil
+        return unless @sessions.has_key?(session_id)
+
+        # Check if already pending cleanup
+        already_pending = @pending_session_cleanups.any? { |p| p.session_id == session_id }
+        return if already_pending
+
+        Log.warn { "CASE resumption failed for session #{session_id} - scheduling cleanup" }
+
+        # Short grace period for resumption failure (peer will re-establish if needed)
+        @pending_session_cleanups << PendingSessionCleanup.new(
+          session_id,
+          5.seconds,
+          CleanupReason::CaseResumptionFailed,
+          cancel_on_traffic: false # Don't cancel - resumption already failed
+        )
+
+        spawn_cleanup_fiber
       end
 
       # Handle CASE Sigma3 (final step of CASE)
@@ -2101,6 +2347,9 @@ module Matter
             is_case: true,
             fabric_index: fabric.fabric_index
           )
+
+          # Enforce session table size limit before adding new session
+          enforce_session_limit
 
           # Store session for future encrypted communication
           @sessions[session_id] = secure_context

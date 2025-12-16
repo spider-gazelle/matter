@@ -379,4 +379,341 @@ describe Matter::Protocol::MessageHandler do
       transport.close
     end
   end
+
+  describe "session table size limit" do
+    it "has configurable max_sessions defaulting to 32" do
+      handler, transport = SessionCleanupTestHelpers.create_test_handler
+      handler.max_sessions.should eq(32_u16)
+      transport.close
+    end
+
+    it "allows custom max_sessions configuration" do
+      transport = Matter::Transport::UDPTransport.new(0)
+      storage = Matter::Storage::MemoryBackend.new
+      fabric_table = Matter::FabricTable.new(storage)
+      handler = Matter::Protocol::MessageHandler.new(
+        transport: transport,
+        setup_pin: 20202021_u32,
+        discriminator: 3840_u16,
+        fabric_table: fabric_table,
+        max_sessions: 5_u16
+      )
+      handler.max_sessions.should eq(5_u16)
+      transport.close
+    end
+  end
+
+  describe "subscription timeout" do
+    it "detects expired subscriptions" do
+      handler, transport = SessionCleanupTestHelpers.create_test_handler
+
+      session = SessionCleanupTestHelpers.create_case_session(100_u16, 1_u8, 12345_u64, 0.seconds)
+      handler.sessions[session.session_id] = session
+
+      # Create a subscription with max_interval=1 second
+      sub = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription_id: 1_u32,
+        min_interval: 1_u16,
+        max_interval: 1_u16, # 1 second max interval
+        peer: Socket::IPAddress.new("127.0.0.1", 5540),
+        session: session,
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+      )
+      # Set last_report_time to 2 seconds ago so it's expired
+      sub.last_report_time = Time.utc - 2.seconds
+      handler.active_subscriptions[1_u32] = sub
+
+      # Process expired subscriptions
+      removed_count = handler.process_expired_subscriptions
+      removed_count.should eq(1)
+
+      # Subscription should be removed
+      handler.active_subscriptions.has_key?(1_u32).should be_false
+
+      transport.close
+    end
+
+    it "does not remove non-expired subscriptions" do
+      handler, transport = SessionCleanupTestHelpers.create_test_handler
+
+      session = SessionCleanupTestHelpers.create_case_session(100_u16, 1_u8, 12345_u64, 0.seconds)
+      handler.sessions[session.session_id] = session
+
+      # Create a subscription with max_interval=60 seconds
+      sub = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription_id: 1_u32,
+        min_interval: 1_u16,
+        max_interval: 60_u16, # 60 second max interval
+        peer: Socket::IPAddress.new("127.0.0.1", 5540),
+        session: session,
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+      )
+      # last_report_time is now, so not expired
+      handler.active_subscriptions[1_u32] = sub
+
+      # Process expired subscriptions
+      removed_count = handler.process_expired_subscriptions
+      removed_count.should eq(0)
+
+      # Subscription should still exist
+      handler.active_subscriptions.has_key?(1_u32).should be_true
+
+      transport.close
+    end
+
+    it "calls on_subscription_removed callback when subscription expires" do
+      handler, transport = SessionCleanupTestHelpers.create_test_handler
+
+      session = SessionCleanupTestHelpers.create_case_session(100_u16, 1_u8, 12345_u64, 0.seconds)
+      handler.sessions[session.session_id] = session
+
+      removed_ids = [] of UInt32
+      handler.on_subscription_removed = ->(sub_id : UInt32) {
+        removed_ids << sub_id
+        nil
+      }
+
+      # Create expired subscription
+      sub = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription_id: 42_u32,
+        min_interval: 1_u16,
+        max_interval: 1_u16,
+        peer: Socket::IPAddress.new("127.0.0.1", 5540),
+        session: session,
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+      )
+      sub.last_report_time = Time.utc - 2.seconds
+      handler.active_subscriptions[42_u32] = sub
+
+      handler.process_expired_subscriptions
+
+      removed_ids.should eq([42_u32])
+
+      transport.close
+    end
+  end
+
+  describe "cancel cleanup on traffic" do
+    it "cancels pending cleanup when cancel_on_traffic is true" do
+      handler, transport = SessionCleanupTestHelpers.create_test_handler
+
+      session = SessionCleanupTestHelpers.create_case_session(100_u16, 1_u8, 12345_u64, 0.seconds)
+      handler.sessions[session.session_id] = session
+
+      # Add pending cleanup with cancel_on_traffic=true
+      pending = Matter::Protocol::MessageHandler::PendingSessionCleanup.new(
+        100_u16,
+        1.hour,
+        Matter::Protocol::MessageHandler::CleanupReason::SubscriptionExpired,
+        cancel_on_traffic: true
+      )
+      handler.@pending_session_cleanups << pending
+
+      handler.@pending_session_cleanups.size.should eq(1)
+
+      # Simulate traffic detection
+      canceled = handler.cancel_cleanup_on_traffic(100_u16)
+      canceled.should be_true
+
+      # Pending cleanup should be removed
+      handler.@pending_session_cleanups.size.should eq(0)
+
+      transport.close
+    end
+
+    it "does not cancel pending cleanup when cancel_on_traffic is false" do
+      handler, transport = SessionCleanupTestHelpers.create_test_handler
+
+      session = SessionCleanupTestHelpers.create_case_session(100_u16, 1_u8, 12345_u64, 0.seconds)
+      handler.sessions[session.session_id] = session
+
+      # Add pending cleanup with cancel_on_traffic=false
+      pending = Matter::Protocol::MessageHandler::PendingSessionCleanup.new(
+        100_u16,
+        1.hour,
+        Matter::Protocol::MessageHandler::CleanupReason::CaseResumptionFailed,
+        cancel_on_traffic: false
+      )
+      handler.@pending_session_cleanups << pending
+
+      # Simulate traffic detection
+      canceled = handler.cancel_cleanup_on_traffic(100_u16)
+      canceled.should be_false
+
+      # Pending cleanup should still exist
+      handler.@pending_session_cleanups.size.should eq(1)
+
+      transport.close
+    end
+  end
+
+  describe "transport failure cleanup" do
+    it "schedules cleanup on transport failure" do
+      handler, transport = SessionCleanupTestHelpers.create_test_handler
+
+      session = SessionCleanupTestHelpers.create_case_session(100_u16, 1_u8, 12345_u64, 0.seconds)
+      handler.sessions[session.session_id] = session
+
+      handler.@pending_session_cleanups.size.should eq(0)
+
+      # Mark transport failure
+      handler.mark_transport_failure(100_u16)
+
+      # Should have pending cleanup
+      handler.@pending_session_cleanups.size.should eq(1)
+      handler.@pending_session_cleanups.first.reason.should eq(Matter::Protocol::MessageHandler::CleanupReason::TransportFailure)
+      handler.@pending_session_cleanups.first.cancel_on_traffic.should be_true
+
+      transport.close
+    end
+
+    it "does not schedule cleanup for non-existent session" do
+      handler, transport = SessionCleanupTestHelpers.create_test_handler
+
+      handler.mark_transport_failure(999_u16) # Non-existent session
+
+      handler.@pending_session_cleanups.size.should eq(0)
+
+      transport.close
+    end
+
+    it "has configurable transport_retry_window" do
+      handler, transport = SessionCleanupTestHelpers.create_test_handler
+      handler.transport_retry_window.should eq(4.seconds)
+      transport.close
+    end
+  end
+
+  describe "CASE resumption failure cleanup" do
+    it "schedules cleanup on CASE resumption failure" do
+      handler, transport = SessionCleanupTestHelpers.create_test_handler
+
+      session = SessionCleanupTestHelpers.create_case_session(100_u16, 1_u8, 12345_u64, 0.seconds)
+      handler.sessions[session.session_id] = session
+
+      # Mark CASE resumption failed
+      handler.mark_case_resumption_failed(100_u16)
+
+      # Should have pending cleanup with short grace period
+      handler.@pending_session_cleanups.size.should eq(1)
+      handler.@pending_session_cleanups.first.reason.should eq(Matter::Protocol::MessageHandler::CleanupReason::CaseResumptionFailed)
+      handler.@pending_session_cleanups.first.cancel_on_traffic.should be_false
+
+      transport.close
+    end
+  end
+
+  describe "subscription renewal" do
+    it "renews subscription by replacing old with new" do
+      handler, transport = SessionCleanupTestHelpers.create_test_handler
+
+      session = SessionCleanupTestHelpers.create_case_session(100_u16, 1_u8, 12345_u64, 0.seconds)
+      handler.sessions[session.session_id] = session
+
+      # Create old subscription
+      old_sub = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription_id: 1_u32,
+        min_interval: 1_u16,
+        max_interval: 60_u16,
+        peer: Socket::IPAddress.new("127.0.0.1", 5540),
+        session: session,
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+      )
+      handler.active_subscriptions[1_u32] = old_sub
+
+      # Create new subscription for renewal
+      new_sub = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription_id: 2_u32,
+        min_interval: 1_u16,
+        max_interval: 120_u16, # Different max_interval
+        peer: Socket::IPAddress.new("127.0.0.1", 5540),
+        session: session,
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+      )
+
+      # Renew subscription
+      handler.renew_subscription(1_u32, new_sub)
+
+      # Old subscription should be gone
+      handler.active_subscriptions.has_key?(1_u32).should be_false
+
+      # New subscription should exist
+      handler.active_subscriptions.has_key?(2_u32).should be_true
+      handler.active_subscriptions[2_u32].max_interval.should eq(120_u16)
+
+      transport.close
+    end
+
+    it "finds matching subscription for renewal" do
+      handler, transport = SessionCleanupTestHelpers.create_test_handler
+
+      session = SessionCleanupTestHelpers.create_case_session(100_u16, 1_u8, 12345_u64, 0.seconds)
+      handler.sessions[session.session_id] = session
+
+      # Create existing subscription
+      sub = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription_id: 1_u32,
+        min_interval: 1_u16,
+        max_interval: 60_u16,
+        peer: Socket::IPAddress.new("127.0.0.1", 5540),
+        session: session,
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+      )
+      handler.active_subscriptions[1_u32] = sub
+
+      # Find matching subscription
+      matching = handler.find_matching_subscription(
+        100_u16,
+        [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 1_u32)]
+      )
+
+      matching.should_not be_nil
+      matching.not_nil!.subscription_id.should eq(1_u32)
+
+      transport.close
+    end
+
+    it "does not find subscription for different session" do
+      handler, transport = SessionCleanupTestHelpers.create_test_handler
+
+      session = SessionCleanupTestHelpers.create_case_session(100_u16, 1_u8, 12345_u64, 0.seconds)
+      handler.sessions[session.session_id] = session
+
+      # Create subscription on session 100
+      sub = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription_id: 1_u32,
+        min_interval: 1_u16,
+        max_interval: 60_u16,
+        peer: Socket::IPAddress.new("127.0.0.1", 5540),
+        session: session,
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+      )
+      handler.active_subscriptions[1_u32] = sub
+
+      # Try to find matching subscription for different session
+      matching = handler.find_matching_subscription(
+        200_u16, # Different session
+        [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+      )
+
+      matching.should be_nil
+
+      transport.close
+    end
+  end
+
+  describe "cleanup reason tracking" do
+    it "PendingSessionCleanup tracks reason and cancel_on_traffic" do
+      cleanup = Matter::Protocol::MessageHandler::PendingSessionCleanup.new(
+        100_u16,
+        30.seconds,
+        Matter::Protocol::MessageHandler::CleanupReason::TransportFailure,
+        cancel_on_traffic: true
+      )
+
+      cleanup.session_id.should eq(100_u16)
+      cleanup.reason.should eq(Matter::Protocol::MessageHandler::CleanupReason::TransportFailure)
+      cleanup.cancel_on_traffic.should be_true
+    end
+  end
 end
