@@ -329,9 +329,14 @@ module Matter
         else
           # For secured messages, track per session_id as before
           counter = @session_counters[session_id] ||= MessageCounter.new
-          unless counter.valid?(packet.header.message_id)
-            # Duplicate message - ignore
-            puts "⚠️  Duplicate message ignored: session=#{session_id}, message_id=#{packet.header.message_id}"
+          case counter.check(packet.header.message_id)
+          when MessageCounter::CheckResult::Accept
+            # Continue
+          when MessageCounter::CheckResult::Duplicate
+            # MRP retransmission - do not drop; the protocol layer may resend a cached response.
+            puts "⚠️  Duplicate message received (MRP retransmit): session=#{session_id}, message_id=#{packet.header.message_id}"
+          when MessageCounter::CheckResult::Stale
+            puts "⚠️  Stale message counter ignored: session=#{session_id}, message_id=#{packet.header.message_id}"
             return
           end
         end

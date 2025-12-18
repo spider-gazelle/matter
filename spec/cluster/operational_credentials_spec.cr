@@ -766,21 +766,12 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           new_csr_request_tlv
         )
 
-        # Should return error response
-        # Parse the response - TlvNocResponse has:
-        #   tag 0: status_code (Int/enum)
-        #   tag 1: fabric_index (optional)
-        #   tag 2: debug_text (String, optional)
-        result.should be_a(Matter::Cluster::CommandResponse)
-        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
-        response = parsed.value.as(TLV::Structure)
-        # Check status code at tag 0 - should be MissingCsr (4)
-        status_code = response[0_u8].value.as(Int)
-        status_code.should eq(4) # NodeOperationalCertStatus::MissingCsr
-        # Check debug_text at tag 2 contains the error message
-        debug_text = response[2_u8]?.try(&.value)
-        debug_text.should be_a(String)
-        debug_text.as(String).should contain("AddNOC")
+        # CSRRequest cannot return an error payload. If it fails, it must return an
+        # IM StatusIB in the InvokeResponse (as opposed to a CSRResponse payload).
+        result.should be_a(Matter::InteractionModel::Status)
+        status = result.as(Matter::InteractionModel::Status)
+        status.status.should eq(Matter::InteractionModel::StatusCode::Failure)
+        status.cluster_status.should eq(4_u8) # NodeOperationalCertStatus::MissingCsr
       end
 
       it "allows CSR after failsafe expiry" do

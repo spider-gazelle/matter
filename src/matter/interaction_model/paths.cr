@@ -1,8 +1,9 @@
 module Matter
   module InteractionModel
     # Attribute path identifying a specific attribute
-    # Supports both list-form [endpoint, cluster, attribute] and structure-form {2=>endpoint, 3=>cluster, 4=>attribute}
-    # Note: fixed_size: true ensures proper type widths for iOS compatibility
+    # Encoded as a TLV list per Matter spec (and matter.js/CHIP encodings),
+    # and TLV::Serializable decoding is tolerant of list/structure variations.
+    # Note: fixed_size: true ensures proper type widths for iOS compatibility.
     @[TLV::ListFormat]
     struct AttributePath
       include TLV::Serializable

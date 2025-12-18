@@ -1,4 +1,5 @@
 require "dns"
+require "./responder_interface"
 require "./service_type"
 require "./record_builder"
 require "../network/constants"
@@ -12,6 +13,7 @@ module Matter
     # - Query responses
     # - Using Authority Section for authoritative records
     class Responder
+      include ResponderInterface
       MDNS_PORT = 5353
       MDNS_IPV4 = Socket::IPAddress.new("224.0.0.251", MDNS_PORT)
       MDNS_IPV6 = Socket::IPAddress.new("ff02::fb", MDNS_PORT)
@@ -199,7 +201,7 @@ module Matter
       def advertise_commissioning(
         info : CommissioningInfo,
         port : Int32 = 5540,
-        ttl : Time::Span = DEFAULT_TTL,
+        ttl : Time::Span = 120.seconds,
       ) : Nil
         service = ServiceNames::COMMISSIONING
         instance = ServiceNames.commissioning_instance(info.device_name)
@@ -223,7 +225,7 @@ module Matter
       def advertise_operational(
         info : OperationalInfo,
         port : Int32 = 5540,
-        ttl : Time::Span = DEFAULT_TTL,
+        ttl : Time::Span = 120.seconds,
       ) : Nil
         service = ServiceNames::OPERATIONAL
         instance = ServiceNames.operational_instance(info.compressed_fabric_id, info.node_id)

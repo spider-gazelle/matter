@@ -619,7 +619,13 @@ module Matter
         when CMD_CERTIFICATE_CHAIN_REQUEST
           Cluster::CommandResponse.new(CMD_CERTIFICATE_CHAIN_RESPONSE, handle_certificate_chain_request(fields))
         when CMD_CSR_REQUEST
-          Cluster::CommandResponse.new(CMD_CSR_RESPONSE, handle_csr_request(fields))
+          response = handle_csr_request(fields)
+          case response
+          when InteractionModel::Status
+            response
+          else
+            Cluster::CommandResponse.new(CMD_CSR_RESPONSE, response)
+          end
         when CMD_ADD_NOC
           Cluster::CommandResponse.new(CMD_NOC_RESPONSE, handle_add_noc(fields))
         when CMD_UPDATE_NOC
@@ -673,20 +679,27 @@ module Matter
         response.to_slice
       end
 
-      private def handle_csr_request(fields : Bytes) : Bytes
+      private def handle_csr_request(fields : Bytes) : InteractionModel::Status | Bytes
         # Parse TLV-encoded request
         request = Definitions::OperationalCredentials::CsrRequest.from_slice(fields)
 
         # Validate failsafe is armed
         # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
         unless @failsafe_armed
-          return encode_noc_response(NodeOperationalCertStatus::MissingCsr, nil, "Failsafe not armed")
+          return InteractionModel::Status.new(
+            InteractionModel::StatusCode::Failure,
+            NodeOperationalCertStatus::MissingCsr.value
+          )
         end
 
         # Check if NOC already added/updated in current failsafe
         if @failsafe_context.noc_added_or_updated
-          # Return error - cannot call CSR after AddNOC/UpdateNOC
-          return encode_noc_response(NodeOperationalCertStatus::MissingCsr, nil, "Cannot generate CSR after AddNOC/UpdateNOC")
+          # CSRRequest response payload cannot encode an error; failures must be
+          # returned as a StatusIB in the InvokeResponse.
+          return InteractionModel::Status.new(
+            InteractionModel::StatusCode::Failure,
+            NodeOperationalCertStatus::MissingCsr.value
+          )
         end
 
         # Generate new operational key pair
@@ -977,6 +990,16 @@ module Matter
 
         # Check if fabric exists
         unless @fabric_table.get_fabric(fabric_idx)
+          # Some commissioners (notably iOS) may attempt to clean up a previously
+          # commissioned device state by issuing RemoveFabric during re-commissioning.
+          #
+          # If the device currently has no fabrics (commissioning mode), treat this
+          # as an idempotent success so the commissioner can move forward.
+          if @fabric_table.empty?
+            Log.info { "RemoveFabric: fabric #{fabric_idx} not found but device has no fabrics; treating as success" }
+            return encode_noc_response(NodeOperationalCertStatus::Ok, fabric_idx)
+          end
+
           Log.warn { "RemoveFabric: fabric #{fabric_idx} not found" }
           return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, fabric_idx, "Fabric not found")
         end

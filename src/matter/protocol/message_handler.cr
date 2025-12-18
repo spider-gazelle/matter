@@ -13,6 +13,8 @@ require "../interaction_model/messages"
 require "../interaction_model/paths"
 require "../interaction_model/status_code"
 require "./im_handler"
+require "./persistence"
+require "./session_manager"
 require "tlv"
 
 module Matter
@@ -23,6 +25,7 @@ module Matter
     # - Secure Channel protocol (0x0000) - PASE, CASE, etc.
     # - Interaction Model protocol (0x0001) - Read, Write, Invoke, Subscribe
     class MessageHandler
+      include SessionManager
       Log = ::Log.for("matter.protocol")
 
       # Protocol IDs
@@ -36,6 +39,12 @@ module Matter
       DEFAULT_SUBSCRIPTION_GRACE_PERIOD = 30.seconds # Grace period after subscription expiry
       DEFAULT_TRANSPORT_RETRY_WINDOW    = 4.seconds  # Retry window before transport failure cleanup
       DEFAULT_SESSION_CLEANUP_INTERVAL  = 5.seconds  # How often to check for expired sessions
+
+      # Keep a short-lived cache of encrypted responses keyed by the incoming
+      # message counter. This allows us to handle MRP retransmissions from
+      # controllers (notably iOS) without re-invoking cluster logic.
+      MRP_DUPLICATE_RESPONSE_TTL         = 10.seconds
+      MRP_DUPLICATE_RESPONSE_MAX_ENTRIES = 512
 
       # Secure Channel Message Types
       MSG_STANDALONE_ACK       = 0x10_u8
@@ -55,6 +64,7 @@ module Matter
       getter clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base)
       getter fabric_table : FabricTable
       getter operational_credentials_cluster : Cluster::OperationalCredentialsCluster?
+      getter persistence : Persistence::Base?
 
       # Device credentials for PASE
       property setup_pin : UInt32
@@ -80,6 +90,14 @@ module Matter
 
       # Subscription support
       property next_subscription_id : UInt32 = 1_u32
+
+      private struct CachedMrpResponse
+        getter udp_packet : Bytes
+        getter created_at : Time::Span
+
+        def initialize(@udp_packet : Bytes, @created_at : Time::Span = Time.monotonic)
+        end
+      end
 
       # Pending subscription responses - keyed by exchange_id
       # After sending ReportData, we wait for StatusResponse before sending SubscribeResponse
@@ -157,7 +175,7 @@ module Matter
         property session : Session::SecureContext
         property attribute_paths : Array(InteractionModel::AttributePath)
         property last_report_time : Time
-        property next_exchange_id : UInt16
+        property exchange_id : UInt16
 
         def initialize(
           @subscription_id,
@@ -166,7 +184,7 @@ module Matter
           @peer,
           @session,
           @attribute_paths,
-          @next_exchange_id = 0_u16,
+          @exchange_id,
         )
           @last_report_time = Time.utc
         end
@@ -200,7 +218,7 @@ module Matter
             "peer_address"     => @peer.address,
             "peer_port"        => @peer.port.to_u16,
             "session_id"       => @session.session_id,
-            "next_exchange_id" => @next_exchange_id,
+            "exchange_id"      => @exchange_id,
             "last_report_time" => @last_report_time.to_unix,
             "attribute_paths"  => paths_array,
           }
@@ -231,7 +249,7 @@ module Matter
             peer: Socket::IPAddress.new(h["peer_address"].as(String), h["peer_port"].as(UInt16).to_i),
             session: session,
             attribute_paths: paths,
-            next_exchange_id: h["next_exchange_id"].as(UInt16)
+            exchange_id: h["exchange_id"]?.try(&.as(UInt16)) || h["next_exchange_id"].as(UInt16)
           )
 
           # Restore last_report_time
@@ -244,6 +262,9 @@ module Matter
 
       # Public getter for active subscriptions (for persistence)
       getter active_subscriptions
+
+      # Cached encrypted responses keyed by (session_id, incoming_message_counter)
+      @mrp_response_cache : Hash(Tuple(UInt16, UInt32), CachedMrpResponse) = {} of Tuple(UInt16, UInt32) => CachedMrpResponse
 
       # Fabric access callback - set by the device implementation
       # This allows the message handler to access fabric data for CASE
@@ -287,6 +308,7 @@ module Matter
         @max_sessions : UInt16 = DEFAULT_MAX_SESSIONS,
         @subscription_grace_period : Time::Span = DEFAULT_SUBSCRIPTION_GRACE_PERIOD,
         @transport_retry_window : Time::Span = DEFAULT_TRANSPORT_RETRY_WINDOW,
+        @persistence : Persistence::Base? = nil,
       )
         @sessions = {} of UInt16 => Session::SecureContext
         @pase_responder = nil
@@ -298,6 +320,7 @@ module Matter
         # Note: @case_fabric is now a property with type Fabric?
         @on_commissioned = nil
         @operational_credentials_cluster = nil
+        @mrp_response_cache.clear
 
         # Initialize clusters
         @clusters = {} of Tuple(UInt16, UInt32) => Cluster::Base
@@ -308,8 +331,54 @@ module Matter
           handle_message(msg, peer)
         end
 
+        # Restore persisted protocol state (CASE sessions + subscriptions)
+        if persistence = @persistence
+          begin
+            persistence.restore(self)
+          rescue ex
+            Log.error(exception: ex) { "Failed to restore protocol persistence: #{ex.message}" }
+          end
+        end
+
         # Start background cleanup fibers
         spawn_subscription_cleanup_fiber
+      end
+
+      private def prune_mrp_response_cache(now : Time::Span = Time.monotonic) : Nil
+        @mrp_response_cache.reject! do |_, entry|
+          now - entry.created_at > MRP_DUPLICATE_RESPONSE_TTL
+        end
+
+        if @mrp_response_cache.size > MRP_DUPLICATE_RESPONSE_MAX_ENTRIES
+          @mrp_response_cache = @mrp_response_cache
+            .to_a
+            .sort_by { |(_, entry)| entry.created_at }
+            .last(MRP_DUPLICATE_RESPONSE_MAX_ENTRIES)
+            .to_h
+        end
+      end
+
+      private def resend_cached_mrp_response?(session_id : UInt16, incoming_counter : UInt32, peer : Socket::IPAddress) : Bool
+        now = Time.monotonic
+        if cached = @mrp_response_cache[{session_id, incoming_counter}]?
+          if now - cached.created_at <= MRP_DUPLICATE_RESPONSE_TTL
+            Log.warn { "MRP duplicate detected: session_id=#{session_id}, message_counter=#{incoming_counter} - resending cached response" }
+            @transport.send_raw(cached.udp_packet, peer)
+            return true
+          else
+            @mrp_response_cache.delete({session_id, incoming_counter})
+          end
+        end
+        false
+      end
+
+      private def cache_mrp_response(session_id : UInt16, incoming_counter : UInt32, udp_packet : Bytes) : Nil
+        prune_mrp_response_cache
+        @mrp_response_cache[{session_id, incoming_counter}] = CachedMrpResponse.new(udp_packet)
+      end
+
+      private def clear_mrp_response_cache_for_session(session_id : UInt16) : Nil
+        @mrp_response_cache.reject! { |(sid, _), _| sid == session_id }
       end
 
       # Initialize device clusters (called during construction)
@@ -446,9 +515,6 @@ module Matter
             # Encode ReportData with subscription ID
             report_data = IMHandler.encode_report_data(response, subscription.subscription_id)
 
-            # Generate a new exchange ID for this update
-            subscription.next_exchange_id = (subscription.next_exchange_id &+ 1_u16)
-
             # Send the update
             send_subscription_update(subscription, report_data)
 
@@ -469,11 +535,12 @@ module Matter
         security_flags = 0_u8
         security_flags |= Codec::MessageCodec::SessionType::Unicast.value
 
-        # Compute flags - for subscription updates, we initiate to the subscriber
-        # Use the peer's node_id as destination, our node_id as source
+        # Compute flags - for encrypted unicast, many controllers (notably iOS)
+        # expect destination_node_id to be omitted (it's implied by the session).
+        # We still include our source_node_id to ensure the nonce matches.
         flags = Codec::MessageCodec::Base.compute_flags(
           session.local_node_id, # Our node as source
-          session.peer_node_id,  # Peer as destination
+          nil,                   # Destination omitted
           nil
         )
 
@@ -491,15 +558,16 @@ module Matter
           flags: flags,
           security_flags: security_flags,
           source_node_id: session.local_node_id,
-          destination_node_id: session.peer_node_id
+          destination_node_id: nil
         )
 
-        # Build payload header - we ARE the initiator for subscription updates
+        # Build payload header - subscription reports occur on the subscription's exchange
+        # (initiated by the controller), so we are the responder.
         payload_header = Codec::MessageCodec::PayloadHeader.new(
-          exchange_id: subscription.next_exchange_id,
+          exchange_id: subscription.exchange_id,
           protocol_id: PROTOCOL_INTERACTION_MODEL,
           message_type: 0x05_u8, # ReportData
-          initiator_message: true,
+          initiator_message: false,
           requires_acknowledge: true,
           acknowledged_message_id: nil
         )
@@ -539,7 +607,7 @@ module Matter
         # Send raw UDP packet
         @transport.send_raw(udp_packet, subscription.peer)
 
-        Log.info { "📡 Sent subscription update to #{subscription.peer} (#{payload.size} bytes payload, exchange=#{subscription.next_exchange_id})" }
+        Log.info { "📡 Sent subscription update to #{subscription.peer} (#{payload.size} bytes payload, exchange=#{subscription.exchange_id})" }
       end
 
       # Main message routing entry point
@@ -549,6 +617,15 @@ module Matter
         # and without synchronization, responses could get interleaved or state corrupted
         @message_mutex.synchronize do
           session_id = msg.packet_header.session_id
+
+          # MRP duplicate retransmission handling:
+          # If we've already generated a response for this incoming message counter,
+          # resend the cached response and do not reprocess the message.
+          if session_id != 0
+            if resend_cached_mrp_response?(session_id, msg.packet_header.message_id, peer)
+              return
+            end
+          end
 
           # Decrypt encrypted messages (session_id != 0) BEFORE routing
           if session_id != 0
@@ -769,7 +846,8 @@ module Matter
                 max_interval: pending.max_interval,
                 peer: pending.peer,
                 session: pending.session,
-                attribute_paths: pending.attribute_paths
+                attribute_paths: pending.attribute_paths,
+                exchange_id: exchange_id
               )
               @active_subscriptions[pending.subscription_id] = active_sub
 
@@ -777,6 +855,13 @@ module Matter
               Log.info { "Subscription #{pending.subscription_id} is now active (watching #{pending.attribute_paths.size} path(s))" }
 
               # Notify device about new subscription for persistence
+              if persistence = @persistence
+                begin
+                  persistence.subscription_established(self, active_sub)
+                rescue ex
+                  Log.error(exception: ex) { "Failed persisting subscription #{active_sub.subscription_id}: #{ex.message}" }
+                end
+              end
               if callback = @on_subscription_established
                 callback.call(active_sub)
               end
@@ -955,7 +1040,8 @@ module Matter
           peer: peer,
           session: session,
           message_type: 0x05_u8, # ReportData
-          payload: first_chunk
+          payload: first_chunk,
+          cache_for_mrp: true
         )
 
         Log.info { "Sent ReadResponse chunk 1/#{chunks.size}" }
@@ -1034,7 +1120,8 @@ module Matter
           peer: peer,
           session: session,
           message_type: 0x05_u8, # ReportData
-          payload: first_chunk
+          payload: first_chunk,
+          cache_for_mrp: true
         )
 
         Log.info { "Sent initial ReportData chunk for subscription #{subscription_id}" }
@@ -1110,7 +1197,8 @@ module Matter
           peer: peer,
           session: session,
           message_type: 0x07_u8, # WriteResponse
-          payload: response_tlv
+          payload: response_tlv,
+          cache_for_mrp: true
         )
 
         Log.info { "Sent WriteResponse" }
@@ -1157,7 +1245,8 @@ module Matter
           peer: peer,
           session: session,
           message_type: 0x09_u8, # InvokeResponse
-          payload: response_tlv
+          payload: response_tlv,
+          cache_for_mrp: true
         )
 
         Log.info { "Sent InvokeResponse" }
@@ -1172,6 +1261,7 @@ module Matter
         session : Session::SecureContext,
         message_type : UInt8,
         payload : Bytes,
+        cache_for_mrp : Bool = false,
       ) : Nil
         # Encrypt the payload using the session's encryption key
         crypto = Crypto::StandardCrypto.new
@@ -1321,6 +1411,13 @@ module Matter
         Log.info { "   Encrypted (first 64): #{encrypted[0, [64, encrypted.size].min].hexstring}" }
 
         # Send raw UDP packet
+        if cache_for_mrp && original_msg.packet_header.session_id != 0
+          cache_mrp_response(
+            session_id: original_msg.packet_header.session_id,
+            incoming_counter: original_msg.packet_header.message_id,
+            udp_packet: udp_packet.dup
+          )
+        end
         @transport.send_raw(udp_packet, peer)
       end
 
@@ -1657,7 +1754,8 @@ module Matter
               max_interval: pending.max_interval,
               peer: pending.peer,
               session: pending.session,
-              attribute_paths: pending.attribute_paths
+              attribute_paths: pending.attribute_paths,
+              exchange_id: exchange_id
             )
             @active_subscriptions[pending.subscription_id] = active_sub
 
@@ -1994,17 +2092,69 @@ module Matter
 
       # Remove a session and all its associated subscriptions
       private def remove_session_and_subscriptions(session_id : UInt16) : Nil
+        clear_mrp_response_cache_for_session(session_id)
+
         # Remove subscriptions first
         subs_to_remove = @active_subscriptions.select { |_, sub| sub.session.session_id == session_id }
         subs_to_remove.each do |sub_id, _|
           @active_subscriptions.delete(sub_id)
+          if persistence = @persistence
+            begin
+              persistence.subscription_removed(self, sub_id)
+            rescue ex
+              Log.error(exception: ex) { "Failed removing persisted subscription #{sub_id}: #{ex.message}" }
+            end
+          end
           Log.info { "Removed subscription #{sub_id} (from superseded session #{session_id})" }
         end
 
         # Remove the session
         if session = @sessions.delete(session_id)
+          if persistence = @persistence
+            begin
+              persistence.session_removed(self, session_id)
+            rescue ex
+              Log.error(exception: ex) { "Failed removing persisted session #{session_id}: #{ex.message}" }
+            end
+          end
           Log.info { "Removed superseded session #{session_id} (fabric=#{session.fabric_index}, peer=#{session.peer_node_id.try(&.id)})" }
         end
+      end
+
+      # Remove a session (and its subscriptions) from application code.
+      #
+      # This updates internal state and triggers persistence hooks, then calls
+      # `on_session_removed` if configured.
+      def delete_session(session_id : UInt16) : Bool
+        existed = @sessions.has_key?(session_id)
+        remove_session_and_subscriptions(session_id)
+        if existed
+          if callback = @on_session_removed
+            callback.call(session_id)
+          end
+        end
+        existed
+      end
+
+      # Remove an active subscription from application code.
+      #
+      # This updates internal state and triggers persistence hooks, then calls
+      # `on_subscription_removed` if configured.
+      def delete_subscription(subscription_id : UInt32) : Bool
+        removed = !@active_subscriptions.delete(subscription_id).nil?
+        if removed
+          if persistence = @persistence
+            begin
+              persistence.subscription_removed(self, subscription_id)
+            rescue ex
+              Log.error(exception: ex) { "Failed removing persisted subscription #{subscription_id}: #{ex.message}" }
+            end
+          end
+          if callback = @on_subscription_removed
+            callback.call(subscription_id)
+          end
+        end
+        removed
       end
 
       # Callback fired when a superseded session is cleaned up
@@ -2122,6 +2272,13 @@ module Matter
           count += 1
 
           # Notify device
+          if persistence = @persistence
+            begin
+              persistence.subscription_removed(self, sub.subscription_id)
+            rescue ex
+              Log.error(exception: ex) { "Failed removing persisted subscription #{sub.subscription_id}: #{ex.message}" }
+            end
+          end
           if callback = @on_subscription_removed
             callback.call(sub.subscription_id)
           end
@@ -2172,6 +2329,13 @@ module Matter
           Log.info { "Renewed subscription #{old_subscription_id} -> #{new_subscription.subscription_id}" }
 
           # Notify device about old subscription removal
+          if persistence = @persistence
+            begin
+              persistence.subscription_removed(self, old_subscription_id)
+            rescue ex
+              Log.error(exception: ex) { "Failed removing persisted subscription #{old_subscription_id}: #{ex.message}" }
+            end
+          end
           if callback = @on_subscription_removed
             callback.call(old_subscription_id)
           end
@@ -2363,6 +2527,13 @@ module Matter
           cleanup_superseded_sessions(secure_context)
 
           # Notify device of new session (for persistence)
+          if persistence = @persistence
+            begin
+              persistence.session_established(self, secure_context)
+            rescue ex
+              Log.error(exception: ex) { "Failed persisting session #{secure_context.session_id}: #{ex.message}" }
+            end
+          end
           if callback = @on_session_established
             callback.call(secure_context)
           end

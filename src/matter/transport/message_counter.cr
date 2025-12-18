@@ -10,6 +10,12 @@ module Matter
       # Rolling window size for duplicate detection (spec recommends at least 32)
       WINDOW_SIZE = 64
 
+      enum CheckResult
+        Accept
+        Duplicate
+        Stale
+      end
+
       getter counter : UInt32
       @received_window : Set(UInt32)
       @max_received : UInt32
@@ -28,11 +34,19 @@ module Matter
       # Check if a received message ID is valid (not a duplicate or replay)
       # Returns true if message should be accepted
       def valid?(message_id : UInt32) : Bool
+        check(message_id) == CheckResult::Accept
+      end
+
+      # Check whether a received message ID is accepted, a duplicate, or stale.
+      #
+      # This allows reliability layers to treat duplicates as valid retransmissions
+      # (e.g. re-send a cached response) while still rejecting stale replays.
+      def check(message_id : UInt32) : CheckResult
         # First message is always valid
         if @max_received == 0
           @max_received = message_id
           @received_window.add(message_id)
-          return true
+          return CheckResult::Accept
         end
 
         # Message is in the future - always accept
@@ -43,22 +57,22 @@ module Matter
 
           @received_window.add(message_id)
           @max_received = message_id
-          return true
+          return CheckResult::Accept
         end
 
         # Message is within window - check if we've seen it
         window_start = @max_received > WINDOW_SIZE ? @max_received &- WINDOW_SIZE : 0_u32
         if message_id >= window_start
           if @received_window.includes?(message_id)
-            return false # Duplicate
+            return CheckResult::Duplicate
           else
             @received_window.add(message_id)
-            return true
+            return CheckResult::Accept
           end
         end
 
         # Message is too old - reject (potential replay attack)
-        false
+        CheckResult::Stale
       end
 
       # Mark a message ID as received (for testing/manual tracking)
