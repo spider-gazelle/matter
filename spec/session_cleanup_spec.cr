@@ -156,7 +156,8 @@ describe Matter::Protocol::MessageHandler do
         max_interval: 60_u16,
         peer: Socket::IPAddress.new("127.0.0.1", 5540),
         session: session,
-        attribute_paths: [sub_path]
+        attribute_paths: [sub_path],
+        exchange_id: 1000_u16
       )
       handler.active_subscriptions[1_u32] = subscription
 
@@ -232,7 +233,8 @@ describe Matter::Protocol::MessageHandler do
         max_interval: 60_u16,
         peer: Socket::IPAddress.new("127.0.0.1", 5540),
         session: session,
-        attribute_paths: [sub_path]
+        attribute_paths: [sub_path],
+        exchange_id: 1000_u16
       )
       handler.active_subscriptions[42_u32] = subscription
 
@@ -307,7 +309,8 @@ describe Matter::Protocol::MessageHandler do
           max_interval: 60_u16,
           peer: Socket::IPAddress.new("127.0.0.1", 5540),
           session: session,
-          attribute_paths: [sub_path]
+          attribute_paths: [sub_path],
+          exchange_id: (1000 + i).to_u16
         )
         handler.active_subscriptions[(i + 1).to_u32] = subscription
       end
@@ -344,7 +347,8 @@ describe Matter::Protocol::MessageHandler do
         max_interval: 60_u16,
         peer: Socket::IPAddress.new("127.0.0.1", 5540),
         session: session1,
-        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)],
+        exchange_id: 1000_u16
       )
       handler.active_subscriptions[1_u32] = sub1
 
@@ -355,7 +359,8 @@ describe Matter::Protocol::MessageHandler do
         max_interval: 60_u16,
         peer: Socket::IPAddress.new("127.0.0.1", 5541),
         session: session2,
-        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)],
+        exchange_id: 1001_u16
       )
       handler.active_subscriptions[2_u32] = sub2
 
@@ -417,7 +422,8 @@ describe Matter::Protocol::MessageHandler do
         max_interval: 1_u16, # 1 second max interval
         peer: Socket::IPAddress.new("127.0.0.1", 5540),
         session: session,
-        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)],
+        exchange_id: 1000_u16
       )
       # Set last_report_time to 2 seconds ago so it's expired
       sub.last_report_time = Time.utc - 2.seconds
@@ -446,7 +452,8 @@ describe Matter::Protocol::MessageHandler do
         max_interval: 60_u16, # 60 second max interval
         peer: Socket::IPAddress.new("127.0.0.1", 5540),
         session: session,
-        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)],
+        exchange_id: 1000_u16
       )
       # last_report_time is now, so not expired
       handler.active_subscriptions[1_u32] = sub
@@ -480,7 +487,8 @@ describe Matter::Protocol::MessageHandler do
         max_interval: 1_u16,
         peer: Socket::IPAddress.new("127.0.0.1", 5540),
         session: session,
-        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)],
+        exchange_id: 1000_u16
       )
       sub.last_report_time = Time.utc - 2.seconds
       handler.active_subscriptions[42_u32] = sub
@@ -617,7 +625,8 @@ describe Matter::Protocol::MessageHandler do
         max_interval: 60_u16,
         peer: Socket::IPAddress.new("127.0.0.1", 5540),
         session: session,
-        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)],
+        exchange_id: 1000_u16
       )
       handler.active_subscriptions[1_u32] = old_sub
 
@@ -628,7 +637,8 @@ describe Matter::Protocol::MessageHandler do
         max_interval: 120_u16, # Different max_interval
         peer: Socket::IPAddress.new("127.0.0.1", 5540),
         session: session,
-        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)],
+        exchange_id: 1001_u16
       )
 
       # Renew subscription
@@ -657,7 +667,8 @@ describe Matter::Protocol::MessageHandler do
         max_interval: 60_u16,
         peer: Socket::IPAddress.new("127.0.0.1", 5540),
         session: session,
-        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)],
+        exchange_id: 1000_u16
       )
       handler.active_subscriptions[1_u32] = sub
 
@@ -686,7 +697,8 @@ describe Matter::Protocol::MessageHandler do
         max_interval: 60_u16,
         peer: Socket::IPAddress.new("127.0.0.1", 5540),
         session: session,
-        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)]
+        attribute_paths: [Matter::InteractionModel::AttributePath.new(endpoint: 1_u16, cluster: 0x0006_u32, attribute: 0_u32)],
+        exchange_id: 1000_u16
       )
       handler.active_subscriptions[1_u32] = sub
 

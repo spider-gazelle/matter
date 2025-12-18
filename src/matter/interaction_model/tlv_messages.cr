@@ -7,11 +7,12 @@ module Matter
     # TLV-serializable IM message structures matching matter.js schemas
 
     # AttributeDataIB - per matter.js TlvAttributeReportData
+    # Note: fixed_size: true on data_version ensures 4-byte encoding for iOS compatibility
     struct AttributeDataIB
       include TLV::Serializable
 
-      # Tag 0: DataVersion (optional)
-      @[TLV::Field(tag: 0, optional: true)]
+      # Tag 0: DataVersion (optional, fixed 4-byte for iOS compatibility)
+      @[TLV::Field(tag: 0, optional: true, fixed_size: true)]
       property data_version : UInt32?
 
       # Tag 1: Path
@@ -76,11 +77,12 @@ module Matter
 
     # ReportDataMessage - the actual ReadResponse/ReportData message
     # Per matter.js TlvDataReportForSend
+    # Note: fixed_size: true on subscription_id ensures 4-byte encoding for iOS compatibility
     struct ReportDataMessage
       include TLV::Serializable
 
-      # Tag 0: SubscriptionId (optional, only for subscriptions)
-      @[TLV::Field(tag: 0, optional: true)]
+      # Tag 0: SubscriptionId (optional, fixed 4-byte for iOS compatibility)
+      @[TLV::Field(tag: 0, optional: true, fixed_size: true)]
       property subscription_id : UInt32?
 
       # Tag 1: AttributeReports (array of AttributeReportIB)
@@ -261,15 +263,16 @@ module Matter
     end
 
     # SubscribeResponseMessage
+    # Note: fixed_size: true ensures correct type widths for iOS compatibility
     struct SubscribeResponseMessage
       include TLV::Serializable
 
-      # Tag 0: SubscriptionId
-      @[TLV::Field(tag: 0)]
+      # Tag 0: SubscriptionId (fixed 4-byte for iOS compatibility)
+      @[TLV::Field(tag: 0, fixed_size: true)]
       property subscription_id : UInt32
 
-      # Tag 2: MaxInterval (Note: tag 1 is not used)
-      @[TLV::Field(tag: 2)]
+      # Tag 2: MaxInterval (Note: tag 1 is not used, fixed 2-byte for iOS compatibility)
+      @[TLV::Field(tag: 2, fixed_size: true)]
       property max_interval : UInt16
 
       # Tag 0xFF: InteractionModelRevision

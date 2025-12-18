@@ -561,10 +561,13 @@ module Matter
         end
 
         # Build ReportDataMessage
+        # For subscription updates with data, suppress_response should be false
+        # to ensure the client sends a StatusResponse
         report_msg = InteractionModel::ReportDataMessage.new(
           subscription_id: subscription_id,
           attribute_reports: attribute_reports.empty? ? nil : attribute_reports,
           more_chunked_messages: response.more_chunks ? true : nil,
+          suppress_response: response.suppress_response,
           interaction_model_revision: 12_u8
         )
 

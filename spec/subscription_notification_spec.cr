@@ -159,7 +159,8 @@ describe "Subscription Notifications" do
           max_interval: 60_u16,
           peer: Socket::IPAddress.new("127.0.0.1", 5540),
           session: session,
-          attribute_paths: paths
+          attribute_paths: paths,
+          exchange_id: 1000_u16
         )
 
         # Exact match
@@ -189,7 +190,8 @@ describe "Subscription Notifications" do
           max_interval: 60_u16,
           peer: Socket::IPAddress.new("127.0.0.1", 5540),
           session: session,
-          attribute_paths: paths
+          attribute_paths: paths,
+          exchange_id: 1000_u16
         )
 
         # Any endpoint should match
@@ -215,7 +217,8 @@ describe "Subscription Notifications" do
           max_interval: 60_u16,
           peer: Socket::IPAddress.new("127.0.0.1", 5540),
           session: session,
-          attribute_paths: paths
+          attribute_paths: paths,
+          exchange_id: 1000_u16
         )
 
         # Any cluster should match
@@ -240,7 +243,8 @@ describe "Subscription Notifications" do
           max_interval: 60_u16,
           peer: Socket::IPAddress.new("127.0.0.1", 5540),
           session: session,
-          attribute_paths: paths
+          attribute_paths: paths,
+          exchange_id: 1000_u16
         )
 
         # Any attribute should match
@@ -266,7 +270,8 @@ describe "Subscription Notifications" do
           max_interval: 60_u16,
           peer: Socket::IPAddress.new("127.0.0.1", 5540),
           session: session,
-          attribute_paths: paths
+          attribute_paths: paths,
+          exchange_id: 1000_u16
         )
 
         # Everything should match
@@ -296,7 +301,8 @@ describe "Subscription Notifications" do
           max_interval: 60_u16,
           peer: Socket::IPAddress.new("127.0.0.1", 5540),
           session: session,
-          attribute_paths: paths
+          attribute_paths: paths,
+          exchange_id: 1000_u16
         )
 
         # Matches first path
@@ -310,8 +316,8 @@ describe "Subscription Notifications" do
       end
     end
 
-    describe "#next_exchange_id" do
-      it "starts at 0 by default" do
+    describe "#exchange_id" do
+      it "stores the exchange_id from creation" do
         session = create_mock_session
         subscription = Matter::Protocol::MessageHandler::ActiveSubscription.new(
           subscription_id: 1_u32,
@@ -319,25 +325,11 @@ describe "Subscription Notifications" do
           max_interval: 60_u16,
           peer: Socket::IPAddress.new("127.0.0.1", 5540),
           session: session,
-          attribute_paths: [] of Matter::InteractionModel::AttributePath
+          attribute_paths: [] of Matter::InteractionModel::AttributePath,
+          exchange_id: 12345_u16
         )
 
-        subscription.next_exchange_id.should eq(0_u16)
-      end
-
-      it "can be incremented" do
-        session = create_mock_session
-        subscription = Matter::Protocol::MessageHandler::ActiveSubscription.new(
-          subscription_id: 1_u32,
-          min_interval: 0_u16,
-          max_interval: 60_u16,
-          peer: Socket::IPAddress.new("127.0.0.1", 5540),
-          session: session,
-          attribute_paths: [] of Matter::InteractionModel::AttributePath
-        )
-
-        subscription.next_exchange_id = (subscription.next_exchange_id &+ 1_u16)
-        subscription.next_exchange_id.should eq(1_u16)
+        subscription.exchange_id.should eq(12345_u16)
       end
     end
 
@@ -352,7 +344,8 @@ describe "Subscription Notifications" do
           max_interval: 60_u16,
           peer: Socket::IPAddress.new("127.0.0.1", 5540),
           session: session,
-          attribute_paths: [] of Matter::InteractionModel::AttributePath
+          attribute_paths: [] of Matter::InteractionModel::AttributePath,
+          exchange_id: 1000_u16
         )
 
         after = Time.utc

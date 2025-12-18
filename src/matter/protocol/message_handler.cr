@@ -296,6 +296,10 @@ module Matter
       @session_cleanup_fiber_running : Bool = false
       @subscription_cleanup_fiber_running : Bool = false
 
+      # Exchange ID counter for initiating new exchanges (e.g., subscription updates)
+      # Start at a random value to avoid conflicts with controller-initiated exchanges
+      @next_exchange_id : UInt16 = Random.rand(UInt16).to_u16
+
       def initialize(
         @transport : Transport::UDPTransport,
         @setup_pin : UInt32,
@@ -514,6 +518,7 @@ module Matter
 
             # Encode ReportData with subscription ID
             report_data = IMHandler.encode_report_data(response, subscription.subscription_id)
+            Log.debug { "Subscription update ReportData TLV (#{report_data.size} bytes): #{report_data.hexstring}" }
 
             # Send the update
             send_subscription_update(subscription, report_data)
@@ -561,13 +566,17 @@ module Matter
           destination_node_id: nil
         )
 
-        # Build payload header - subscription reports occur on the subscription's exchange
-        # (initiated by the controller), so we are the responder.
+        # For subscription updates (not initial reports), the server INITIATES a new exchange.
+        # This is different from the initial subscribe response which uses the controller's exchange.
+        # We generate a new exchange ID and set initiator_message: true.
+        new_exchange_id = @next_exchange_id
+        @next_exchange_id = @next_exchange_id &+ 1 # Wrap-around safe
+
         payload_header = Codec::MessageCodec::PayloadHeader.new(
-          exchange_id: subscription.exchange_id,
+          exchange_id: new_exchange_id,
           protocol_id: PROTOCOL_INTERACTION_MODEL,
           message_type: 0x05_u8, # ReportData
-          initiator_message: false,
+          initiator_message: true,
           requires_acknowledge: true,
           acknowledged_message_id: nil
         )
@@ -607,7 +616,7 @@ module Matter
         # Send raw UDP packet
         @transport.send_raw(udp_packet, subscription.peer)
 
-        Log.info { "📡 Sent subscription update to #{subscription.peer} (#{payload.size} bytes payload, exchange=#{subscription.exchange_id})" }
+        Log.info { "📡 Sent subscription update to #{subscription.peer} (#{payload.size} bytes payload, exchange=#{new_exchange_id})" }
       end
 
       # Main message routing entry point
