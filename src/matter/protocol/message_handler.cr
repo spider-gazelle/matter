@@ -2076,6 +2076,36 @@ module Matter
         end
       end
 
+      # Find the newest session that supersedes the given session
+      # This is the inverse of find_superseded_sessions - given an old session,
+      # find the newest active session for the same fabric/peer that can take over
+      private def find_superseding_session(old_session_id : UInt16) : Session::SecureContext?
+        old_session = @sessions[old_session_id]?
+        return nil unless old_session
+        return nil unless old_session.is_case
+        return nil unless old_session.fabric_index
+
+        old_fabric = old_session.fabric_index.not_nil!
+        old_peer_node = old_session.peer_node_id
+        return nil if old_peer_node.nil?
+
+        # Find all newer sessions for the same fabric/peer
+        candidates = @sessions.values.select do |session|
+          next false unless session.is_case
+          next false unless session.fabric_index == old_fabric
+          next false unless session.session_id != old_session_id
+          next false if session.peer_node_id.nil?
+
+          same_peer = session.peer_node_id.not_nil!.id == old_peer_node.not_nil!.id
+          newer_session = session.creation_time > old_session.creation_time
+
+          same_peer && newer_session
+        end
+
+        # Return the newest candidate (most recently created)
+        candidates.max_by?(&.creation_time)
+      end
+
       # Check if a session has any active subscriptions
       private def session_has_subscriptions?(session_id : UInt16) : Bool
         @active_subscriptions.values.any? { |sub| sub.session.session_id == session_id }
@@ -2269,7 +2299,21 @@ module Matter
         ready.each do |pending|
           @pending_session_cleanups.delete(pending)
           Log.info { "Processing pending cleanup for session #{pending.session_id} (reason: #{pending.reason})" }
-          remove_session_and_subscriptions(pending.session_id)
+
+          # Check if there's a newer superseding session that can take over subscriptions
+          if session_has_subscriptions?(pending.session_id)
+            if superseding = find_superseding_session(pending.session_id)
+              Log.info { "Found superseding session #{superseding.session_id} for pending cleanup of #{pending.session_id}" }
+              migrate_subscriptions_to_new_session(pending.session_id, superseding)
+              remove_session_only(pending.session_id)
+            else
+              # No superseding session - subscriptions must be removed with session
+              remove_session_and_subscriptions(pending.session_id)
+            end
+          else
+            # No subscriptions to worry about
+            remove_session_and_subscriptions(pending.session_id)
+          end
 
           # Notify device
           if callback = @on_session_removed
@@ -2302,7 +2346,19 @@ module Matter
         while @sessions.size >= @max_sessions && !sessions_to_evict.empty?
           session = sessions_to_evict.shift
           Log.info { "Evicting oldest session #{session.session_id} to stay under limit of #{@max_sessions}" }
-          remove_session_and_subscriptions(session.session_id)
+
+          # Check if there's a newer superseding session that can take over subscriptions
+          if session_has_subscriptions?(session.session_id)
+            if superseding = find_superseding_session(session.session_id)
+              Log.info { "Found superseding session #{superseding.session_id} for eviction of #{session.session_id}" }
+              migrate_subscriptions_to_new_session(session.session_id, superseding)
+              remove_session_only(session.session_id)
+            else
+              remove_session_and_subscriptions(session.session_id)
+            end
+          else
+            remove_session_and_subscriptions(session.session_id)
+          end
 
           # Notify device
           if callback = @on_session_removed
