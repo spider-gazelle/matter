@@ -97,6 +97,9 @@ module Matter
         build_and_wire_clusters
         @message_handler.setup_cluster_notifications
 
+        # Restore cluster state (scenes, groups, etc.) from storage
+        restore_cluster_states
+
         @lifecycle = LifecycleManager.new(
           fabric_table: @fabric_table,
           message_handler: @message_handler,
@@ -134,6 +137,10 @@ module Matter
         # Persist all session state before shutdown to ensure message counters
         # and other session data are saved for clean reconnection after restart
         @message_handler.persist_all_sessions
+
+        # Save cluster state (scenes, groups, etc.)
+        save_cluster_states
+
         @storage_manager.stop
         @transport.close
         @responder.stop
@@ -423,6 +430,16 @@ module Matter
         # Prefer localhost as a safe default
         ips << Socket::IPAddress.new("127.0.0.1", 0)
         ips
+      end
+
+      # Save state for all clusters that need persistence
+      protected def save_cluster_states : Nil
+        @storage_manager.save_all_cluster_states(@message_handler.clusters.values)
+      end
+
+      # Restore state for all clusters from storage
+      protected def restore_cluster_states : Nil
+        @storage_manager.restore_all_cluster_states(@message_handler.clusters.values)
       end
     end
   end

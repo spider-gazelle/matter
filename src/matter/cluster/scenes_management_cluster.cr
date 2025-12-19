@@ -250,6 +250,7 @@ module Matter
     end
 
     class ScenesManagementCluster < Base
+      Log        = ::Log.for("matter.cluster.scenes")
       CLUSTER_ID = 0x0062_u32
 
       # Feature flags
@@ -287,6 +288,8 @@ module Matter
 
       # SceneInfo structure for fabric-scoped scene info
       struct SceneInfo
+        include JSON::Serializable
+
         property scene_count : UInt8
         property current_scene : UInt8
         property current_group : UInt16
@@ -307,15 +310,31 @@ module Matter
 
       # Extension field set for scene data
       struct ExtensionFieldSet
-        property cluster_id : UInt32
-        property attribute_value_list : Array(Tuple(UInt32, Bytes))
+        include JSON::Serializable
 
-        def initialize(@cluster_id, @attribute_value_list = [] of Tuple(UInt32, Bytes))
+        property cluster_id : UInt32
+        # Store as array of {attribute_id, hex_encoded_bytes} for JSON compatibility
+        @[JSON::Field(key: "attributes")]
+        property attribute_value_list_json : Array(Tuple(UInt32, String)) = [] of Tuple(UInt32, String)
+
+        @[JSON::Field(ignore: true)]
+        property attribute_value_list : Array(Tuple(UInt32, Bytes)) = [] of Tuple(UInt32, Bytes)
+
+        def initialize(@cluster_id, attribute_list : Array(Tuple(UInt32, Bytes)) = [] of Tuple(UInt32, Bytes))
+          @attribute_value_list = attribute_list
+          @attribute_value_list_json = attribute_list.map { |id, bytes| {id, bytes.hexstring} }
+        end
+
+        def after_initialize
+          # Convert hex strings back to bytes after deserialization
+          @attribute_value_list = @attribute_value_list_json.map { |id, hex| {id, hex.hexbytes} }
         end
       end
 
       # Scene data structure
       struct SceneData
+        include JSON::Serializable
+
         property transition_time : UInt32 # milliseconds
         property scene_name : String
         property extension_field_sets : Array(ExtensionFieldSet)
@@ -324,6 +343,38 @@ module Matter
           @transition_time = 0_u32,
           @scene_name = "",
           @extension_field_sets = [] of ExtensionFieldSet,
+        )
+        end
+      end
+
+      # JSON wrapper for scene key (fabric_index, group_id, scene_id)
+      struct SceneKey
+        include JSON::Serializable
+
+        property fabric_index : UInt8
+        property group_id : UInt16
+        property scene_id : UInt8
+
+        def initialize(@fabric_index, @group_id, @scene_id)
+        end
+
+        def to_tuple : {UInt8, UInt16, UInt8}
+          {@fabric_index, @group_id, @scene_id}
+        end
+      end
+
+      # Full state for JSON persistence
+      struct PersistedState
+        include JSON::Serializable
+
+        property scenes : Array(Tuple(SceneKey, SceneData))
+        property fabric_scene_info : Hash(String, SceneInfo)
+        property data_version : UInt32
+
+        def initialize(
+          @scenes = [] of Tuple(SceneKey, SceneData),
+          @fabric_scene_info = {} of String => SceneInfo,
+          @data_version = 0_u32,
         )
         end
       end
@@ -718,6 +769,55 @@ module Matter
           @fabric_scene_info[fabric_index] = info
           increment_version
         end
+      end
+
+      # Persistence support
+
+      # Save all scene state to JSON
+      def save_state : String?
+        # Convert scenes hash to array for JSON serialization
+        scenes_array = @scenes.map do |key, data|
+          scene_key = SceneKey.new(key[0], key[1], key[2])
+          {scene_key, data}
+        end
+
+        # Convert fabric_scene_info keys to strings for JSON
+        fabric_info_json = {} of String => SceneInfo
+        @fabric_scene_info.each do |fabric_idx, info|
+          fabric_info_json[fabric_idx.to_s] = info
+        end
+
+        state = PersistedState.new(
+          scenes: scenes_array,
+          fabric_scene_info: fabric_info_json,
+          data_version: @data_version
+        )
+
+        state.to_json
+      end
+
+      # Restore scene state from JSON
+      def restore_state(json : String) : Nil
+        state = PersistedState.from_json(json)
+
+        # Restore scenes
+        @scenes.clear
+        state.scenes.each do |key, data|
+          tuple_key = key.to_tuple
+          @scenes[tuple_key] = data
+        end
+
+        # Restore fabric scene info
+        @fabric_scene_info.clear
+        state.fabric_scene_info.each do |fabric_idx_str, info|
+          @fabric_scene_info[fabric_idx_str.to_u8] = info
+        end
+
+        # Restore data version
+        @data_version = state.data_version
+      rescue ex
+        # Log error but don't crash - start fresh if restore fails
+        Log.error { "Failed to restore ScenesManagement state: #{ex.message}" }
       end
     end
   end

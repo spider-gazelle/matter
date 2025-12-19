@@ -1,4 +1,5 @@
 require "tlv"
+require "json"
 require "../interaction_model/status_code"
 require "../interaction_model/paths"
 require "../datatype/*"
@@ -249,6 +250,26 @@ module Matter
       # Get command metadata by ID
       def get_command_metadata(command_id : UInt32) : CommandMetadata?
         commands.find { |c| c.id.id == command_id }
+      end
+
+      # Returns a unique key for this cluster instance for persistence
+      # Format: "endpoint_<id>_cluster_<id>"
+      def persistence_key : String
+        "endpoint_#{@endpoint_id.number}_cluster_#{@cluster_id.id}"
+      end
+
+      # Save cluster state to JSON for persistence.
+      # Override in subclasses that need to persist state (e.g., scenes, groups).
+      # Returns nil if no state needs to be persisted.
+      def save_state : String?
+        nil
+      end
+
+      # Restore cluster state from JSON.
+      # Override in subclasses that need to restore state.
+      # The json parameter is the string returned by save_state.
+      def restore_state(json : String) : Nil
+        # Default: no-op
       end
 
       # Helper methods for encoding simple values
