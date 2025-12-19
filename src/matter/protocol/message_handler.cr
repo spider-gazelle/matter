@@ -666,6 +666,16 @@ module Matter
               return
             end
 
+            # Check if this is a duplicate message that we should drop
+            # (MRP retransmit with no cached response - MRP cache check was already done above)
+            message_counter = msg.packet_header.message_id
+            unless session.would_accept_message_counter?(message_counter)
+              # This is a duplicate without a cached response - drop silently
+              # The MRP cache was already checked above, so if we're here, there's no response to resend
+              Log.debug { "Dropping duplicate message: session=#{session_id}, counter=#{message_counter} (no cached response)" }
+              return
+            end
+
             # Cancel any pending cleanup for this session since we received traffic
             cancel_cleanup_on_traffic(session_id)
 

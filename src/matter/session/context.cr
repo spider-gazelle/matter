@@ -96,6 +96,18 @@ module Matter
         counter
       end
 
+      # Check if a message counter would be accepted (without updating state)
+      # Used for pre-checking duplicates before attempting decryption
+      def would_accept_message_counter?(received_counter : UInt32) : Bool
+        last_counter = @peer_message_counter
+
+        # First message: accept any counter
+        return true if last_counter.nil?
+
+        # Subsequent messages: must be greater than last received
+        received_counter > last_counter
+      end
+
       # Validate received message counter (prevent replay attacks)
       def validate_message_counter(received_counter : UInt32) : Bool
         # Message counter must be greater than the last received counter
