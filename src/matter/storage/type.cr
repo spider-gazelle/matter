@@ -1,8 +1,17 @@
 module Matter
   module Storage
-    alias BaseType = String | Int8 | Int16 | Int32 | Int64 | UInt8 | UInt16 | UInt32 | UInt64 | Float32 | Float64 | BigInt | Bool | Slice(UInt8) | BigInt | Nil
-    alias ComplexType = DataType::AttributeId | DataType::ClusterId | DataType::CommandId | DataType::EndpointNumber | DataType::EventId | DataType::FabricId | DataType::FabricIndex | DataType::GroupId | DataType::NodeId | DataType::VendorId
+    # Values that can be persisted in `Storage::Base`.
+    #
+    # Storage is primarily used for JSON persistence (fabrics, sessions, cluster
+    # state) and supports a small set of primitive types plus nested arrays and
+    # string-keyed hashes.
+    alias Scalar = Nil | Bool | String |
+                   Int8 | Int16 | Int32 | Int64 |
+                   UInt8 | UInt16 | UInt32 | UInt64 |
+                   Float32 | Float64 |
+                   BigInt |
+                   Bytes
 
-    alias Type = BaseType | ComplexType | Array(Type) | Hash(String, Type) | Hash(BaseType, Type)
+    alias Type = Scalar | Array(Type) | Hash(String, Type)
   end
 end

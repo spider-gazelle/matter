@@ -17,7 +17,6 @@ module Matter
       # Root JSON keys used to preserve non-JSON-native types
       TYPE_FIELD  = "__type__"
       VALUE_FIELD = "value"
-      NAME_FIELD  = "name"
 
       getter path : String
       getter? initialized : Bool = false
@@ -27,12 +26,12 @@ module Matter
       def initialize(@path : String = "matter_storage.json")
       end
 
-      def start : Void
+      def start : Nil
         load_from_disk
         @initialized = true
       end
 
-      def stop : Void
+      def stop : Nil
         flush
         @initialized = false
       end
@@ -44,7 +43,7 @@ module Matter
         @store[context_key]?.try(&.[key]?)
       end
 
-      def set(contexts : Array(String), key : String, value : Type) : Void
+      def set(contexts : Array(String), key : String, value : Type) : Nil
         raise Exception.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
@@ -54,7 +53,7 @@ module Matter
       end
 
       # Set multiple key-value pairs at once
-      def set(contexts : Array(String), values : Hash(String, Type)) : Void
+      def set(contexts : Array(String), values : Hash(String, Type)) : Nil
         raise Exception.new("Context must not be empty!") if contexts.size == 0
 
         values.each do |key, value|
@@ -62,7 +61,7 @@ module Matter
         end
       end
 
-      def delete(contexts : Array(String), key : String) : Void
+      def delete(contexts : Array(String), key : String) : Nil
         raise Exception.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
@@ -116,12 +115,12 @@ module Matter
       end
 
       # Clears all stored contexts and keys.
-      def clear : Void
+      def clear : Nil
         @store.clear
         flush
       end
 
-      def clear_all(contexts : Array(String)) : Void
+      def clear_all(contexts : Array(String)) : Nil
         if contexts.size == 0
           clear
           return
@@ -220,10 +219,6 @@ module Matter
               BigInt.new(raw[VALUE_FIELD].as_s)
             when "uint64"
               raw[VALUE_FIELD].as_s.to_u64
-            when "matter_datatype"
-              name = raw[NAME_FIELD].as_s
-              value_any = raw[VALUE_FIELD]?
-              decode_datatype(name, value_any)
             else
               # Unknown typed object - keep as a normal hash
               decode_hash(raw)
@@ -239,44 +234,10 @@ module Matter
       private def decode_hash(raw : Hash(String, JSON::Any)) : Type
         h = {} of String => Type
         raw.each do |k, v|
-          next if k == TYPE_FIELD || k == VALUE_FIELD || k == NAME_FIELD
+          next if k == TYPE_FIELD || k == VALUE_FIELD
           h[k] = type_from_json(v)
         end
         h
-      end
-
-      private def decode_datatype(name : String, value_any : JSON::Any?) : Type
-        value = value_any ? value_any.raw : nil
-
-        case name
-        when "AttributeId"
-          DataType::AttributeId.new(parse_u64(value).to_u32)
-        when "ClusterId"
-          DataType::ClusterId.new(parse_u64(value).to_u32)
-        when "CommandId"
-          DataType::CommandId.new(parse_u64(value).to_u32)
-        when "EndpointNumber"
-          DataType::EndpointNumber.new(parse_u64(value).to_u16)
-        when "EventId"
-          DataType::EventId.new(parse_u64(value).to_u32)
-        when "FabricId"
-          DataType::FabricId.new(parse_u64(value))
-        when "FabricIndex"
-          if value.nil?
-            DataType::FabricIndex.new(nil)
-          else
-            DataType::FabricIndex.new(parse_u64(value).to_u8)
-          end
-        when "GroupId"
-          DataType::GroupId.new(parse_u64(value).to_u16)
-        when "NodeId"
-          DataType::NodeId.new(parse_u64(value))
-        when "VendorId"
-          DataType::VendorId.new(parse_u64(value).to_u16)
-        else
-          # Fallback to string to preserve information
-          name
-        end
       end
 
       private def write_type(json : JSON::Builder, value : Type) : Nil
@@ -324,26 +285,6 @@ module Matter
             json.field(TYPE_FIELD, "bytes")
             json.field(VALUE_FIELD, Base64.strict_encode(value))
           end
-        when DataType::AttributeId
-          write_datatype(json, "AttributeId", value.id)
-        when DataType::ClusterId
-          write_datatype(json, "ClusterId", value.id)
-        when DataType::CommandId
-          write_datatype(json, "CommandId", value.id)
-        when DataType::EndpointNumber
-          write_datatype(json, "EndpointNumber", value.number)
-        when DataType::EventId
-          write_datatype(json, "EventId", value.id)
-        when DataType::FabricId
-          write_datatype(json, "FabricId", value.id)
-        when DataType::FabricIndex
-          write_datatype(json, "FabricIndex", value.index)
-        when DataType::GroupId
-          write_datatype(json, "GroupId", value.id)
-        when DataType::NodeId
-          write_datatype(json, "NodeId", value.id)
-        when DataType::VendorId
-          write_datatype(json, "VendorId", value.id)
         when Array(Type)
           json.array do
             value.each do |v|
@@ -356,53 +297,8 @@ module Matter
               json.field(k) { write_type(json, v) }
             end
           end
-        when Hash(BaseType, Type)
-          json.object do
-            value.each do |k, v|
-              json.field(k.to_s) { write_type(json, v) }
-            end
-          end
         else
           json.string(value.to_s)
-        end
-      end
-
-      private def write_datatype(json : JSON::Builder, name : String, value : Int32 | Int64 | UInt16 | UInt32 | UInt64 | UInt8 | Nil) : Nil
-        json.object do
-          json.field(TYPE_FIELD, "matter_datatype")
-          json.field(NAME_FIELD, name)
-          json.field(VALUE_FIELD) do
-            case value
-            when Nil
-              json.null
-            when Int32
-              json.number(value.to_i64)
-            when Int64
-              json.number(value)
-            when UInt8
-              json.number(value.to_i64)
-            when UInt16
-              json.number(value.to_i64)
-            when UInt32
-              json.number(value.to_i64)
-            when UInt64
-              # Use string to preserve values > Int64::MAX
-              json.string(value.to_s)
-            end
-          end
-        end
-      end
-
-      private def parse_u64(value : Nil | Bool | Int64 | Float64 | String | Array(JSON::Any) | Hash(String, JSON::Any)) : UInt64
-        case value
-        when Int64
-          value.to_u64
-        when Float64
-          value.to_i64.to_u64
-        when String
-          value.to_u64
-        else
-          0_u64
         end
       end
 

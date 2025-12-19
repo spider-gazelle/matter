@@ -173,8 +173,8 @@ module MatterSwitch
       @scenes_management.not_nil!
     end
 
-    protected def build_storage_manager : Matter::Persistence::StorageManager
-      Matter::Persistence::JsonStorage.new(STORAGE_FILE)
+    protected def build_storage_manager : Matter::Storage::Manager
+      Matter::Storage::Manager.new(Matter::Storage::JsonFileBackend.new(STORAGE_FILE))
     end
 
     protected def device_clusters : Array(Matter::Cluster::Base)

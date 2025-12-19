@@ -4,11 +4,11 @@ module Matter
       getter store : Hash(String, Type) = {} of String => Type
       getter? initialized : Bool = true
 
-      def start : Void
+      def start : Nil
         @initialized = true
       end
 
-      def stop : Void
+      def stop : Nil
         @initialized = false
       end
 
@@ -24,7 +24,7 @@ module Matter
         nil
       end
 
-      def set(contexts : Array(String), key : String, value : Type) : Void
+      def set(contexts : Array(String), key : String, value : Type) : Nil
         raise Exception.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
@@ -37,7 +37,7 @@ module Matter
       end
 
       # Set multiple key-value pairs at once
-      def set(contexts : Array(String), values : Hash(String, Type)) : Void
+      def set(contexts : Array(String), values : Hash(String, Type)) : Nil
         raise Exception.new("Context must not be empty!") if contexts.size == 0
 
         values.each do |key, value|
@@ -45,7 +45,7 @@ module Matter
         end
       end
 
-      def delete(contexts : Array(String), key : String) : Void
+      def delete(contexts : Array(String), key : String) : Nil
         raise Exception.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
@@ -118,11 +118,11 @@ module Matter
         subcontexts.to_a.sort
       end
 
-      def clear
+      def clear : Nil
         store.clear
       end
 
-      def clear_all(contexts : Array(String)) : Void
+      def clear_all(contexts : Array(String)) : Nil
         # Handle empty contexts - clear everything
         if contexts.size == 0
           store.clear

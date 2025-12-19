@@ -1,8 +1,7 @@
 require "../fabric_table"
 require "../transport/udp_transport"
 require "../protocol/message_handler"
-require "../persistence/storage_manager"
-require "../persistence/json_storage"
+require "../storage/manager"
 require "./lifecycle_manager"
 
 require "../mdns/responder"
@@ -44,7 +43,7 @@ module Matter
       getter ip_addresses : Array(Socket::IPAddress)
       getter port : Int32
 
-      getter storage_manager : Persistence::StorageManager
+      getter storage_manager : Storage::Manager
       getter fabric_table : FabricTable
       getter transport : Transport::UDPTransport
       getter message_handler : Protocol::MessageHandler
@@ -198,7 +197,7 @@ module Matter
       # ------------------------------------------------------------------------
       # Storage
       # ------------------------------------------------------------------------
-      protected abstract def build_storage_manager : Persistence::StorageManager
+      protected abstract def build_storage_manager : Storage::Manager
 
       # ------------------------------------------------------------------------
       # Device clusters / endpoints

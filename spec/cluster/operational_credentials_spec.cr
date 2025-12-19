@@ -3,6 +3,12 @@ require "../../src/matter/cluster/operational_credentials_cluster"
 require "../../src/matter/crypto/certificate"
 
 # Helper functions for TLV encoding command data
+def build_op_creds_cluster(endpoint_id : Matter::DataType::EndpointNumber = Matter::DataType::EndpointNumber.new(0_u16))
+  storage = Matter::Storage::MemoryBackend.new
+  storage_manager = Matter::Storage::Manager.new(storage)
+  Matter::Cluster::OperationalCredentialsCluster.new(storage_manager.fabric_table, endpoint_id, nil)
+end
+
 def create_attestation_request_tlv(nonce : Bytes) : Bytes
   Matter::Cluster::Definitions::OperationalCredentials::AttestationRequest.new(
     attestation_nonce: nonce
@@ -115,7 +121,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
   describe "initialization" do
     it "creates operational credentials cluster" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       cluster.cluster_id.id.should eq(0x003E_u32)
       cluster.name.should eq("OperationalCredentials")
@@ -129,7 +135,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
   describe "attributes" do
     it "reads NOCs attribute when empty" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_NOCS)
       value.should be_a(Bytes)
@@ -139,7 +145,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "reads Fabrics attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_FABRICS)
       value.should be_a(Bytes)
@@ -147,7 +153,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "reads SupportedFabrics attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_SUPPORTED_FABRICS)
       value.should be_a(Bytes)
@@ -156,7 +162,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "reads CommissionedFabrics attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_COMMISSIONED_FABRICS)
       value.should be_a(Bytes)
@@ -165,7 +171,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "reads TrustedRootCertificates attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_TRUSTED_ROOT_CERTIFICATES)
       value.should be_a(Bytes)
@@ -173,7 +179,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "reads CurrentFabricIndex attribute when not set" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_CURRENT_FABRIC_INDEX)
       value.should be_a(Bytes)
@@ -182,7 +188,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "returns status for unsupported attribute write" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       status = cluster.write_attribute(
         Matter::Cluster::OperationalCredentialsCluster::ATTR_SUPPORTED_FABRICS,
@@ -196,7 +202,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
   describe "metadata" do
     it "provides attribute metadata" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       attributes = cluster.attributes
       attributes.should_not be_empty
@@ -210,7 +216,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "provides command metadata" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       commands = cluster.commands
       commands.should_not be_empty
@@ -283,7 +289,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
   describe "commands" do
     it "handles AttestationRequest command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       nonce = Bytes.new(32, 0x42_u8)
       command_data = create_attestation_request_tlv(nonce)
@@ -293,7 +299,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "handles CertificateChainRequest command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       command_data = create_certificate_chain_request_tlv(1_u8) # DACCertificate
       result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_CERTIFICATE_CHAIN_REQUEST, command_data)
@@ -302,7 +308,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "handles CSRRequest command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       nonce = Bytes.new(32, 0x42_u8)
       command_data = create_csr_request_tlv(nonce)
@@ -312,7 +318,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "handles AddNOC command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       noc = Bytes.new(100, 0x01_u8)
       ipk = Bytes.new(16, 0x02_u8)
@@ -323,7 +329,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "handles UpdateNOC command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       noc = Bytes.new(100, 0x01_u8)
       command_data = create_update_noc_request_tlv(noc, nil, 1_u8)
@@ -333,7 +339,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "handles AddTrustedRootCertificate command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       cert = Bytes.new(100, 0x01_u8)
       command_data = create_add_trusted_root_cert_request_tlv(cert)
@@ -343,7 +349,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "handles RemoveFabric command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       command_data = create_remove_fabric_request_tlv(1_u8)
       result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_REMOVE_FABRIC, command_data)
@@ -354,7 +360,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
   describe "fabric management" do
     it "tracks fabric list" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       cluster.fabrics.should be_empty
       cluster.commissioned_fabrics.should eq(0_u8)
@@ -362,7 +368,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "finds fabric by index" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       fabric = cluster.get_fabric_by_index(1_u8)
       fabric.should be_nil
@@ -370,7 +376,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
     it "checks fabric count against limit" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       cluster.has_fabric_capacity?.should be_true
     end
@@ -379,14 +385,14 @@ describe Matter::Cluster::OperationalCredentialsCluster do
   describe "NOC management" do
     it "tracks NOC list" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       cluster.nocs.should be_empty
     end
 
     it "finds NOC by fabric index" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       noc = cluster.get_noc_by_fabric_index(1_u8)
       noc.should be_nil
@@ -396,14 +402,14 @@ describe Matter::Cluster::OperationalCredentialsCluster do
   describe "trusted root certificates" do
     it "tracks trusted root certificate list" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       cluster.trusted_root_certificates.should be_empty
     end
 
     it "can add trusted root certificate" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       root_cert = "mock_root_certificate".to_slice
       cluster.trusted_root_certificates << root_cert
@@ -423,14 +429,14 @@ describe Matter::Cluster::OperationalCredentialsCluster do
   describe "current fabric" do
     it "tracks current fabric index" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       cluster.current_fabric_index.should eq(0_u8)
     end
 
     it "updates current fabric index" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+      cluster = build_op_creds_cluster(endpoint_id)
 
       cluster.current_fabric_index = 1_u8
       cluster.current_fabric_index.should eq(1_u8)
@@ -441,7 +447,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
     describe "full commissioning flow" do
       it "completes CSR → AddTrustedRoot → AddNOC flow" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+        cluster = build_op_creds_cluster(endpoint_id)
 
         # Set session context for integration test
         cluster.session_id = 12345_u64
@@ -507,7 +513,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       it "rejects AddNOC without CSR" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+        cluster = build_op_creds_cluster(endpoint_id)
 
         cluster.session_id = 12345_u64
         cluster.failsafe_armed = true
@@ -542,7 +548,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       it "rejects AddNOC without trusted root" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+        cluster = build_op_creds_cluster(endpoint_id)
 
         cluster.session_id = 12345_u64
         cluster.failsafe_armed = true
@@ -578,7 +584,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
     describe "NOC update flow" do
       it "completes CSR(update) → UpdateNOC flow" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+        cluster = build_op_creds_cluster(endpoint_id)
 
         # First, add a fabric using the commissioning flow
         cluster.session_id = 12345_u64
@@ -657,7 +663,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       it "rejects UpdateNOC with AddTrustedRoot in failsafe" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+        cluster = build_op_creds_cluster(endpoint_id)
 
         # First, add an initial fabric via full commissioning flow
         cluster.session_id = 1_u64
@@ -729,7 +735,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
     describe "failsafe constraints" do
       it "prevents calling CSR after AddNOC in same failsafe" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+        cluster = build_op_creds_cluster(endpoint_id)
 
         cluster.session_id = 12345_u64
         cluster.failsafe_armed = true
@@ -776,7 +782,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       it "allows CSR after failsafe expiry" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+        cluster = build_op_creds_cluster(endpoint_id)
 
         cluster.session_id = 12345_u64
         cluster.failsafe_armed = true
@@ -811,7 +817,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
     describe "multi-fabric scenarios" do
       it "adds multiple fabrics" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+        cluster = build_op_creds_cluster(endpoint_id)
 
         # Add first fabric
         cluster.session_id = 1_u64
@@ -876,7 +882,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       it "prevents duplicate fabric_id" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = Matter::Cluster::OperationalCredentialsCluster.new(endpoint_id)
+        cluster = build_op_creds_cluster(endpoint_id)
 
         # Add first fabric
         cluster.session_id = 1_u64

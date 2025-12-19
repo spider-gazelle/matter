@@ -5,7 +5,6 @@ require "../fabric_table"
 require "../crypto/key"
 require "../crypto/crypto"
 require "../crypto/certificate"
-require "../storage/memory_backend"
 require "../certificate/attestation_certificate_manager"
 require "../certificate/certification_declaration"
 
@@ -386,13 +385,6 @@ module Matter
           DataType::EndpointNumber.new(0_u16),
           access_control_cluster
         )
-      end
-
-      # Overload for tests that pass only endpoint_id (creates default fabric table)
-      def initialize(endpoint_id : DataType::EndpointNumber)
-        storage = Storage::MemoryBackend.new
-        fabric_table = FabricTable.new(storage)
-        initialize(fabric_table, endpoint_id, nil)
       end
 
       def name : String

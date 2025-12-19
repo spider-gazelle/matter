@@ -1,6 +1,6 @@
 require "../spec_helper"
 require "../../src/matter/cluster/scenes_management_cluster"
-require "../../src/matter/persistence/storage_manager"
+require "../../src/matter/storage/manager"
 require "../../src/matter/storage/memory_backend"
 
 describe Matter::Cluster::ScenesManagementCluster do
