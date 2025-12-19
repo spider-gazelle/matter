@@ -63,6 +63,108 @@ module Matter
       end
     end
 
+    # Attribute value pair for extension field sets
+    # Per Matter spec: AttributeValuePairStruct
+    # The value field used depends on the attribute's data type:
+    # - valueUnsigned8 (tag 1): bool, map8, uint8
+    # - valueSigned8 (tag 2): int8
+    # - valueUnsigned16 (tag 3): map16, uint16
+    # - valueSigned16 (tag 4): int16
+    # - valueUnsigned32 (tag 5): map32, uint24, uint32
+    # - valueSigned32 (tag 6): int24, int32
+    # - valueUnsigned64 (tag 7): map64, uint40-64
+    # - valueSigned64 (tag 8): int40-64
+    struct AttributeValuePairTlv
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property attribute_id : UInt32
+
+      @[TLV::Field(tag: 1, optional: true)]
+      property value_unsigned8 : UInt8?
+
+      @[TLV::Field(tag: 2, optional: true)]
+      property value_signed8 : Int8?
+
+      @[TLV::Field(tag: 3, optional: true)]
+      property value_unsigned16 : UInt16?
+
+      @[TLV::Field(tag: 4, optional: true)]
+      property value_signed16 : Int16?
+
+      @[TLV::Field(tag: 5, optional: true)]
+      property value_unsigned32 : UInt32?
+
+      @[TLV::Field(tag: 6, optional: true)]
+      property value_signed32 : Int32?
+
+      @[TLV::Field(tag: 7, optional: true)]
+      property value_unsigned64 : UInt64?
+
+      @[TLV::Field(tag: 8, optional: true)]
+      property value_signed64 : Int64?
+
+      def initialize(@attribute_id : UInt32,
+                     @value_unsigned8 : UInt8? = nil,
+                     @value_signed8 : Int8? = nil,
+                     @value_unsigned16 : UInt16? = nil,
+                     @value_signed16 : Int16? = nil,
+                     @value_unsigned32 : UInt32? = nil,
+                     @value_signed32 : Int32? = nil,
+                     @value_unsigned64 : UInt64? = nil,
+                     @value_signed64 : Int64? = nil)
+      end
+
+      # Create from raw TLV bytes, converting to the appropriate value field
+      def self.from_tlv_bytes(attribute_id : UInt32, tlv_bytes : Bytes) : AttributeValuePairTlv
+        return new(attribute_id) if tlv_bytes.empty?
+
+        tlv_value = TLV::Any.from_slice(tlv_bytes)
+        value = tlv_value.value
+
+        case value
+        when Bool
+          # Boolean maps to valueUnsigned8
+          new(attribute_id, value_unsigned8: value ? 1_u8 : 0_u8)
+        when UInt8
+          new(attribute_id, value_unsigned8: value)
+        when Int8
+          new(attribute_id, value_signed8: value)
+        when UInt16
+          new(attribute_id, value_unsigned16: value)
+        when Int16
+          new(attribute_id, value_signed16: value)
+        when UInt32
+          new(attribute_id, value_unsigned32: value)
+        when Int32
+          new(attribute_id, value_signed32: value)
+        when UInt64
+          new(attribute_id, value_unsigned64: value)
+        when Int64
+          new(attribute_id, value_signed64: value)
+        else
+          # For other types, try to extract a numeric value
+          # Default to unsigned8 for unknown types
+          new(attribute_id, value_unsigned8: 0_u8)
+        end
+      end
+    end
+
+    # Extension field set - cluster state snapshot for a scene
+    # Per Matter spec: ExtensionFieldSetStruct
+    struct ExtensionFieldSetTlv
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property cluster_id : UInt32
+
+      @[TLV::Field(tag: 1)]
+      property attribute_value_list : Array(AttributeValuePairTlv)
+
+      def initialize(@cluster_id : UInt32, @attribute_value_list : Array(AttributeValuePairTlv))
+      end
+    end
+
     # ViewScene response
     struct ViewSceneResponseTlv
       include TLV::Serializable
@@ -83,7 +185,7 @@ module Matter
       property scene_name : String?
 
       @[TLV::Field(tag: 5, optional: true)]
-      property extension_field_sets : Array(TLV::Any)?
+      property extension_field_sets : Array(ExtensionFieldSetTlv)?
 
       def initialize(
         @status : UInt8,
@@ -91,7 +193,7 @@ module Matter
         @scene_id : UInt8,
         @transition_time : UInt32? = nil,
         @scene_name : String? = nil,
-        @extension_field_sets : Array(TLV::Any)? = nil,
+        @extension_field_sets : Array(ExtensionFieldSetTlv)? = nil,
       )
       end
     end
@@ -391,8 +493,16 @@ module Matter
       # Scene table size (total across all fabrics)
       property scene_table_size : UInt16
 
-      # Callback for when scene is recalled
+      # Callback for when scene is recalled (legacy - use apply_extension_field_sets instead)
       property on_recall_scene : Proc(UInt16, UInt8, Nil)?
+
+      # Callback to get current extension field sets from other clusters during StoreScene
+      # Returns array of extension field sets representing current state of sceneable clusters
+      property get_extension_field_sets : Proc(Array(ExtensionFieldSet))?
+
+      # Callback to apply extension field sets to other clusters during RecallScene
+      # Receives the stored extension field sets to apply to sceneable clusters
+      property apply_extension_field_sets : Proc(Array(ExtensionFieldSet), Nil)?
 
       def initialize(
         endpoint_id : DataType::EndpointNumber,
@@ -612,11 +722,21 @@ module Matter
           return encode_status_response(InteractionModel::StatusCode::ResourceExhausted, req.group_id, req.scene_id)
         end
 
-        @scenes[key] = SceneData.new
+        # Get extension field sets from other clusters (if callback is set)
+        extension_fields = @get_extension_field_sets.try(&.call) || [] of ExtensionFieldSet
+
+        @scenes[key] = SceneData.new(
+          transition_time: 0_u32,
+          scene_name: "",
+          extension_field_sets: extension_fields
+        )
         update_fabric_scene_info(fabric_index)
 
+        Log.debug { "Stored scene #{req.scene_id} in group #{req.group_id} with #{extension_fields.size} extension field set(s)" }
+
         encode_status_response(InteractionModel::StatusCode::Success, req.group_id, req.scene_id)
-      rescue
+      rescue ex
+        Log.error { "Error storing scene: #{ex.message}" }
         encode_status_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
       end
 
@@ -627,22 +747,30 @@ module Matter
         fabric_index = 1_u8
         key = {fabric_index, req.group_id, req.scene_id}
 
-        if @scenes.has_key?(key)
-          # Update scene info
-          info = @fabric_scene_info[fabric_index]? || SceneInfo.new(fabric_index: fabric_index)
-          info.current_scene = req.scene_id
-          info.current_group = req.group_id
-          info.scene_valid = true
-          @fabric_scene_info[fabric_index] = info
-
-          # Trigger callback
-          @on_recall_scene.try(&.call(req.group_id, req.scene_id))
-
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
-        else
-          InteractionModel::Status.new(InteractionModel::StatusCode::NotFound)
+        scene_data = @scenes[key]?
+        unless scene_data
+          return InteractionModel::Status.new(InteractionModel::StatusCode::NotFound)
         end
-      rescue
+
+        # Update scene info
+        info = @fabric_scene_info[fabric_index]? || SceneInfo.new(fabric_index: fabric_index)
+        info.current_scene = req.scene_id
+        info.current_group = req.group_id
+        info.scene_valid = true
+        @fabric_scene_info[fabric_index] = info
+
+        # Apply extension field sets to other clusters
+        if scene_data.extension_field_sets.size > 0
+          Log.debug { "Recalling scene #{req.scene_id} from group #{req.group_id} with #{scene_data.extension_field_sets.size} extension field set(s)" }
+          @apply_extension_field_sets.try(&.call(scene_data.extension_field_sets))
+        end
+
+        # Legacy callback
+        @on_recall_scene.try(&.call(req.group_id, req.scene_id))
+
+        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+      rescue ex
+        Log.error { "Error recalling scene: #{ex.message}" }
         InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
       end
 
@@ -714,13 +842,22 @@ module Matter
 
       private def encode_view_scene_response(status : InteractionModel::StatusCode, group_id : UInt16, scene_id : UInt8, scene : SceneData?) : Bytes
         if scene && status == InteractionModel::StatusCode::Success
+          # Convert extension field sets to TLV structs
+          ext_fields = scene.extension_field_sets.map do |efs|
+            attr_pairs = efs.attribute_value_list.map do |attr_id, attr_value|
+              # Convert raw TLV bytes to the appropriate value field type
+              AttributeValuePairTlv.from_tlv_bytes(attr_id, attr_value)
+            end
+            ExtensionFieldSetTlv.new(efs.cluster_id, attr_pairs)
+          end
+
           ViewSceneResponseTlv.new(
             status: status.value,
             group_id: group_id,
             scene_id: scene_id,
             transition_time: scene.transition_time,
             scene_name: scene.scene_name,
-            extension_field_sets: [] of TLV::Any
+            extension_field_sets: ext_fields.empty? ? nil : ext_fields
           ).to_slice
         else
           ViewSceneResponseTlv.new(

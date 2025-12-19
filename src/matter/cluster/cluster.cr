@@ -272,6 +272,24 @@ module Matter
         # Default: no-op
       end
 
+      # ------------------------------------------------------------------------
+      # Scenes Management hooks
+      # ------------------------------------------------------------------------
+      #
+      # ScenesManagementCluster (0x0062) stores "extension field sets" that capture
+      # cluster-specific state for scene recall. Clusters can override these hooks
+      # to participate; default implementations are no-ops.
+      #
+      # The Device base class wires ScenesManagementCluster callbacks by calling
+      # these methods on clusters present on the same endpoint.
+      def store_scene_extension_field_set : ScenesManagementCluster::ExtensionFieldSet?
+        nil
+      end
+
+      def apply_scene_extension_field_set(field_set : ScenesManagementCluster::ExtensionFieldSet) : Bool
+        false
+      end
+
       # Helper methods for encoding simple values
       # @deprecated Use `value.to_tlv` instead
       protected def encode_uint8(value : UInt8) : Bytes

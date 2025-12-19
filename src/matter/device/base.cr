@@ -366,6 +366,45 @@ module Matter
         end
 
         inject_and_populate_descriptors
+        wire_scenes_management_extensions
+      end
+
+      private def wire_scenes_management_extensions : Nil
+        scenes_clusters = @message_handler.clusters.values.select(Cluster::ScenesManagementCluster)
+        return if scenes_clusters.empty?
+
+        scenes_clusters.each do |scenes|
+          endpoint_id = scenes.endpoint_id.number
+          existing_get = scenes.get_extension_field_sets
+          existing_apply = scenes.apply_extension_field_sets
+
+          scenes.get_extension_field_sets = -> do
+            sets = [] of Cluster::ScenesManagementCluster::ExtensionFieldSet
+            if cb = existing_get
+              sets.concat(cb.call)
+            end
+
+            sets.concat(
+              @message_handler.clusters.values
+                .select { |cluster| cluster.endpoint_id.number == endpoint_id }
+                .compact_map(&.store_scene_extension_field_set)
+            )
+
+            sets
+          end
+
+          scenes.apply_extension_field_sets = ->(field_sets : Array(Cluster::ScenesManagementCluster::ExtensionFieldSet)) do
+            if cb = existing_apply
+              cb.call(field_sets)
+            end
+
+            field_sets.each do |field_set|
+              if target = @message_handler.clusters[{endpoint_id, field_set.cluster_id}]?
+                target.apply_scene_extension_field_set(field_set)
+              end
+            end
+          end
+        end
       end
 
       # Default to ephemeral test credentials unless the device overrides.

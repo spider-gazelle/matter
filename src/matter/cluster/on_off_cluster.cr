@@ -381,6 +381,39 @@ module Matter
         end
       end
 
+      # ------------------------------------------------------------------------
+      # ScenesManagement extension field sets
+      # ------------------------------------------------------------------------
+      def store_scene_extension_field_set : ScenesManagementCluster::ExtensionFieldSet?
+        ScenesManagementCluster::ExtensionFieldSet.new(
+          cluster_id: CLUSTER_ID,
+          attribute_list: [
+            {ATTR_ON_OFF, encode_bool(@on_off)},
+          ]
+        )
+      end
+
+      def apply_scene_extension_field_set(field_set : ScenesManagementCluster::ExtensionFieldSet) : Bool
+        return false unless field_set.cluster_id == CLUSTER_ID
+
+        field_set.attribute_value_list.each do |attribute_id, value|
+          next unless attribute_id == ATTR_ON_OFF
+
+          begin
+            parsed = TLV::Any.from_slice(value).value
+            case parsed
+            when Bool
+              set_on_off(parsed)
+              return true
+            end
+          rescue
+            # Ignore malformed TLV
+          end
+        end
+
+        false
+      end
+
       # Set callback for state changes
       def on_state_changed(&block : Bool -> Nil)
         @on_state_changed = block
