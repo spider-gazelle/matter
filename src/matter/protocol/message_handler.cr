@@ -263,6 +263,25 @@ module Matter
       # Public getter for active subscriptions (for persistence)
       getter active_subscriptions
 
+      # Persist all active CASE sessions to storage
+      # Call this periodically (e.g., every 30s) or before graceful shutdown
+      # to ensure message counters and other session state are up to date
+      def persist_all_sessions : Nil
+        return unless (persistence = @persistence)
+
+        persisted = 0
+        @sessions.each_value do |session|
+          next unless session.is_case
+          begin
+            persistence.session_updated(self, session)
+            persisted += 1
+          rescue ex
+            Log.error(exception: ex) { "Failed to persist session #{session.session_id}: #{ex.message}" }
+          end
+        end
+        Log.debug { "Persisted #{persisted} CASE session(s)" } if persisted > 0
+      end
+
       # Cached encrypted responses keyed by (session_id, incoming_message_counter)
       @mrp_response_cache : Hash(Tuple(UInt16, UInt32), CachedMrpResponse) = {} of Tuple(UInt16, UInt32) => CachedMrpResponse
 
@@ -2354,15 +2373,24 @@ module Matter
       end
 
       # Spawn background fiber to periodically check for expired subscriptions
+      # Also persists session state every 30 seconds (6 intervals)
       private def spawn_subscription_cleanup_fiber : Nil
         return if @subscription_cleanup_fiber_running
         @subscription_cleanup_fiber_running = true
 
         spawn do
+          persist_counter = 0
           loop do
             sleep(DEFAULT_SESSION_CLEANUP_INTERVAL)
             process_expired_subscriptions
             process_pending_cleanups
+
+            # Persist session state every 6 intervals (30 seconds)
+            persist_counter += 1
+            if persist_counter >= 6
+              persist_all_sessions
+              persist_counter = 0
+            end
           end
         rescue ex
           Log.error(exception: ex) { "Subscription cleanup fiber crashed: #{ex.message}" }

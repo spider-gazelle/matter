@@ -11,6 +11,7 @@ module Matter
       abstract class Base
         abstract def restore(handler : MessageHandler) : Nil
         abstract def session_established(handler : MessageHandler, session : Session::SecureContext) : Nil
+        abstract def session_updated(handler : MessageHandler, session : Session::SecureContext) : Nil
         abstract def session_removed(handler : MessageHandler, session_id : UInt16) : Nil
         abstract def subscription_established(handler : MessageHandler, subscription : MessageHandler::ActiveSubscription) : Nil
         abstract def subscription_removed(handler : MessageHandler, subscription_id : UInt32) : Nil
@@ -41,6 +42,16 @@ module Matter
           persist_case_sessions(sessions)
         rescue ex
           Log.error(exception: ex) { "Failed to persist session #{session.session_id}: #{ex.message}" }
+        end
+
+        def session_updated(handler : MessageHandler, session : Session::SecureContext) : Nil
+          return unless session.is_case
+
+          sessions = load_case_sessions
+          sessions[session.session_id.to_s] = session.to_h
+          persist_case_sessions(sessions)
+        rescue ex
+          Log.error(exception: ex) { "Failed to update persisted session #{session.session_id}: #{ex.message}" }
         end
 
         def session_removed(handler : MessageHandler, session_id : UInt16) : Nil

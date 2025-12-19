@@ -131,6 +131,9 @@ module Matter
       end
 
       def stop : Nil
+        # Persist all session state before shutdown to ensure message counters
+        # and other session data are saved for clean reconnection after restart
+        @message_handler.persist_all_sessions
         @storage_manager.stop
         @transport.close
         @responder.stop
