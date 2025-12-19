@@ -1,5 +1,6 @@
 require "./cluster"
 require "tlv"
+require "json"
 
 module Matter
   module Cluster
@@ -433,7 +434,7 @@ module Matter
           end
 
           @node_label = str
-          increment_version
+          increment_version_and_notify(ATTR_NODE_LABEL)
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_LOCATION
           parsed = TLV::Any.from_slice(value)
@@ -451,7 +452,7 @@ module Matter
           end
 
           @location = str.upcase
-          increment_version
+          increment_version_and_notify(ATTR_LOCATION)
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_LOCAL_CONFIG_DISABLED
           parsed = TLV::Any.from_slice(value)
@@ -459,11 +460,51 @@ module Matter
           return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if bool.nil?
 
           @local_config_disabled = bool
-          increment_version
+          increment_version_and_notify(ATTR_LOCAL_CONFIG_DISABLED)
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         else
           super
         end
+      end
+
+      # ------------------------------------------------------------------------
+      # Persistence support
+      # ------------------------------------------------------------------------
+
+      private struct PersistedState
+        include JSON::Serializable
+
+        property node_label : String
+        property location : String
+        property local_config_disabled : Bool
+        property data_version : UInt32
+
+        def initialize(
+          @node_label : String,
+          @location : String,
+          @local_config_disabled : Bool,
+          @data_version : UInt32,
+        )
+        end
+      end
+
+      def save_state : String?
+        PersistedState.new(
+          node_label: @node_label,
+          location: @location,
+          local_config_disabled: @local_config_disabled,
+          data_version: @data_version
+        ).to_json
+      end
+
+      def restore_state(json : String) : Nil
+        state = PersistedState.from_json(json)
+        @node_label = state.node_label
+        @location = state.location
+        @local_config_disabled = state.local_config_disabled
+        @data_version = state.data_version
+      rescue ex
+        # Start fresh if restore fails
       end
 
       # Helper: Trigger StartUp event (call when node boots)

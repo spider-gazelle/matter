@@ -1,6 +1,7 @@
 require "./cluster"
 require "./definitions/groups"
 require "tlv"
+require "json"
 
 module Matter
   module Cluster
@@ -271,6 +272,35 @@ module Matter
         io.write_byte(status.value)
         IO::ByteFormat::LittleEndian.encode(group_id, io)
         io.to_slice
+      end
+
+      # ------------------------------------------------------------------------
+      # Persistence support
+      # ------------------------------------------------------------------------
+
+      private struct PersistedState
+        include JSON::Serializable
+
+        getter groups : Hash(UInt16, String)
+        getter data_version : UInt32
+
+        def initialize(
+          @groups : Hash(UInt16, String),
+          @data_version : UInt32,
+        )
+        end
+      end
+
+      def save_state : String?
+        PersistedState.new(@groups, @data_version).to_json
+      end
+
+      def restore_state(json : String) : Nil
+        state = PersistedState.from_json(json)
+        @groups = state.groups
+        @data_version = state.data_version
+      rescue
+        # Start fresh if restore fails
       end
 
       # Public API
