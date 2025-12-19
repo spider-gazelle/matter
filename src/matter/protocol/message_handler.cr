@@ -2069,9 +2069,9 @@ module Matter
 
       # Clean up superseded sessions after a new CASE session is established
       #
-      # Sessions without active subscriptions are removed immediately.
-      # Sessions with active subscriptions are scheduled for deferred cleanup
-      # after a grace period to allow subscription migration.
+      # Sessions with active subscriptions have their subscriptions MIGRATED to the
+      # new session before the old session is removed. This ensures subscription
+      # continuity when controllers re-establish CASE sessions.
       private def cleanup_superseded_sessions(new_session : Session::SecureContext) : Nil
         superseded = find_superseded_sessions(new_session)
         return if superseded.empty?
@@ -2080,22 +2080,61 @@ module Matter
 
         superseded.each do |old_session|
           session_id = old_session.session_id
-          has_subs = session_has_subscriptions?(session_id)
 
-          if has_subs
-            # Schedule for deferred cleanup with 30 second grace period
-            Log.info { "Session #{session_id} has active subscriptions - scheduling cleanup in 30s" }
-            @pending_session_cleanups << PendingSessionCleanup.new(session_id, 30.seconds)
-          else
-            # No subscriptions - remove immediately
-            Log.info { "Session #{session_id} has no subscriptions - removing immediately" }
-            remove_session_and_subscriptions(session_id)
-          end
+          # Migrate subscriptions to new session before removing old session
+          migrate_subscriptions_to_new_session(session_id, new_session)
+
+          # Remove old session (subscriptions already migrated, not deleted)
+          remove_session_only(session_id)
+        end
+      end
+
+      # Migrate subscriptions from an old session to a new session
+      # This preserves subscription continuity when controllers re-establish CASE
+      private def migrate_subscriptions_to_new_session(old_session_id : UInt16, new_session : Session::SecureContext) : Nil
+        subs_to_migrate = @active_subscriptions.select { |_, sub| sub.session.session_id == old_session_id }
+
+        if subs_to_migrate.empty?
+          Log.info { "No subscriptions to migrate from session #{old_session_id}" }
+          return
         end
 
-        # Spawn a fiber to process pending cleanups if we have any
-        if !@pending_session_cleanups.empty?
-          spawn_cleanup_fiber
+        Log.info { "Migrating #{subs_to_migrate.size} subscription(s) from session #{old_session_id} to session #{new_session.session_id}" }
+
+        subs_to_migrate.each do |sub_id, subscription|
+          # Update the subscription's session reference to the new session
+          subscription.session = new_session
+
+          Log.info { "Migrated subscription #{sub_id} to new session #{new_session.session_id}" }
+
+          # Persist the updated subscription
+          if persistence = @persistence
+            begin
+              persistence.subscription_established(self, subscription)
+            rescue ex
+              Log.error(exception: ex) { "Failed persisting migrated subscription #{sub_id}: #{ex.message}" }
+            end
+          end
+        end
+      end
+
+      # Remove a session WITHOUT removing its subscriptions (used after migration)
+      private def remove_session_only(session_id : UInt16) : Nil
+        clear_mrp_response_cache_for_session(session_id)
+
+        # Remove the session from pending cleanups if present
+        @pending_session_cleanups.reject! { |p| p.session_id == session_id }
+
+        # Remove the session
+        if session = @sessions.delete(session_id)
+          if persistence = @persistence
+            begin
+              persistence.session_removed(self, session_id)
+            rescue ex
+              Log.error(exception: ex) { "Failed removing persisted session #{session_id}: #{ex.message}" }
+            end
+          end
+          Log.info { "Removed superseded session #{session_id} (fabric=#{session.fabric_index}, peer=#{session.peer_node_id.try(&.id)})" }
         end
       end
 
