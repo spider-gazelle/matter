@@ -68,6 +68,11 @@ module Matter
       end
     end
 
+    # generate a test vendor id
+    def self.test_vendor_id : UInt16
+      rand(0xFFF1_u16...0xFFF4_u16)
+    end
+
     # Generate a serial number
     def self.generate_serial_number : String
       "CM-#{Random::Secure.rand(100000..999999)}"

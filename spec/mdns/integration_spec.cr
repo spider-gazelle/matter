@@ -141,7 +141,7 @@ describe "mDNS Integration" do
       responder.respond_to_query(
         query,
         Matter::MDNS::ServiceType::Commissioning,
-        "TestDevice._matterc._udp.local",
+        "DD200C20D25AE5F7._matterc._udp.local",
         5540,
         txt_records
       )
@@ -178,7 +178,7 @@ describe "mDNS Integration" do
       # Send goodbye for commissioning service
       responder.send_goodbye(
         Matter::MDNS::ServiceType::Commissioning,
-        "TestDevice._matterc._udp.local"
+        "DD200C20D25AE5F7._matterc._udp.local"
       )
 
       responder.close
@@ -256,7 +256,7 @@ describe "mDNS Integration" do
     it "builds valid PTR record" do
       record = Matter::MDNS::RecordBuilder.build_ptr(
         service: "_matterc._udp.local",
-        instance: "TestDevice._matterc._udp.local",
+        instance: "DD200C20D25AE5F7._matterc._udp.local",
         ttl: 120.seconds
       )
 
@@ -266,7 +266,7 @@ describe "mDNS Integration" do
 
     it "builds valid SRV record" do
       record = Matter::MDNS::RecordBuilder.build_srv(
-        instance: "TestDevice._matterc._udp.local",
+        instance: "DD200C20D25AE5F7._matterc._udp.local",
         port: 5540,
         target: "test-device.local",
         ttl: 120.seconds
@@ -280,7 +280,7 @@ describe "mDNS Integration" do
       txt_records = {"VP" => "65521+32768", "D" => "3840"}
 
       record = Matter::MDNS::RecordBuilder.build_txt(
-        instance: "TestDevice._matterc._udp.local",
+        instance: "DD200C20D25AE5F7._matterc._udp.local",
         txt_records: txt_records,
         ttl: 120.seconds
       )
@@ -318,8 +318,8 @@ describe "mDNS Integration" do
 
   describe "service name formatting" do
     it "formats commissioning instance correctly" do
-      instance = Matter::MDNS::ServiceNames.commissioning_instance("MyDevice")
-      instance.should eq("MyDevice._matterc._udp.local")
+      instance = Matter::MDNS::ServiceNames.commissioning_instance("DD200C20D25AE5F7")
+      instance.should eq("DD200C20D25AE5F7._matterc._udp.local")
     end
 
     it "formats operational instance correctly" do

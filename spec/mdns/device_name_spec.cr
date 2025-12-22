@@ -79,24 +79,10 @@ describe Matter::MDNS::CommissioningInfo do
     end
   end
 
-  describe "device name in mDNS instance name" do
-    # Per Matter spec, the mDNS instance name should include the device name
-    # Format: <device-name>._matterc._udp.local
-    it "uses device_name for mDNS instance name" do
-      device_name = "My Smart Light"
-
-      # The ServiceNames.commissioning_instance method should use device_name
-      instance = Matter::MDNS::ServiceNames.commissioning_instance(device_name)
-
-      instance.should eq("My Smart Light._matterc._udp.local")
-    end
-
-    it "handles special characters in device name" do
-      device_name = "Eve Weather"
-
-      instance = Matter::MDNS::ServiceNames.commissioning_instance(device_name)
-
-      instance.should eq("Eve Weather._matterc._udp.local")
+  describe "commissioning instance name format" do
+    it "uses 16 uppercase hex characters as instance ID" do
+      instance = Matter::MDNS::ServiceNames.commissioning_instance("DD200C20D25AE5F7")
+      instance.should eq("DD200C20D25AE5F7._matterc._udp.local")
     end
   end
 end
@@ -126,8 +112,6 @@ describe "End-to-end device name flow" do
     # The DN TXT record should match the device_name
     info.to_txt_records["DN"].should eq(device_name)
 
-    # The mDNS instance name should also include the device_name
-    instance = Matter::MDNS::ServiceNames.commissioning_instance(device_name)
-    instance.should contain(device_name)
+    # The commissioning mDNS instance name is a temporary 64-bit random ID and does not include DN.
   end
 end

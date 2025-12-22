@@ -30,8 +30,9 @@ module Matter
       @running : Bool
 
       # Currently advertised services (for responding to queries)
-      # Key: instance name, Value: {service_type, port, txt_records, commissioning_info}
-      @advertised_services : Hash(String, {ServiceType, Int32, Hash(String, String), CommissioningInfo?})
+      # Key: instance name, Value: {service_type, port, txt_records, commissioning_info, hostname}
+      @advertised_services : Hash(String, {ServiceType, Int32, Hash(String, String), CommissioningInfo?, String})
+      @commissioning_instance_id : String? = nil
 
       # Callback for received queries
       # Signature: (query : DNS::Packet, peer_address : Socket::IPAddress) -> Nil
@@ -76,7 +77,38 @@ module Matter
 
         # Ensure at least one socket was created successfully
         raise "Failed to create any mDNS socket" if @socket_ipv4.nil? && @socket_ipv6.nil?
-        @advertised_services = Hash(String, {ServiceType, Int32, Hash(String, String), CommissioningInfo?}).new
+        @advertised_services = Hash(String, {ServiceType, Int32, Hash(String, String), CommissioningInfo?, String}).new
+      end
+
+      # Updates the default commissioning target hostname (SRV target) and re-announces
+      # any active commissioning advertisements without changing the commissioning
+      # instance name.
+      def update_commissioning_hostname(hostname : String) : Nil
+        normalized = hostname.strip
+        raise ArgumentError.new("hostname must be non-empty") if normalized.empty?
+
+        @hostname = normalized
+
+        # Update any existing commissioning services and re-announce them so controllers
+        # see the new SRV target/AAAA records.
+        @advertised_services.each do |instance, (service_type, port, txt_records, commissioning_info, existing_hostname)|
+          next unless service_type.commissioning?
+          next unless commissioning_info
+
+          @advertised_services[instance] = {service_type, port, txt_records, commissioning_info, normalized}
+
+          records = build_commissioning_records(
+            info: commissioning_info,
+            service: ServiceNames::COMMISSIONING,
+            instance: instance,
+            port: port,
+            txt_records: txt_records,
+            ttl: DEFAULT_TTL,
+            hostname: normalized
+          )
+
+          send_announcement(records)
+        end
       end
 
       # Start listening for mDNS queries
@@ -165,7 +197,7 @@ module Matter
 
         Log.debug { "Re-announcing #{@advertised_services.size} service(s)" }
 
-        @advertised_services.each do |instance, (service_type, port, txt_records, commissioning_info)|
+        @advertised_services.each do |instance, (service_type, port, txt_records, commissioning_info, hostname)|
           begin
             if commissioning_info
               # Commissioning service - need to build full records with subtypes
@@ -176,7 +208,8 @@ module Matter
                 instance: instance,
                 port: port,
                 txt_records: txt_records,
-                ttl: DEFAULT_TTL
+                ttl: DEFAULT_TTL,
+                hostname: hostname
               )
             else
               # Operational service - simpler records
@@ -186,7 +219,8 @@ module Matter
                 instance: instance,
                 port: port,
                 txt_records: txt_records,
-                ttl: DEFAULT_TTL
+                ttl: DEFAULT_TTL,
+                hostname: hostname
               )
             end
 
@@ -204,10 +238,12 @@ module Matter
         ttl : Time::Span = 120.seconds,
       ) : Nil
         service = ServiceNames::COMMISSIONING
-        instance = ServiceNames.commissioning_instance(info.device_name)
+        @commissioning_instance_id ||= Random::Secure.rand(UInt64).to_s(16).upcase.rjust(16, '0')
+        instance = ServiceNames.commissioning_instance(@commissioning_instance_id.not_nil!)
+        hostname = @hostname
 
         # Track this service for query responses
-        @advertised_services[instance] = {ServiceType::Commissioning, port, info.to_txt_records, info}
+        @advertised_services[instance] = {ServiceType::Commissioning, port, info.to_txt_records, info, hostname}
 
         records = build_commissioning_records(
           info: info,
@@ -215,7 +251,8 @@ module Matter
           instance: instance,
           port: port,
           txt_records: info.to_txt_records,
-          ttl: ttl
+          ttl: ttl,
+          hostname: hostname
         )
 
         send_announcement(records)
@@ -229,16 +266,18 @@ module Matter
       ) : Nil
         service = ServiceNames::OPERATIONAL
         instance = ServiceNames.operational_instance(info.compressed_fabric_id, info.node_id)
+        hostname = operational_hostname(info)
 
         # Track this service for query responses
-        @advertised_services[instance] = {ServiceType::Operational, port, info.to_txt_records, nil}
+        @advertised_services[instance] = {ServiceType::Operational, port, info.to_txt_records, nil, hostname}
 
         records = build_service_records(
           service: service,
           instance: instance,
           port: port,
           txt_records: info.to_txt_records,
-          ttl: ttl
+          ttl: ttl,
+          hostname: hostname
         )
 
         send_announcement(records)
@@ -252,6 +291,7 @@ module Matter
           Log.info { "Stopping commissioning advertisement for: #{instance}" }
           send_goodbye(ServiceType::Commissioning, instance)
         end
+        @commissioning_instance_id = nil
       end
 
       # Stop all operational advertisements
@@ -286,11 +326,16 @@ module Matter
 
       # Respond to a specific query
       def respond_to_query(query : DNS::Packet, service_type : ServiceType, instance : String, port : Int32, txt_records : Hash(String, String)) : Nil
+        respond_to_query(query, service_type, instance, port, txt_records, @hostname)
+      end
+
+      # Respond to a specific query with explicit hostname (SRV target).
+      def respond_to_query(query : DNS::Packet, service_type : ServiceType, instance : String, port : Int32, txt_records : Hash(String, String), hostname : String) : Nil
         service = ServiceNames.service_name(service_type)
 
         # Check if query is asking for our service
         matches = query.questions.any? do |q|
-          q.name == service || q.name == instance || q.name == @hostname
+          q.name == service || q.name == instance || q.name == hostname
         end
 
         return unless matches
@@ -300,7 +345,8 @@ module Matter
           instance: instance,
           port: port,
           txt_records: txt_records,
-          ttl: DEFAULT_TTL
+          ttl: DEFAULT_TTL,
+          hostname: hostname
         )
 
         send_announcement(records)
@@ -313,6 +359,7 @@ module Matter
         port : Int32,
         txt_records : Hash(String, String),
         ttl : Time::Span,
+        hostname : String,
       ) : Array(DNS::Packet::ResourceRecord)
         records = [] of DNS::Packet::ResourceRecord
 
@@ -342,7 +389,7 @@ module Matter
         records << RecordBuilder.build_ptr(commissioning_mode_sub, instance, ttl)
 
         # SRV record: instance -> hostname:port
-        records << RecordBuilder.build_srv(instance, port, @hostname, ttl)
+        records << RecordBuilder.build_srv(instance, port, hostname, ttl)
 
         # TXT record: instance metadata
         records << RecordBuilder.build_txt(instance, txt_records, ttl)
@@ -351,9 +398,9 @@ module Matter
         @ip_addresses.each do |ip|
           case ip.family
           when .inet?
-            records << RecordBuilder.build_a(@hostname, ip, ttl)
+            records << RecordBuilder.build_a(hostname, ip, ttl)
           when .inet6?
-            records << RecordBuilder.build_aaaa(@hostname, ip, ttl)
+            records << RecordBuilder.build_aaaa(hostname, ip, ttl)
           end
         end
 
@@ -366,6 +413,7 @@ module Matter
         port : Int32,
         txt_records : Hash(String, String),
         ttl : Time::Span,
+        hostname : String,
       ) : Array(DNS::Packet::ResourceRecord)
         records = [] of DNS::Packet::ResourceRecord
 
@@ -373,7 +421,7 @@ module Matter
         records << RecordBuilder.build_ptr(service, instance, ttl)
 
         # SRV record: instance -> hostname:port (goes in authorities)
-        records << RecordBuilder.build_srv(instance, port, @hostname, ttl)
+        records << RecordBuilder.build_srv(instance, port, hostname, ttl)
 
         # TXT record: instance metadata (goes in authorities)
         records << RecordBuilder.build_txt(instance, txt_records, ttl)
@@ -382,9 +430,9 @@ module Matter
         @ip_addresses.each do |ip|
           case ip.family
           when .inet?
-            records << RecordBuilder.build_a(@hostname, ip, ttl)
+            records << RecordBuilder.build_a(hostname, ip, ttl)
           when .inet6?
-            records << RecordBuilder.build_aaaa(@hostname, ip, ttl)
+            records << RecordBuilder.build_aaaa(hostname, ip, ttl)
           end
         end
 
@@ -508,15 +556,15 @@ module Matter
           elsif question.type.in?(RecordBuilder::TYPE_SRV, RecordBuilder::TYPE_TXT, RecordBuilder::TYPE_A, RecordBuilder::TYPE_AAAA)
             check_instance_query(question.name)
             # Check for hostname queries
-          elsif question.name == @hostname
-            send_hostname_response
+          elsif hostname = advertised_hostname_for(question.name)
+            send_hostname_response(hostname)
           end
         end
       end
 
       private def check_service_query(service_name : String) : Nil
         # Check if query matches our service types
-        @advertised_services.each do |instance, (service_type, port, txt_records, comm_info)|
+        @advertised_services.each do |instance, (service_type, port, txt_records, comm_info, hostname)|
           expected_service = ServiceNames.service_name(service_type)
 
           if service_name == expected_service
@@ -529,7 +577,8 @@ module Matter
                           instance: instance,
                           port: port,
                           txt_records: txt_records,
-                          ttl: DEFAULT_TTL
+                          ttl: DEFAULT_TTL,
+                          hostname: hostname
                         )
                       else
                         build_service_records(
@@ -537,7 +586,8 @@ module Matter
                           instance: instance,
                           port: port,
                           txt_records: txt_records,
-                          ttl: DEFAULT_TTL
+                          ttl: DEFAULT_TTL,
+                          hostname: hostname
                         )
                       end
             send_announcement(records)
@@ -548,7 +598,7 @@ module Matter
       private def check_instance_query(instance_name : String) : Nil
         # Check if query matches one of our advertised instances
         if service_info = @advertised_services[instance_name]?
-          service_type, port, txt_records, comm_info = service_info
+          service_type, port, txt_records, comm_info, hostname = service_info
           service = ServiceNames.service_name(service_type)
 
           # Respond with our instance (with all PTR records for commissioning)
@@ -559,7 +609,8 @@ module Matter
                         instance: instance_name,
                         port: port,
                         txt_records: txt_records,
-                        ttl: DEFAULT_TTL
+                        ttl: DEFAULT_TTL,
+                        hostname: hostname
                       )
                     else
                       build_service_records(
@@ -567,23 +618,37 @@ module Matter
                         instance: instance_name,
                         port: port,
                         txt_records: txt_records,
-                        ttl: DEFAULT_TTL
+                        ttl: DEFAULT_TTL,
+                        hostname: hostname
                       )
                     end
           send_announcement(records)
         end
       end
 
-      private def send_hostname_response : Nil
-        # Send A/AAAA records for our hostname
+      private def advertised_hostname_for(name : String) : String?
+        @advertised_services.each_value do |(_, _, _, _, hostname)|
+          return hostname if hostname == name
+        end
+        nil
+      end
+
+      private def operational_hostname(info : OperationalInfo) : String
+        fabric_hex = info.compressed_fabric_id.hexstring.upcase
+        node_hex = info.node_id.to_s(16).upcase.rjust(16, '0')
+        "#{fabric_hex}-#{node_hex}.local"
+      end
+
+      private def send_hostname_response(hostname : String) : Nil
+        # Send A/AAAA records for the requested hostname
         records = [] of DNS::Packet::ResourceRecord
 
         @ip_addresses.each do |ip|
           case ip.family
           when .inet?
-            records << RecordBuilder.build_a(@hostname, ip, DEFAULT_TTL)
+            records << RecordBuilder.build_a(hostname, ip, DEFAULT_TTL)
           when .inet6?
-            records << RecordBuilder.build_aaaa(@hostname, ip, DEFAULT_TTL)
+            records << RecordBuilder.build_aaaa(hostname, ip, DEFAULT_TTL)
           end
         end
 

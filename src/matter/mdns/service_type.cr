@@ -38,10 +38,15 @@ module Matter
         end
       end
 
-      # Build instance name for commissioning
-      # Format: <device-name>._matterc._udp.local
-      def commissioning_instance(device_name : String) : String
-        "#{device_name}.#{COMMISSIONING}"
+      # Build instance name for commissioning.
+      #
+      # Matter spec: the DNS-SD instance name SHALL be a dynamic, pseudo-randomly
+      # selected, 64-bit temporary unique identifier expressed as 16 uppercase hex
+      # characters, e.g. `DD200C20D25AE5F7`.
+      #
+      # Format: <instance-id>._matterc._udp.local
+      def commissioning_instance(instance_id : String) : String
+        "#{instance_id}.#{COMMISSIONING}"
       end
 
       # Build instance name for operational

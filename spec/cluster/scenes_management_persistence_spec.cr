@@ -151,11 +151,11 @@ describe Matter::Cluster::ScenesManagementCluster do
 
       manager = TestPersistenceManager.new(storage)
 
-      # OnOffCluster doesn't implement save_state (returns nil)
+      # IdentifyCluster doesn't implement save_state (returns nil)
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+      identify = Matter::Cluster::IdentifyCluster.new(endpoint)
 
-      manager.save_cluster_state(on_off).should be_false
+      manager.save_cluster_state(identify).should be_false
     end
 
     it "returns false when no state to restore" do

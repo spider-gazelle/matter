@@ -126,7 +126,8 @@ end
 initial_on_off = nil.as(Bool?)
 run_check(checks, chip_tool, "onoff.on-off (read)", ["onoff", "read", "on-off", node_id, endpoint_id], verbose) do |r|
   next check_command_ok("onoff.on-off (read)", r) unless r.ok?
-  if value = extract_bool(r.output, "OnOff")
+  value = extract_bool(r.output, "OnOff")
+  if value.is_a?(Bool)
     initial_on_off = value
     CheckResult.new("onoff.on-off (read)", true, "OnOff=#{value}")
   else
@@ -163,7 +164,9 @@ end
 run_check(checks, chip_tool, "onoff.on-off (read after toggle)", ["onoff", "read", "on-off", node_id, endpoint_id], verbose) do |r|
   next check_command_ok("onoff.on-off (read after toggle)", r) unless r.ok?
   new_value = extract_bool(r.output, "OnOff")
-  unless new_value.nil? || initial_on_off.nil?
+  if new_value.nil? || initial_on_off.nil?
+    next CheckResult.new("onoff.on-off (read after toggle)", false, "invalid state, no value should be nil: initial: #{initial_on_off.inspect}, toggled: #{new_value.inspect}")
+  else
     if new_value == initial_on_off
       next CheckResult.new("onoff.on-off (read after toggle)", false, "toggle did not change OnOff (still #{new_value})")
     end

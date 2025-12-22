@@ -125,8 +125,8 @@ describe Matter::MDNS::Responder do
 
   describe "service names" do
     it "generates correct commissioning instance name" do
-      instance = Matter::MDNS::ServiceNames.commissioning_instance("MyDevice")
-      instance.should eq("MyDevice._matterc._udp.local")
+      instance = Matter::MDNS::ServiceNames.commissioning_instance("DD200C20D25AE5F7")
+      instance.should eq("DD200C20D25AE5F7._matterc._udp.local")
     end
 
     it "generates correct operational instance name" do

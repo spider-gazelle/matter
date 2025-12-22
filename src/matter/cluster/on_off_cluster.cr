@@ -382,6 +382,60 @@ module Matter
       end
 
       # ------------------------------------------------------------------------
+      # Persistence support
+      # ------------------------------------------------------------------------
+
+      private struct PersistedState
+        include JSON::Serializable
+
+        getter on_off : Bool
+        getter global_scene_control : Bool
+        getter on_time : UInt16
+        getter off_wait_time : UInt16
+        getter start_up_on_off : UInt8?
+        getter data_version : UInt32
+
+        def initialize(
+          @on_off : Bool,
+          @global_scene_control : Bool,
+          @on_time : UInt16,
+          @off_wait_time : UInt16,
+          @start_up_on_off : UInt8?,
+          @data_version : UInt32,
+        )
+        end
+      end
+
+      def save_state : String?
+        PersistedState.new(
+          on_off: @on_off,
+          global_scene_control: @global_scene_control,
+          on_time: @on_time,
+          off_wait_time: @off_wait_time,
+          start_up_on_off: @start_up_on_off.try(&.value),
+          data_version: @data_version
+        ).to_json
+      end
+
+      def restore_state(json : String) : Nil
+        state = PersistedState.from_json(json)
+
+        @on_off = state.on_off
+        @attribute_values[ATTR_ON_OFF] = @on_off.to_tlv
+
+        if feature_map.lighting?
+          @global_scene_control = state.global_scene_control
+          @on_time = state.on_time
+          @off_wait_time = state.off_wait_time
+          @start_up_on_off = state.start_up_on_off.try { |v| StartUpOnOff.from_value(v) }
+        end
+
+        @data_version = state.data_version
+      rescue
+        # Start fresh if restore fails
+      end
+
+      # ------------------------------------------------------------------------
       # ScenesManagement extension field sets
       # ------------------------------------------------------------------------
       def store_scene_extension_field_set : ScenesManagementCluster::ExtensionFieldSet?

@@ -71,14 +71,15 @@ module Matter
       end
 
       def initialize(
-        @hostname : String = "matter-device.local",
-        @port : Int32 = 5540,
         ip_addresses : Array(Socket::IPAddress)? = nil,
+        @port : Int32 = 5540,
+        hostname : String? = nil,
       )
         @ip_addresses = ip_addresses || default_ip_addresses
 
         @storage_manager = build_storage_manager
         @fabric_table = @storage_manager.fabric_table
+        @hostname = hostname || load_or_create_commissioning_hostname
 
         @transport = Transport::UDPTransport.new(port: @port)
         @message_handler = Protocol::MessageHandler.new(
@@ -300,8 +301,8 @@ module Matter
           hardware_version_string: hardware_version_string,
           software_version: software_version,
           software_version_string: software_version_string,
-          serial_number: serial_number,
-          unique_id: unique_id,
+          serial_number: serial_number || "",
+          unique_id: unique_id || "",
           product_appearance: product_appearance
         )
         @basic_info = basic_info
@@ -468,6 +469,38 @@ module Matter
         # Prefer localhost as a safe default
         ips << Socket::IPAddress.new("127.0.0.1", 0)
         ips
+      end
+
+      private HOSTNAME_CONTEXT = ["device_identity"] of String
+      private HOSTNAME_KEY     = "commissioning_hostname"
+      private HOSTNAME_RE      = /^[0-9A-F]{16}\\.local$/
+
+      private def load_or_create_commissioning_hostname : String
+        stored = @storage_manager.storage.get(HOSTNAME_CONTEXT, HOSTNAME_KEY)
+        if stored.is_a?(String)
+          hostname = stored.strip
+          return hostname if hostname.matches?(HOSTNAME_RE)
+          return hostname if hostname.ends_with?(".local") && !hostname.empty?
+        end
+
+        token = Random::Secure.rand(UInt64).to_s(16).upcase.rjust(16, '0')
+        hostname = "#{token}.local"
+        @storage_manager.storage.set(HOSTNAME_CONTEXT, HOSTNAME_KEY, hostname)
+        hostname
+      rescue
+        "#{Random::Secure.rand(UInt64).to_s(16).upcase.rjust(16, '0')}.local"
+      end
+
+      # Updates the default commissioning target hostname used for mDNS advertisements.
+      # This is useful for platforms that rotate link-layer identifiers or for hosting
+      # multiple virtual devices in one executable.
+      def update_hostname(hostname : String) : Nil
+        normalized = hostname.strip
+        raise ArgumentError.new("hostname must be non-empty") if normalized.empty?
+
+        @hostname = normalized
+        @storage_manager.storage.set(HOSTNAME_CONTEXT, HOSTNAME_KEY, normalized)
+        @responder.update_commissioning_hostname(normalized)
       end
 
       # Save state for all clusters that need persistence
