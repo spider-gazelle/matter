@@ -339,7 +339,7 @@ module Matter
           name: "clusterRevision",
           type: :uint16,
           writable: false,
-          default: encode_uint16(5_u16)
+          default: 5_u16.to_tlv
         )
 
         attrs << AttributeMetadata.new(
@@ -347,7 +347,7 @@ module Matter
           name: "featureMap",
           type: :uint32,
           writable: false,
-          default: encode_uint32(@feature_map.value)
+          default: @feature_map.value.to_tlv
         )
 
         attrs
@@ -396,45 +396,45 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_TYPE
-          encode_uint8(@covering_type.value)
+          @covering_type.value.to_tlv
         when ATTR_CONFIG_STATUS
-          encode_uint8(@config_status.value)
+          @config_status.value.to_tlv
         when ATTR_OPERATIONAL_STATUS
-          encode_uint8(@operational_status.value)
+          @operational_status.value.to_tlv
         when ATTR_END_PRODUCT_TYPE
-          encode_uint8(@end_product_type.value)
+          @end_product_type.value.to_tlv
         when ATTR_MODE
-          encode_uint8(@mode.value)
+          @mode.value.to_tlv
         when ATTR_CURRENT_POSITION_LIFT_PERCENTAGE
           if val = @current_position_lift_percentage
-            encode_uint8(val)
+            val.to_tlv
           else
             Bytes.new(0) # Null
           end
         when ATTR_CURRENT_POSITION_LIFT_PERCENT100THS
           if val = @current_position_lift_percent100ths
-            encode_uint16(val)
+            val.to_tlv
           else
             Bytes.new(0) # Null
           end
         when ATTR_TARGET_POSITION_LIFT_PERCENT100THS
           if val = @target_position_lift_percent100ths
-            encode_uint16(val)
+            val.to_tlv
           else
             Bytes.new(0) # Null
           end
         when ATTR_NUMBER_OF_ACTUATIONS_LIFT
-          encode_uint16(@number_of_actuations_lift || 0_u16)
+          (@number_of_actuations_lift || 0_u16).to_tlv
         when ATTR_SAFETY_STATUS
           if val = @safety_status
-            encode_uint16(val)
+            val.to_tlv
           else
             Bytes.new(0) # Null
           end
         when CLUSTER_REVISION
-          encode_uint16(5_u16)
+          5_u16.to_tlv
         when FEATURE_MAP
-          encode_uint32(@feature_map.value)
+          @feature_map.value.to_tlv
         else
           super
         end
@@ -510,8 +510,7 @@ module Matter
         InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
       end
 
-      # NOTE: encode_uint8, encode_uint16, encode_uint32 inherited from Base class
-      # with proper TLV encoding - do NOT override with raw byte encoding
+      # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
     end
 
     # Backward compatibility alias

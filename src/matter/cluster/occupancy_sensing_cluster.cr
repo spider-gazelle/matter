@@ -253,7 +253,7 @@ module Matter
           Bytes[@occupancy_sensor_type_bitmap]
         when ATTR_HOLD_TIME
           if hold_time = @hold_time
-            encode_uint16(hold_time)
+            hold_time.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -261,16 +261,16 @@ module Matter
         when ATTR_PIR_OCCUPIED_TO_UNOCCUPIED_DELAY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.passive_infrared?
           if delay = @pir_occupied_to_unoccupied_delay
-            encode_uint16(delay)
+            delay.to_tlv
           else
-            encode_uint16(0_u16) # Default value
+            0_u16.to_tlv # Default value
           end
         when ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_DELAY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.passive_infrared?
           if delay = @pir_unoccupied_to_occupied_delay
-            encode_uint16(delay)
+            delay.to_tlv
           else
-            encode_uint16(0_u16) # Default value
+            0_u16.to_tlv # Default value
           end
         when ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.passive_infrared?
@@ -283,16 +283,16 @@ module Matter
         when ATTR_ULTRASONIC_OCCUPIED_TO_UNOCCUPIED_DELAY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.ultrasonic?
           if delay = @ultrasonic_occupied_to_unoccupied_delay
-            encode_uint16(delay)
+            delay.to_tlv
           else
-            encode_uint16(0_u16)
+            0_u16.to_tlv
           end
         when ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_DELAY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.ultrasonic?
           if delay = @ultrasonic_unoccupied_to_occupied_delay
-            encode_uint16(delay)
+            delay.to_tlv
           else
-            encode_uint16(0_u16)
+            0_u16.to_tlv
           end
         when ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.ultrasonic?
@@ -305,16 +305,16 @@ module Matter
         when ATTR_PHYSICAL_CONTACT_OCCUPIED_TO_UNOCCUPIED_DELAY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.physical_contact?
           if delay = @physical_contact_occupied_to_unoccupied_delay
-            encode_uint16(delay)
+            delay.to_tlv
           else
-            encode_uint16(0_u16)
+            0_u16.to_tlv
           end
         when ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_DELAY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.physical_contact?
           if delay = @physical_contact_unoccupied_to_occupied_delay
-            encode_uint16(delay)
+            delay.to_tlv
           else
-            encode_uint16(0_u16)
+            0_u16.to_tlv
           end
         when ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.physical_contact?
@@ -429,8 +429,7 @@ module Matter
         @on_occupancy_changed = block
       end
 
-      # NOTE: encode_uint16 inherited from Base class with proper TLV encoding
-      # Do NOT override with raw byte encoding
+      # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
     end
   end
 end

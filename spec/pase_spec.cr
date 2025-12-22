@@ -24,7 +24,7 @@ describe Matter::Session::Pase do
       request = Matter::Session::Pase::Definitions::PbkdfParamRequest.new
 
       # Encode to TLV bytes
-      encoded = request.to_bytes
+      encoded = request.to_slice
       encoded.should be_a(Bytes)
 
       # Decode from TLV bytes
@@ -49,7 +49,7 @@ describe Matter::Session::Pase do
       )
 
       # Encode to TLV bytes
-      encoded = response.to_bytes
+      encoded = response.to_slice
       encoded.should be_a(Bytes)
 
       # Decode from TLV bytes
@@ -124,7 +124,7 @@ describe Matter::Session::Pase do
         iterations: params.iterations.to_u32,
         salt: params.salt
       )
-      commissioner.process_pbkdf_param_response(response.to_bytes)
+      commissioner.process_pbkdf_param_response(response.to_slice)
 
       commissioner.pbkdf_params.should_not be_nil
       commissioner.spake.should_not be_nil
@@ -146,7 +146,7 @@ describe Matter::Session::Pase do
         iterations: params.iterations.to_u32,
         salt: params.salt
       )
-      commissioner.process_pbkdf_param_response(response.to_bytes)
+      commissioner.process_pbkdf_param_response(response.to_slice)
 
       p_a = commissioner.generate_pake1
       p_a.should be_a(Bytes)
@@ -198,7 +198,7 @@ describe Matter::Session::Pase do
         iterations: params.iterations.to_u32,
         salt: params.salt
       )
-      commissioner.process_pbkdf_param_response(response.to_bytes)
+      commissioner.process_pbkdf_param_response(response.to_slice)
       p_a = commissioner.generate_pake1
 
       # Responder processes pA and generates pB
@@ -229,7 +229,7 @@ describe Matter::Session::Pase do
         iterations: params.iterations.to_u32,
         salt: params.salt
       )
-      commissioner.process_pbkdf_param_response(response.to_bytes)
+      commissioner.process_pbkdf_param_response(response.to_slice)
       p_a = commissioner.generate_pake1
       p_b = responder.process_pake1(p_a)
 

@@ -64,7 +64,7 @@ describe "CASE Sigma2 Encryption" do
       resumption_id: resumption_id
     )
 
-    result = encrypted_data.to_bytes
+    result = encrypted_data.to_slice
     result.should eq(expected_tbe_data2)
   end
 
@@ -116,7 +116,7 @@ describe "CASE Sigma2 Encryption" do
       signature: signature,
       resumption_id: resumption_id
     )
-    tbe_data2 = encrypted_data.to_bytes
+    tbe_data2 = encrypted_data.to_slice
 
     # Step 4: Encrypt
     encrypted = crypto.encrypt(sigma2_key, tbe_data2, "NCASE_Sigma2N".to_slice)

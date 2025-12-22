@@ -82,7 +82,7 @@ module Matter
         @off_wait_time = 0_u16
         @start_up_on_off = nil
 
-        @attribute_values[ATTR_ON_OFF] = encode_bool(@on_off)
+        @attribute_values[ATTR_ON_OFF] = @on_off.to_tlv
       end
 
       # Validate feature flag combinations per Matter spec
@@ -112,7 +112,7 @@ module Matter
             name: "onOff",
             type: :bool,
             writable: false,
-            default: encode_bool(false)
+            default: false.to_tlv
           ),
         ]
 
@@ -123,21 +123,21 @@ module Matter
             name: "globalSceneControl",
             type: :bool,
             writable: false,
-            default: encode_bool(true)
+            default: true.to_tlv
           )
           attrs << AttributeMetadata.new(
             id: DataType::AttributeId.new(ATTR_ON_TIME),
             name: "onTime",
             type: :uint16,
             writable: true,
-            default: encode_uint16(0_u16)
+            default: 0_u16.to_tlv
           )
           attrs << AttributeMetadata.new(
             id: DataType::AttributeId.new(ATTR_OFF_WAIT_TIME),
             name: "offWaitTime",
             type: :uint16,
             writable: true,
-            default: encode_uint16(0_u16)
+            default: 0_u16.to_tlv
           )
           attrs << AttributeMetadata.new(
             id: DataType::AttributeId.new(ATTR_START_UP_ON_OFF),
@@ -194,27 +194,27 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_ON_OFF
-          encode_bool(@on_off)
+          @on_off.to_tlv
         when ATTR_GLOBAL_SCENE_CONTROL
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless feature_map.lighting?
-          encode_bool(@global_scene_control)
+          @global_scene_control.to_tlv
         when ATTR_ON_TIME
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless feature_map.lighting?
-          encode_uint16(@on_time)
+          @on_time.to_tlv
         when ATTR_OFF_WAIT_TIME
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless feature_map.lighting?
-          encode_uint16(@off_wait_time)
+          @off_wait_time.to_tlv
         when ATTR_START_UP_ON_OFF
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless feature_map.lighting?
           if suo = @start_up_on_off
-            encode_uint8(suo.value)
+            suo.value.to_tlv
           else
-            encode_null
+            nil.to_tlv
           end
         when FEATURE_MAP
-          encode_uint32(feature_map.value)
+          feature_map.value.to_tlv
         when CLUSTER_REVISION
-          encode_uint16(6_u16)
+          6_u16.to_tlv
         when ATTRIBUTE_LIST
           encode_attribute_list
         when ACCEPTED_COMMAND_LIST
@@ -375,7 +375,7 @@ module Matter
       private def set_on_off(value : Bool)
         if @on_off != value
           @on_off = value
-          @attribute_values[ATTR_ON_OFF] = encode_bool(value)
+          @attribute_values[ATTR_ON_OFF] = value.to_tlv
           increment_version_and_notify(ATTR_ON_OFF)
           @on_state_changed.try &.call(value)
         end
@@ -388,7 +388,7 @@ module Matter
         ScenesManagementCluster::ExtensionFieldSet.new(
           cluster_id: CLUSTER_ID,
           attribute_list: [
-            {ATTR_ON_OFF, encode_bool(@on_off)},
+            {ATTR_ON_OFF, @on_off.to_tlv},
           ]
         )
       end

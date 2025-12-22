@@ -529,9 +529,7 @@ module Matter
         end.to_tlv
       end
 
-      # NOTE: encode_uint16 and encode_uint32 are inherited from Base class
-      # Do NOT override them here - Base class uses TLV encoding which is required
-      # for proper attribute responses
+      # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
 
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id

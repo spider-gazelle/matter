@@ -51,7 +51,7 @@ module Matter
           # Create a TLV-encoded PBKDF parameter request
           # This can include optional initiator information
           request = Definitions::PbkdfParamRequest.new
-          request.to_bytes
+          request.to_slice
         end
 
         # Step 2: Process PBKDF parameters from responder
@@ -188,7 +188,7 @@ module Matter
             iterations: @pbkdf_params.iterations.to_u32,
             salt: @pbkdf_params.salt
           )
-          response.to_bytes
+          response.to_slice
         end
 
         # Step 2: Initialize SPAKE2+ with w0 and L

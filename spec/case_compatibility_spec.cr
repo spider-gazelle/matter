@@ -30,7 +30,7 @@ describe Matter::Session::Case do
         initiator_public_key: peer_pub_key
       )
 
-      signed_data_bytes = signed_data.to_bytes
+      signed_data_bytes = signed_data.to_slice
       signed_data_bytes.hexstring.should eq expected_signature_data.hexstring
 
       # Test signature verification with fabric public key
@@ -49,7 +49,7 @@ describe Matter::Session::Case do
         resumption_id: resumption_id
       )
 
-      encrypted_data_bytes = encrypted_data.to_bytes
+      encrypted_data_bytes = encrypted_data.to_slice
       encrypted_data_bytes.hexstring.should eq expected_encrypted_data_plain.hexstring
     end
 

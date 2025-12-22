@@ -84,11 +84,11 @@ module Matter
         @current_group = 0_u16
         @scene_valid = false
 
-        @attribute_values[SCENE_COUNT] = encode_uint8(0_u8)
-        @attribute_values[CURRENT_SCENE] = encode_uint8(@current_scene)
-        @attribute_values[CURRENT_GROUP] = encode_uint16(@current_group)
-        @attribute_values[SCENE_VALID] = encode_bool(@scene_valid)
-        @attribute_values[NAME_SUPPORT] = encode_uint8(@feature_map.scene_names? ? 0x80_u8 : 0x00_u8)
+        @attribute_values[SCENE_COUNT] = 0_u8.to_tlv
+        @attribute_values[CURRENT_SCENE] = @current_scene.to_tlv
+        @attribute_values[CURRENT_GROUP] = @current_group.to_tlv
+        @attribute_values[SCENE_VALID] = @scene_valid.to_tlv
+        @attribute_values[NAME_SUPPORT] = (@feature_map.scene_names? ? 0x80_u8 : 0x00_u8).to_tlv
       end
 
       # Backward compatibility
@@ -107,49 +107,49 @@ module Matter
             name: "sceneCount",
             type: :uint8,
             writable: false,
-            default: encode_uint8(0_u8)
+            default: 0_u8.to_tlv
           ),
           AttributeMetadata.new(
             id: DataType::AttributeId.new(CURRENT_SCENE),
             name: "currentScene",
             type: :uint8,
             writable: false,
-            default: encode_uint8(0_u8)
+            default: 0_u8.to_tlv
           ),
           AttributeMetadata.new(
             id: DataType::AttributeId.new(CURRENT_GROUP),
             name: "currentGroup",
             type: :uint16,
             writable: false,
-            default: encode_uint16(0_u16)
+            default: 0_u16.to_tlv
           ),
           AttributeMetadata.new(
             id: DataType::AttributeId.new(SCENE_VALID),
             name: "sceneValid",
             type: :bool,
             writable: false,
-            default: encode_bool(false)
+            default: false.to_tlv
           ),
           AttributeMetadata.new(
             id: DataType::AttributeId.new(NAME_SUPPORT),
             name: "nameSupport",
             type: :uint8,
             writable: false,
-            default: encode_uint8(@feature_map.scene_names? ? 0x80_u8 : 0x00_u8)
+            default: (@feature_map.scene_names? ? 0x80_u8 : 0x00_u8).to_tlv
           ),
           AttributeMetadata.new(
             id: DataType::AttributeId.new(CLUSTER_REVISION),
             name: "clusterRevision",
             type: :uint16,
             writable: false,
-            default: encode_uint16(4_u16)
+            default: 4_u16.to_tlv
           ),
           AttributeMetadata.new(
             id: DataType::AttributeId.new(FEATURE_MAP_ATTR),
             name: "featureMap",
             type: :uint32,
             writable: false,
-            default: encode_uint32(@feature_map.value)
+            default: @feature_map.value.to_tlv
           ),
         ]
       end
@@ -194,17 +194,17 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when SCENE_COUNT
-          encode_uint8(@scenes.size.to_u8)
+          @scenes.size.to_u8.to_tlv
         when CURRENT_SCENE
-          encode_uint8(@current_scene)
+          @current_scene.to_tlv
         when CURRENT_GROUP
-          encode_uint16(@current_group)
+          @current_group.to_tlv
         when SCENE_VALID
-          encode_bool(@scene_valid)
+          @scene_valid.to_tlv
         when NAME_SUPPORT
-          encode_uint8(@feature_map.scene_names? ? 0x80_u8 : 0x00_u8)
+          (@feature_map.scene_names? ? 0x80_u8 : 0x00_u8).to_tlv
         when FEATURE_MAP_ATTR
-          encode_uint32(@feature_map.value)
+          @feature_map.value.to_tlv
         else
           super(attribute_id)
         end
@@ -394,7 +394,7 @@ module Matter
           # Invalidate current scene if it was removed
           if @current_group == group_id && @current_scene == scene_id
             @scene_valid = false
-            @attribute_values[SCENE_VALID] = encode_bool(@scene_valid)
+            @attribute_values[SCENE_VALID] = @scene_valid.to_tlv
             increment_version
           end
 
@@ -420,7 +420,7 @@ module Matter
           # Invalidate current scene if it was in this group
           if @current_group == group_id
             @scene_valid = false
-            @attribute_values[SCENE_VALID] = encode_bool(@scene_valid)
+            @attribute_values[SCENE_VALID] = @scene_valid.to_tlv
             increment_version
           end
         end
@@ -450,9 +450,9 @@ module Matter
           @current_scene = scene_id
           @scene_valid = true
 
-          @attribute_values[CURRENT_GROUP] = encode_uint16(@current_group)
-          @attribute_values[CURRENT_SCENE] = encode_uint8(@current_scene)
-          @attribute_values[SCENE_VALID] = encode_bool(@scene_valid)
+          @attribute_values[CURRENT_GROUP] = @current_group.to_tlv
+          @attribute_values[CURRENT_SCENE] = @current_scene.to_tlv
+          @attribute_values[SCENE_VALID] = @scene_valid.to_tlv
           increment_version
 
           # Trigger callback
@@ -535,7 +535,7 @@ module Matter
       end
 
       private def update_scene_count
-        @attribute_values[SCENE_COUNT] = encode_uint8(@scenes.size.to_u8)
+        @attribute_values[SCENE_COUNT] = @scenes.size.to_u8.to_tlv
         increment_version
       end
 
@@ -642,7 +642,7 @@ module Matter
 
       def invalidate_current_scene
         @scene_valid = false
-        @attribute_values[SCENE_VALID] = encode_bool(@scene_valid)
+        @attribute_values[SCENE_VALID] = @scene_valid.to_tlv
         increment_version
       end
     end

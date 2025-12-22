@@ -312,14 +312,14 @@ module Matter
           name: "clusterRevision",
           type: :uint16,
           writable: false,
-          default: encode_uint16(6_u16)
+          default: 6_u16.to_tlv
         )
         attrs << AttributeMetadata.new(
           id: DataType::AttributeId.new(FEATURE_MAP),
           name: "featureMap",
           type: :uint32,
           writable: false,
-          default: encode_uint32(@feature_map.value)
+          default: @feature_map.value.to_tlv
         )
 
         attrs
@@ -378,69 +378,69 @@ module Matter
         case attribute_id
         when ATTR_CURRENT_HUE
           return unsupported_attribute unless @feature_map.hue_saturation?
-          encode_uint8(@current_hue)
+          @current_hue.to_tlv
         when ATTR_CURRENT_SATURATION
           return unsupported_attribute unless @feature_map.hue_saturation?
-          encode_uint8(@current_saturation)
+          @current_saturation.to_tlv
         when ATTR_REMAINING_TIME
-          encode_uint16(@remaining_time)
+          @remaining_time.to_tlv
         when ATTR_CURRENT_X
           return unsupported_attribute unless @feature_map.xy?
-          encode_uint16(@current_x)
+          @current_x.to_tlv
         when ATTR_CURRENT_Y
           return unsupported_attribute unless @feature_map.xy?
-          encode_uint16(@current_y)
+          @current_y.to_tlv
         when ATTR_COLOR_TEMPERATURE_MIREDS
           return unsupported_attribute unless @feature_map.color_temperature?
-          encode_uint16(@color_temperature_mireds)
+          @color_temperature_mireds.to_tlv
         when ATTR_COLOR_MODE
-          encode_uint8(@color_mode.value)
+          @color_mode.value.to_tlv
         when ATTR_OPTIONS
-          encode_uint8(@options)
+          @options.to_tlv
         when ATTR_ENHANCED_CURRENT_HUE
           return unsupported_attribute unless @feature_map.enhanced_hue?
-          encode_uint16(@enhanced_current_hue)
+          @enhanced_current_hue.to_tlv
         when ATTR_ENHANCED_COLOR_MODE
-          encode_uint8(@enhanced_color_mode.value)
+          @enhanced_color_mode.value.to_tlv
         when ATTR_COLOR_LOOP_ACTIVE
           return unsupported_attribute unless @feature_map.color_loop?
-          encode_bool(@color_loop_active)
+          @color_loop_active.to_tlv
         when ATTR_COLOR_LOOP_DIRECTION
           return unsupported_attribute unless @feature_map.color_loop?
-          encode_uint8(@color_loop_direction)
+          @color_loop_direction.to_tlv
         when ATTR_COLOR_LOOP_TIME
           return unsupported_attribute unless @feature_map.color_loop?
-          encode_uint16(@color_loop_time)
+          @color_loop_time.to_tlv
         when ATTR_COLOR_LOOP_START_ENHANCED_HUE
           return unsupported_attribute unless @feature_map.color_loop?
-          encode_uint16(@color_loop_start_enhanced_hue)
+          @color_loop_start_enhanced_hue.to_tlv
         when ATTR_COLOR_LOOP_STORED_ENHANCED_HUE
           return unsupported_attribute unless @feature_map.color_loop?
-          encode_uint16(@color_loop_stored_enhanced_hue)
+          @color_loop_stored_enhanced_hue.to_tlv
         when ATTR_COLOR_TEMP_PHYSICAL_MIN_MIREDS
           return unsupported_attribute unless @feature_map.color_temperature?
-          encode_uint16(@color_temp_physical_min_mireds)
+          @color_temp_physical_min_mireds.to_tlv
         when ATTR_COLOR_TEMP_PHYSICAL_MAX_MIREDS
           return unsupported_attribute unless @feature_map.color_temperature?
-          encode_uint16(@color_temp_physical_max_mireds)
+          @color_temp_physical_max_mireds.to_tlv
         when ATTR_COUPLE_COLOR_TEMP_TO_LEVEL_MIN
           return unsupported_attribute unless @feature_map.color_temperature?
           if val = @couple_color_temp_to_level_min_mireds
-            encode_uint16(val)
+            val.to_tlv
           else
             encode_null
           end
         when ATTR_START_UP_COLOR_TEMPERATURE
           return unsupported_attribute unless @feature_map.color_temperature?
           if val = @start_up_color_temperature_mireds
-            encode_uint16(val)
+            val.to_tlv
           else
             encode_null
           end
         when FEATURE_MAP
-          encode_uint32(@feature_map.value)
+          @feature_map.value.to_tlv
         when CLUSTER_REVISION
-          encode_uint16(6_u16)
+          6_u16.to_tlv
         else
           super
         end

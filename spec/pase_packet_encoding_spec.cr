@@ -23,7 +23,7 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
         passcode_id: 0_u16,
         has_pbkdf_parameters: false
       )
-      tlv_payload = request.to_bytes
+      tlv_payload = request.to_slice
 
       # Create payload header for Secure Channel protocol
       payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(
@@ -108,7 +108,7 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
         iterations: pbkdf_params.iterations.to_u32,
         salt: pbkdf_params.salt
       )
-      tlv_payload = response.to_bytes
+      tlv_payload = response.to_slice
 
       # Verify our TLV encoding matches matter.js
       expected_response_payload = "1530012094eab5c37d101df5ef01b2c8ecada03a7c3b0cf5e26a08feda72617f9cd391a630022022820a42684102fd4a92c0bad66ad1f21f3c5366f5a6d84203035e2c7caf3bae250357de35042501e80330022003959ebc20b8fcbda262d97f9a7a9e76e32d7a1b9c5166b6a3721e88acad88081818".hexbytes
@@ -174,7 +174,7 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
         y: expected_y,
         verifier: placeholder_verifier
       )
-      tlv_payload = pake2.to_bytes
+      tlv_payload = pake2.to_slice
 
       # Create payload header
       payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(

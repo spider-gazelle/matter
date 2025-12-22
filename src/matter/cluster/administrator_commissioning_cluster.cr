@@ -241,16 +241,16 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_WINDOW_STATUS
-          encode_uint8(@window_status.value)
+          @window_status.value.to_tlv
         when ATTR_ADMIN_FABRIC_INDEX
           if index = @admin_fabric_index
-            encode_uint8(index)
+            index.to_tlv
           else
             Bytes.new(0) # Null
           end
         when ATTR_ADMIN_VENDOR_ID
           if vendor = @admin_vendor_id
-            encode_uint16(vendor)
+            vendor.to_tlv
           else
             Bytes.new(0) # Null
           end

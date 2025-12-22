@@ -94,11 +94,6 @@ module Matter
             @initiator_resume_mic : Bytes? = nil,
           )
           end
-
-          @[Deprecated("Use `#to_slice` instead")]
-          def to_bytes : Bytes
-            to_slice
-          end
         end
 
         # CASE Sigma2 message
@@ -144,11 +139,6 @@ module Matter
             @responder_resume_mic : Bytes? = nil,
           )
           end
-
-          @[Deprecated("Use `#to_slice` instead")]
-          def to_bytes : Bytes
-            to_slice
-          end
         end
 
         # CASE Sigma3 message
@@ -161,11 +151,6 @@ module Matter
           property encrypted3 : Bytes
 
           def initialize(@encrypted3 : Bytes)
-          end
-
-          @[Deprecated("Use `#to_slice` instead")]
-          def to_bytes : Bytes
-            to_slice
           end
         end
 
@@ -197,11 +182,6 @@ module Matter
             @initiator_public_key : Bytes,
           )
           end
-
-          @[Deprecated("Use `#to_slice` instead")]
-          def to_bytes : Bytes
-            to_slice
-          end
         end
 
         # TLV structure for encrypted data in Sigma2
@@ -232,16 +212,6 @@ module Matter
             @resumption_id : Bytes,
           )
           end
-
-          @[Deprecated("Use `#to_slice` instead")]
-          def to_bytes : Bytes
-            to_slice
-          end
-
-          @[Deprecated("Use `.from_slice` instead")]
-          def self.from_bytes(data : Bytes) : EncryptedDataSigma2
-            from_slice(data)
-          end
         end
 
         # TLV structure for encrypted data in Sigma3 (TBE_Data3)
@@ -266,16 +236,6 @@ module Matter
             @responder_icac : Bytes?,
             @signature : Bytes,
           )
-          end
-
-          @[Deprecated("Use `#to_slice` instead")]
-          def to_bytes : Bytes
-            to_slice
-          end
-
-          @[Deprecated("Use `.from_slice` instead")]
-          def self.from_bytes(data : Bytes) : EncryptedDataSigma3
-            from_slice(data)
           end
         end
       end

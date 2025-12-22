@@ -397,14 +397,14 @@ module Matter
         when ATTR_WIRED_ASSESSED_INPUT_VOLTAGE
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wired?
           if voltage = @wired_assessed_input_voltage
-            encode_uint32(voltage)
+            voltage.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         when ATTR_WIRED_ASSESSED_INPUT_FREQUENCY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wired?
           if freq = @wired_assessed_input_frequency
-            encode_uint16(freq)
+            freq.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -440,7 +440,7 @@ module Matter
         when ATTR_BAT_VOLTAGE
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.battery?
           if voltage = @bat_voltage
-            encode_uint32(voltage)
+            voltage.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -454,7 +454,7 @@ module Matter
         when ATTR_BAT_TIME_REMAINING
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.battery?
           if time = @bat_time_remaining
-            encode_uint32(time)
+            time.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -491,7 +491,7 @@ module Matter
         when ATTR_BAT_TIME_TO_FULL_CHARGE
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.rechargeable?
           if time = @bat_time_to_full_charge
-            encode_uint32(time)
+            time.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -564,8 +564,7 @@ module Matter
         bytes
       end
 
-      # NOTE: encode_uint16, encode_uint32 inherited from Base class with proper TLV encoding
-      # Do NOT override with raw byte encoding
+      # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
     end
   end
 end

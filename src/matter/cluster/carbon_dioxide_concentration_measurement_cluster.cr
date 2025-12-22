@@ -286,7 +286,7 @@ module Matter
           end
         when ATTR_PEAK_MEASURED_VALUE_WINDOW
           if value = @peak_measured_value_window
-            encode_uint32(value)
+            value.to_tlv
           else
             return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -298,7 +298,7 @@ module Matter
           end
         when ATTR_AVERAGE_MEASURED_VALUE_WINDOW
           if value = @average_measured_value_window
-            encode_uint32(value)
+            value.to_tlv
           else
             return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -407,8 +407,7 @@ module Matter
         @on_average_measured_value_changed = block
       end
 
-      # NOTE: encode_uint32 inherited from Base class with proper TLV encoding
-      # Do NOT override with raw byte encoding
+      # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
 
       # encode_float uses TLV encoding for attribute responses
       private def encode_float(value : Float32) : Bytes

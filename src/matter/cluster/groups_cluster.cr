@@ -56,7 +56,7 @@ module Matter
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
         @groups = Hash(UInt16, String).new
         @max_groups = max_groups
-        @attribute_values[NAME_SUPPORT] = encode_uint8(@feature_map.group_names? ? 0x80_u8 : 0x00_u8)
+        @attribute_values[NAME_SUPPORT] = (@feature_map.group_names? ? 0x80_u8 : 0x00_u8).to_tlv
       end
 
       # Backward compatibility
@@ -77,7 +77,7 @@ module Matter
             name: "nameSupport",
             type: :uint8,
             writable: false,
-            default: encode_uint8(@feature_map.group_names? ? 0x80_u8 : 0x00_u8)
+            default: (@feature_map.group_names? ? 0x80_u8 : 0x00_u8).to_tlv
           ),
         ]
       end
@@ -135,9 +135,9 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when NAME_SUPPORT
-          encode_uint8(@feature_map.group_names? ? 0x80_u8 : 0x00_u8)
+          (@feature_map.group_names? ? 0x80_u8 : 0x00_u8).to_tlv
         when FEATURE_MAP_ATTR
-          encode_uint32(@feature_map.value)
+          @feature_map.value.to_tlv
         else
           super(attribute_id)
         end

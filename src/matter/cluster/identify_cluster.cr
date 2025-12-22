@@ -105,13 +105,13 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_IDENTIFY_TIME
-          encode_uint16(@identify_time)
+          @identify_time.to_tlv
         when ATTR_IDENTIFY_TYPE
-          encode_uint8(@identify_type.value)
+          @identify_type.value.to_tlv
         when CLUSTER_REVISION
-          encode_uint16(4_u16) # Identify cluster revision 4
+          4_u16.to_tlv # Identify cluster revision 4
         when FEATURE_MAP
-          encode_uint32(0_u32) # No features for basic Identify
+          0_u32.to_tlv # No features for basic Identify
         else
           super
         end

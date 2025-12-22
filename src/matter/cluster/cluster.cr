@@ -289,37 +289,6 @@ module Matter
       def apply_scene_extension_field_set(field_set : ScenesManagementCluster::ExtensionFieldSet) : Bool
         false
       end
-
-      # Helper methods for encoding simple values
-      @[Deprecated("Use `value.to_tlv` instead")]
-      protected def encode_uint8(value : UInt8) : Bytes
-        value.to_tlv
-      end
-
-      @[Deprecated("Use `value.to_tlv` instead")]
-      protected def encode_uint16(value : UInt16) : Bytes
-        value.to_tlv
-      end
-
-      @[Deprecated("Use `value.to_tlv` instead")]
-      protected def encode_uint32(value : UInt32) : Bytes
-        value.to_tlv
-      end
-
-      @[Deprecated("Use `value.to_tlv` instead")]
-      protected def encode_bool(value : Bool) : Bytes
-        value.to_tlv
-      end
-
-      @[Deprecated("Use `value.to_tlv` instead")]
-      protected def encode_null : Bytes
-        nil.to_tlv
-      end
-
-      @[Deprecated("Use `value.to_tlv` instead")]
-      protected def encode_int16(value : Int16) : Bytes
-        value.to_tlv
-      end
     end
   end
 end

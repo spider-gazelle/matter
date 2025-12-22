@@ -258,7 +258,7 @@ module Matter
           name: "clusterRevision",
           type: :uint16,
           writable: false,
-          default: encode_uint16(5_u16)
+          default: 5_u16.to_tlv
         )
 
         attrs << AttributeMetadata.new(
@@ -266,7 +266,7 @@ module Matter
           name: "featureMap",
           type: :uint32,
           writable: false,
-          default: encode_uint32(@feature_map.value)
+          default: @feature_map.value.to_tlv
         )
 
         attrs
@@ -333,66 +333,66 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_CURRENT_LEVEL
-          encode_uint8(@current_level)
+          @current_level.to_tlv
         when ATTR_MIN_LEVEL
-          encode_uint8(@min_level)
+          @min_level.to_tlv
         when ATTR_MAX_LEVEL
-          encode_uint8(@max_level)
+          @max_level.to_tlv
         when ATTR_OPTIONS
-          encode_uint8(@options)
+          @options.to_tlv
         when ATTR_ON_LEVEL
           if level = @on_level
-            encode_uint8(level)
+            level.to_tlv
           else
             encode_null
           end
         when ATTR_REMAINING_TIME
           return unsupported_attribute unless @feature_map.lighting?
-          encode_uint16(@remaining_time)
+          @remaining_time.to_tlv
         when ATTR_ON_OFF_TRANSITION_TIME
           return unsupported_attribute unless @feature_map.lighting?
-          encode_uint16(@on_off_transition_time)
+          @on_off_transition_time.to_tlv
         when ATTR_ON_TRANSITION_TIME
           return unsupported_attribute unless @feature_map.lighting?
           if time = @on_transition_time
-            encode_uint16(time)
+            time.to_tlv
           else
             encode_null
           end
         when ATTR_OFF_TRANSITION_TIME
           return unsupported_attribute unless @feature_map.lighting?
           if time = @off_transition_time
-            encode_uint16(time)
+            time.to_tlv
           else
             encode_null
           end
         when ATTR_DEFAULT_MOVE_RATE
           return unsupported_attribute unless @feature_map.lighting?
           if rate = @default_move_rate
-            encode_uint8(rate)
+            rate.to_tlv
           else
             encode_null
           end
         when ATTR_START_UP_CURRENT_LEVEL
           return unsupported_attribute unless @feature_map.lighting?
           if level = @start_up_current_level
-            encode_uint8(level)
+            level.to_tlv
           else
             encode_null
           end
         when ATTR_CURRENT_FREQUENCY
           return unsupported_attribute unless @feature_map.frequency?
-          encode_uint16(@current_frequency)
+          @current_frequency.to_tlv
         when ATTR_MIN_FREQUENCY
           return unsupported_attribute unless @feature_map.frequency?
-          encode_uint16(@min_frequency)
+          @min_frequency.to_tlv
         when ATTR_MAX_FREQUENCY
           return unsupported_attribute unless @feature_map.frequency?
-          encode_uint16(@max_frequency)
+          @max_frequency.to_tlv
         when FEATURE_MAP
-          encode_uint32(@feature_map.value)
+          @feature_map.value.to_tlv
         when CLUSTER_REVISION
-          encode_uint16(5_u16)
+          5_u16.to_tlv
         else
           super
         end

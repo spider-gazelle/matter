@@ -142,25 +142,25 @@ module Matter
         case attribute_id
         when ATTR_MEASURED_VALUE
           if value = @measured_value
-            encode_uint16(value)
+            value.to_tlv
           else
-            encode_null
+            nil.to_tlv
           end
         when ATTR_MIN_MEASURED_VALUE
           if value = @min_measured_value
-            encode_uint16(value)
+            value.to_tlv
           else
-            encode_null
+            nil.to_tlv
           end
         when ATTR_MAX_MEASURED_VALUE
           if value = @max_measured_value
-            encode_uint16(value)
+            value.to_tlv
           else
-            encode_null
+            nil.to_tlv
           end
         when ATTR_TOLERANCE
           if tolerance = @tolerance
-            encode_uint16(tolerance)
+            tolerance.to_tlv
           else
             return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -231,8 +231,7 @@ module Matter
         value
       end
 
-      # NOTE: encode_uint16 inherited from Base class with proper TLV encoding
-      # Do NOT override with raw byte encoding
+      # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
     end
   end
 end

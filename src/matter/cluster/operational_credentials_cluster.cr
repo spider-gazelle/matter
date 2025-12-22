@@ -586,14 +586,14 @@ module Matter
         when ATTR_FABRICS
           encode_fabric_list
         when ATTR_SUPPORTED_FABRICS
-          encode_uint8(supported_fabrics)
+          supported_fabrics.to_tlv
         when ATTR_COMMISSIONED_FABRICS
-          encode_uint8(commissioned_fabrics)
+          commissioned_fabrics.to_tlv
         when ATTR_TRUSTED_ROOT_CERTIFICATES
           encode_certificate_list
         when ATTR_CURRENT_FABRIC_INDEX
           # Use passed fabric_index from session context, fall back to stored value
-          encode_uint8(fabric_index || @current_fabric_index)
+          (fabric_index || @current_fabric_index).to_tlv
         else
           super
         end
@@ -1881,12 +1881,6 @@ module Matter
           debug_text: debug_text
         )
         response.to_slice
-      end
-
-      @[Deprecated("Use encode_noc_response directly with appropriate status code")]
-      private def encode_error_response(message : String) : Bytes
-        # Encode error as NOC response with MissingCsr status and debug text
-        encode_noc_response(NodeOperationalCertStatus::MissingCsr, nil, message)
       end
     end
   end

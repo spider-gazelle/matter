@@ -74,11 +74,6 @@ module Matter
             @mrp_parameters = nil,
           )
           end
-
-          @[Deprecated("Use `#to_slice` instead")]
-          def to_bytes : Bytes
-            to_slice
-          end
         end
 
         # PBKDF Parameter Response message
@@ -130,11 +125,6 @@ module Matter
               pbkdf_parameters: PbkdfParametersTLV.new(iterations, salt),
             )
           end
-
-          @[Deprecated("Use `#to_slice` instead")]
-          def to_bytes : Bytes
-            to_slice
-          end
         end
 
         # PASE Pake1 message
@@ -145,11 +135,6 @@ module Matter
           # Commissioner's public key (X value, pA)
           @[TLV::Field(tag: 1)]
           property x : Bytes
-
-          @[Deprecated("Use `#to_slice` instead")]
-          def to_bytes : Bytes
-            to_slice
-          end
         end
 
         # PASE Pake2 message
@@ -167,11 +152,6 @@ module Matter
 
           def initialize(@y : Bytes, @verifier : Bytes)
           end
-
-          @[Deprecated("Use `#to_slice` instead")]
-          def to_bytes : Bytes
-            to_slice
-          end
         end
 
         # PASE Pake3 message
@@ -182,11 +162,6 @@ module Matter
           # Commissioner's confirmation value (cA, h_ay)
           @[TLV::Field(tag: 1)]
           property verifier : Bytes
-
-          @[Deprecated("Use `#to_slice` instead")]
-          def to_bytes : Bytes
-            to_slice
-          end
         end
 
         # StatusReport message

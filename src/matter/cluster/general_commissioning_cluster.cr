@@ -306,15 +306,15 @@ module Matter
         when ATTR_BASIC_COMMISSIONING_INFO
           encode_basic_commissioning_info
         when ATTR_REGULATORY_CONFIG
-          encode_uint8(@regulatory_config.value)
+          @regulatory_config.value.to_tlv
         when ATTR_LOCATION_CAPABILITY
-          encode_uint8(@location_capability.value)
+          @location_capability.value.to_tlv
         when ATTR_SUPPORTS_CONCURRENT_CONNECTION
-          encode_bool(@supports_concurrent_connection)
+          @supports_concurrent_connection.to_tlv
         when ATTR_IS_COMMISSIONING_WITHOUT_POWER
           # Returns true if the device is currently commissioning without main power
           # (e.g., using backup power during initial setup). We don't support this mode.
-          encode_bool(false)
+          false.to_tlv
         else
           super
         end

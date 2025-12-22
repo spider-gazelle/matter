@@ -22,7 +22,7 @@ describe Matter::Session::Case::Definitions::SignedData do
       initiator_public_key: initiator_key
     )
 
-    result = signed_data.to_bytes
+    result = signed_data.to_slice
     result.should eq(expected)
   end
 
@@ -42,7 +42,7 @@ describe Matter::Session::Case::Definitions::SignedData do
       initiator_public_key: initiator_key
     )
 
-    result = signed_data.to_bytes
+    result = signed_data.to_slice
     result.should eq(expected)
   end
 
@@ -75,7 +75,7 @@ describe Matter::Session::Case::Definitions::SignedData do
       initiator_public_key: initiator_key
     )
 
-    result = signed_data.to_bytes
+    result = signed_data.to_slice
     result.size.should eq(616)
     result.should eq(expected)
   end
