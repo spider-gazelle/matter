@@ -80,6 +80,14 @@ module Matter
         @advertised_services = Hash(String, {ServiceType, Int32, Hash(String, String), CommissioningInfo?, String}).new
       end
 
+      # Returns the current commissioning DNS-SD instance name (e.g. `DD200C20D25AE5F7._matterc._udp.local`)
+      # if commissioning is currently being advertised.
+      def commissioning_instance_name : String?
+        if instance_id = @commissioning_instance_id
+          ServiceNames.commissioning_instance(instance_id)
+        end
+      end
+
       # Updates the default commissioning target hostname (SRV target) and re-announces
       # any active commissioning advertisements without changing the commissioning
       # instance name.

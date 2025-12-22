@@ -109,7 +109,7 @@ module MatterSwitch
       puts ""
       puts "📡 mDNS Advertisement Active:"
       puts "   Service: _matterc._udp.local"
-      puts "   Instance: <dynamic 64-bit hex>._matterc._udp.local"
+      puts "   Instance: #{responder.commissioning_instance_name || "<pending>"}"
       puts "   Hostname: #{hostname}"
       puts "   Port: #{port}"
       puts "   Discriminator: #{discriminator}"
