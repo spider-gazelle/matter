@@ -125,7 +125,7 @@ module Matter
         begin
           @expiry_callback.call
         rescue ex
-          Log.error(exception: ex) { "Error in failsafe expiry callback" }
+          Log.error(exception: ex) { "Error in failsafe expiry callback (primary_expiry=#{@primary_expiry} cumulative_expiry=#{@cumulative_expiry})" }
         end
       end
 

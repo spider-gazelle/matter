@@ -291,32 +291,32 @@ module Matter
       end
 
       # Helper methods for encoding simple values
-      # @deprecated Use `value.to_tlv` instead
+      @[Deprecated("Use `value.to_tlv` instead")]
       protected def encode_uint8(value : UInt8) : Bytes
         value.to_tlv
       end
 
-      # @deprecated Use `value.to_tlv` instead
+      @[Deprecated("Use `value.to_tlv` instead")]
       protected def encode_uint16(value : UInt16) : Bytes
         value.to_tlv
       end
 
-      # @deprecated Use `value.to_tlv` instead
+      @[Deprecated("Use `value.to_tlv` instead")]
       protected def encode_uint32(value : UInt32) : Bytes
         value.to_tlv
       end
 
-      # @deprecated Use `value.to_tlv` instead
+      @[Deprecated("Use `value.to_tlv` instead")]
       protected def encode_bool(value : Bool) : Bytes
         value.to_tlv
       end
 
-      # @deprecated Use `nil.to_tlv` instead
+      @[Deprecated("Use `value.to_tlv` instead")]
       protected def encode_null : Bytes
         nil.to_tlv
       end
 
-      # @deprecated Use `value.to_tlv` instead
+      @[Deprecated("Use `value.to_tlv` instead")]
       protected def encode_int16(value : Int16) : Bytes
         value.to_tlv
       end

@@ -1,4 +1,5 @@
 require "socket"
+require "log"
 require "../codec/message_codec"
 require "./message_counter"
 require "./exchange"
@@ -15,6 +16,8 @@ module Matter
     class UDPTransport
       # Matter default port
       MATTER_PORT = 5540
+
+      Log = ::Log.for("matter.transport.udp")
 
       getter socket_ipv4 : UDPSocket
       getter socket_ipv6 : UDPSocket
@@ -62,10 +65,7 @@ module Matter
         @running = false
         @receive_fiber_ipv4 = nil
         @receive_fiber_ipv6 = nil
-
-        puts "🔌 UDP transport bound to:"
-        puts "   IPv4: [#{@interface_ipv4}]:#{@port}"
-        puts "   IPv6: [#{@interface_ipv6}]:#{@port}"
+        Log.info { "UDP transport bound: ipv4=[#{@interface_ipv4}]:#{@port} ipv6=[#{@interface_ipv6}]:#{@port}" }
       end
 
       # Start receiving messages in background
@@ -135,15 +135,15 @@ module Matter
         packet = Codec::MessageCodec::Base.encode_payload(message)
         data = Codec::MessageCodec::Base.encode_packet(packet)
 
-        # Log the outgoing packet
-        puts "📤 Sending UDP packet: #{data.size} bytes to #{peer_address.address}:#{peer_address.port}"
-        puts "   Protocol: 0x#{message.payload_header.protocol_id.to_s(16)}, Type: 0x#{message.payload_header.message_type.to_s(16)}, MsgID: #{message.packet_header.message_id}"
+        Log.trace do
+          "Sending UDP packet: bytes=#{data.size} peer=#{peer_address.address}:#{peer_address.port} " \
+          "protocol=0x#{message.payload_header.protocol_id.to_s(16)} " \
+          "type=0x#{message.payload_header.message_type.to_s(16)} msg_id=#{message.packet_header.message_id}"
+        end
 
         # Choose socket based on peer address family
         socket = peer_address.family.inet6? ? @socket_ipv6 : @socket_ipv4
         socket.send(data, peer_address)
-
-        puts "✅ UDP packet sent successfully"
       end
 
       # Send raw packet (for testing)
@@ -228,9 +228,12 @@ module Matter
       end
 
       private def receive_loop_ipv4 : Nil
-        puts "📡 IPv4 UDP receive loop started on port #{@port}"
+        Log.debug { "IPv4 UDP receive loop started (port=#{@port})" }
         buffer = Bytes.new(1280) # Matter MTU
         packet_count = 0
+        peer_address : Socket::IPAddress? = nil
+        bytes_read = 0
+        data : Bytes? = nil
 
         while @running
           begin
@@ -238,7 +241,7 @@ module Matter
             next if bytes_read == 0
 
             packet_count += 1
-            puts "📬 Received IPv4 UDP packet ##{packet_count}: #{bytes_read} bytes from #{peer_address.address}:#{peer_address.port}"
+            Log.trace { "Received IPv4 UDP packet ##{packet_count}: bytes=#{bytes_read} peer=#{peer_address.address}:#{peer_address.port}" }
 
             data = buffer[0, bytes_read]
             handle_received_data(data, peer_address)
@@ -246,18 +249,21 @@ module Matter
             # Normal - just continue
           rescue ex : Exception
             # Log error but keep running
-            puts "❌ IPv4 transport receive error: #{ex.message}"
-            puts ex.backtrace.join("\n")
+            peer = peer_address ? "#{peer_address.address}:#{peer_address.port}" : "unknown"
+            Log.error(exception: ex) { "IPv4 transport receive error (peer=#{peer} bytes=#{bytes_read} data_hex=#{data.try(&.hexstring) || "nil"})" }
           end
         end
 
-        puts "📡 IPv4 UDP receive loop stopped"
+        Log.debug { "IPv4 UDP receive loop stopped" }
       end
 
       private def receive_loop_ipv6 : Nil
-        puts "📡 IPv6 UDP receive loop started on port #{@port}"
+        Log.debug { "IPv6 UDP receive loop started (port=#{@port})" }
         buffer = Bytes.new(1280) # Matter MTU
         packet_count = 0
+        peer_address : Socket::IPAddress? = nil
+        bytes_read = 0
+        data : Bytes? = nil
 
         while @running
           begin
@@ -265,7 +271,7 @@ module Matter
             next if bytes_read == 0
 
             packet_count += 1
-            puts "📬 Received IPv6 UDP packet ##{packet_count}: #{bytes_read} bytes from #{peer_address.address}:#{peer_address.port}"
+            Log.trace { "Received IPv6 UDP packet ##{packet_count}: bytes=#{bytes_read} peer=#{peer_address.address}:#{peer_address.port}" }
 
             data = buffer[0, bytes_read]
             handle_received_data(data, peer_address)
@@ -273,23 +279,23 @@ module Matter
             # Normal - just continue
           rescue ex : Exception
             # Log error but keep running
-            puts "❌ IPv6 transport receive error: #{ex.message}"
-            puts ex.backtrace.join("\n")
+            peer = peer_address ? "#{peer_address.address}:#{peer_address.port}" : "unknown"
+            Log.error(exception: ex) { "IPv6 transport receive error (peer=#{peer} bytes=#{bytes_read} data_hex=#{data.try(&.hexstring) || "nil"})" }
           end
         end
 
-        puts "📡 IPv6 UDP receive loop stopped"
+        Log.debug { "IPv6 UDP receive loop stopped" }
       end
 
       private def handle_received_data(data : Bytes, peer_address : Socket::IPAddress) : Nil
         # Validate minimum packet size
         # Minimum Matter packet: 8 bytes (flags + session_id + security_flags + message_id)
         if data.size < 8
-          puts "⚠️  Packet too small (#{data.size} bytes, minimum 8) - ignoring malformed packet"
+          Log.warn { "Packet too small (#{data.size} bytes, minimum 8); ignoring malformed packet" }
           return
         end
 
-        puts "🔍 Decoding packet: #{data.size} bytes"
+        Log.trace { "Decoding packet: bytes=#{data.size} peer=#{peer_address.address}:#{peer_address.port}" }
 
         # For encrypted messages, dump packet header bytes to debug source_node_id parsing
         if data.size > 8
@@ -298,20 +304,21 @@ module Matter
           session_id = IO::ByteFormat::LittleEndian.decode(UInt16, session_id_bytes)
 
           if session_id != 0
-            puts "📦 Raw packet hex dump (first 24 bytes):"
-            puts "   #{data[0, [24, data.size].min].hexstring}"
-            puts "   Byte 0 (flags): 0x#{data[0].to_s(16).rjust(2, '0')}"
-            puts "   - HasSourceNodeId flag (0x04): #{(data[0] & 0x04) != 0}"
-            puts "   - HasDestNodeId flag (0x01): #{(data[0] & 0x01) != 0}"
-            puts "   Bytes 1-2 (session_id): #{session_id}"
+            Log.trace do
+              "Encrypted packet header: first24=#{data[0, [24, data.size].min].hexstring} " \
+              "flags=0x#{data[0].to_s(16).rjust(2, '0')} " \
+              "has_source_node_id=#{(data[0] & 0x04) != 0} has_dest_node_id=#{(data[0] & 0x01) != 0} " \
+              "session_id=#{session_id}"
+            end
           end
         end
 
         # Decode packet
         packet = Codec::MessageCodec::Base.decode_packet(data)
-        puts "✅ Packet decoded: session_id=#{packet.header.session_id}, message_id=#{packet.header.message_id}"
-        puts "   Source node ID: #{packet.header.source_node_id.inspect}"
-        puts "   Destination node ID: #{packet.header.destination_node_id.inspect}"
+        Log.trace do
+          "Packet decoded: session_id=#{packet.header.session_id} message_id=#{packet.header.message_id} " \
+          "source_node_id=#{packet.header.source_node_id.inspect} dest_node_id=#{packet.header.destination_node_id.inspect}"
+        end
 
         # Check for duplicate messages
         session_id = packet.header.session_id
@@ -323,7 +330,7 @@ module Matter
           counter = @unsecured_counters[source_node_id] ||= MessageCounter.new
           unless counter.valid?(packet.header.message_id)
             # Duplicate message - ignore
-            puts "⚠️  Duplicate message ignored: session=#{session_id}, source=#{source_node_id}, message_id=#{packet.header.message_id}"
+            Log.warn { "Duplicate message ignored (unsecured): session_id=#{session_id}, source=#{source_node_id}, message_id=#{packet.header.message_id}" }
             return
           end
         else
@@ -334,9 +341,9 @@ module Matter
             # Continue
           when MessageCounter::CheckResult::Duplicate
             # MRP retransmission - do not drop; the protocol layer may resend a cached response.
-            puts "⚠️  Duplicate message received (MRP retransmit): session=#{session_id}, message_id=#{packet.header.message_id}"
+            Log.warn { "Duplicate message received (MRP retransmit): session_id=#{session_id}, message_id=#{packet.header.message_id}" }
           when MessageCounter::CheckResult::Stale
-            puts "⚠️  Stale message counter ignored: session=#{session_id}, message_id=#{packet.header.message_id}"
+            Log.debug { "Stale message counter ignored: session_id=#{session_id}, message_id=#{packet.header.message_id}" }
             return
           end
         end
@@ -347,13 +354,15 @@ module Matter
         message = if session_id == 0
                     # Unencrypted message - decode payload now
                     decoded = Codec::MessageCodec::Base.decode_payload(packet)
-                    puts "✅ Message decoded: protocol=0x#{decoded.payload_header.protocol_id.to_s(16)}, type=0x#{decoded.payload_header.message_type.to_s(16)}"
+                    Log.trace { "Message decoded: protocol=0x#{decoded.payload_header.protocol_id.to_s(16)}, type=0x#{decoded.payload_header.message_type.to_s(16)}" }
                     decoded
                   else
                     # Encrypted message - create Message with raw encrypted payload
                     # The payload_header will be decoded AFTER decryption by the message handler
-                    puts "🔒 Encrypted message detected (session_id=#{session_id}), payload size=#{packet.payload.size} bytes"
-                    puts "🔒 Full encrypted payload hex: #{packet.payload.hexstring}"
+                    Log.trace do
+                      "Encrypted message detected: session_id=#{session_id} payload_bytes=#{packet.payload.size} " \
+                      "payload_hex=#{packet.payload.hexstring}"
+                    end
 
                     # Create a dummy payload header - it will be ignored and replaced after decryption
                     dummy_payload_header = Codec::MessageCodec::PayloadHeader.new(
@@ -392,22 +401,21 @@ module Matter
 
           # Send acknowledgment if required
           if message.payload_header.requires_acknowledge?
-            puts "📤 Sending acknowledgment for message #{packet.header.message_id}"
+            Log.trace { "Sending acknowledgment for message #{packet.header.message_id}" }
             send_acknowledgment(message, peer_address, exchange)
           end
         end
 
         # Deliver to application
         if callback = @on_message
-          puts "📨 Calling on_message callback"
+          Log.trace { "Dispatching on_message callback" }
           callback.call(message, peer_address)
         else
-          puts "⚠️  No on_message callback registered!"
+          Log.warn { "No on_message callback registered" }
         end
       rescue ex : Exception
         # Log decode/processing errors
-        puts "❌ Error handling received data: #{ex.message}"
-        puts ex.backtrace.join("\n")
+        Log.error(exception: ex) { "Error handling received data (peer=#{peer_address.address}:#{peer_address.port} bytes=#{data.size} data_hex=#{data.hexstring})" }
       end
 
       private def send_acknowledgment(

@@ -115,7 +115,7 @@ module Matter
               # Note: Full certificate chain validation should be done after the handshake
               # by calling validate_certificate_chain(trusted_roots) with appropriate trusted roots
             rescue parse_ex
-              Log.warn { "Failed to parse peer certificate: #{parse_ex.message}" }
+              Log.warn(exception: parse_ex) { "Failed to parse peer certificate" }
             end
           rescue ex
             # If decryption fails, store encrypted cert for now (backward compatibility with tests)
@@ -160,7 +160,7 @@ module Matter
               return result
             rescue ex
               # If parsing or verification fails, fall back to accepting (for test compatibility)
-              Log.warn { "Certificate verification failed: #{ex.message}" }
+              Log.warn(exception: ex) { "Certificate verification failed" }
             end
           end
 
@@ -202,10 +202,10 @@ module Matter
             validator.verify(peer_cert_obj, chain)
             true
           rescue ex : OpenSSL::X509::CertificateValidationError
-            Log.error { "Certificate chain validation failed: #{ex.message}" }
+            Log.error(exception: ex) { "Certificate chain validation failed (peer_cert_hex=#{peer_cert.hexstring})" }
             false
           rescue ex
-            Log.error { "Certificate parsing failed: #{ex.message}" }
+            Log.error(exception: ex) { "Certificate parsing failed (peer_cert_hex=#{peer_cert.hexstring})" }
             false
           end
         end
@@ -396,7 +396,7 @@ module Matter
             verify_result = @crypto.verify_ecdsa(@operational_key, signed_data_bytes, signature)
             Log.debug { "  Self-verification result: #{verify_result}" }
           rescue ex
-            Log.error { "  Self-verification FAILED: #{ex.message}" }
+            Log.error(exception: ex) { "  Self-verification FAILED (tbs_hex=#{signed_data_bytes.hexstring} sig_hex=#{signature.hexstring})" }
           end
 
           # Extract and log public key from NOC for comparison
@@ -414,7 +414,7 @@ module Matter
               end
             end
           rescue ex
-            Log.warn { "  Could not extract NOC public key: #{ex.message}" }
+            Log.warn(exception: ex) { "  Could not extract NOC public key" }
           end
 
           # Generate resumption ID (16 bytes)
@@ -521,7 +521,7 @@ module Matter
             KDFSR3_INFO,
             16
           )
-          Log.debug { "CASE Sigma3 decryption key: #{sigma3_key.hexstring}" }
+          Log.trace { "CASE Sigma3 decryption key derived (#{sigma3_key.size} bytes)" }
 
           begin
             # Decrypt the peer's TBE_Data3 using fixed nonce "NCASE_Sigma3N"
@@ -568,7 +568,7 @@ module Matter
 
             true
           rescue ex
-            Log.error(exception: ex) { "Failed to decrypt/process Sigma3: #{ex.message}" }
+            Log.error(exception: ex) { "Failed to decrypt/process Sigma3 (encrypted3_hex=#{encrypted_cert.hexstring})" }
             false
           end
         end
@@ -607,10 +607,10 @@ module Matter
             validator.verify(peer_cert_obj, chain)
             true
           rescue ex : OpenSSL::X509::CertificateValidationError
-            Log.error { "Certificate chain validation failed: #{ex.message}" }
+            Log.error(exception: ex) { "Certificate chain validation failed (peer_cert_hex=#{peer_cert.hexstring})" }
             false
           rescue ex
-            Log.error { "Certificate parsing failed: #{ex.message}" }
+            Log.error(exception: ex) { "Certificate parsing failed (peer_cert_hex=#{peer_cert.hexstring})" }
             false
           end
         end

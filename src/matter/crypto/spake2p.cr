@@ -60,10 +60,8 @@ module Matter
 
       # Compute w0 and w1 from PIN using PBKDF2
       def self.compute_w0_w1(crypto : CryptoBase, params : PbkdfParameters, pin : UInt32) : W0W1
-        Log.debug { "Computing w0/w1 from PIN" }
-        Log.debug { "  PIN: #{pin}" }
-        Log.debug { "  PBKDF2 iterations: #{params.iterations}" }
-        Log.debug { "  PBKDF2 salt: #{params.salt.hexstring}" }
+        Log.trace { "Computing w0/w1 from PIN (iterations=#{params.iterations}, salt_bytes=#{params.salt.size})" }
+        Log.trace { "PBKDF2 salt: #{params.salt.hexstring}" }
 
         # Encode PIN as little-endian 32-bit integer
         pin_bytes = IO::Memory.new
@@ -88,8 +86,8 @@ module Matter
         w0 = BigInt.new(w0_bytes.hexstring, 16) % curve_order
         w1 = BigInt.new(w1_bytes.hexstring, 16) % curve_order
 
-        Log.debug { "  w0 (first 16 bytes): #{w0_bytes[0, 16].hexstring}" }
-        Log.debug { "  w1 (first 16 bytes): #{w1_bytes[0, 16].hexstring}" }
+        Log.trace { "w0 bytes (first 16): #{w0_bytes[0, 16].hexstring}" }
+        Log.trace { "w1 bytes (first 16): #{w1_bytes[0, 16].hexstring}" }
 
         W0W1.new(w0, w1)
       end
@@ -103,7 +101,7 @@ module Matter
         algorithm = SPAKE2Plus::MATTER_DEFAULT
         l = algorithm.generator_point.mul(w0_w1.w1).to_slice
 
-        Log.debug { "  L (first 16 bytes): #{l[0, 16].hexstring}" }
+        Log.trace { "L bytes (first 16): #{l[0, 16].hexstring}" }
 
         W0L.new(w0_w1.w0, l)
       end
@@ -149,18 +147,11 @@ module Matter
 
       # Compute shared secret and verifiers from X (verifier side)
       def compute_secret_and_verifiers_from_x(l : Bytes, x : Bytes, y : Bytes) : SecretAndVerifiers
-        Log.debug { "Computing shared secret and verifiers from X (verifier side)" }
-        Log.debug { "  X (pA) size: #{x.size} bytes" }
-        Log.debug { "  Y (pB) size: #{y.size} bytes" }
-        Log.debug { "  L size: #{l.size} bytes" }
+        Log.debug { "Computing verifier-side shared secret (x_bytes=#{x.size}, y_bytes=#{y.size}, l_bytes=#{l.size})" }
 
         ke, h_ay, h_bx = @protocol.compute_secret_and_verifiers_from_x(l, x, y)
 
-        Log.debug { "  Shared secret Ke: SIZE=#{ke.size} bytes, hex=#{ke.hexstring}" }
-        # Note: Ke is correctly 16 bytes per SPAKE2+ spec (half of SHA-256 transcript hash)
-        # Session keys are derived via HKDF which expands Ke to the required 48 bytes
-        Log.debug { "  Confirmation h_ay (cA, first 16 bytes): #{h_ay[0, 16].hexstring}" }
-        Log.debug { "  Confirmation h_bx (cB, first 16 bytes): #{h_bx[0, 16].hexstring}" }
+        Log.trace { "Verifier-side outputs: ke_bytes=#{ke.size} h_ay_bytes=#{h_ay.size} h_bx_bytes=#{h_bx.size}" }
 
         SecretAndVerifiers.new(ke, h_ay, h_bx)
       end

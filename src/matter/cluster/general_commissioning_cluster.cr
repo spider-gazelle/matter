@@ -497,7 +497,11 @@ module Matter
 
             Log.info { "Re-armed failsafe" }
           rescue ex
-            Log.error(exception: ex) { "Failed to re-arm failsafe" }
+            Log.error(exception: ex) do
+              "Failed to re-arm failsafe (expiry_length_seconds=#{request.expiry_length_seconds} " \
+              "max_cumulative_seconds=#{@max_cumulative_failsafe_seconds} breadcrumb=#{request.breadcrumb} " \
+              "session_fabric_index=#{session_fabric_index.inspect} commissioning_window_open=#{@commissioning_window_open} pase_session=#{is_pase_session})"
+            end
             return ArmFailSafeResponse.new(
               CommissioningError::BusyWithOtherAdmin,
               "Cannot re-arm: #{ex.message}"

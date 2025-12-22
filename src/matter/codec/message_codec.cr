@@ -1,6 +1,8 @@
 module Matter
   module Codec
     module MessageCodec
+      Log = ::Log.for("matter.codec.message_codec")
+
       HEADER_VERSION   = UInt8.new(0x00)
       COMMON_VENDOR_ID = UInt16.new(0x0000)
 
@@ -100,7 +102,7 @@ module Matter
           flags |= PacketHeaderFlag::HasSourceNodeId.value if source_present
           flags |= PacketHeaderFlag::HasDestNodeId.value if dest_present
           flags |= PacketHeaderFlag::HasDestGroupId.value unless destination_group_id.nil?
-          Log.debug { "compute_flags: source=#{source_node_id.try(&.id) || "nil"}, dest=#{destination_node_id.try(&.id) || "nil"} -> flags=0x#{flags.to_s(16)}" }
+          Log.trace { "compute_flags: source=#{source_node_id.try(&.id) || "nil"}, dest=#{destination_node_id.try(&.id) || "nil"} -> flags=0x#{flags.to_s(16)}" }
           flags
         end
 

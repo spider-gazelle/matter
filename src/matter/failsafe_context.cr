@@ -257,7 +257,7 @@ module Matter
             fm.remove_fabric(added_index)
             Log.info { "Rolled back added fabric: #{added_index}" }
           rescue ex
-            Log.error(exception: ex) { "Failed to rollback added fabric" }
+            Log.error(exception: ex) { "Failed to rollback added fabric (fabric_index=#{added_index})" }
           end
         end
       end
@@ -266,12 +266,14 @@ module Matter
       if @for_update_noc
         if snapshot = @noc_update_snapshot
           if fm = fabric_manager
+            fabric_index, operational_cert, operational_key = snapshot
             begin
-              fabric_index, operational_cert, operational_key = snapshot
               fm.restore_noc(fabric_index, operational_cert, operational_key)
               Log.info { "Reverted UpdateNOC changes for fabric #{fabric_index}" }
             rescue ex
-              Log.error(exception: ex) { "Failed to revert UpdateNOC changes" }
+              Log.error(exception: ex) do
+                "Failed to revert UpdateNOC changes (fabric_index=#{fabric_index} noc_bytes=#{operational_cert.size} noc_hex=#{operational_cert.hexstring} key_bytes=#{operational_key.size})"
+              end
             end
           end
         else
@@ -286,7 +288,7 @@ module Matter
             nc.restore_network_state(snapshot)
             Log.info { "Restored network commissioning state" }
           rescue ex
-            Log.error(exception: ex) { "Failed to restore network state" }
+            Log.error(exception: ex) { "Failed to restore network state (snapshot=#{snapshot.inspect})" }
           end
         end
       end
@@ -297,7 +299,7 @@ module Matter
           sm.clear_pase_sessions
           Log.info { "Cleared PASE sessions" }
         rescue ex
-          Log.error(exception: ex) { "Failed to clear PASE sessions" }
+          Log.error(exception: ex) { "Failed to clear PASE sessions (session_manager=#{sm.class})" }
         end
       end
 
@@ -311,7 +313,7 @@ module Matter
           cw.close
           Log.info { "Closed commissioning window" }
         rescue ex
-          Log.error(exception: ex) { "Failed to close commissioning window" }
+          Log.error(exception: ex) { "Failed to close commissioning window (commissioning_window=#{cw.class})" }
         end
       end
 
@@ -327,7 +329,7 @@ module Matter
             gc.restore_regulatory_config(location_type, country_code)
             Log.info { "Restored regulatory config: location=#{location_type}, country=#{country_code}" }
           rescue ex
-            Log.error(exception: ex) { "Failed to restore regulatory config" }
+            Log.error(exception: ex) { "Failed to restore regulatory config (location=#{location_type} country=#{country_code})" }
           end
         end
       end

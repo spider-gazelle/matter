@@ -32,6 +32,7 @@ module Matter
     # - LastNetworkID (0x06): Network ID of last operation
     # - LastConnectErrorValue (0x07): Error value from last connect
     class NetworkCommissioningCluster < Base
+      Log        = ::Log.for("matter.cluster.network_commissioning")
       CLUSTER_ID = 0x0031_u32
 
       # Network Types
@@ -1114,7 +1115,7 @@ module Matter
 
             Log.debug { "Restored #{@networks.size} network(s)" }
           rescue ex
-            Log.error(exception: ex) { "Failed to restore networks from snapshot" }
+            Log.error(exception: ex) { "Failed to restore networks from snapshot (networks_json=#{networks_json})" }
           end
         end
 

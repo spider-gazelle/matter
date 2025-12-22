@@ -44,7 +44,7 @@ module Matter
           false
         end
       rescue ex
-        Log.error(exception: ex) { "Failed to save cluster state for #{cluster.name}: #{ex.message}" }
+        Log.error(exception: ex) { "Failed to save cluster state (cluster=#{cluster.name} key=#{cluster.persistence_key})" }
         false
       end
 
@@ -60,7 +60,7 @@ module Matter
           false
         end
       rescue ex
-        Log.error(exception: ex) { "Failed to restore cluster state for #{cluster.name}: #{ex.message}" }
+        Log.error(exception: ex) { "Failed to restore cluster state (cluster=#{cluster.name} key=#{cluster.persistence_key} stored=#{stored.inspect})" }
         false
       end
 
@@ -85,14 +85,14 @@ module Matter
       def delete_cluster_state(cluster : Cluster::Base) : Nil
         @storage.delete(CLUSTER_STATE_CONTEXT, cluster.persistence_key)
       rescue ex
-        Log.error(exception: ex) { "Failed to delete cluster state for #{cluster.name}: #{ex.message}" }
+        Log.error(exception: ex) { "Failed to delete cluster state (cluster=#{cluster.name} key=#{cluster.persistence_key})" }
       end
 
       def clear_all_cluster_states : Nil
         @storage.clear_all(CLUSTER_STATE_CONTEXT)
         Log.info { "Cleared all cluster state" }
       rescue ex
-        Log.error(exception: ex) { "Failed to clear cluster state: #{ex.message}" }
+        Log.error(exception: ex) { "Failed to clear cluster state (context=#{CLUSTER_STATE_CONTEXT})" }
       end
     end
   end

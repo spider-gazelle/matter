@@ -271,7 +271,7 @@ module Matter
             end
 
             bytes = io.to_slice
-            Log.debug { "StatusReport raw bytes: #{bytes.hexstring}" }
+            Log.trace { "StatusReport raw bytes: #{bytes.hexstring}" }
             bytes
           end
         end

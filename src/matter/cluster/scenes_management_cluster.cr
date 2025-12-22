@@ -736,7 +736,7 @@ module Matter
 
         encode_status_response(InteractionModel::StatusCode::Success, req.group_id, req.scene_id)
       rescue ex
-        Log.error { "Error storing scene: #{ex.message}" }
+        Log.error(exception: ex) { "Error storing scene (bytes=#{fields.hexstring})" }
         encode_status_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
       end
 
@@ -770,7 +770,7 @@ module Matter
 
         InteractionModel::Status.new(InteractionModel::StatusCode::Success)
       rescue ex
-        Log.error { "Error recalling scene: #{ex.message}" }
+        Log.error(exception: ex) { "Error recalling scene (bytes=#{fields.hexstring})" }
         InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
       end
 
@@ -954,7 +954,7 @@ module Matter
         @data_version = state.data_version
       rescue ex
         # Log error but don't crash - start fresh if restore fails
-        Log.error { "Failed to restore ScenesManagement state: #{ex.message}" }
+        Log.error(exception: ex) { "Failed to restore ScenesManagement state (json=#{json})" }
       end
     end
   end

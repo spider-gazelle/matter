@@ -30,7 +30,7 @@ module Matter
         # Generate hostname from instance ID
         @hostname = "#{@instance_id}#{HOSTNAME_SUFFIX}"
 
-        Log.info { "Created advertisement: instance=#{@instance_id}, name=#{@description.name}" }
+        Log.debug { "Created advertisement: instance=#{@instance_id}, name=#{@description.name}" }
       end
 
       # Get the service instance name

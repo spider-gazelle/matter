@@ -29,7 +29,7 @@ module Matter
       def initialize(@family : Socket::Family = Socket::Family::INET)
         @socket = UDPSocket.new(@family)
         configure_socket
-        Log.info { "MulticastSocket initialized for #{@family}" }
+        Log.debug { "MulticastSocket initialized for #{@family}" }
       end
 
       # Configure socket for multicast operation
@@ -71,7 +71,7 @@ module Matter
           end
 
           @joined_groups << multicast_address
-          Log.info { "Joined multicast group #{multicast_address}" }
+          Log.debug { "Joined multicast group #{multicast_address}" }
         rescue ex
           Log.error(exception: ex) { "Failed to join multicast group #{multicast_address}" }
           raise ex
@@ -92,7 +92,7 @@ module Matter
           end
 
           @joined_groups.delete(multicast_address)
-          Log.info { "Left multicast group #{multicast_address}" }
+          Log.debug { "Left multicast group #{multicast_address}" }
         rescue ex
           Log.error(exception: ex) { "Failed to leave multicast group #{multicast_address}" }
         end
@@ -155,7 +155,7 @@ module Matter
       def close : Nil
         return if closed?
 
-        Log.info { "Closing multicast socket" }
+        Log.debug { "Closing multicast socket" }
 
         # Leave all joined groups
         @joined_groups.each do |group|

@@ -205,9 +205,8 @@ module Matter
 
         # Step 3: Process pA (initiator's public value) and generate pB
         def process_pake1(p_a : Bytes) : Bytes
-          Log.debug { "PaseResponder: Processing Pake1 (pA from iPhone)" }
-          Log.debug { "  pA size: #{p_a.size} bytes" }
-          Log.debug { "  pA (first 16 bytes): #{p_a[0, [16, p_a.size].min].hexstring}" }
+          Log.debug { "PaseResponder: Processing Pake1 (pA bytes=#{p_a.size})" }
+          Log.trace { "pA (first 16 bytes): #{p_a[0, [16, p_a.size].min].hexstring}" }
 
           initialize_spake unless @spake
 
@@ -217,8 +216,8 @@ module Matter
 
           # Compute Y (responder/verifier's public value)
           @p_b = spake.compute_y
-          Log.debug { "  Generated pB: #{@p_b.not_nil!.size} bytes" }
-          Log.debug { "  pB (first 16 bytes): #{@p_b.not_nil![0, 16].hexstring}" }
+          Log.debug { "Generated pB (bytes=#{@p_b.not_nil!.size})" }
+          Log.trace { "pB (first 16 bytes): #{@p_b.not_nil![0, 16].hexstring}" }
 
           # Compute shared secret and verifiers from X (initiator's public value)
           @secret_and_verifiers = spake.compute_secret_and_verifiers_from_x(
@@ -227,8 +226,10 @@ module Matter
             @p_b.not_nil!
           )
 
-          Log.debug { "  Computed shared secret Ke and confirmations" }
-          Log.debug { "  h_bx (cB) to send to iPhone (first 16 bytes): #{@secret_and_verifiers.not_nil!.h_bx[0, 16].hexstring}" }
+          Log.trace do
+            sav = @secret_and_verifiers.not_nil!
+            "Computed shared secret and confirmations (ke_bytes=#{sav.ke.size}, h_ay_bytes=#{sav.h_ay.size}, h_bx_bytes=#{sav.h_bx.size})"
+          end
 
           @p_b.not_nil!
         end
@@ -256,11 +257,7 @@ module Matter
             "SessionKeys".to_slice,
             48 # Derive 48 bytes: I2R + R2I + AttestationChallenge
           )
-
-          Log.debug { "  Full HKDF output (48 bytes): #{session_keys.hexstring}" }
-          Log.debug { "  I2R (bytes 0-15):  #{session_keys[0, 16].hexstring}" }
-          Log.debug { "  R2I (bytes 16-31): #{session_keys[16, 16].hexstring}" }
-          Log.debug { "  AttestationChallenge (bytes 32-47): #{session_keys[32, 16].hexstring}" }
+          Log.trace { "Derived SessionKeys via HKDF (bytes=#{session_keys.size})" }
 
           # Split keys - responder uses:
           # - R2I (bytes 16-31) for encryption (responder-to-initiator)

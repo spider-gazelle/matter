@@ -39,7 +39,7 @@ module Matter
           fabric_filtered: msg.fabric_filtered || true
         )
       rescue ex
-        Log.error(exception: ex) { "Failed to parse ReadRequest: #{ex.message}" }
+        Log.error(exception: ex) { "Failed to parse ReadRequest (bytes=#{payload.hexstring})" }
         nil
       end
 
@@ -191,7 +191,7 @@ module Matter
             cl = report.path.cluster
             at = report.path.attribute
             unless ep && cl && at
-              Log.error { "Skipping report #{idx} with incomplete path: endpoint=#{ep}, cluster=#{cl}, attribute=#{at}" }
+              Log.warn { "Skipping report #{idx} with incomplete path: endpoint=#{ep}, cluster=#{cl}, attribute=#{at}" }
               next
             end
 
@@ -219,7 +219,7 @@ module Matter
 
             Log.debug { "Encoded attribute report #{idx}: endpoint=#{ep}, cluster=0x#{cl.to_s(16)}, attr=0x#{at.to_s(16)}" }
           rescue ex
-            Log.error { "Failed to encode report #{idx}: #{ex.message}" }
+            Log.error(exception: ex) { "Failed to encode report #{idx} (path=#{report.path.inspect} value_hex=#{report.value.hexstring})" }
           end
         end
 
@@ -230,7 +230,7 @@ module Matter
             cl = status.path.cluster
             at = status.path.attribute
             unless ep && cl && at
-              Log.error { "Skipping status #{idx} with incomplete path: endpoint=#{ep}, cluster=#{cl}, attribute=#{at}" }
+              Log.warn { "Skipping status #{idx} with incomplete path: endpoint=#{ep}, cluster=#{cl}, attribute=#{at}" }
               next
             end
 
@@ -259,7 +259,7 @@ module Matter
 
             Log.debug { "Encoded attribute status #{idx}: endpoint=#{ep}, cluster=0x#{cl.to_s(16)}, attr=0x#{at.to_s(16)}, status=#{status.status.status}" }
           rescue ex
-            Log.error { "Failed to encode status #{idx}: #{ex.message}" }
+            Log.error(exception: ex) { "Failed to encode status #{idx} (path=#{status.path.inspect} status=#{status.status.status})" }
           end
         end
 
@@ -365,7 +365,7 @@ module Matter
           more_chunked_messages: more_chunked_messages
         )
       rescue ex
-        Log.error(exception: ex) { "Failed to parse WriteRequest: #{ex.message}" }
+        Log.error(exception: ex) { "Failed to parse WriteRequest (bytes=#{payload.hexstring})" }
         nil
       end
 
@@ -498,7 +498,7 @@ module Matter
           keep_subscriptions: keep_subscriptions
         )
       rescue ex
-        Log.error(exception: ex) { "Failed to parse SubscribeRequest: #{ex.message}" }
+        Log.error(exception: ex) { "Failed to parse SubscribeRequest (bytes=#{payload.hexstring})" }
         nil
       end
 
@@ -537,7 +537,7 @@ module Matter
             attribute_reports << InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
             Log.debug { "Encoded attribute report #{idx}: endpoint=#{ep}, cluster=0x#{cl.to_s(16)}, attr=0x#{at.to_s(16)}" }
           rescue ex
-            Log.error { "Failed to encode report #{idx}: #{ex.message}" }
+            Log.error(exception: ex) { "Failed to encode report #{idx} (path=#{report.path.inspect} value_hex=#{report.value.hexstring})" }
           end
         end
 
@@ -556,7 +556,7 @@ module Matter
             attribute_reports << InteractionModel::AttributeReportIB.new(attribute_status: attr_status)
             Log.debug { "Encoded attribute status #{idx}: endpoint=#{status.path.endpoint}, cluster=0x#{status.path.cluster.try(&.to_s(16))}, attr=#{status.path.attribute}, status=#{status.status.status}" }
           rescue ex
-            Log.error { "Failed to encode status #{idx}: #{ex.message}" }
+            Log.error(exception: ex) { "Failed to encode status #{idx} (path=#{status.path.inspect} status=#{status.status.status})" }
           end
         end
 
@@ -705,7 +705,7 @@ module Matter
             chunk_bytes = encode_report_data(chunk_response, subscription_id)
             chunks << {chunk_bytes, is_last}
 
-            Log.info { "Created chunk #{chunks.size}: #{current_reports.size} reports, #{current_statuses.size} statuses, #{chunk_bytes.size} bytes, more=#{!is_last}" }
+            Log.debug { "Created chunk #{chunks.size}: #{current_reports.size} reports, #{current_statuses.size} statuses, #{chunk_bytes.size} bytes, more=#{!is_last}" }
 
             # Reset for next chunk
             current_reports = [] of InteractionModel::AttributeData
@@ -725,7 +725,7 @@ module Matter
           chunk_bytes = encode_report_data(chunk_response, subscription_id)
           chunks << {chunk_bytes, true}
 
-          Log.info { "Created final chunk #{chunks.size}: #{current_reports.size} reports, #{current_statuses.size} statuses, #{chunk_bytes.size} bytes" }
+          Log.debug { "Created final chunk #{chunks.size}: #{current_reports.size} reports, #{current_statuses.size} statuses, #{chunk_bytes.size} bytes" }
         end
 
         # Edge case: empty response
@@ -733,10 +733,10 @@ module Matter
           empty_response = InteractionModel::ReadResponse.new(more_chunks: false)
           chunk_bytes = encode_report_data(empty_response, subscription_id)
           chunks << {chunk_bytes, true}
-          Log.info { "Created empty chunk: #{chunk_bytes.size} bytes" }
+          Log.debug { "Created empty chunk: #{chunk_bytes.size} bytes" }
         end
 
-        Log.info { "Total chunks: #{chunks.size}" }
+        Log.debug { "Total chunks: #{chunks.size}" }
         chunks
       end
 
@@ -815,7 +815,7 @@ module Matter
           suppress_response: msg.suppress_response || false
         )
       rescue ex
-        Log.error(exception: ex) { "Failed to parse InvokeRequest: #{ex.message}" }
+        Log.error(exception: ex) { "Failed to parse InvokeRequest (bytes=#{payload.hexstring})" }
         nil
       end
 

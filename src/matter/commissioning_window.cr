@@ -48,7 +48,7 @@ module Matter
       @discriminator = nil
       @expires_at = nil
       @timeout_callback = nil
-      Log.info { "CommissioningWindow initialized (closed)" }
+      Log.debug { "CommissioningWindow initialized (closed)" }
     end
 
     # Open a commissioning window
@@ -89,7 +89,7 @@ module Matter
     def close : Nil
       return if @status == Status::Closed
 
-      Log.info { "Closing commissioning window (was: #{@status})" }
+      previous_status = @status
 
       @status = Status::Closed
       @admin_fabric_index = nil
@@ -98,7 +98,7 @@ module Matter
       @expires_at = nil
       @timeout_callback = nil
 
-      Log.info { "Commissioning window closed" }
+      Log.info { "Commissioning window closed (was: #{previous_status})" }
     end
 
     # Check if window is open

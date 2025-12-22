@@ -19,7 +19,7 @@ module Matter
     property fabric_table : FabricTable
 
     def initialize(@fabric_table : FabricTable)
-      Log.info { "FabricManager initialized with #{@fabric_table.size} fabric(s)" }
+      Log.debug { "FabricManager initialized with #{@fabric_table.size} fabric(s)" }
     end
 
     # Remove a fabric by fabric index
@@ -31,7 +31,7 @@ module Matter
     # @return True if fabric was removed, false if not found
     def remove_fabric(fabric_index : UInt8) : Bool
       if fabric = @fabric_table.get_fabric(fabric_index)
-        Log.info { "Removing fabric: #{fabric}" }
+        Log.info { "Removing fabric #{fabric_index} (fabric_id=0x#{fabric.fabric_id.to_s(16)}, node_id=0x#{fabric.node_id.to_s(16)})" }
         @fabric_table.remove_fabric(fabric_index)
         Log.info { "Fabric #{fabric_index} removed successfully" }
         true
@@ -74,7 +74,10 @@ module Matter
       Log.info { "NOC restored successfully for fabric #{fabric_index}" }
       true
     rescue ex
-      Log.error(exception: ex) { "Failed to restore NOC for fabric #{fabric_index}" }
+      Log.error(exception: ex) do
+        "Failed to restore NOC for fabric #{fabric_index} " \
+        "(noc_bytes=#{operational_cert.size} noc_hex=#{operational_cert.hexstring} key_bytes=#{operational_key_bytes.size})"
+      end
       false
     end
 

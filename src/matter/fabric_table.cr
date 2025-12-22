@@ -19,6 +19,8 @@ module Matter
   #
   # Specification: Matter 1.4 § 4.13.3 (Fabric Table)
   class FabricTable
+    Log = ::Log.for("matter.fabric_table")
+
     # Storage context for fabric persistence
     STORAGE_CONTEXT = ["fabrics"]
 
@@ -233,7 +235,7 @@ module Matter
       begin
         data = Hash(String, Hash(String, JSON::Any)).from_json(json)
       rescue ex
-        Log.error { "Failed to parse fabric table JSON: #{ex.message}" }
+        Log.error(exception: ex) { "Failed to parse fabric table JSON (json=#{json})" }
         return
       end
 
@@ -263,7 +265,7 @@ module Matter
           @fabrics[fabric.fabric_index] = fabric
         rescue ex
           # Skip invalid fabric entries
-          Log.warn { "Failed to load fabric at index #{index_str}: #{ex.message}" }
+          Log.warn(exception: ex) { "Failed to load fabric at index #{index_str}" }
         end
       end
 
@@ -308,7 +310,7 @@ module Matter
         persist_to_storage
         true
       rescue ex
-        Log.error { "Failed to import fabrics: #{ex.message}" }
+        Log.error(exception: ex) { "Failed to import fabrics (json=#{json})" }
         false
       end
     end

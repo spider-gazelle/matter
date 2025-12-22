@@ -461,6 +461,7 @@ module Matter
                            end
           InteractionModel::Status.new(im_status_code)
         rescue ex
+          Log.error(exception: ex) { "OpenCommissioningWindow: failed to parse request (bytes=#{fields.hexstring})" }
           InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
         end
       end
@@ -501,6 +502,7 @@ module Matter
                            end
           InteractionModel::Status.new(im_status_code)
         rescue ex
+          Log.error(exception: ex) { "OpenBasicCommissioningWindow: failed to parse request (bytes=#{fields.hexstring})" }
           InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
         end
       end
@@ -725,17 +727,17 @@ module Matter
       private def start_mdns_advertising(discriminator : UInt16) : Nil
         return if @addresses.empty?
 
-        begin
-          # Determine commissioning mode
-          mode = case @window_status
-                 when CommissioningWindowStatus::BasicWindowOpen
-                   MDNS::CommissioningMode::Basic
-                 when CommissioningWindowStatus::EnhancedWindowOpen
-                   MDNS::CommissioningMode::Enhanced
-                 else
-                   MDNS::CommissioningMode::Disabled
-                 end
+        # Determine commissioning mode
+        mode = case @window_status
+               when CommissioningWindowStatus::BasicWindowOpen
+                 MDNS::CommissioningMode::Basic
+               when CommissioningWindowStatus::EnhancedWindowOpen
+                 MDNS::CommissioningMode::Enhanced
+               else
+                 MDNS::CommissioningMode::Disabled
+               end
 
+        begin
           # Create service description
           description = MDNS::CommissionableServiceDescription.new(
             name: @device_name,
@@ -755,7 +757,7 @@ module Matter
 
           Log.info { "Started mDNS advertising: discriminator=#{discriminator}, mode=#{mode}" }
         rescue ex
-          Log.error(exception: ex) { "Failed to start mDNS advertising" }
+          Log.error(exception: ex) { "Failed to start mDNS advertising (discriminator=#{discriminator} mode=#{mode} addresses=#{@addresses.map(&.to_s).join(",")})" }
         end
       end
 

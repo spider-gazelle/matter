@@ -45,7 +45,7 @@ module Matter
       RESPONSE_DELAY_MAX = 120.milliseconds
 
       def initialize(@socket : MulticastSocket)
-        Log.info { "mDNS Server initialized" }
+        Log.debug { "mDNS Server initialized" }
       end
 
       # Convenience constructor that creates its own socket
@@ -60,7 +60,7 @@ module Matter
       # @param generator The record generator to register
       def register(generator : RecordGenerator) : Nil
         @record_generators << generator
-        Log.info { "Registered record generator for #{generator.instance_name}" }
+        Log.debug { "Registered record generator for #{generator.instance_name}" }
       end
 
       # Unregister a record generator
@@ -68,7 +68,7 @@ module Matter
       # @param generator The record generator to unregister
       def unregister(generator : RecordGenerator) : Nil
         @record_generators.delete(generator)
-        Log.info { "Unregistered record generator for #{generator.instance_name}" }
+        Log.debug { "Unregistered record generator for #{generator.instance_name}" }
       end
 
       # Start the server (begins listening for queries)
@@ -126,13 +126,15 @@ module Matter
           packet = build_announcement_packet(goodbye_records)
           send_packet(packet)
 
-          Log.info { "Sent goodbye for #{generator.instance_name}" }
+          Log.debug { "Sent goodbye for #{generator.instance_name}" }
         end
       end
 
       # Main server loop - listens for queries and responds
       private def run_server : Nil
         buffer = Bytes.new(4096)
+        last_sender : Socket::IPAddress? = nil
+        last_data : Bytes? = nil
 
         while @running
           begin
@@ -140,15 +142,20 @@ module Matter
             next unless result
 
             bytes_received, sender = result
-            handle_query(buffer[0, bytes_received], sender)
+            last_sender = sender
+            last_data = buffer[0, bytes_received]
+            handle_query(last_data, sender)
           rescue ex : IO::Error
-            Log.error(exception: ex) { "Error receiving mDNS query" }
+            sender = last_sender ? last_sender.to_s : "unknown"
+            Log.error(exception: ex) { "Error receiving mDNS query (sender=#{sender} data_hex=#{last_data.try(&.hexstring) || "nil"})" }
           rescue ex
-            Log.error(exception: ex) { "Unexpected error in mDNS server" }
+            sender = last_sender ? last_sender.to_s : "unknown"
+            Log.error(exception: ex) { "Unexpected error in mDNS server (sender=#{sender} data_hex=#{last_data.try(&.hexstring) || "nil"})" }
           end
         end
       rescue ex
-        Log.error(exception: ex) { "mDNS server fiber crashed" }
+        sender = last_sender ? last_sender.to_s : "unknown"
+        Log.error(exception: ex) { "mDNS server fiber crashed (sender=#{sender} data_hex=#{last_data.try(&.hexstring) || "nil"})" }
       end
 
       # Handle incoming query packet
@@ -220,9 +227,11 @@ module Matter
       # Send packet to multicast group
       private def send_packet(packet : DNS::Packet) : Nil
         data = packet.to_slice
-        @socket.send_multicast(data)
-      rescue ex
-        Log.error(exception: ex) { "Error sending mDNS packet" }
+        begin
+          @socket.send_multicast(data)
+        rescue ex
+          Log.error { "Error sending mDNS packet: #{ex.message}" }
+        end
       end
 
       # Close the server and cleanup

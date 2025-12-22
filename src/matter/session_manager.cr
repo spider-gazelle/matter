@@ -23,7 +23,7 @@ module Matter
     def initialize
       @pase_sessions = Hash(UInt16, PaseSession).new
       @case_sessions = Hash(UInt16, CaseSession).new
-      Log.info { "SessionManager initialized" }
+      Log.debug { "SessionManager initialized" }
     end
 
     # ========================================================================
@@ -34,14 +34,14 @@ module Matter
     def create_pase_session(session_id : UInt16) : PaseSession
       session = PaseSession.new(session_id)
       @pase_sessions[session_id] = session
-      Log.info { "Created PASE session: id=#{session_id}" }
+      Log.debug { "Created PASE session: id=#{session_id}" }
       session
     end
 
     # Add an existing PASE session
     def add_pase_session(session : PaseSession) : Nil
       @pase_sessions[session.session_id] = session
-      Log.info { "Added PASE session: id=#{session.session_id}" }
+      Log.debug { "Added PASE session: id=#{session.session_id}" }
     end
 
     # Get a PASE session by ID
@@ -52,7 +52,7 @@ module Matter
     # Remove a specific PASE session
     def remove_pase_session(session_id : UInt16) : PaseSession?
       session = @pase_sessions.delete(session_id)
-      Log.info { "Removed PASE session: id=#{session_id}" } if session
+      Log.debug { "Removed PASE session: id=#{session_id}" } if session
       session
     end
 
@@ -79,14 +79,14 @@ module Matter
     ) : CaseSession
       session = CaseSession.new(session_id, fabric_index, peer_node_id, vendor_id)
       @case_sessions[session_id] = session
-      Log.info { "Created CASE session: id=#{session_id}, fabric=#{fabric_index}, vendor=#{vendor_id}, peer=#{peer_node_id}" }
+      Log.debug { "Created CASE session: id=#{session_id}, fabric=#{fabric_index}, vendor=#{vendor_id}, peer=#{peer_node_id}" }
       session
     end
 
     # Add an existing CASE session
     def add_case_session(session : CaseSession) : Nil
       @case_sessions[session.session_id] = session
-      Log.info { "Added CASE session: id=#{session.session_id}, fabric=#{session.fabric_index}" }
+      Log.debug { "Added CASE session: id=#{session.session_id}, fabric=#{session.fabric_index}" }
     end
 
     # Get a CASE session by ID
@@ -97,7 +97,7 @@ module Matter
     # Remove a specific CASE session
     def remove_case_session(session_id : UInt16) : CaseSession?
       session = @case_sessions.delete(session_id)
-      Log.info { "Removed CASE session: id=#{session_id}" } if session
+      Log.debug { "Removed CASE session: id=#{session_id}" } if session
       session
     end
 
@@ -121,7 +121,7 @@ module Matter
       initial_count = @case_sessions.size
       @case_sessions.reject! { |_, session| session.fabric_index == fabric_index }
       removed_count = initial_count - @case_sessions.size
-      Log.info { "Removed #{removed_count} CASE session(s) for fabric #{fabric_index}" } if removed_count > 0
+      Log.debug { "Removed #{removed_count} CASE session(s) for fabric #{fabric_index}" } if removed_count > 0
       removed_count
     end
 
@@ -133,21 +133,21 @@ module Matter
     def clear_pase_sessions : Nil
       count = @pase_sessions.size
       @pase_sessions.clear
-      Log.info { "Cleared #{count} PASE session(s)" }
+      Log.debug { "Cleared #{count} PASE session(s)" }
     end
 
     # Clear all CASE sessions (typically used for device reset)
     def clear_case_sessions : Nil
       count = @case_sessions.size
       @case_sessions.clear
-      Log.info { "Cleared #{count} CASE session(s)" }
+      Log.debug { "Cleared #{count} CASE session(s)" }
     end
 
     # Clear all sessions
     def clear_all_sessions : Nil
       clear_pase_sessions
       clear_case_sessions
-      Log.info { "All sessions cleared" }
+      Log.debug { "All sessions cleared" }
     end
 
     # Get count of active PASE sessions

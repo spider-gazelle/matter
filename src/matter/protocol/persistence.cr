@@ -41,7 +41,11 @@ module Matter
           sessions[session.session_id.to_s] = session.to_h
           persist_case_sessions(sessions)
         rescue ex
-          Log.error(exception: ex) { "Failed to persist session #{session.session_id}: #{ex.message}" }
+          Log.error(exception: ex) do
+            "Failed to persist session #{session.session_id} " \
+            "(fabric_index=#{session.fabric_index.inspect} peer_node_id=#{session.peer_node_id.try(&.id).inspect} " \
+            "enc_key_bytes=#{session.encryption_key.size} dec_key_bytes=#{session.decryption_key.size} att_challenge_bytes=#{session.attestation_challenge.try(&.size).inspect})"
+          end
         end
 
         def session_updated(handler : MessageHandler, session : Session::SecureContext) : Nil
@@ -51,7 +55,11 @@ module Matter
           sessions[session.session_id.to_s] = session.to_h
           persist_case_sessions(sessions)
         rescue ex
-          Log.error(exception: ex) { "Failed to update persisted session #{session.session_id}: #{ex.message}" }
+          Log.error(exception: ex) do
+            "Failed to update persisted session #{session.session_id} " \
+            "(fabric_index=#{session.fabric_index.inspect} peer_node_id=#{session.peer_node_id.try(&.id).inspect} " \
+            "local_counter=#{session.local_message_counter} peer_counter=#{session.peer_message_counter.inspect})"
+          end
         end
 
         def session_removed(handler : MessageHandler, session_id : UInt16) : Nil
@@ -60,7 +68,7 @@ module Matter
             persist_case_sessions(sessions)
           end
         rescue ex
-          Log.error(exception: ex) { "Failed to remove persisted session #{session_id}: #{ex.message}" }
+          Log.error(exception: ex) { "Failed to remove persisted session #{session_id} (storage_key=#{SESSION_KEY})" }
         end
 
         def subscription_established(handler : MessageHandler, subscription : MessageHandler::ActiveSubscription) : Nil
@@ -69,7 +77,10 @@ module Matter
           persist_subscriptions(subs)
           @storage.set(SESSION_CONTEXT, NEXT_SUBSCRIPTION_ID, handler.next_subscription_id)
         rescue ex
-          Log.error(exception: ex) { "Failed to persist subscription #{subscription.subscription_id}: #{ex.message}" }
+          Log.error(exception: ex) do
+            "Failed to persist subscription #{subscription.subscription_id} " \
+            "(session_id=#{subscription.session.session_id} peer=#{subscription.peer} exchange=#{subscription.exchange_id} paths=#{subscription.attribute_paths.size})"
+          end
         end
 
         def subscription_removed(handler : MessageHandler, subscription_id : UInt32) : Nil
@@ -78,7 +89,7 @@ module Matter
             persist_subscriptions(subs)
           end
         rescue ex
-          Log.error(exception: ex) { "Failed to remove persisted subscription #{subscription_id}: #{ex.message}" }
+          Log.error(exception: ex) { "Failed to remove persisted subscription #{subscription_id} (storage_key=#{SUBSCRIPTIONS_KEY})" }
         end
 
         private def restore_sessions(handler : MessageHandler) : Nil
@@ -117,7 +128,9 @@ module Matter
 
           Log.info { "Restored #{restored} CASE session(s)" } if restored > 0
         rescue ex
-          Log.error(exception: ex) { "Failed restoring sessions: #{ex.message}" }
+          raw = @storage.get(SESSION_CONTEXT, SESSION_KEY)
+          raw_value = raw.is_a?(String) ? redact_protocol_state(raw) : raw.inspect
+          Log.error(exception: ex) { "Failed restoring sessions (stored=#{raw_value})" }
         end
 
         private def restore_subscriptions(handler : MessageHandler) : Nil
@@ -142,7 +155,16 @@ module Matter
 
           Log.info { "Restored #{subs.size} subscription(s) (next=#{handler.next_subscription_id})" }
         rescue ex
-          Log.error(exception: ex) { "Failed restoring subscriptions: #{ex.message}" }
+          raw = @storage.get(SESSION_CONTEXT, SUBSCRIPTIONS_KEY)
+          raw_value = raw.is_a?(String) ? raw : raw.inspect
+          Log.error(exception: ex) { "Failed restoring subscriptions (stored=#{raw_value})" }
+        end
+
+        private def redact_protocol_state(raw : String) : String
+          raw
+            .gsub(/\"encryption_key\"\\s*:\\s*\"[^\"]*\"/, "\"encryption_key\":\"<redacted>\"")
+            .gsub(/\"decryption_key\"\\s*:\\s*\"[^\"]*\"/, "\"decryption_key\":\"<redacted>\"")
+            .gsub(/\"attestation_challenge\"\\s*:\\s*\"[^\"]*\"/, "\"attestation_challenge\":\"<redacted>\"")
         end
 
         private def load_case_sessions : Hash(String, Hash(String, String | UInt64 | UInt32 | UInt16 | UInt8 | Int64 | Bool))

@@ -67,7 +67,7 @@ module Matter
       def get_dac_cert(product_id : UInt16) : {Bytes, Crypto::Key}
         dac_key_pair = Crypto::Key.generate_key_pair
         Log.debug { "Generated DAC key pair" }
-        Log.debug { "  Public key (full 65 bytes): #{dac_key_pair.public_key.hexstring}" }
+        Log.trace { "DAC public key (65 bytes): #{dac_key_pair.public_key.hexstring}" }
         dac_cert = generate_dac_certificate(dac_key_pair, @vendor_id, product_id)
         Log.debug { "Generated DAC certificate: #{dac_cert.size} bytes" }
         {dac_cert, dac_key_pair}

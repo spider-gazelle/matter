@@ -276,7 +276,11 @@ module Matter
             persistence.session_updated(self, session)
             persisted += 1
           rescue ex
-            Log.error(exception: ex) { "Failed to persist session #{session.session_id}: #{ex.message}" }
+            Log.error(exception: ex) do
+              "Failed to persist session #{session.session_id} " \
+              "(fabric_index=#{session.fabric_index.inspect} peer_node_id=#{session.peer_node_id.try(&.id).inspect} " \
+              "peer_session_id=#{session.peer_session_id})"
+            end
           end
         end
         Log.debug { "Persisted #{persisted} CASE session(s)" } if persisted > 0
@@ -359,7 +363,7 @@ module Matter
           begin
             persistence.restore(self)
           rescue ex
-            Log.error(exception: ex) { "Failed to restore protocol persistence: #{ex.message}" }
+            Log.error(exception: ex) { "Failed to restore protocol persistence (persistence=#{persistence.class})" }
           end
         end
 
@@ -444,10 +448,10 @@ module Matter
           # Look up session by ID and return its attestation challenge
           session = @sessions[session_id.to_u16]?
           if session
-            Log.debug { "session_lookup: Found session #{session_id}, returning attestation_challenge" }
+            Log.trace { "session_lookup: session_id=#{session_id} found, returning attestation_challenge" }
             session.attestation_challenge
           else
-            Log.debug { "session_lookup: Session #{session_id} not found" }
+            Log.trace { "session_lookup: session_id=#{session_id} not found" }
             nil
           end
         end
@@ -455,8 +459,7 @@ module Matter
         # Set up on_fabric_added callback to forward to on_commissioned
         # This allows the device to switch from commissioning to operational mDNS advertisement
         operational_creds.on_fabric_added = ->(fabric : Fabric) do
-          Log.info { "Fabric added: fabric_id=#{fabric.fabric_id}, node_id=#{fabric.node_id}" }
-          Log.info { "  compressed_fabric_id=#{fabric.compressed_fabric_id.hexstring.upcase}" }
+          Log.info { "Fabric added: fabric_id=#{fabric.fabric_id}, node_id=#{fabric.node_id}, compressed_fabric_id=#{fabric.compressed_fabric_id.hexstring.upcase}" }
           if callback = @on_commissioned
             callback.call(fabric)
           end
@@ -479,35 +482,26 @@ module Matter
             notify_subscriptions(ep, cl, attr)
           end
         end
-        Log.info { "Set up attribute change notifications for #{@clusters.size} cluster(s)" }
+        Log.debug { "Set up attribute change notifications for #{@clusters.size} cluster(s)" }
       end
 
       # Handle attribute change and send updates to matching subscriptions
       # This is called by clusters when their attributes change
       def notify_subscriptions(endpoint_id : UInt16, cluster_id : UInt32, attribute_id : UInt32)
-        puts "🔔 notify_subscriptions called: endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)}, attr=0x#{attribute_id.to_s(16)}"
-        puts "   Active subscriptions: #{@active_subscriptions.size}"
-
-        if @active_subscriptions.empty?
-          puts "   ⚠️  No active subscriptions to notify"
-          return
-        end
-
-        Log.debug { "Attribute changed: endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)}, attr=0x#{attribute_id.to_s(16)}" }
+        Log.debug { "notify_subscriptions: endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)}, attr=0x#{attribute_id.to_s(16)}, active=#{@active_subscriptions.size}" }
+        return if @active_subscriptions.empty?
 
         # Find all subscriptions that match this attribute change
         @active_subscriptions.each do |sub_id, subscription|
           matches = subscription.matches?(endpoint_id, cluster_id, attribute_id)
-          puts "   Subscription #{sub_id}: matches=#{matches}"
           next unless matches
 
-          puts "   📡 Sending update to subscription #{sub_id} at #{subscription.peer}"
-          Log.info { "Sending subscription update for subscription #{sub_id}" }
+          Log.debug { "Sending subscription update: subscription_id=#{sub_id}, peer=#{subscription.peer}" }
 
           # Read the current attribute value
           cluster = @clusters[{endpoint_id, cluster_id}]?
           unless cluster
-            Log.warn { "Cluster not found for subscription update" }
+            Log.warn { "Subscription update skipped: cluster not found (endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)})" }
             next
           end
 
@@ -537,7 +531,7 @@ module Matter
 
             # Encode ReportData with subscription ID
             report_data = IMHandler.encode_report_data(response, subscription.subscription_id)
-            Log.debug { "Subscription update ReportData TLV (#{report_data.size} bytes): #{report_data.hexstring}" }
+            Log.trace { "Subscription update ReportData TLV (#{report_data.size} bytes): #{report_data.hexstring}" }
 
             # Send the update
             send_subscription_update(subscription, report_data)
@@ -545,7 +539,7 @@ module Matter
             # Update last report time
             subscription.last_report_time = Time.utc
           else
-            Log.warn { "Failed to read attribute for subscription update: #{value}" }
+            Log.warn { "Subscription update skipped: read_attribute returned #{value.class} (endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)}, attr=0x#{attribute_id.to_s(16)})" }
           end
         end
       end
@@ -625,7 +619,7 @@ module Matter
         # Encrypt using packet header bytes as AAD
         encrypted = crypto.encrypt(session.encryption_key, application_payload, nonce, packet_header_bytes)
         unless encrypted
-          Log.error { "Failed to encrypt subscription update" }
+          Log.error { "Failed to encrypt subscription update (peer=#{subscription.peer}, subscription_id=#{subscription.subscription_id}, exchange=#{new_exchange_id})" }
           return
         end
 
@@ -635,7 +629,7 @@ module Matter
         # Send raw UDP packet
         @transport.send_raw(udp_packet, subscription.peer)
 
-        Log.info { "📡 Sent subscription update to #{subscription.peer} (#{payload.size} bytes payload, exchange=#{new_exchange_id})" }
+        Log.debug { "Sent subscription update: peer=#{subscription.peer}, subscription_id=#{subscription.subscription_id}, payload_bytes=#{payload.size}, exchange=#{new_exchange_id}" }
       end
 
       # Main message routing entry point
@@ -657,12 +651,12 @@ module Matter
 
           # Decrypt encrypted messages (session_id != 0) BEFORE routing
           if session_id != 0
-            Log.debug { "Message is encrypted (session_id=#{session_id}), decrypting..." }
+            Log.trace { "Message is encrypted (session_id=#{session_id}), decrypting" }
 
             # Get secure session context
             session = @sessions[session_id]?
             unless session
-              Log.error { "No session found for ID: #{session_id}" }
+              Log.warn { "Dropping encrypted message: no session found (session_id=#{session_id})" }
               return
             end
 
@@ -672,7 +666,7 @@ module Matter
             unless session.would_accept_message_counter?(message_counter)
               # This is a duplicate without a cached response - drop silently
               # The MRP cache was already checked above, so if we're here, there's no response to resend
-              Log.debug { "Dropping duplicate message: session=#{session_id}, counter=#{message_counter} (no cached response)" }
+              Log.trace { "Dropping duplicate message: session_id=#{session_id}, counter=#{message_counter} (no cached response)" }
               return
             end
 
@@ -683,7 +677,7 @@ module Matter
             msg = decrypt_message(msg, session)
           end
 
-          Log.info { "Received message: protocol=0x#{msg.payload_header.protocol_id.to_s(16)}, type=0x#{msg.payload_header.message_type.to_s(16)}" }
+          Log.debug { "Received message: protocol=0x#{msg.payload_header.protocol_id.to_s(16)}, type=0x#{msg.payload_header.message_type.to_s(16)}" }
 
           case msg.payload_header.protocol_id
           when PROTOCOL_SECURE_CHANNEL
@@ -695,7 +689,12 @@ module Matter
           end
         end
       rescue ex
-        Log.error(exception: ex) { "Error handling message: #{ex.message}" }
+        Log.error(exception: ex) do
+          "Error handling message: peer=#{peer.address}:#{peer.port} session_id=#{msg.packet_header.session_id} " \
+          "msg_id=#{msg.packet_header.message_id} protocol=0x#{msg.payload_header.protocol_id.to_s(16)} " \
+          "type=0x#{msg.payload_header.message_type.to_s(16)} exchange=#{msg.payload_header.exchange_id} " \
+          "payload_hex=#{msg.payload.hexstring}"
+        end
       end
 
       # Decrypt an encrypted message and re-parse the payload header
@@ -703,7 +702,7 @@ module Matter
         msg : Codec::MessageCodec::Message,
         session : Session::SecureContext,
       ) : Codec::MessageCodec::Message
-        Log.debug { "Decrypting payload (#{msg.payload.size} bytes)" }
+        Log.trace { "Decrypting payload (#{msg.payload.size} bytes)" }
         crypto = Crypto::StandardCrypto.new
 
         # Use the actual message_id from the packet header as the message counter
@@ -722,7 +721,7 @@ module Matter
           raise "Failed to decrypt message"
         end
 
-        Log.debug { "Decrypted payload: #{decrypted.hexstring}" }
+        Log.trace { "Decrypted payload: #{decrypted.hexstring}" }
 
         # Create a packet with decrypted payload and decode it
         decrypted_packet = Codec::MessageCodec::Packet.new(
@@ -758,16 +757,13 @@ module Matter
 
       # Handle Interaction Model protocol (Read, Write, Invoke, etc.)
       private def handle_interaction_model(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
-        Log.info { "Received Interaction Model message (already decrypted)" }
-        Log.debug { "  Exchange ID: #{msg.payload_header.exchange_id}" }
-        Log.debug { "  Requires ACK: #{msg.payload_header.requires_acknowledge?}" }
-        Log.debug { "  Initiator: #{msg.payload_header.initiator_message?}" }
+        Log.debug { "InteractionModel message: type=0x#{msg.payload_header.message_type.to_s(16)}, exchange=#{msg.payload_header.exchange_id}, requires_ack=#{msg.payload_header.requires_acknowledge?}, initiator=#{msg.payload_header.initiator_message?}" }
 
         # Get secure session context (needed for sending response)
         session_id = msg.packet_header.session_id
         session = @sessions[session_id]?
         unless session
-          Log.error { "No session found for ID: #{session_id}" }
+          Log.warn { "Dropping IM message: no session found (session_id=#{session_id})" }
           return
         end
 
@@ -792,7 +788,11 @@ module Matter
           Log.warn { "Unknown IM message type: 0x#{msg.payload_header.message_type.to_s(16)}" }
         end
       rescue ex
-        Log.error(exception: ex) { "Error handling IM message: #{ex.message}" }
+        Log.error(exception: ex) do
+          "Error handling IM message: peer=#{peer.address}:#{peer.port} session_id=#{msg.packet_header.session_id} " \
+          "msg_id=#{msg.packet_header.message_id} exchange=#{msg.payload_header.exchange_id} " \
+          "type=0x#{msg.payload_header.message_type.to_s(16)} payload_hex=#{msg.payload.hexstring}"
+        end
       end
 
       # Handle StatusResponse - acknowledgment from controller
@@ -806,7 +806,7 @@ module Matter
         peer : Socket::IPAddress,
         session : Session::SecureContext,
       ) : Nil
-        Log.info { "Handling StatusResponse" }
+        Log.debug { "Handling StatusResponse (exchange=#{original_msg.payload_header.exchange_id})" }
 
         # Parse StatusResponse TLV
         status_code = 0_u8
@@ -830,12 +830,12 @@ module Matter
                         end
 
           if status_code == 0
-            Log.info { "✅ StatusResponse: SUCCESS" }
+            Log.debug { "StatusResponse: SUCCESS" }
           else
-            Log.warn { "⚠️  StatusResponse: status=0x#{status_code.to_s(16)}" }
+            Log.warn { "StatusResponse: status=0x#{status_code.to_s(16)}" }
           end
         rescue ex
-          Log.error { "Failed to parse StatusResponse: #{ex.message}" }
+          Log.error(exception: ex) { "Failed to parse StatusResponse (#{decrypted.size} bytes): #{decrypted.hexstring}" }
         end
 
         # Check if this StatusResponse is for a pending subscription
@@ -846,7 +846,7 @@ module Matter
             if !pending.remaining_chunks.empty?
               # Send next chunk
               next_chunk, is_last = pending.remaining_chunks.shift
-              Log.info { "StatusResponse received for subscription #{pending.subscription_id}, sending next chunk (#{pending.remaining_chunks.size} remaining)" }
+              Log.debug { "StatusResponse for subscription #{pending.subscription_id}: sending next chunk (#{pending.remaining_chunks.size} remaining)" }
 
               # Send next ReportData chunk
               send_im_response(
@@ -859,14 +859,14 @@ module Matter
 
               # Put pending subscription back to wait for next StatusResponse
               @pending_subscriptions[exchange_id] = pending
-              Log.info { "Sent ReportData chunk, waiting for StatusResponse" }
+              Log.debug { "Sent ReportData chunk, waiting for StatusResponse (subscription #{pending.subscription_id})" }
             else
               # All chunks sent - send SubscribeResponse to complete the subscription
-              Log.info { "StatusResponse received for subscription #{pending.subscription_id}, all chunks sent, sending SubscribeResponse" }
+              Log.debug { "All ReportData chunks sent for subscription #{pending.subscription_id}; sending SubscribeResponse" }
 
               # Encode SubscribeResponse as TLV
               subscribe_response_tlv = IMHandler.encode_subscribe_response(pending.subscription_id, pending.max_interval)
-              Log.debug { "Encoded SubscribeResponse TLV (#{subscribe_response_tlv.size} bytes)" }
+              Log.trace { "Encoded SubscribeResponse TLV (#{subscribe_response_tlv.size} bytes): #{subscribe_response_tlv.hexstring}" }
 
               # Send SubscribeResponse
               send_im_response(
@@ -889,7 +889,6 @@ module Matter
               )
               @active_subscriptions[pending.subscription_id] = active_sub
 
-              Log.info { "Sent SubscribeResponse for subscription #{pending.subscription_id}, maxInterval=#{pending.max_interval}s" }
               Log.info { "Subscription #{pending.subscription_id} is now active (watching #{pending.attribute_paths.size} path(s))" }
 
               # Notify device about new subscription for persistence
@@ -897,7 +896,10 @@ module Matter
                 begin
                   persistence.subscription_established(self, active_sub)
                 rescue ex
-                  Log.error(exception: ex) { "Failed persisting subscription #{active_sub.subscription_id}: #{ex.message}" }
+                  Log.error(exception: ex) do
+                    "Failed persisting subscription #{active_sub.subscription_id} " \
+                    "(peer=#{active_sub.peer} exchange=#{active_sub.exchange_id} session_id=#{active_sub.session.session_id} paths=#{active_sub.attribute_paths.size})"
+                  end
                 end
               end
               if callback = @on_subscription_established
@@ -906,7 +908,7 @@ module Matter
             end
           else
             # Error - subscription failed
-            Log.error { "StatusResponse error for subscription #{pending.subscription_id}, aborting subscription" }
+            Log.warn { "StatusResponse error for subscription #{pending.subscription_id}, aborting subscription" }
           end
           # Check if this StatusResponse is for a pending read response
         elsif pending_read = @pending_read_responses.delete(exchange_id)
@@ -915,7 +917,7 @@ module Matter
             if !pending_read.remaining_chunks.empty?
               # Send next chunk
               next_chunk, is_last = pending_read.remaining_chunks.shift
-              Log.info { "StatusResponse received for read response, sending next chunk (#{pending_read.remaining_chunks.size} remaining)" }
+              Log.debug { "StatusResponse for read response: sending next chunk (#{pending_read.remaining_chunks.size} remaining)" }
 
               # Send next ReportData chunk
               send_im_response(
@@ -929,24 +931,24 @@ module Matter
               # Put pending read back to wait for next StatusResponse
               if !pending_read.remaining_chunks.empty?
                 @pending_read_responses[exchange_id] = pending_read
-                Log.info { "Sent ReportData chunk, waiting for StatusResponse" }
+                Log.debug { "Sent ReportData chunk, waiting for StatusResponse (read response)" }
               else
-                Log.info { "Sent final ReportData chunk for read response" }
+                Log.debug { "Sent final ReportData chunk for read response" }
               end
             else
               # All chunks already sent - nothing more to do for read responses
-              Log.info { "StatusResponse received for read response, all chunks sent" }
+              Log.debug { "StatusResponse received for read response, all chunks already sent" }
             end
           else
             # Error - read failed
-            Log.error { "StatusResponse error for read response, aborting" }
+            Log.warn { "StatusResponse error for read response, aborting" }
           end
         else
           # This StatusResponse is not for a pending subscription or read -
           # it's likely an acknowledgment for a subscription update we sent.
           # We still need to send an ACK back if required.
           if original_msg.payload_header.requires_acknowledge?
-            Log.info { "StatusResponse requires ACK (subscription update acknowledgment), sending standalone ACK" }
+            Log.trace { "StatusResponse requires ACK, sending standalone ACK" }
             send_encrypted_ack(original_msg, peer, session)
           end
         end
@@ -1035,7 +1037,7 @@ module Matter
         # Send raw UDP packet
         @transport.send_raw(udp_packet, peer)
 
-        Log.info { "📨 Sent standalone ACK for message #{original_msg.packet_header.message_id} on exchange #{original_msg.payload_header.exchange_id}" }
+        Log.trace { "Sent standalone ACK: acked_message_id=#{original_msg.packet_header.message_id}, exchange=#{original_msg.payload_header.exchange_id}, peer=#{peer}" }
       end
 
       # Handle ReadRequest - parse, read attributes, encode response, encrypt and send
@@ -1046,7 +1048,7 @@ module Matter
         peer : Socket::IPAddress,
         session : Session::SecureContext,
       ) : Nil
-        Log.info { "Handling ReadRequest" }
+        Log.debug { "Handling ReadRequest" }
 
         # Parse ReadRequest using IMHandler
         request = IMHandler.parse_read_request(decrypted)
@@ -1060,11 +1062,11 @@ module Matter
         # Read attributes from clusters (pass fabric_index for fabric-scoped attributes)
         response = IMHandler.read_attributes(request.attribute_requests, @clusters, session.fabric_index)
 
-        Log.info { "ReadResponse: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
+        Log.debug { "ReadResponse: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
 
         # Encode ReadResponse as TLV with chunking (no subscription_id for regular reads)
         chunks = IMHandler.encode_chunked_report_data(response, nil)
-        Log.info { "Chunked ReadResponse into #{chunks.size} chunk(s)" }
+        Log.debug { "Chunked ReadResponse into #{chunks.size} chunk(s)" }
 
         # Get first chunk to send
         first_chunk, is_last = chunks.first
@@ -1082,7 +1084,7 @@ module Matter
           cache_for_mrp: true
         )
 
-        Log.info { "Sent ReadResponse chunk 1/#{chunks.size}" }
+        Log.debug { "Sent ReadResponse chunk 1/#{chunks.size}" }
 
         # If there are more chunks, store pending read response
         if !remaining_chunks.empty?
@@ -1093,10 +1095,14 @@ module Matter
             original_msg: original_msg,
             remaining_chunks: remaining_chunks
           )
-          Log.info { "Waiting for StatusResponse/ACK on exchange #{exchange_id} (#{remaining_chunks.size} chunks remaining)" }
+          Log.debug { "Waiting for StatusResponse/ACK on exchange #{exchange_id} (#{remaining_chunks.size} chunks remaining)" }
         end
       rescue ex
-        Log.error(exception: ex) { "Error handling ReadRequest: #{ex.message}" }
+        Log.error(exception: ex) do
+          "Error handling ReadRequest: peer=#{peer.address}:#{peer.port} session_id=#{session.session_id} " \
+          "exchange=#{original_msg.payload_header.exchange_id} msg_id=#{original_msg.packet_header.message_id} " \
+          "payload_hex=#{decrypted.hexstring}"
+        end
       end
 
       # Handle SubscribeRequest - parse, read attributes, send ReportData, wait for StatusResponse, then SubscribeResponse
@@ -1112,7 +1118,7 @@ module Matter
         peer : Socket::IPAddress,
         session : Session::SecureContext,
       ) : Nil
-        Log.info { "Handling SubscribeRequest" }
+        Log.debug { "Handling SubscribeRequest" }
 
         # Parse SubscribeRequest using IMHandler
         request = IMHandler.parse_subscribe_request(decrypted)
@@ -1128,7 +1134,7 @@ module Matter
           endpoint = path.endpoint.try(&.to_s) || "*"
           cluster = path.cluster.try { |c| "0x#{c.to_s(16)}" } || "*"
           attribute = path.attribute.try { |a| "0x#{a.to_s(16)}" } || "*"
-          Log.info { "  Subscribe #{idx}: endpoint=#{endpoint} cluster=#{cluster} attr=#{attribute}" }
+          Log.debug { "  Subscribe #{idx}: endpoint=#{endpoint} cluster=#{cluster} attr=#{attribute}" }
         end
 
         # Generate subscription ID
@@ -1140,11 +1146,11 @@ module Matter
         # Read attributes from clusters (same as ReadRequest, pass fabric_index for fabric-scoped attributes)
         response = IMHandler.read_attributes(request.attribute_requests, @clusters, session.fabric_index)
 
-        Log.info { "Initial ReportData: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
+        Log.debug { "Initial ReportData: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
 
         # Encode ReportData with subscription ID as TLV, chunked to fit MTU
         chunks = IMHandler.encode_chunked_report_data(response, subscription_id)
-        Log.info { "Chunked ReportData into #{chunks.size} chunk(s)" }
+        Log.debug { "Chunked ReportData into #{chunks.size} chunk(s)" }
 
         # Get first chunk to send
         first_chunk, _ = chunks.first
@@ -1162,7 +1168,7 @@ module Matter
           cache_for_mrp: true
         )
 
-        Log.info { "Sent initial ReportData chunk for subscription #{subscription_id}" }
+        Log.debug { "Sent initial ReportData chunk for subscription #{subscription_id}" }
 
         # Calculate actual intervals (we honor the requested values)
         min_interval = request.min_interval_floor
@@ -1191,9 +1197,13 @@ module Matter
           remaining_chunks: remaining_chunks
         )
 
-        Log.info { "Waiting for StatusResponse on exchange #{exchange_id} (#{remaining_chunks.size} chunks remaining)" }
+        Log.debug { "Waiting for StatusResponse on exchange #{exchange_id} (#{remaining_chunks.size} chunks remaining)" }
       rescue ex
-        Log.error(exception: ex) { "Error handling SubscribeRequest: #{ex.message}" }
+        Log.error(exception: ex) do
+          "Error handling SubscribeRequest: peer=#{peer.address}:#{peer.port} session_id=#{session.session_id} " \
+          "exchange=#{original_msg.payload_header.exchange_id} msg_id=#{original_msg.packet_header.message_id} " \
+          "payload_hex=#{decrypted.hexstring}"
+        end
       end
 
       # Handle WriteRequest - parse, write attributes, encode response, encrypt and send
@@ -1203,7 +1213,7 @@ module Matter
         peer : Socket::IPAddress,
         session : Session::SecureContext,
       ) : Nil
-        Log.info { "Handling WriteRequest" }
+        Log.debug { "Handling WriteRequest" }
 
         # Parse WriteRequest using IMHandler
         request = IMHandler.parse_write_request(decrypted)
@@ -1217,7 +1227,7 @@ module Matter
         # Write attributes to clusters
         response = IMHandler.write_attributes(request.write_requests, @clusters)
 
-        Log.info { "WriteResponse: #{response.write_responses.size} status(es)" }
+        Log.debug { "WriteResponse: #{response.write_responses.size} status(es)" }
 
         # Check if response should be suppressed
         if request.suppress_response && response.write_responses.all? { |s| s.status.status == InteractionModel::StatusCode::Success }
@@ -1239,9 +1249,13 @@ module Matter
           cache_for_mrp: true
         )
 
-        Log.info { "Sent WriteResponse" }
+        Log.debug { "Sent WriteResponse" }
       rescue ex
-        Log.error(exception: ex) { "Error handling WriteRequest: #{ex.message}" }
+        Log.error(exception: ex) do
+          "Error handling WriteRequest: peer=#{peer.address}:#{peer.port} session_id=#{session.session_id} " \
+          "exchange=#{original_msg.payload_header.exchange_id} msg_id=#{original_msg.packet_header.message_id} " \
+          "payload_hex=#{decrypted.hexstring}"
+        end
       end
 
       # Handle InvokeRequest - parse, execute commands, encode response, encrypt and send
@@ -1251,7 +1265,7 @@ module Matter
         peer : Socket::IPAddress,
         session : Session::SecureContext,
       ) : Nil
-        Log.info { "Handling InvokeRequest" }
+        Log.debug { "Handling InvokeRequest" }
 
         # Parse InvokeRequest using IMHandler
         request = IMHandler.parse_invoke_request(decrypted)
@@ -1289,7 +1303,11 @@ module Matter
 
         Log.info { "Sent InvokeResponse" }
       rescue ex
-        Log.error(exception: ex) { "Error handling InvokeRequest: #{ex.message}" }
+        Log.error(exception: ex) do
+          "Error handling InvokeRequest: peer=#{peer.address}:#{peer.port} session_id=#{session.session_id} " \
+          "exchange=#{original_msg.payload_header.exchange_id} msg_id=#{original_msg.packet_header.message_id} " \
+          "payload_hex=#{decrypted.hexstring}"
+        end
       end
 
       # Encrypt and send an Interaction Model response
@@ -1416,22 +1434,8 @@ module Matter
         # Build nonce: security_flags (1) + message_counter (4) + source_node_id (8)
         nonce = Session::SecureMessage.build_nonce(source_node_id, message_counter, security_flags)
 
-        Log.info { "═══ ENCRYPTION TEST VECTOR ═══" }
-        Log.info { "encryption_key: #{session.encryption_key.hexstring}" }
-        Log.info { "application_payload (first 64 bytes): #{application_payload[0, [64, application_payload.size].min].hexstring}" }
-        Log.info { "nonce (13 bytes): #{nonce.hexstring}" }
-        Log.info { "aad (packet_header_bytes): #{packet_header_bytes.hexstring}" }
-        Log.info { "Breakdown:" }
-        Log.info { "  security_flags: 0x#{security_flags.to_s(16).rjust(2, '0')}" }
-        Log.info { "  message_counter: #{message_counter}" }
-        Log.info { "  source_node_id: #{source_node_id}" }
-        Log.info { "  session_id: #{packet_header.session_id}" }
-
         # Encrypt using the ACTUAL packet header bytes as AAD (exactly like matter.js!)
         encrypted = crypto.encrypt(session.encryption_key, application_payload, nonce, packet_header_bytes)
-
-        Log.info { "encrypted (first 64 bytes): #{encrypted[0, [64, encrypted.size].min].hexstring}" }
-        Log.info { "═══════════════════════════════" }
 
         unless encrypted
           Log.error { "Failed to encrypt IM response" }
@@ -1443,10 +1447,18 @@ module Matter
         # Final UDP packet: packet_header_bytes + encrypted_application_payload
         udp_packet = Slice.join([packet_header_bytes, encrypted])
 
-        # VERIFY: Log the actual bytes being sent on the wire
-        Log.info { "📤 Sending UDP packet (#{udp_packet.size} bytes):" }
-        Log.info { "   Header (AAD, #{packet_header_bytes.size} bytes): #{packet_header_bytes.hexstring}" }
-        Log.info { "   Encrypted (first 64): #{encrypted[0, [64, encrypted.size].min].hexstring}" }
+        Log.trace do
+          "IM response encryption: key=#{session.encryption_key.hexstring} " \
+          "nonce=#{nonce.hexstring} aad_len=#{packet_header_bytes.size} " \
+          "app_len=#{application_payload.size} enc_len=#{encrypted.size} " \
+          "enc_first64=#{encrypted[0, [64, encrypted.size].min].hexstring}"
+        end
+
+        Log.trace do
+          "Sending UDP packet: bytes=#{udp_packet.size} " \
+          "header=#{packet_header_bytes.hexstring} " \
+          "enc_first64=#{encrypted[0, [64, encrypted.size].min].hexstring}"
+        end
 
         # Send raw UDP packet
         if cache_for_mrp && original_msg.packet_header.session_id != 0
@@ -1464,7 +1476,7 @@ module Matter
         Log.info { "Handling PBKDFParamRequest" }
 
         # Debug: dump payload bytes
-        Log.debug { "PBKDF Request payload (#{msg.payload.size} bytes): #{msg.payload.hexstring}" }
+        Log.trace { "PBKDF Request payload (#{msg.payload.size} bytes): #{msg.payload.hexstring}" }
 
         # Store request payload for context hashing (needed for SPAKE2+ context)
         @pbkdf_request_payload = msg.payload.dup
@@ -1532,7 +1544,7 @@ module Matter
         crypto = Crypto::StandardCrypto.new
         @pase_responder = Session::Pase::PaseResponder.new(@setup_pin, pbkdf_params, crypto, context_hash)
 
-        Log.info { "Created PaseResponder with hashed context" }
+        Log.debug { "Created PaseResponder with hashed context" }
       end
 
       # Handle PASE Pake1 (second step of PASE)
@@ -1543,9 +1555,9 @@ module Matter
         pake1 = Session::Pase::Definitions::Pake1.from_slice(msg.payload)
         p_a = pake1.x # Now correctly contains just the 65-byte EC point
 
-        Log.info { "  Received pA: #{p_a.size} bytes" }
-        Log.info { "  pA hex: #{p_a.hexstring}" }
-        Log.info { "  pA first byte: 0x#{p_a[0].to_s(16).rjust(2, '0')}" } if p_a.size > 0
+        Log.debug { "  Received pA: #{p_a.size} bytes" }
+        Log.trace { "  pA hex: #{p_a.hexstring}" }
+        Log.trace { "  pA first byte: 0x#{p_a[0].to_s(16).rjust(2, '0')}" } if p_a.size > 0
 
         # Get or create PASE responder
         responder = @pase_responder
@@ -1579,7 +1591,10 @@ module Matter
 
         Log.info { "Sent PASE Pake2 (pB + cB)" }
       rescue ex
-        Log.error(exception: ex) { "Error handling PASE Pake1: #{ex.message}" }
+        Log.error(exception: ex) do
+          "Error handling PASE Pake1: peer=#{peer.address}:#{peer.port} msg_id=#{msg.packet_header.message_id} " \
+          "exchange=#{msg.payload_header.exchange_id} payload_hex=#{msg.payload.hexstring}"
+        end
       end
 
       # Handle PASE Pake3 (third/final step of PASE)
@@ -1587,7 +1602,7 @@ module Matter
         Log.info { "Handling PASE Pake3" }
 
         # Decode Pake3 message - manually parse TLV to extract verifier (cA)
-        Log.debug { "  Pake3 payload: #{msg.payload.hexstring}" }
+        Log.trace { "  Pake3 payload: #{msg.payload.hexstring}" }
         parsed = TLV::Any.from_slice(msg.payload)
         struct_data = parsed.value.as(TLV::Structure)
         Log.debug { "  Pake3 TLV keys: #{struct_data.keys.inspect}" }
@@ -1595,7 +1610,7 @@ module Matter
         # Extract cA (verifier) from tag 1
         c_a = struct_data[1_u8].as_bytes
         Log.debug { "  Received cA: #{c_a.size} bytes" }
-        Log.debug { "  cA hex: #{c_a.hexstring}" }
+        Log.trace { "  cA hex: #{c_a.hexstring}" }
 
         # Get PASE responder
         responder = @pase_responder
@@ -1613,7 +1628,7 @@ module Matter
         end
 
         # Verify cA matches our computed h_ay
-        Log.debug { "  Expected h_ay: #{sav.h_ay.hexstring}" }
+        Log.trace { "  Expected h_ay: #{sav.h_ay.hexstring}" }
         if c_a != sav.h_ay
           Log.error { "PASE confirmation failed - cA doesn't match h_ay" }
           Log.error { "  Expected: #{sav.h_ay.hexstring}" }
@@ -1622,16 +1637,16 @@ module Matter
           return
         end
 
-        Log.info { "✅ PASE confirmation successful!" }
+        Log.debug { "PASE confirmation successful" }
 
         # Derive session keys from the shared secret
         keys = responder.derive_session_keys
         Log.debug { "  Derived encryption key: #{keys[:encryption].size} bytes" }
-        Log.debug { "  Encryption key (R2I): #{keys[:encryption].hexstring}" }
+        Log.trace { "  Encryption key (R2I): #{keys[:encryption].hexstring}" }
         Log.debug { "  Derived decryption key: #{keys[:decryption].size} bytes" }
-        Log.debug { "  Decryption key (I2R): #{keys[:decryption].hexstring}" }
+        Log.trace { "  Decryption key (I2R): #{keys[:decryption].hexstring}" }
         Log.debug { "  Attestation challenge: #{keys[:attestation_challenge].size} bytes" }
-        Log.debug { "  Attestation challenge: #{keys[:attestation_challenge].hexstring}" }
+        Log.trace { "  Attestation challenge: #{keys[:attestation_challenge].hexstring}" }
 
         # Create secure session context using stored session IDs from PBKDF exchange
         # We are the responder, so our session_id is responder_session_id
@@ -1660,15 +1675,17 @@ module Matter
         # Store session for future encrypted communication
         @sessions[session_id] = secure_context
 
-        Log.info { "✅ Secure session established! Session ID: #{session_id}" }
-        Log.info { "   Commissioner can now send encrypted Interaction Model messages" }
+        Log.info { "PASE secure session established (session_id=#{session_id}, peer_session_id=#{peer_session_id})" }
 
         # Send StatusReport to confirm session establishment
         # StatusReport is still sent unsecured (session_id=0) as part of the PASE handshake
         # The secure session only becomes active AFTER StatusReport is acknowledged
         send_status_report_success(msg, peer)
       rescue ex
-        Log.error(exception: ex) { "Error handling PASE Pake3: #{ex.message}" }
+        Log.error(exception: ex) do
+          "Error handling PASE Pake3: peer=#{peer.address}:#{peer.port} msg_id=#{msg.packet_header.message_id} " \
+          "exchange=#{msg.payload_header.exchange_id} payload_hex=#{msg.payload.hexstring}"
+        end
       end
 
       # Send a Secure Channel protocol response
@@ -1732,7 +1749,7 @@ module Matter
       # These are sent when a peer wants to acknowledge a message but has no other data to send
       # For chunked ReportData, iPhone may send StandaloneAck instead of StatusResponse between chunks
       private def handle_standalone_ack(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
-        Log.info { "✅ Received StandaloneAck" }
+        Log.debug { "Received StandaloneAck" }
 
         # If the ACK includes an acknowledged message ID, log it
         if ack_msg_id = msg.payload_header.acknowledged_message_id
@@ -1747,7 +1764,7 @@ module Matter
           if !pending.remaining_chunks.empty?
             # Send next chunk
             next_chunk, is_last = pending.remaining_chunks.shift
-            Log.info { "StandaloneAck received for subscription #{pending.subscription_id}, sending next chunk (#{pending.remaining_chunks.size} remaining)" }
+            Log.debug { "StandaloneAck for subscription #{pending.subscription_id}: sending next chunk (#{pending.remaining_chunks.size} remaining)" }
 
             # Send next ReportData chunk
             send_im_response(
@@ -1760,22 +1777,22 @@ module Matter
 
             # If there are more chunks, keep waiting
             if !pending.remaining_chunks.empty?
-              Log.info { "Sent ReportData chunk, waiting for ACK/StatusResponse" }
+              Log.debug { "Sent ReportData chunk, waiting for ACK/StatusResponse (subscription #{pending.subscription_id})" }
             else
               # Last chunk sent, wait for StatusResponse to send SubscribeResponse
-              Log.info { "Sent final ReportData chunk, waiting for StatusResponse to complete subscription" }
+              Log.debug { "Sent final ReportData chunk, waiting for StatusResponse to complete subscription (subscription #{pending.subscription_id})" }
             end
           elsif pending.remaining_chunks.empty?
             # All chunks were sent, this ACK might be for the final chunk
             # Now we need to send SubscribeResponse
-            Log.info { "StandaloneAck received after final chunk, sending SubscribeResponse for subscription #{pending.subscription_id}" }
+            Log.debug { "StandaloneAck after final chunk: sending SubscribeResponse for subscription #{pending.subscription_id}" }
 
             # Remove from pending
             @pending_subscriptions.delete(exchange_id)
 
             # Encode and send SubscribeResponse
             subscribe_response_tlv = IMHandler.encode_subscribe_response(pending.subscription_id, pending.max_interval)
-            Log.debug { "Encoded SubscribeResponse TLV (#{subscribe_response_tlv.size} bytes)" }
+            Log.trace { "Encoded SubscribeResponse TLV (#{subscribe_response_tlv.size} bytes): #{subscribe_response_tlv.hexstring}" }
 
             send_im_response(
               original_msg: pending.original_msg,
@@ -1797,7 +1814,6 @@ module Matter
             )
             @active_subscriptions[pending.subscription_id] = active_sub
 
-            Log.info { "Sent SubscribeResponse for subscription #{pending.subscription_id}, maxInterval=#{pending.max_interval}s" }
             Log.info { "Subscription #{pending.subscription_id} is now active (watching #{pending.attribute_paths.size} path(s))" }
 
             # Notify device about new subscription for persistence
@@ -1810,7 +1826,7 @@ module Matter
           if !pending_read.remaining_chunks.empty?
             # Send next chunk
             next_chunk, is_last = pending_read.remaining_chunks.shift
-            Log.info { "StandaloneAck received for read response, sending next chunk (#{pending_read.remaining_chunks.size} remaining)" }
+            Log.debug { "StandaloneAck for read response: sending next chunk (#{pending_read.remaining_chunks.size} remaining)" }
 
             # Send next ReportData chunk
             send_im_response(
@@ -1825,69 +1841,47 @@ module Matter
             if pending_read.remaining_chunks.empty?
               # Last chunk sent, remove from pending
               @pending_read_responses.delete(exchange_id)
-              Log.info { "Sent final ReportData chunk for read response" }
+              Log.debug { "Sent final ReportData chunk for read response" }
             else
-              Log.info { "Sent ReportData chunk, waiting for ACK/StatusResponse" }
+              Log.debug { "Sent ReportData chunk, waiting for ACK/StatusResponse (read response)" }
             end
           else
             # All chunks were sent, remove from pending
             @pending_read_responses.delete(exchange_id)
-            Log.info { "StandaloneAck received after final chunk for read response" }
+            Log.debug { "StandaloneAck received after final chunk for read response" }
           end
         end
       end
 
       # Handle StatusReport messages (sent by controllers to indicate errors or status)
       private def handle_status_report(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
-        Log.info { "📨 Received StatusReport" }
-
         begin
           # Parse StatusReport from binary payload (NOT TLV!)
           status_report = Session::Pase::Definitions::StatusReport.from_bytes(msg.payload)
 
-          # Log the status details
-          Log.info { "  General Status: 0x#{status_report.general_status.to_s(16).rjust(4, '0')}" }
-          Log.info { "  Protocol Status: 0x#{status_report.protocol_status.to_s(16).rjust(4, '0')}" }
+          general = status_report.general_status
+          protocol = status_report.protocol_status
 
-          # Interpret common status codes
-          case status_report.general_status
-          when 0
-            Log.info { "  ✅ SUCCESS" }
-          when 1
-            Log.error { "  ❌ FAILURE" }
-          when 2
-            Log.error { "  ❌ BUSY - Device is busy, try again later" }
-          else
-            Log.warn { "  ⚠️  Unknown general status" }
+          if general == 0 && protocol == 0
+            Log.debug { "StatusReport: SUCCESS (peer=#{peer})" }
+            return
           end
 
-          # Log protocol-specific status if non-zero
-          if status_report.protocol_status != 0
-            Log.warn { "  Protocol-specific error code: #{status_report.protocol_status}" }
-          end
+          Log.warn { "StatusReport: general=0x#{general.to_s(16).rjust(4, '0')}, protocol=0x#{protocol.to_s(16).rjust(4, '0')} (peer=#{peer})" }
 
           # If this is an error, provide context-specific help
-          if status_report.general_status != 0
-            # Check if we have a CASE responder active (indicating CASE session establishment)
-            if @case_responder
-              Log.error { "CASE session rejected by controller" }
-              Log.error { "Protocol status 0x#{status_report.protocol_status.to_s(16).rjust(4, '0')} meanings:" }
-              Log.error { "  0x0002 = NO_SHARED_TRUST_ROOTS - Certificate chain verification failed" }
-              Log.error { "This usually means:" }
-              Log.error { "  - Missing ICAC certificate in fabric" }
-              Log.error { "  - NOC not signed by a trusted root" }
-              Log.error { "  - Certificate chain validation failure" }
-            else
-              Log.error { "PASE handshake rejected by controller - commissioning failed" }
-              Log.error { "This usually means:" }
-              Log.error { "  - Incorrect PIN code" }
-              Log.error { "  - SPAKE2+ computation mismatch" }
-              Log.error { "  - Invalid crypto parameters" }
+          return if general == 0
+
+          if @case_responder
+            Log.debug do
+              "StatusReport during CASE: protocol=0x#{protocol.to_s(16).rjust(4, '0')} " \
+              "(e.g. 0x0002 NO_SHARED_TRUST_ROOTS; check ICAC/root trust)"
             end
+          else
+            Log.debug { "StatusReport during PASE: check PIN, SPAKE2+, and crypto parameter compatibility" }
           end
         rescue ex
-          Log.error(exception: ex) { "Failed to parse StatusReport: #{ex.message}" }
-          Log.debug { "  Payload hex: #{msg.payload.hexstring}" }
+          Log.error(exception: ex) { "Failed to parse StatusReport (#{msg.payload.size} bytes): #{msg.payload.hexstring}" }
         end
       end
 
@@ -2040,7 +2034,10 @@ module Matter
 
           Log.info { "Sent CASE Sigma2" }
         rescue ex
-          Log.error(exception: ex) { "Error handling CASE Sigma1: #{ex.message}" }
+          Log.error(exception: ex) do
+            "Error handling CASE Sigma1: peer=#{peer.address}:#{peer.port} session_id=#{msg.packet_header.session_id} " \
+            "msg_id=#{msg.packet_header.message_id} exchange=#{msg.payload_header.exchange_id} payload_hex=#{msg.payload.hexstring}"
+          end
         end
       end
 
@@ -2171,7 +2168,10 @@ module Matter
             begin
               persistence.subscription_established(self, subscription)
             rescue ex
-              Log.error(exception: ex) { "Failed persisting migrated subscription #{sub_id}: #{ex.message}" }
+              Log.error(exception: ex) do
+                "Failed persisting migrated subscription #{sub_id} " \
+                "(old_session_id=#{old_session_id} new_session_id=#{new_session.session_id} peer=#{subscription.peer} paths=#{subscription.attribute_paths.size})"
+              end
             end
           end
         end
@@ -2190,7 +2190,10 @@ module Matter
             begin
               persistence.session_removed(self, session_id)
             rescue ex
-              Log.error(exception: ex) { "Failed removing persisted session #{session_id}: #{ex.message}" }
+              Log.error(exception: ex) do
+                "Failed removing persisted session #{session_id} " \
+                "(fabric_index=#{session.fabric_index.inspect} peer_node_id=#{session.peer_node_id.try(&.id).inspect})"
+              end
             end
           end
           Log.info { "Removed superseded session #{session_id} (fabric=#{session.fabric_index}, peer=#{session.peer_node_id.try(&.id)})" }
@@ -2209,7 +2212,10 @@ module Matter
             begin
               persistence.subscription_removed(self, sub_id)
             rescue ex
-              Log.error(exception: ex) { "Failed removing persisted subscription #{sub_id}: #{ex.message}" }
+              Log.error(exception: ex) do
+                "Failed removing persisted subscription #{sub_id} " \
+                "(session_id=#{session_id})"
+              end
             end
           end
           Log.info { "Removed subscription #{sub_id} (from superseded session #{session_id})" }
@@ -2221,7 +2227,10 @@ module Matter
             begin
               persistence.session_removed(self, session_id)
             rescue ex
-              Log.error(exception: ex) { "Failed removing persisted session #{session_id}: #{ex.message}" }
+              Log.error(exception: ex) do
+                "Failed removing persisted session #{session_id} " \
+                "(fabric_index=#{session.fabric_index.inspect} peer_node_id=#{session.peer_node_id.try(&.id).inspect})"
+              end
             end
           end
           Log.info { "Removed superseded session #{session_id} (fabric=#{session.fabric_index}, peer=#{session.peer_node_id.try(&.id)})" }
@@ -2248,13 +2257,17 @@ module Matter
       # This updates internal state and triggers persistence hooks, then calls
       # `on_subscription_removed` if configured.
       def delete_subscription(subscription_id : UInt32) : Bool
-        removed = !@active_subscriptions.delete(subscription_id).nil?
-        if removed
+        removed_subscription = @active_subscriptions.delete(subscription_id)
+        removed = !removed_subscription.nil?
+        if sub = removed_subscription
           if persistence = @persistence
             begin
               persistence.subscription_removed(self, subscription_id)
             rescue ex
-              Log.error(exception: ex) { "Failed removing persisted subscription #{subscription_id}: #{ex.message}" }
+              Log.error(exception: ex) do
+                "Failed removing persisted subscription #{subscription_id} " \
+                "(session_id=#{sub.session.session_id} peer=#{sub.peer} paths=#{sub.attribute_paths.size})"
+              end
             end
           end
           if callback = @on_subscription_removed
@@ -2409,7 +2422,10 @@ module Matter
             begin
               persistence.subscription_removed(self, sub.subscription_id)
             rescue ex
-              Log.error(exception: ex) { "Failed removing persisted subscription #{sub.subscription_id}: #{ex.message}" }
+              Log.error(exception: ex) do
+                "Failed removing persisted subscription #{sub.subscription_id} " \
+                "(session_id=#{session_id} peer=#{sub.peer})"
+              end
             end
           end
           if callback = @on_subscription_removed
@@ -2459,7 +2475,10 @@ module Matter
             end
           end
         rescue ex
-          Log.error(exception: ex) { "Subscription cleanup fiber crashed: #{ex.message}" }
+          Log.error(exception: ex) do
+            "Subscription cleanup fiber crashed " \
+            "(active_subscriptions=#{@active_subscriptions.size} sessions=#{@sessions.size} pending_cleanups=#{@pending_session_cleanups.size})"
+          end
           @subscription_cleanup_fiber_running = false
         end
       end
@@ -2475,7 +2494,10 @@ module Matter
             begin
               persistence.subscription_removed(self, old_subscription_id)
             rescue ex
-              Log.error(exception: ex) { "Failed removing persisted subscription #{old_subscription_id}: #{ex.message}" }
+              Log.error(exception: ex) do
+                "Failed removing persisted subscription #{old_subscription_id} " \
+                "(renew_to=#{new_subscription.subscription_id} session_id=#{new_subscription.session.session_id} peer=#{new_subscription.peer})"
+              end
             end
           end
           if callback = @on_subscription_removed
@@ -2602,15 +2624,15 @@ module Matter
             return
           end
 
-          Log.info { "✅ CASE Sigma3 verified successfully" }
+          Log.debug { "CASE Sigma3 verified successfully" }
 
           # Derive session keys from the shared secret
           # Pass sigma3_bytes for session key salt calculation
           keys = responder.derive_session_keys(sigma3_bytes)
 
-          Log.debug { "  Derived encryption key (R2I): #{keys[:encryption].hexstring}" }
-          Log.debug { "  Derived decryption key (I2R): #{keys[:decryption].hexstring}" }
-          Log.debug { "  Derived attestation challenge: #{keys[:attestation_challenge].hexstring}" }
+          Log.trace { "  Derived encryption key (R2I): #{keys[:encryption].hexstring}" }
+          Log.trace { "  Derived decryption key (I2R): #{keys[:decryption].hexstring}" }
+          Log.trace { "  Derived attestation challenge: #{keys[:attestation_challenge].hexstring}" }
 
           # Create secure session context using stored session IDs from Sigma1/Sigma2 exchange
           session_id = @case_responder_session_id
@@ -2629,15 +2651,15 @@ module Matter
             Log.error { "No CASE fabric available - Sigma1 must complete first" }
             return
           end
-          Log.info { "Using CASE fabric from Sigma1: #{fabric.fabric_id.to_s(16)} (index=#{fabric.fabric_index})" }
+          Log.debug { "Using CASE fabric from Sigma1: fabric_id=0x#{fabric.fabric_id.to_s(16)}, index=#{fabric.fabric_index}" }
 
           # Get the peer's node ID extracted from their NOC in Sigma3
           # This is critical for proper nonce construction in encrypted messages
           peer_node_id_value = responder.peer_node_id
           if peer_node_id_value
-            Log.info { "Using peer node ID from Sigma3: #{peer_node_id_value}" }
+            Log.debug { "Using peer node ID from Sigma3: #{peer_node_id_value}" }
           else
-            Log.warn { "No peer node ID extracted from Sigma3 - falling back to nil" }
+            Log.warn { "No peer node ID extracted from Sigma3; falling back to nil" }
           end
 
           secure_context = Session::SecureContext.new(
@@ -2660,8 +2682,7 @@ module Matter
           # Store session for future encrypted communication
           @sessions[session_id] = secure_context
 
-          Log.info { "✅ CASE secure session established! Session ID: #{session_id}" }
-          Log.info { "   Operational messages can now be encrypted/decrypted" }
+          Log.info { "CASE secure session established (session_id=#{session_id}, peer_session_id=#{peer_session_id}, fabric_index=#{fabric.fabric_index})" }
 
           # Clean up any superseded sessions (same fabric, same peer, older)
           # This is done AFTER storing the new session so the cleanup logic
@@ -2673,7 +2694,10 @@ module Matter
             begin
               persistence.session_established(self, secure_context)
             rescue ex
-              Log.error(exception: ex) { "Failed persisting session #{secure_context.session_id}: #{ex.message}" }
+              Log.error(exception: ex) do
+                "Failed persisting session #{secure_context.session_id} " \
+                "(fabric_index=#{secure_context.fabric_index.inspect} peer_node_id=#{secure_context.peer_node_id.try(&.id).inspect})"
+              end
             end
           end
           if callback = @on_session_established
@@ -2684,7 +2708,10 @@ module Matter
           # Like PASE, this is sent unsecured as part of the CASE handshake
           send_status_report_success(msg, peer)
         rescue ex
-          Log.error(exception: ex) { "Error handling CASE Sigma3: #{ex.message}" }
+          Log.error(exception: ex) do
+            "Error handling CASE Sigma3: peer=#{peer.address}:#{peer.port} session_id=#{msg.packet_header.session_id} " \
+            "msg_id=#{msg.packet_header.message_id} exchange=#{msg.payload_header.exchange_id} payload_hex=#{msg.payload.hexstring}"
+          end
         end
       end
     end

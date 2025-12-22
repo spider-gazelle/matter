@@ -261,11 +261,12 @@ module Matter
       # Decode ACL list from TLV array
       private def decode_acl_list(value : Bytes) : InteractionModel::Status
         begin
-          Log.debug { "decode_acl_list: received #{value.size} bytes: #{value.hexstring}" }
+          Log.debug { "decode_acl_list: received #{value.size} bytes" }
+          Log.trace { "decode_acl_list: value_hex=#{value.hexstring}" }
 
           parsed = TLV::Any.from_slice(value)
 
-          Log.debug { "decode_acl_list: parsed TLV: #{parsed.inspect}" }
+          Log.trace { "decode_acl_list: parsed TLV: #{parsed.inspect}" }
 
           # Extract the array from the parsed data
           # The TLV structure can vary - handle multiple cases
@@ -276,7 +277,8 @@ module Matter
           new_acl = [] of AccessControlEntry
 
           acl_array.each_with_index do |entry_value, idx|
-            Log.debug { "decode_acl_list: parsing entry #{idx}: #{entry_value.inspect}" }
+            Log.debug { "decode_acl_list: parsing entry #{idx}" }
+            Log.trace { "decode_acl_list: entry #{idx} TLV: #{entry_value.inspect}" }
 
             # Serialize entry back to bytes and deserialize with from_slice
             entry_bytes = entry_value.to_slice
@@ -286,10 +288,10 @@ module Matter
 
           @acl = new_acl
           increment_version
-          Log.info { "decode_acl_list: successfully wrote #{new_acl.size} ACL entries" }
+          Log.debug { "decode_acl_list: wrote #{new_acl.size} ACL entries" }
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         rescue ex
-          Log.error(exception: ex) { "Failed to decode ACL list" }
+          Log.error(exception: ex) { "Failed to decode ACL list (bytes=#{value.hexstring})" }
           InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
         end
       end
@@ -339,6 +341,9 @@ module Matter
       # Decode Extension list from TLV array
       private def decode_extension_list(value : Bytes) : InteractionModel::Status
         begin
+          Log.debug { "decode_extension_list: received #{value.size} bytes" }
+          Log.trace { "decode_extension_list: value_hex=#{value.hexstring}" }
+
           parsed = TLV::Any.from_slice(value)
 
           # Extract the array from the parsed data
@@ -360,6 +365,7 @@ module Matter
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         rescue ex
+          Log.error(exception: ex) { "Failed to decode extension list (bytes=#{value.hexstring})" }
           InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
         end
       end

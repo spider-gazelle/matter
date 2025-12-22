@@ -91,22 +91,21 @@ module Matter
         IO::ByteFormat::LittleEndian.encode(message_counter, aad_io)
         aad = aad_io.to_slice
 
-        # Debug: Show encryption details
-        Log.debug { "🔐 Encryption details:" }
-        Log.debug { "   source_node_id: #{source_node_id}" }
-        Log.debug { "   message_counter: #{message_counter}" }
-        Log.debug { "   session_id: #{packet_header.session_id}" }
-        Log.debug { "   security_flags: 0x#{security_flags.to_s(16).rjust(2, '0')}" }
-        Log.debug { "   nonce: #{nonce.hexstring}" }
-        Log.debug { "   aad: #{aad.hexstring}" }
-        Log.debug { "   encryption_key: #{context.encryption_key.hexstring}" }
-        Log.debug { "   payload size: #{payload.size} bytes" }
+        Log.trace do
+          "Encrypt: source_node_id=#{source_node_id} " \
+          "message_counter=#{message_counter} session_id=#{packet_header.session_id} " \
+          "security_flags=0x#{security_flags.to_s(16).rjust(2, '0')} " \
+          "nonce=#{nonce.hexstring} aad=#{aad.hexstring} " \
+          "key=#{context.encryption_key.hexstring} payload_bytes=#{payload.size}"
+        end
 
         # Encrypt using AES-128-CCM
         encrypted = crypto.encrypt(context.encryption_key, payload, nonce, aad)
 
-        Log.debug { "   encrypted size: #{encrypted.size} bytes (payload + 16-byte MIC)" }
-        Log.debug { "   encrypted (first 32 bytes): #{encrypted[0, [32, encrypted.size].min].hexstring}" }
+        Log.trace do
+          "Encrypt: encrypted_bytes=#{encrypted.size} (payload + #{MIC_LENGTH}-byte MIC) " \
+          "encrypted_first32=#{encrypted[0, [32, encrypted.size].min].hexstring}"
+        end
 
         encrypted
       end
@@ -153,11 +152,10 @@ module Matter
                    "node_id=0 (PASE UNSPECIFIED)"
                  end
 
-        puts "🔐 Decryption details:"
-        puts "   peer_node_id: #{peer_node_id} (from #{source})"
-        puts "   message_counter: #{message_counter}"
-        puts "   session_id: #{packet_header.session_id}"
-        puts "   peer_session_id: #{context.peer_session_id}"
+        Log.trace do
+          "Decrypt: peer_node_id=#{peer_node_id} (from #{source}) " \
+          "message_counter=#{message_counter} session_id=#{packet_header.session_id} peer_session_id=#{context.peer_session_id}"
+        end
 
         # Use the raw security_flags byte from the packet header (byte 3)
         # This is CRITICAL for AES-CCM nonce construction!
@@ -165,8 +163,7 @@ module Matter
         security_flags = packet_header.security_flags
 
         nonce = build_nonce(peer_node_id, message_counter, security_flags)
-        puts "   security_flags: 0x#{security_flags.to_s(16).rjust(2, '0')}"
-        puts "   nonce: #{nonce.hexstring}"
+        Log.trace { "Decrypt: security_flags=0x#{security_flags.to_s(16).rjust(2, '0')} nonce=#{nonce.hexstring}" }
 
         # Build AAD from packet header
         # AAD = flags (1 byte) || session_id (2 bytes LE) || security_flags (1 byte) || message_counter (4 bytes LE)
@@ -182,10 +179,11 @@ module Matter
         # Bytes 4-7: message_counter (LE)
         IO::ByteFormat::LittleEndian.encode(message_counter, aad_io)
         aad = aad_io.to_slice
-        puts "   aad (full packet header): #{aad.hexstring}"
-        puts "   encrypted_payload size: #{encrypted_payload.size} bytes"
-        puts "   encrypted_payload (first 32 bytes): #{encrypted_payload[0, [32, encrypted_payload.size].min].hexstring}"
-        puts "   decryption_key: #{context.decryption_key.hexstring}"
+        Log.trace do
+          "Decrypt: aad=#{aad.hexstring} encrypted_payload_bytes=#{encrypted_payload.size} " \
+          "encrypted_payload_first32=#{encrypted_payload[0, [32, encrypted_payload.size].min].hexstring} " \
+          "key=#{context.decryption_key.hexstring}"
+        end
 
         # Decrypt using AES-128-CCM
         decrypted = crypto.decrypt(context.decryption_key, encrypted_payload, nonce, aad)

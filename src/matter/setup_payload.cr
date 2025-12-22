@@ -68,6 +68,42 @@ module Matter
       end
     end
 
+    # Generate a serial number
+    def self.generate_serial_number : String
+      "CM-#{Random::Secure.rand(100000..999999)}"
+    end
+
+    # Generate a random discriminator (12-bit value, 0-4095)
+    # Each device instance should have a unique discriminator
+    def self.generate_random_discriminator : UInt16
+      Random::Secure.rand(4096).to_u16
+    end
+
+    # Generate a unique ID (UUID-like format)
+    def self.generate_unique_id : String
+      bytes = Random::Secure.random_bytes(16)
+      bytes.hexstring.upcase
+    end
+
+    # Generate a random valid PIN that meets Matter requirements
+    # - Must be 1-99999998
+    # - Cannot be all same digit (11111111, etc.)
+    # - Cannot be 12345678 or 87654321
+    def self.generate_random_pin : UInt32
+      loop do
+        pin = Random::Secure.rand(1_u32..99999998_u32)
+        pin_str = pin.to_s.rjust(8, '0')
+
+        # Check if all digits are the same
+        next if pin_str.chars.uniq.size == 1
+
+        # Check blacklisted PINs
+        next if pin == 12345678 || pin == 87654321
+
+        return pin
+      end
+    end
+
     # Generate a manual pairing code from discriminator and PIN
     #
     # @param discriminator Device discriminator (12-bit value, 0-4095)

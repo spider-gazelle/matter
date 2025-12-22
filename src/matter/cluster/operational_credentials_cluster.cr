@@ -749,13 +749,14 @@ module Matter
         # Parse NOC to extract fabric_id and node_id
         begin
           Log.debug { "Received NOC certificate: #{request.noc_value.size} bytes" }
-          Log.debug { "NOC hex (first 100): #{request.noc_value[0, [100, request.noc_value.size].min].hexstring}" }
+          Log.trace { "NOC hex (first 100): #{request.noc_value[0, [100, request.noc_value.size].min].hexstring}" }
           fabric_id = extract_fabric_id_from_noc(request.noc_value)
           node_id = extract_node_id_from_noc(request.noc_value)
         rescue ex
-          Log.error { "Failed to parse NOC: #{ex.message}" }
-          Log.error { "  NOC size: #{request.noc_value.size}" }
-          Log.error { "  NOC hex: #{request.noc_value[0, [200, request.noc_value.size].min].hexstring}" }
+          Log.error(exception: ex) do
+            "Failed to parse NOC (#{request.noc_value.size} bytes): " \
+            "#{request.noc_value[0, [200, request.noc_value.size].min].hexstring}"
+          end
           return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failed to parse NOC: #{ex.message}")
         end
 
@@ -771,7 +772,8 @@ module Matter
         Log.debug { "Extracted root public key: #{root_public_key.size} bytes, first byte: 0x#{root_public_key[0].to_s(16)}" }
 
         # Add fabric to table
-        Log.info { "AddNOC: IPK received: #{request.ipk_value.hexstring} (#{request.ipk_value.size} bytes)" }
+        Log.debug { "AddNOC: IPK received (#{request.ipk_value.size} bytes)" }
+        Log.trace { "AddNOC: IPK hex: #{request.ipk_value.hexstring}" }
         Log.info { "AddNOC: fabric_id=0x#{fabric_id.to_s(16)}, node_id=0x#{node_id.to_s(16)}" }
 
         # Normalize ICAC: treat empty slice as nil (some controllers send empty ICAC instead of omitting)
@@ -779,8 +781,8 @@ module Matter
         icac_value = nil if icac_value && icac_value.size == 0
 
         if icac = icac_value
-          Log.info { "AddNOC: ICAC present: #{icac.size} bytes" }
-          Log.debug { "AddNOC: ICAC hex (first 100): #{icac[0, [100, icac.size].min].hexstring}" }
+          Log.debug { "AddNOC: ICAC present (#{icac.size} bytes)" }
+          Log.trace { "AddNOC: ICAC hex (first 100): #{icac[0, [100, icac.size].min].hexstring}" }
         else
           Log.warn { "AddNOC: NO ICAC provided - CASE may fail if controller expects 3-tier PKI" }
         end
@@ -829,17 +831,17 @@ module Matter
 
         # Notify application that fabric was successfully added
         # This allows the application to save state and trigger operational advertisement
-        Log.info { "AddNOC: About to call on_fabric_added callback (callback set: #{!@on_fabric_added.nil?})" }
+        Log.debug { "AddNOC: About to call on_fabric_added callback (callback set: #{!@on_fabric_added.nil?})" }
         if callback = @on_fabric_added
-          Log.info { "AddNOC: Calling on_fabric_added callback for fabric #{fabric.fabric_index}" }
+          Log.debug { "AddNOC: Calling on_fabric_added callback for fabric #{fabric.fabric_index}" }
           begin
             callback.call(fabric)
-            Log.info { "AddNOC: on_fabric_added callback completed successfully" }
+            Log.debug { "AddNOC: on_fabric_added callback completed successfully" }
           rescue ex
-            Log.error { "AddNOC: on_fabric_added callback raised exception: #{ex.message}" }
+            Log.error(exception: ex) { "AddNOC: on_fabric_added callback raised (fabric_index=#{fabric.fabric_index} fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{fabric.node_id.to_s(16)})" }
           end
         else
-          Log.warn { "AddNOC: No on_fabric_added callback registered!" }
+          Log.debug { "AddNOC: No on_fabric_added callback registered" }
         end
 
         encode_noc_response(NodeOperationalCertStatus::Ok, fabric.fabric_index)
@@ -944,14 +946,15 @@ module Matter
       end
 
       private def handle_remove_fabric(fields : Bytes) : Bytes
-        Log.debug { "RemoveFabric: received #{fields.size} bytes: #{fields.hexstring}" }
+        Log.debug { "RemoveFabric: received #{fields.size} bytes" }
+        Log.trace { "RemoveFabric: fields hex: #{fields.hexstring}" }
 
         # Parse TLV manually to extract fabric_index
         # Expected format: 15 24 00 XX 18 (structure with tag 0 = fabric_index)
         fabric_idx : UInt8? = nil
         begin
           parsed = TLV::Any.from_slice(fields)
-          Log.debug { "RemoveFabric: TLV parsed: #{parsed.inspect}" }
+          Log.trace { "RemoveFabric: TLV parsed: #{parsed.inspect}" }
 
           # Try to get fabric_index from tag 0
           if val = parsed[0_u8]?
@@ -963,7 +966,7 @@ module Matter
                          end
           end
         rescue ex
-          Log.error { "RemoveFabric: TLV parsing error: #{ex.message}" }
+          Log.error(exception: ex) { "RemoveFabric: TLV parsing error (fields_hex=#{fields.hexstring})" }
         end
 
         Log.debug { "RemoveFabric: parsed fabric_index=#{fabric_idx.inspect}" }
@@ -1009,17 +1012,17 @@ module Matter
 
           # Notify application that fabric was removed
           # This allows the application to update persistent storage and stop operational advertisement
-          Log.info { "RemoveFabric: About to call on_fabric_removed callback (callback set: #{!@on_fabric_removed.nil?})" }
+          Log.debug { "RemoveFabric: About to call on_fabric_removed callback (callback set: #{!@on_fabric_removed.nil?})" }
           if callback = @on_fabric_removed
-            Log.info { "RemoveFabric: Calling on_fabric_removed callback for fabric #{fabric_idx}" }
+            Log.debug { "RemoveFabric: Calling on_fabric_removed callback for fabric #{fabric_idx}" }
             begin
               callback.call(fabric_idx)
-              Log.info { "RemoveFabric: on_fabric_removed callback completed successfully" }
+              Log.debug { "RemoveFabric: on_fabric_removed callback completed successfully" }
             rescue ex
-              Log.error { "RemoveFabric: on_fabric_removed callback raised exception: #{ex.message}" }
+              Log.error(exception: ex) { "RemoveFabric: on_fabric_removed callback raised (fabric_index=#{fabric_idx})" }
             end
           else
-            Log.warn { "RemoveFabric: No on_fabric_removed callback registered!" }
+            Log.debug { "RemoveFabric: No on_fabric_removed callback registered" }
           end
 
           increment_version
@@ -1035,7 +1038,7 @@ module Matter
         request = Definitions::OperationalCredentials::AddTrustedRootCertificateRequest.from_slice(fields)
 
         Log.debug { "Received AddTrustedRootCertificate: #{request.root_certificate.size} bytes" }
-        Log.debug { "Root cert hex (first 100): #{request.root_certificate[0, [100, request.root_certificate.size].min].hexstring}" }
+        Log.trace { "Root cert hex (first 100): #{request.root_certificate[0, [100, request.root_certificate.size].min].hexstring}" }
 
         # Validate failsafe is armed
         # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
@@ -1504,8 +1507,8 @@ module Matter
           raise "Attestation key not configured"
         end
 
-        Log.debug { "Signing attestation with key:" }
-        Log.debug { "  Public key (full 65 bytes): #{key.public_key.hexstring}" }
+        Log.debug { "Signing attestation: session_id=#{session_id || "none"} key_type=#{key.type}" }
+        Log.trace { "Attestation public key (65 bytes): #{key.public_key.hexstring}" }
 
         # Get attestation challenge from session if available
         # Per Matter spec: signature is over (attestation_elements || attestation_challenge)
@@ -1515,7 +1518,11 @@ module Matter
                                   nil
                                 end
 
-        Log.debug { "Attestation challenge: #{attestation_challenge ? attestation_challenge.hexstring : "nil"}" }
+        if attestation_challenge
+          Log.trace { "Attestation challenge: #{attestation_challenge.hexstring}" }
+        else
+          Log.trace { "Attestation challenge: nil" }
+        end
 
         # Concatenate data with attestation challenge (like matter.js does)
         data_to_sign = if attestation_challenge
@@ -1527,16 +1534,16 @@ module Matter
                          data
                        end
 
-        Log.debug { "Data to sign: #{data_to_sign.size} bytes" }
-        Log.debug { "  First 32 bytes: #{data_to_sign[0, [32, data_to_sign.size].min].hexstring}" }
+        Log.debug { "Attestation data_to_sign: #{data_to_sign.size} bytes" }
+        Log.trace { "Attestation data_to_sign first32: #{data_to_sign[0, [32, data_to_sign.size].min].hexstring}" }
         if data_to_sign.size > 32
-          Log.debug { "  Last 32 bytes: #{data_to_sign[-32, 32].hexstring}" }
+          Log.trace { "Attestation data_to_sign last32: #{data_to_sign[-32, 32].hexstring}" }
         end
 
         # Sign with ECDSA in IEEE P1363 format (r||s, 64 bytes for P-256)
         signature = Crypto.sign_ecdsa(key, data_to_sign, "ieee-p1363")
-        Log.debug { "Generated signature: #{signature.size} bytes" }
-        Log.debug { "  Signature: #{signature.hexstring}" }
+        Log.debug { "Attestation signature generated: #{signature.size} bytes" }
+        Log.trace { "Attestation signature hex: #{signature.hexstring}" }
         signature
       end
 
@@ -1544,14 +1551,15 @@ module Matter
         # Create a DER-encoded CSR with the public key
         csr = build_csr_der(key)
 
-        Log.debug { "=== CSR Generated ===" }
-        Log.debug { "CSR length: #{csr.size} bytes" }
-        Log.debug { "CSR hex: #{csr.hexstring}" }
-        Log.debug { "Public key in CSR: #{key.public_key.hexstring}" }
+        Log.debug { "CSR generated: bytes=#{csr.size} csr_nonce_bytes=#{nonce.size}" }
+        Log.trace { "CSR hex: #{csr.hexstring}" }
+        Log.trace { "CSR public key (65 bytes): #{key.public_key.hexstring}" }
 
-        # Verify CSR with OpenSSL for debugging
-        File.write("/tmp/device_csr.der", csr)
-        Log.debug { "CSR saved to /tmp/device_csr.der for inspection" }
+        if ENV["MATTER_DUMP_CSR"]? == "1"
+          path = ENV["MATTER_DUMP_CSR_PATH"]? || "/tmp/device_csr.der"
+          File.write(path, csr)
+          Log.trace { "CSR saved to #{path} (MATTER_DUMP_CSR=1)" }
+        end
 
         elements = CSRElements.new(csr: csr, csr_nonce: nonce)
         elements.to_slice
@@ -1712,10 +1720,10 @@ module Matter
           end
 
           Log.debug { "Extracted public key from TLV certificate: #{public_key_bytes.size} bytes" }
-          Log.debug { "Public key hex: #{public_key_bytes.hexstring}" }
+          Log.trace { "Public key hex: #{public_key_bytes.hexstring}" }
           public_key_bytes
         rescue ex
-          Log.error { "Failed to extract public key from TLV certificate: #{ex.message}" }
+          Log.error(exception: ex) { "Failed to extract public key from TLV certificate (cert_hex=#{cert_tlv.hexstring})" }
           raise "Failed to extract public key from TLV certificate: #{ex.message}"
         end
       end
@@ -1746,7 +1754,7 @@ module Matter
             raise "Certificate does not contain an EC public key"
           end
         rescue ex
-          Log.error { "Failed to extract public key from DER certificate: #{ex.message}" }
+          Log.error(exception: ex) { "Failed to extract public key from DER certificate (cert_hex=#{cert_der.hexstring})" }
           raise "Failed to extract public key from DER certificate: #{ex.message}"
         end
       end

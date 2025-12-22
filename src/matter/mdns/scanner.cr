@@ -1,4 +1,5 @@
 require "dns"
+require "log"
 require "./service_type"
 require "./record_builder"
 
@@ -85,6 +86,7 @@ module Matter
     # - Processing unsolicited announcements
     # - Sending queries for specific services
     class Scanner
+      Log       = ::Log.for("matter.mdns.scanner")
       MDNS_PORT = 5353
       MDNS_IPV4 = Socket::IPAddress.new("224.0.0.251", MDNS_PORT)
       MDNS_IPV6 = Socket::IPAddress.new("ff02::fb", MDNS_PORT)
@@ -117,7 +119,7 @@ module Matter
         begin
           @socket.join_group(MDNS_IPV4)
         rescue ex
-          puts "Warning: Could not join IPv4 multicast group: #{ex.message}"
+          Log.warn(exception: ex) { "Could not join IPv4 multicast group" }
         end
 
         @devices = Hash(String, DiscoveredDevice).new
@@ -202,25 +204,29 @@ module Matter
         begin
           @socket.send(data, MDNS_IPV4)
         rescue ex
-          puts "Error sending query: #{ex.message}"
+          Log.error { "Error sending mDNS query: #{ex.message} (service=#{service})" }
         end
       end
 
       private def receive_loop : Nil
         buffer = Bytes.new(9000) # Max DNS packet size
+        last_peer : Socket::IPAddress? = nil
+        last_data : Bytes? = nil
 
         while @running
           begin
             bytes_read, peer_address = @socket.receive(buffer)
             next if bytes_read == 0
 
-            data = buffer[0, bytes_read]
-            packet = DNS::Packet.from_slice(data)
+            last_peer = peer_address
+            last_data = buffer[0, bytes_read]
+            packet = DNS::Packet.from_slice(last_data)
             process_mdns_packet(packet, peer_address)
           rescue IO::TimeoutError
             # Normal - continue
           rescue ex : Exception
-            puts "Error receiving mDNS packet: #{ex.message}"
+            peer = last_peer ? last_peer.to_s : "unknown"
+            Log.error(exception: ex) { "Error receiving mDNS packet (peer=#{peer} data_hex=#{last_data.try(&.hexstring) || "nil"})" }
           end
         end
       end

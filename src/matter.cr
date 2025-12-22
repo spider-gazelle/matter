@@ -7,7 +7,10 @@ require "secure-remote-password"
 require "named_information"
 require "verhoeff"
 
-require "./matter/**"
-
 module Matter
+  {% begin %}
+    VERSION = {{ `shards version "#{__DIR__}"`.chomp.stringify.downcase }}
+  {% end %}
 end
+
+require "./matter/**"

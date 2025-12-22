@@ -51,7 +51,7 @@ module Matter
 
           sock
         rescue ex
-          Log.warn(exception: ex) { "Failed to create IPv4 socket: #{ex.message}" }
+          Log.warn(exception: ex) { "Failed to create IPv4 socket" }
           nil
         end
 
@@ -68,7 +68,7 @@ module Matter
 
           sock
         rescue ex
-          Log.warn(exception: ex) { "Failed to create IPv6 socket: #{ex.message}" }
+          Log.warn(exception: ex) { "Failed to create IPv6 socket" }
           nil
         end
 
@@ -89,13 +89,13 @@ module Matter
         if sock4 = @socket_ipv4
           begin
             sock4.join_group(MDNS_IPV4)
-            Log.info { "Joined IPv4 mDNS multicast group 224.0.0.251" }
+            Log.debug { "Joined IPv4 mDNS multicast group 224.0.0.251" }
 
             spawn do
               receive_loop_ipv4(sock4)
             end
           rescue ex
-            Log.warn(exception: ex) { "Could not join IPv4 multicast group: #{ex.message}" }
+            Log.warn(exception: ex) { "Could not join IPv4 multicast group" }
           end
         end
 
@@ -103,13 +103,13 @@ module Matter
         if sock6 = @socket_ipv6
           begin
             sock6.join_group(MDNS_IPV6)
-            Log.info { "Joined IPv6 mDNS multicast group ff02::fb" }
+            Log.debug { "Joined IPv6 mDNS multicast group ff02::fb" }
 
             spawn do
               receive_loop_ipv6(sock6)
             end
           rescue ex
-            Log.warn(exception: ex) { "Could not join IPv6 multicast group: #{ex.message}" }
+            Log.warn(exception: ex) { "Could not join IPv6 multicast group" }
           end
         end
 
@@ -129,7 +129,7 @@ module Matter
             sock4.leave_group(MDNS_IPV4)
             sock4.close unless sock4.closed?
           rescue ex
-            Log.warn(exception: ex) { "Error stopping IPv4: #{ex.message}" }
+            Log.warn(exception: ex) { "Error stopping IPv4" }
           end
         end
 
@@ -139,7 +139,7 @@ module Matter
             sock6.leave_group(MDNS_IPV6)
             sock6.close unless sock6.closed?
           rescue ex
-            Log.warn(exception: ex) { "Error stopping IPv6: #{ex.message}" }
+            Log.warn(exception: ex) { "Error stopping IPv6" }
           end
         end
       end
@@ -156,7 +156,7 @@ module Matter
           reannounce_all_services if @running
         end
       rescue ex
-        Log.error(exception: ex) { "Error in periodic announcement loop: #{ex.message}" }
+        Log.error(exception: ex) { "Error in periodic announcement loop (running=#{@running} advertised_services=#{@advertised_services.size})" }
       end
 
       # Re-announce all currently advertised services
@@ -192,7 +192,7 @@ module Matter
 
             send_announcement(records)
           rescue ex
-            Log.warn(exception: ex) { "Failed to re-announce service #{instance}: #{ex.message}" }
+            Log.warn(exception: ex) { "Failed to re-announce service #{instance}" }
           end
         end
       end
@@ -420,9 +420,9 @@ module Matter
         if sock4 = @socket_ipv4
           begin
             bytes_sent = sock4.send(data, MDNS_IPV4)
-            Log.debug { "Sent #{bytes_sent} bytes to IPv4 multicast 224.0.0.251:5353" }
+            Log.trace { "Sent #{bytes_sent} bytes to IPv4 multicast 224.0.0.251:5353" }
           rescue ex
-            Log.error(exception: ex) { "Error sending IPv4 multicast: #{ex.message}" }
+            Log.error { "Error sending IPv4 multicast (#{ex.message})" }
           end
         end
 
@@ -430,9 +430,9 @@ module Matter
         if sock6 = @socket_ipv6
           begin
             bytes_sent = sock6.send(data, MDNS_IPV6)
-            Log.debug { "Sent #{bytes_sent} bytes to IPv6 multicast ff02::fb:5353" }
+            Log.trace { "Sent #{bytes_sent} bytes to IPv6 multicast ff02::fb:5353" }
           rescue ex
-            Log.error(exception: ex) { "Error sending IPv6 multicast: #{ex.message}" }
+            Log.error { "Error sending IPv6 multicast (#{ex.message})" }
           end
         end
       end
@@ -461,7 +461,7 @@ module Matter
           rescue IO::TimeoutError
             # Normal - continue
           rescue ex : Exception
-            Log.error(exception: ex) { "Error receiving IPv4 mDNS packet: #{ex.message}\npacket data: 0x#{data.try(&.hexstring)}" } if @running
+            Log.error(exception: ex) { "Error receiving IPv4 mDNS packet (data_hex=#{data.try(&.hexstring) || "nil"})" } if @running
           end
         end
       end
@@ -490,7 +490,7 @@ module Matter
           rescue IO::TimeoutError
             # Normal - continue
           rescue ex : Exception
-            Log.error(exception: ex) { "Error receiving IPv6 mDNS packet: #{ex.message}\npacket data: 0x#{data.try(&.hexstring)}" } if @running
+            Log.error(exception: ex) { "Error receiving IPv6 mDNS packet (data_hex=#{data.try(&.hexstring) || "nil"})" } if @running
           end
         end
       end

@@ -1,5 +1,6 @@
 require "./cluster"
 require "tlv"
+require "log"
 
 module Matter
   module Cluster
@@ -12,6 +13,7 @@ module Matter
     #
     # Matter Spec: Application 1.2
     class IdentifyCluster < Base
+      Log        = ::Log.for("matter.cluster.identify")
       CLUSTER_ID = 0x0003_u32
 
       # Attributes (using ATTR_ prefix for consistency)
@@ -130,7 +132,7 @@ module Matter
             increment_version
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           rescue ex
-            Log.error { "IdentifyTime write error: #{ex.message}" }
+            Log.error(exception: ex) { "IdentifyTime write error (bytes=#{value.hexstring})" }
             InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
           end
         else
@@ -168,7 +170,7 @@ module Matter
 
         InteractionModel::Status.new(InteractionModel::StatusCode::Success)
       rescue ex
-        Log.error { "Identify command TLV parsing error: #{ex.message}" }
+        Log.error(exception: ex) { "Identify command TLV parsing error (bytes=#{fields.hexstring})" }
         InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
       end
 
@@ -185,7 +187,7 @@ module Matter
 
         InteractionModel::Status.new(InteractionModel::StatusCode::Success)
       rescue ex
-        Log.error { "TriggerEffect command TLV parsing error: #{ex.message}" }
+        Log.error(exception: ex) { "TriggerEffect command TLV parsing error (bytes=#{fields.hexstring})" }
         InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
       end
 

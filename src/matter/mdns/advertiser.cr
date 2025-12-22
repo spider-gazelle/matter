@@ -28,7 +28,7 @@ module Matter
       MAX_BROADCAST_TIME = 15.minutes
 
       def initialize(@server : Server)
-        Log.info { "Advertiser initialized" }
+        Log.debug { "Advertiser initialized" }
       end
 
       # Convenience constructor that creates server and socket
@@ -135,28 +135,30 @@ module Matter
       # - Continue for up to 15 minutes
       # - Apply ±25% jitter to avoid collisions
       private def run_broadcast_schedule : Nil
+        start_time : Time::Span? = nil
+        interval : Time::Span? = INITIAL_INTERVAL
+        announcement_count = 0
+
         channel = @broadcast_channel
         return unless channel
 
         start_time = Time.monotonic
-        interval = INITIAL_INTERVAL
-        announcement_count = 0
 
         while @broadcasting
           # Check if we've exceeded max broadcast time
-          elapsed = Time.monotonic - start_time
+          elapsed = Time.monotonic - start_time.not_nil!
           if elapsed >= MAX_BROADCAST_TIME
-            Log.info { "Max broadcast time (#{MAX_BROADCAST_TIME.total_minutes.to_i}m) reached, stopping announcements" }
+            Log.debug { "Max broadcast time (#{MAX_BROADCAST_TIME.total_minutes.to_i}m) reached, stopping announcements" }
             break
           end
 
           # Send announcement
           @server.announce
           announcement_count += 1
-          Log.debug { "Sent announcement ##{announcement_count} (interval: #{interval.total_seconds}s)" }
+          Log.debug { "Sent announcement ##{announcement_count} (interval: #{interval.not_nil!.total_seconds}s)" }
 
           # Apply jitter: ±25%
-          jittered_interval = apply_jitter(interval)
+          jittered_interval = apply_jitter(interval.not_nil!)
 
           # Wait for next interval or cancellation
           select
@@ -169,12 +171,16 @@ module Matter
           end
 
           # Double interval for next time (up to max)
-          interval = {interval * 2, MAX_INTERVAL}.min
+          interval = {interval.not_nil! * 2, MAX_INTERVAL}.min
         end
 
-        Log.info { "Broadcast schedule completed: #{announcement_count} announcements in #{(Time.monotonic - start_time).total_minutes.round(1)}m" }
+        Log.debug { "Broadcast schedule completed: #{announcement_count} announcements in #{(Time.monotonic - start_time.not_nil!).total_minutes.round(1)}m" }
       rescue ex
-        Log.error(exception: ex) { "Error in broadcast schedule" }
+        elapsed = start_time ? (Time.monotonic - start_time) : Time::Span.zero
+        interval_seconds = interval.try { |i| i.total_seconds.round(3) }
+        Log.error(exception: ex) do
+          "Error in broadcast schedule (broadcasting=#{@broadcasting} announcements=#{announcement_count} elapsed=#{elapsed.total_seconds.round(3)}s interval=#{interval_seconds}s)"
+        end
       end
 
       # Apply ±25% random jitter to an interval
@@ -188,7 +194,7 @@ module Matter
       def close : Nil
         stop_advertising
         @server.close
-        Log.info { "Advertiser closed" }
+        Log.debug { "Advertiser closed" }
       end
     end
   end
