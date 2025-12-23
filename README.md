@@ -1,5 +1,7 @@
 # Matter
 
+[![CI](https://github.com/spider-gazelle/matter/actions/workflows/ci.yml/badge.svg)](https://github.com/spider-gazelle/matter/actions/workflows/ci.yml)
+
 Matter protocol implemented in pure Crystal Lang.
 
 ## Installation
