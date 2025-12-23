@@ -59,7 +59,7 @@ module Matter::MDNS
           bytes_sent.should eq(5)
         rescue ex : Socket::Error
           {% if flag?(:darwin) %}
-            pending "macOS CI runners often don't have multicast routing (224.0.0.251) enabled: #{ex.message}"
+            pending! "macOS CI runners often don't have multicast routing (224.0.0.251) enabled: #{ex.message}"
           {% else %}
             raise ex
           {% end %}

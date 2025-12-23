@@ -95,34 +95,20 @@ describe "iPhone Message Decryption - Actual Data" do
     # Now attempt actual decryption
     puts "  Attempting AES-CCM decryption..."
 
-    begin
-      decrypted = Matter::Session::SecureMessage.decrypt(
-        context,
-        encrypted_payload,
-        message_counter,
-        packet_header,
-        crypto
-      )
+    decrypted = Matter::Session::SecureMessage.decrypt(
+      context,
+      encrypted_payload,
+      message_counter,
+      packet_header,
+      crypto
+    )
 
-      puts "  ✅ Decryption succeeded!"
-      puts "  Decrypted payload: #{decrypted.hexstring}"
-      puts "  Decrypted size: #{decrypted.size} bytes"
+    puts "  ✅ Decryption succeeded!"
+    puts "  Decrypted payload: #{decrypted.hexstring}"
+    puts "  Decrypted size: #{decrypted.size} bytes"
 
-      # The decrypted payload should be a valid IM message
-      # First byte should be exchange flags
-      decrypted.size.should be > 0
-    rescue ex : Exception
-      puts "  ❌ Decryption failed: #{ex.message}"
-      puts ""
-      puts "  This indicates the issue is NOT with nonce/AAD construction (both verified correct)"
-      puts "  Possible causes:"
-      puts "    1. Key derivation issue (HKDF parameters/info string)"
-      puts "    2. Encrypted payload extraction/corruption"
-      puts "    3. AES-CCM implementation issue"
-      puts ""
-
-      # Don't fail the test yet - we're diagnosing
-      pending "Decryption fails - need to investigate key derivation"
-    end
+    # The decrypted payload should be a valid IM message
+    # First byte should be exchange flags
+    decrypted.size.should be > 0
   end
 end
