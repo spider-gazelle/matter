@@ -3,6 +3,7 @@ require "../interaction_model/paths"
 require "../interaction_model/status_code"
 require "../interaction_model/tlv_messages"
 require "../cluster/cluster"
+require "../cluster/access_control_cluster"
 require "tlv"
 
 module Matter
@@ -10,6 +11,42 @@ module Matter
     # Helper module for Interaction Model message handling
     module IMHandler
       Log = ::Log.for("matter.im")
+
+      private def self.access_control_cluster(clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base)) : Cluster::AccessControlCluster?
+        clusters[{0_u16, Cluster::AccessControlCluster::CLUSTER_ID}]?.as?(Cluster::AccessControlCluster)
+      end
+
+      private def self.authorized?(
+        clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
+        required : Cluster::Definitions::AccessControl::EntryPrivilege,
+        endpoint_id : UInt16,
+        cluster_id : UInt32,
+        is_case_session : Bool,
+        fabric_index : UInt8?,
+        peer_node_id : UInt64?,
+      ) : Bool
+        return true unless is_case_session
+        return false unless fabric_index && peer_node_id
+
+        acl = access_control_cluster(clusters)
+        return true unless acl
+
+        # Recovery path: if a fabric has no ACL entries (e.g., legacy devices that
+        # didn't persist ACLs), allow AccessControl reads/writes so the fabric can
+        # re-establish its ACL and regain access.
+        if acl.get_acl_for_fabric(fabric_index).empty?
+          return true if cluster_id == Cluster::AccessControlCluster::CLUSTER_ID
+        end
+
+        acl.check_access(
+          subject: peer_node_id,
+          fabric_index: fabric_index,
+          privilege: required,
+          cluster: cluster_id,
+          endpoint: endpoint_id,
+          auth_mode: Cluster::Definitions::AccessControl::EntryAuthMode::Case
+        )
+      end
 
       # IM message types
       MSG_STATUS_RESPONSE    = 0x01_u8
@@ -49,6 +86,8 @@ module Matter
         attribute_requests : Array(InteractionModel::AttributePath),
         clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
         fabric_index : UInt8? = nil,
+        is_case_session : Bool = false,
+        peer_node_id : UInt64? = nil,
       ) : InteractionModel::ReadResponse
         attribute_reports = [] of InteractionModel::AttributeData
         attribute_status = [] of InteractionModel::AttributeStatus
@@ -106,6 +145,22 @@ module Matter
               cluster = clusters[{endpoint_id, cluster_id}]
               next unless cluster
 
+              required = cluster.attributes.find { |a| a.id.id == attribute_id }.try(&.access) || Cluster::Definitions::AccessControl::EntryPrivilege::View
+              unless authorized?(clusters, required, endpoint_id, cluster_id, is_case_session, fabric_index, peer_node_id)
+                concrete_path = InteractionModel::AttributePath.new(
+                  endpoint: endpoint_id,
+                  cluster: cluster_id,
+                  attribute: attribute_id
+                )
+                attribute_status << InteractionModel::AttributeStatus.new(
+                  path: concrete_path,
+                  status: InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAccess)
+                )
+                next
+              end
+
+              cluster.request_fabric_index = fabric_index
+              cluster.request_is_case_session = !fabric_index.nil?
               result = cluster.read_attribute(attribute_id, fabric_index)
               concrete_path = InteractionModel::AttributePath.new(
                 endpoint: endpoint_id,
@@ -148,7 +203,18 @@ module Matter
             next
           end
 
+          required = cluster.attributes.find { |a| a.id.id == attribute_id }.try(&.access) || Cluster::Definitions::AccessControl::EntryPrivilege::View
+          unless authorized?(clusters, required, endpoint_id, cluster_id, is_case_session, fabric_index, peer_node_id)
+            attribute_status << InteractionModel::AttributeStatus.new(
+              path: path,
+              status: InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAccess)
+            )
+            next
+          end
+
           # Read attribute from cluster
+          cluster.request_fabric_index = fabric_index
+          cluster.request_is_case_session = !fabric_index.nil?
           result = cluster.read_attribute(attribute_id, fabric_index)
 
           if result.is_a?(InteractionModel::Status)
@@ -373,6 +439,10 @@ module Matter
       def self.write_attributes(
         write_requests : Array(InteractionModel::AttributeWriteRequest),
         clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
+        session_id : UInt16? = nil,
+        is_case_session : Bool = false,
+        fabric_index : UInt8? = nil,
+        peer_node_id : UInt64? = nil,
       ) : InteractionModel::WriteResponse
         write_responses = [] of InteractionModel::AttributeStatus
 
@@ -412,6 +482,21 @@ module Matter
             )
             next
           end
+
+          if metadata = cluster.attributes.find { |a| a.id.id == attribute_id }
+            unless authorized?(clusters, metadata.access, endpoint_id, cluster_id, is_case_session, fabric_index, peer_node_id)
+              write_responses << InteractionModel::AttributeStatus.new(
+                path: path,
+                status: InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAccess)
+              )
+              next
+            end
+          end
+
+          cluster.request_session_id = session_id.try(&.to_u64)
+          cluster.request_is_case_session = is_case_session
+          cluster.request_fabric_index = fabric_index
+          cluster.request_peer_node_id = peer_node_id
 
           # Write attribute to cluster
           status = cluster.write_attribute(attribute_id, request.value)
@@ -826,6 +911,7 @@ module Matter
         session_id : UInt64? = nil,
         is_case_session : Bool = false,
         fabric_index : UInt8? = nil,
+        peer_node_id : UInt64? = nil,
       ) : InteractionModel::InvokeResponse
         invoke_responses = [] of InteractionModel::CommandResponse
         invoke_status = [] of InteractionModel::CommandStatus
@@ -846,6 +932,16 @@ module Matter
               status: InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCluster)
             )
             next
+          end
+
+          if metadata = cluster.commands.find { |c| c.id.id == path.command }
+            unless authorized?(clusters, metadata.access, endpoint_id, path.cluster, is_case_session, fabric_index, peer_node_id)
+              invoke_status << InteractionModel::CommandStatus.new(
+                path: path,
+                status: InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAccess)
+              )
+              next
+            end
           end
 
           # Invoke command on cluster (pass session info for authentication)

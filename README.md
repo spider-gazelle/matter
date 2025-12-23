@@ -1,5 +1,7 @@
 # Matter
 
+Matter protocol implemented in pure Crystal Lang.
+
 ## Installation
 
 1. Add the dependency to your `shard.yml`:
@@ -11,6 +13,19 @@
    ```
 
 2. Run `shards install`
+
+## Example Device
+
+An example OnOff device is provided in the `./examples` directory.
+
+* Build using: `crystal build examples/matter_switch_device.cr -o bin/matter_switch`
+* Validate with [chip-tool](https://project-chip.github.io/connectedhomeip-doc/development_controllers/chip-tool/chip_tool_guide.html)
+  * Launch `bin/matter_switch`, grab the chip-tool command line in the output
+  * Clear any previous sessions: `chip-tool storage clear-all`
+  * Commission using chip-tool
+  * Run: `crystal run examples/device_validation.cr`
+
+Confirmed working with iOS.
 
 ## Contributing
 

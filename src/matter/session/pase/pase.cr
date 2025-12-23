@@ -166,6 +166,37 @@ module Matter
           @secret_and_verifiers = nil
         end
 
+        # Build a responder that uses a pre-computed passcode verifier (w0 || L),
+        # as provided via AdministratorCommissioning OpenCommissioningWindow.
+        #
+        # The passcode verifier is 97 bytes: w0 (32) + L (65).
+        def self.from_passcode_verifier(
+          passcode_verifier : Bytes,
+          pbkdf_params : PbkdfParameters = PbkdfParameters.default,
+          crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
+          context : Bytes = "CHIP PAKE V1 Commissioning".to_slice,
+        ) : PaseResponder
+          responder = new(0_u32, pbkdf_params, crypto, context)
+          responder.apply_passcode_verifier(passcode_verifier)
+          responder
+        end
+
+        protected def apply_passcode_verifier(passcode_verifier : Bytes) : Nil
+          unless passcode_verifier.size == 97
+            raise ArgumentError.new("Invalid passcode verifier length (expected=97 got=#{passcode_verifier.size})")
+          end
+
+          w0_bytes = passcode_verifier[0, 32]
+          l_bytes = passcode_verifier[32, 65]
+
+          # P-256 order: 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+          curve_order = BigInt.new("FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551", 16)
+          # w0 is encoded as a fixed-width 32-byte big-endian integer.
+          w0 = BigInt.new(w0_bytes.hexstring, 16) % curve_order
+
+          @w0_l = Crypto::Spake2p::W0L.new(w0, l_bytes)
+        end
+
         # Step 1: Process PBKDF parameter request and return parameters
         def process_pbkdf_param_request(request : Bytes) : Bytes
           # Parse the TLV-encoded request (if not empty)
@@ -193,8 +224,9 @@ module Matter
 
         # Step 2: Initialize SPAKE2+ with w0 and L
         def initialize_spake
-          # Compute w0 and L from PIN using PBKDF2
-          @w0_l = Crypto::Spake2p.compute_w0_l(@crypto,
+          # Compute w0 and L from PIN using PBKDF2 unless a passcode verifier was supplied.
+          @w0_l ||= Crypto::Spake2p.compute_w0_l(
+            @crypto,
             Crypto::Spake2p::PbkdfParameters.new(@pbkdf_params.iterations, @pbkdf_params.salt),
             @pin_code
           )

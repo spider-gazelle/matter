@@ -74,6 +74,14 @@ module Matter
       property vendor_id : UInt16
       property product_id : UInt16
 
+      # If set, PASE responder will use a pre-computed passcode verifier (w0||L)
+      # instead of deriving it from the setup pin (used for enhanced commissioning windows).
+      property pase_passcode_verifier : Bytes?
+
+      @default_setup_pin : UInt32 = 0_u32
+      @default_iterations : UInt32 = 0_u32
+      @default_salt : Bytes = Bytes.new(0)
+
       # PASE context: store request/response payloads for context hashing
       property pbkdf_request_payload : Bytes?
       property pbkdf_response_payload : Bytes?
@@ -289,6 +297,11 @@ module Matter
       # Cached encrypted responses keyed by (session_id, incoming_message_counter)
       @mrp_response_cache : Hash(Tuple(UInt16, UInt32), CachedMrpResponse) = {} of Tuple(UInt16, UInt32) => CachedMrpResponse
 
+      # Timed Interaction support (IM TimedRequest message type 0x0A).
+      #
+      # Keyed by (session_id, exchange_id) to scope to a secure session.
+      @timed_request_deadlines : Hash(Tuple(UInt16, UInt16), Time::Span) = {} of Tuple(UInt16, UInt16) => Time::Span
+
       # Fabric access callback - set by the device implementation
       # This allows the message handler to access fabric data for CASE
       property on_get_fabric : Proc(Fabric?)?
@@ -468,7 +481,47 @@ module Matter
         @clusters[{0_u16, 0x003E_u32}] = operational_creds
         @operational_credentials_cluster = operational_creds
 
+        @pase_passcode_verifier = nil
+        @default_setup_pin = @setup_pin
+        @default_iterations = @iterations
+        @default_salt = @salt.dup
+
         Log.debug { "MessageHandler initialized with #{@clusters.size} default clusters (device may add more)" }
+      end
+
+      # Configure PASE server parameters for an enhanced commissioning window.
+      # The passcode verifier is the pre-computed w0||L (97 bytes) used by SPAKE2+.
+      def configure_pase_server(passcode_verifier : Bytes, iterations : UInt32, salt : Bytes) : Nil
+        @pase_passcode_verifier = passcode_verifier.dup
+        @iterations = iterations
+        @salt = salt.dup
+        reset_pase_exchange_state
+      end
+
+      # Configure PASE server parameters for a basic commissioning window.
+      def configure_pase_pin(pin : UInt32, iterations : UInt32, salt : Bytes) : Nil
+        @pase_passcode_verifier = nil
+        @setup_pin = pin
+        @iterations = iterations
+        @salt = salt.dup
+        reset_pase_exchange_state
+      end
+
+      # Restore default PASE parameters and clear any enhanced verifier.
+      def reset_pase_server : Nil
+        @pase_passcode_verifier = nil
+        @setup_pin = @default_setup_pin
+        @iterations = @default_iterations
+        @salt = @default_salt.dup
+        reset_pase_exchange_state
+      end
+
+      private def reset_pase_exchange_state : Nil
+        @pase_responder = nil
+        @pbkdf_request_payload = nil
+        @pbkdf_response_payload = nil
+        @initiator_session_id = nil
+        @responder_session_id = nil
       end
 
       # Wire up attribute change notification callbacks for all clusters
@@ -784,6 +837,8 @@ module Matter
           handle_write_request(msg.payload, msg, peer, session)
         when 0x08_u8 # InvokeRequest
           handle_invoke_request(msg.payload, msg, peer, session)
+        when 0x0A_u8 # TimedRequest
+          handle_timed_request(msg.payload, msg, peer, session)
         else
           Log.warn { "Unknown IM message type: 0x#{msg.payload_header.message_type.to_s(16)}" }
         end
@@ -793,6 +848,70 @@ module Matter
           "msg_id=#{msg.packet_header.message_id} exchange=#{msg.payload_header.exchange_id} " \
           "type=0x#{msg.payload_header.message_type.to_s(16)} payload_hex=#{msg.payload.hexstring}"
         end
+      end
+
+      private def record_timed_request(session_id : UInt16, exchange_id : UInt16, timeout_ms : UInt16) : Nil
+        # Spec-defined max is UInt16 ms, so this is at most ~65s.
+        deadline = Time.monotonic + timeout_ms.milliseconds
+        @timed_request_deadlines[{session_id, exchange_id}] = deadline
+      end
+
+      private def consume_timed_request?(session_id : UInt16, exchange_id : UInt16) : Bool
+        key = {session_id, exchange_id}
+        if deadline = @timed_request_deadlines[key]?
+          if Time.monotonic <= deadline
+            @timed_request_deadlines.delete(key)
+            return true
+          end
+          @timed_request_deadlines.delete(key)
+        end
+        false
+      end
+
+      private def handle_timed_request(
+        decrypted : Bytes,
+        original_msg : Codec::MessageCodec::Message,
+        peer : Socket::IPAddress,
+        session : Session::SecureContext,
+      ) : Nil
+        exchange_id = original_msg.payload_header.exchange_id
+
+        timeout_ms = 0_u16
+        begin
+          parsed = TLV::Any.from_slice(decrypted)
+          tlv_struct = parsed.value.as(TLV::Structure)
+          timeout_any = tlv_struct[0_u8]?
+          if timeout_any
+            timeout_ms = case v = timeout_any.value
+                         when Int    then v.to_u16
+                         when UInt16 then v
+                         when UInt32 then v.to_u16
+                         when UInt8  then v.to_u16
+                         else             0_u16
+                         end
+          end
+        rescue ex
+          Log.error(exception: ex) do
+            "TimedRequest: failed to parse request (session_id=#{session.session_id} exchange=#{exchange_id} bytes=#{decrypted.hexstring})"
+          end
+          timeout_ms = 0_u16
+        end
+
+        # Record deadline for the follow-up Invoke/Write on this exchange. Even if parsing
+        # fails, respond SUCCESS so controllers can proceed (some stacks are strict about
+        # receiving a StatusResponse here).
+        record_timed_request(session.session_id, exchange_id, timeout_ms)
+        Log.info { "TimedRequest: timeout_ms=#{timeout_ms} (session_id=#{session.session_id} exchange=#{exchange_id})" }
+
+        status = InteractionModel::StatusResponseMessage.new(status: 0_u8)
+        send_im_response(
+          original_msg: original_msg,
+          peer: peer,
+          session: session,
+          message_type: 0x01_u8, # StatusResponse
+          payload: status.to_slice,
+          cache_for_mrp: true
+        )
       end
 
       # Handle StatusResponse - acknowledgment from controller
@@ -1060,7 +1179,13 @@ module Matter
         Log.info { "ReadRequest: #{request.attribute_requests.size} attribute(s) requested" }
 
         # Read attributes from clusters (pass fabric_index for fabric-scoped attributes)
-        response = IMHandler.read_attributes(request.attribute_requests, @clusters, session.fabric_index)
+        response = IMHandler.read_attributes(
+          request.attribute_requests,
+          @clusters,
+          session.fabric_index,
+          session.is_case,
+          session.peer_node_id.try(&.id)
+        )
 
         Log.debug { "ReadResponse: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
 
@@ -1144,7 +1269,13 @@ module Matter
         Log.info { "Created subscription #{subscription_id}" }
 
         # Read attributes from clusters (same as ReadRequest, pass fabric_index for fabric-scoped attributes)
-        response = IMHandler.read_attributes(request.attribute_requests, @clusters, session.fabric_index)
+        response = IMHandler.read_attributes(
+          request.attribute_requests,
+          @clusters,
+          session.fabric_index,
+          session.is_case,
+          session.peer_node_id.try(&.id)
+        )
 
         Log.debug { "Initial ReportData: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
 
@@ -1222,10 +1353,36 @@ module Matter
           return
         end
 
+        if request.timed_request
+          unless consume_timed_request?(session.session_id, original_msg.payload_header.exchange_id)
+            Log.warn do
+              "WriteRequest rejected: missing/expired TimedRequest " \
+              "(session_id=#{session.session_id} exchange=#{original_msg.payload_header.exchange_id} peer=#{peer.address}:#{peer.port})"
+            end
+            status = InteractionModel::StatusResponseMessage.new(status: InteractionModel::StatusCode::Timeout.value)
+            send_im_response(
+              original_msg: original_msg,
+              peer: peer,
+              session: session,
+              message_type: 0x01_u8, # StatusResponse
+              payload: status.to_slice,
+              cache_for_mrp: true
+            )
+            return
+          end
+        end
+
         Log.info { "WriteRequest: #{request.write_requests.size} attribute(s) to write" }
 
         # Write attributes to clusters
-        response = IMHandler.write_attributes(request.write_requests, @clusters)
+        response = IMHandler.write_attributes(
+          request.write_requests,
+          @clusters,
+          session_id: session.session_id,
+          is_case_session: session.is_case,
+          fabric_index: session.fabric_index,
+          peer_node_id: session.peer_node_id.try(&.id)
+        )
 
         Log.debug { "WriteResponse: #{response.write_responses.size} status(es)" }
 
@@ -1274,10 +1431,36 @@ module Matter
           return
         end
 
+        if request.timed_request
+          unless consume_timed_request?(session.session_id, original_msg.payload_header.exchange_id)
+            Log.warn do
+              "InvokeRequest rejected: missing/expired TimedRequest " \
+              "(session_id=#{session.session_id} exchange=#{original_msg.payload_header.exchange_id} peer=#{peer.address}:#{peer.port})"
+            end
+            status = InteractionModel::StatusResponseMessage.new(status: InteractionModel::StatusCode::Timeout.value)
+            send_im_response(
+              original_msg: original_msg,
+              peer: peer,
+              session: session,
+              message_type: 0x01_u8, # StatusResponse
+              payload: status.to_slice,
+              cache_for_mrp: true
+            )
+            return
+          end
+        end
+
         Log.info { "InvokeRequest: #{request.invoke_requests.size} command(s) requested" }
 
         # Execute commands on clusters (pass session info for attestation)
-        response = IMHandler.invoke_commands(request.invoke_requests, @clusters, session.session_id.to_u64, session.is_case, session.fabric_index)
+        response = IMHandler.invoke_commands(
+          request.invoke_requests,
+          @clusters,
+          session.session_id.to_u64,
+          session.is_case,
+          session.fabric_index,
+          session.peer_node_id.try(&.id)
+        )
 
         Log.info { "InvokeResponse: #{response.invoke_responses.size} response(s), #{response.invoke_status.size} status(es)" }
 
@@ -1542,7 +1725,12 @@ module Matter
         # Create PBKDF parameters and PaseResponder with proper context
         pbkdf_params = Session::Pase::PbkdfParameters.new(@iterations.to_i32, @salt)
         crypto = Crypto::StandardCrypto.new
-        @pase_responder = Session::Pase::PaseResponder.new(@setup_pin, pbkdf_params, crypto, context_hash)
+        if verifier = @pase_passcode_verifier
+          Log.debug { "Creating PaseResponder using passcode verifier (bytes=#{verifier.size})" }
+          @pase_responder = Session::Pase::PaseResponder.from_passcode_verifier(verifier, pbkdf_params, crypto, context_hash)
+        else
+          @pase_responder = Session::Pase::PaseResponder.new(@setup_pin, pbkdf_params, crypto, context_hash)
+        end
 
         Log.debug { "Created PaseResponder with hashed context" }
       end

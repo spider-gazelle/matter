@@ -80,6 +80,13 @@ module Matter
       property cluster_id : DataType::ClusterId
       property data_version : UInt32
 
+      # Request context (populated by the protocol layer for the current operation).
+      # These are intentionally prefixed to avoid colliding with cluster-specific state.
+      property request_session_id : UInt64? = nil
+      property request_peer_node_id : UInt64? = nil
+      property request_is_case_session : Bool = false
+      property request_fabric_index : UInt8? = nil
+
       # Callback for attribute change notifications (used by subscription system)
       # Parameters: endpoint_id, cluster_id, attribute_id
       property on_attribute_changed : Proc(UInt16, UInt32, UInt32, Nil)?

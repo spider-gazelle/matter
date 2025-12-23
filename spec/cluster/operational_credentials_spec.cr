@@ -880,7 +880,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         fabric2.should_not be_nil
       end
 
-      it "prevents duplicate fabric_id" do
+      it "allows duplicate fabric_id across different roots" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = build_op_creds_cluster(endpoint_id)
 
@@ -929,6 +929,68 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         noc2 = create_mock_noc(0x2222222222222222_u64, same_fabric_id)
 
+        ipk2 = Bytes.new(16, 0x02_u8)
+        result = cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
+          create_add_noc_request_tlv(noc2, nil, ipk2, 0xDEF0_u64, 0xFFF2_u16)
+        )
+
+        # Should succeed because (root_public_key, fabric_id) is unique.
+        result.should be_a(Matter::Cluster::CommandResponse)
+        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        response = parsed.value.as(TLV::Structure)
+        status = response[0_u8].value.as(Int)
+        status.should eq(0_u8) # Success
+        cluster.fabrics.size.should eq(2)
+      end
+
+      it "prevents duplicate fabric identity (same root + fabric_id)" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = build_op_creds_cluster(endpoint_id)
+
+        # Add first fabric
+        cluster.session_id = 1_u64
+        cluster.failsafe_armed = true
+
+        nonce1 = Bytes.new(32, 0x11_u8)
+        cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
+          create_csr_request_tlv(nonce1, false)
+        )
+
+        root_public_key1 = Bytes.new(65); root_public_key1[0] = 0x04_u8; (1...65).each { |i| root_public_key1[i] = i.to_u8 }; root_cert1 = create_test_tlv_certificate(root_public_key1, 0xAAAAAAAAAAAAAAAA_u64)
+        cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
+          create_add_trusted_root_cert_request_tlv(root_cert1)
+        )
+
+        same_fabric_id = 0xAAAAAAAAAAAAAAAA_u64
+        noc1 = create_mock_noc(0x1111111111111111_u64, same_fabric_id)
+
+        ipk1 = Bytes.new(16, 0x01_u8)
+        cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
+          create_add_noc_request_tlv(noc1, nil, ipk1, 0xABCD_u64, 0xFFF1_u16)
+        )
+
+        # Reset and try to add a fabric with same fabric_id AND same root
+        cluster.on_failsafe_success
+        cluster.session_id = 2_u64
+        cluster.failsafe_armed = true
+
+        nonce2 = Bytes.new(32, 0x22_u8)
+        cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
+          create_csr_request_tlv(nonce2, false)
+        )
+
+        # Re-use the same root cert.
+        cluster.invoke_command(
+          Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
+          create_add_trusted_root_cert_request_tlv(root_cert1)
+        )
+
+        noc2 = create_mock_noc(0x2222222222222222_u64, same_fabric_id)
         ipk2 = Bytes.new(16, 0x02_u8)
         result = cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,

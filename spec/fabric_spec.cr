@@ -556,17 +556,20 @@ describe Matter::FabricTable do
       table.size.should eq(1)
     end
 
-    it "prevents duplicate fabric IDs" do
+    it "allows duplicate fabric IDs across different roots" do
       storage = Matter::Storage::MemoryBackend.new
       table = Matter::FabricTable.new(storage, max_fabrics: 10_u8)
       key = Matter::Crypto::Key.generate_key_pair
       ipk = Random::Secure.random_bytes(16)
 
+      root_key_1 = Random::Secure.random_bytes(65)
+      root_key_2 = Random::Secure.random_bytes(65)
+
       fabric1 = Matter::Fabric.new(
         fabric_id: 0x1_u64,
         fabric_index: 1_u8,
         node_id: 0x1_u64,
-        root_public_key: Random::Secure.random_bytes(65),
+        root_public_key: root_key_1,
         operational_cert: Random::Secure.random_bytes(200),
         operational_key: key,
         ipk: ipk
@@ -576,7 +579,40 @@ describe Matter::FabricTable do
         fabric_id: 0x1_u64, # Same fabric ID
         fabric_index: 2_u8,
         node_id: 0x2_u64,
-        root_public_key: Random::Secure.random_bytes(65),
+        root_public_key: root_key_2,
+        operational_cert: Random::Secure.random_bytes(200),
+        operational_key: key,
+        ipk: ipk
+      )
+
+      table.add_fabric(fabric1).should be_true
+      table.add_fabric(fabric2).should be_true
+      table.size.should eq(2)
+    end
+
+    it "prevents duplicate fabric identities (same root_public_key + fabric_id)" do
+      storage = Matter::Storage::MemoryBackend.new
+      table = Matter::FabricTable.new(storage, max_fabrics: 10_u8)
+      key = Matter::Crypto::Key.generate_key_pair
+      ipk = Random::Secure.random_bytes(16)
+
+      root_key = Random::Secure.random_bytes(65)
+
+      fabric1 = Matter::Fabric.new(
+        fabric_id: 0x1_u64,
+        fabric_index: 1_u8,
+        node_id: 0x1_u64,
+        root_public_key: root_key,
+        operational_cert: Random::Secure.random_bytes(200),
+        operational_key: key,
+        ipk: ipk
+      )
+
+      fabric2 = Matter::Fabric.new(
+        fabric_id: 0x1_u64, # Same fabric ID
+        fabric_index: 2_u8,
+        node_id: 0x2_u64,
+        root_public_key: root_key, # Same root key
         operational_cert: Random::Secure.random_bytes(200),
         operational_key: key,
         ipk: ipk

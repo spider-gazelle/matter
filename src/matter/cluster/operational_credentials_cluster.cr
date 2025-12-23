@@ -760,16 +760,16 @@ module Matter
           return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failed to parse NOC: #{ex.message}")
         end
 
-        # Check for fabric conflict (same fabric_id already exists)
-        if @fabric_table.find_by_fabric_id(fabric_id)
-          return encode_noc_response(NodeOperationalCertStatus::FabricConflict, nil, "Fabric with this ID already exists")
-        end
-
         # Extract public key from root certificate
         # The compressed fabric ID computation requires the public key, not the full certificate
         root_cert = @trusted_root_certs.last
         root_public_key = extract_public_key_from_certificate(root_cert)
         Log.debug { "Extracted root public key: #{root_public_key.size} bytes, first byte: 0x#{root_public_key[0].to_s(16)}" }
+
+        # Check for fabric conflict (same root_public_key + fabric_id already exists)
+        if @fabric_table.find_by_fabric_identity(fabric_id, root_public_key)
+          return encode_noc_response(NodeOperationalCertStatus::FabricConflict, nil, "Fabric already exists")
+        end
 
         # Add fabric to table
         Log.debug { "AddNOC: IPK received (#{request.ipk_value.size} bytes)" }
@@ -1275,17 +1275,18 @@ module Matter
         fabric_id = extract_fabric_id_from_noc(cmd.noc_value)
         node_id = extract_node_id_from_noc(cmd.noc_value)
 
-        # Check for fabric conflict (same fabric_id already exists)
-        if @fabric_table.find_by_fabric_id(fabric_id)
-          return NOCResponse.new(
-            status_code: NodeOperationalCertStatus::FabricConflict,
-            debug_text: "Fabric with this ID already exists"
-          )
-        end
-
         # Add fabric to table
         root_cert = @trusted_root_certs.last
         root_public_key = extract_public_key_from_certificate(root_cert)
+
+        # Check for fabric conflict (same root_public_key + fabric_id already exists)
+        if @fabric_table.find_by_fabric_identity(fabric_id, root_public_key)
+          return NOCResponse.new(
+            status_code: NodeOperationalCertStatus::FabricConflict,
+            debug_text: "Fabric already exists"
+          )
+        end
+
         fabric = @fabric_table.add_fabric_auto_index(
           fabric_id: fabric_id,
           node_id: node_id,

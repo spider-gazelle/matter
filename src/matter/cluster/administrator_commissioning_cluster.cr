@@ -144,6 +144,11 @@ module Matter
       property on_stop_pase_server : Proc(Nil)?
       property on_close_failsafe : Proc(Nil)?
 
+      # mDNS advertising integration.
+      # If set, the cluster will not use the legacy `MDNS::Advertiser` implementation.
+      property on_start_commissioning_advertising : Proc(UInt16, MDNS::CommissioningMode, Nil)? # (discriminator, mode) -> nil
+      property on_stop_commissioning_advertising : Proc(Nil)?
+
       # Backward compatibility callbacks from cluster/ version
       property on_open_commissioning_window : Proc(UInt16, Bytes, UInt16, Bytes, UInt32, UInt8, UInt16, StatusCode)?
       property on_open_basic_commissioning_window : Proc(UInt16, UInt8, UInt16, StatusCode)?
@@ -185,6 +190,8 @@ module Matter
         @on_configure_pase_pin = nil
         @on_stop_pase_server = nil
         @on_close_failsafe = nil
+        @on_start_commissioning_advertising = nil
+        @on_stop_commissioning_advertising = nil
         @on_open_commissioning_window = nil
         @on_open_basic_commissioning_window = nil
         @on_revoke_commissioning = nil
@@ -725,8 +732,6 @@ module Matter
 
       # Start mDNS advertising for commissioning window
       private def start_mdns_advertising(discriminator : UInt16) : Nil
-        return if @addresses.empty?
-
         # Determine commissioning mode
         mode = case @window_status
                when CommissioningWindowStatus::BasicWindowOpen
@@ -736,6 +741,14 @@ module Matter
                else
                  MDNS::CommissioningMode::Disabled
                end
+
+        if callback = @on_start_commissioning_advertising
+          callback.call(discriminator, mode)
+          Log.info { "Requested commissioning mDNS advertising via callback (discriminator=#{discriminator} mode=#{mode})" }
+          return
+        end
+
+        return if @addresses.empty?
 
         begin
           # Create service description
@@ -763,6 +776,12 @@ module Matter
 
       # Stop mDNS advertising
       private def stop_mdns_advertising : Nil
+        if callback = @on_stop_commissioning_advertising
+          callback.call
+          Log.info { "Requested commissioning mDNS stop via callback" }
+          return
+        end
+
         if advertiser = @mdns_advertiser
           advertiser.stop_advertising
           Log.info { "Stopped mDNS advertising" }

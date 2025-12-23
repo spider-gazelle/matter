@@ -63,8 +63,10 @@ module Matter
         return false
       end
 
-      # Check if fabric_id already exists (can't have duplicate fabric IDs)
-      if find_by_fabric_id(fabric.fabric_id)
+      # Check for duplicate fabric identity (root_public_key + fabric_id).
+      # Note: Fabric IDs are not globally unique across fabrics; the unique key is
+      # (RootPublicKey, FabricId) per Matter spec.
+      if find_by_fabric_identity(fabric.fabric_id, fabric.root_public_key)
         return false
       end
 
@@ -146,6 +148,11 @@ module Matter
     # Find a fabric by fabric_id
     def find_by_fabric_id(fabric_id : UInt64) : Fabric?
       @fabrics.values.find { |f| f.fabric_id == fabric_id }
+    end
+
+    # Find a fabric by its identity (root_public_key + fabric_id).
+    def find_by_fabric_identity(fabric_id : UInt64, root_public_key : Bytes) : Fabric?
+      @fabrics.values.find { |f| f.fabric_id == fabric_id && f.root_public_key == root_public_key }
     end
 
     # Get all fabrics
@@ -319,10 +326,10 @@ module Matter
     def validate : Array(String)
       errors = [] of String
 
-      # Check for duplicate fabric IDs
-      fabric_ids = @fabrics.values.map(&.fabric_id)
-      if fabric_ids.size != fabric_ids.uniq.size
-        errors << "Duplicate fabric IDs detected"
+      # Check for duplicate fabric identities (root_public_key + fabric_id)
+      identities = @fabrics.values.map { |f| {f.fabric_id, f.root_public_key.hexstring} }
+      if identities.size != identities.uniq.size
+        errors << "Duplicate fabric identities detected"
       end
 
       # Check fabric index range

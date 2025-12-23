@@ -1,5 +1,6 @@
 require "./cluster"
 require "tlv"
+require "json"
 require "log"
 require "../datatype/node_id"
 require "../datatype/case_authenticated_tag"
@@ -118,6 +119,127 @@ module Matter
         @access_control_entries_per_fabric = 4_u16
       end
 
+      struct PersistedTarget
+        include JSON::Serializable
+
+        getter cluster : UInt32?
+        getter endpoint : UInt16?
+        getter device_type : UInt32?
+
+        def initialize(@cluster : UInt32?, @endpoint : UInt16?, @device_type : UInt32?)
+        end
+      end
+
+      struct PersistedAclEntry
+        include JSON::Serializable
+
+        getter privilege : UInt8
+        getter auth_mode : UInt8
+        getter subjects : Array(UInt64)
+        getter targets : Array(PersistedTarget)?
+        getter fabric_index : UInt8?
+
+        def initialize(
+          @privilege : UInt8,
+          @auth_mode : UInt8,
+          @subjects : Array(UInt64),
+          @targets : Array(PersistedTarget)?,
+          @fabric_index : UInt8?,
+        )
+        end
+      end
+
+      struct PersistedExtensionEntry
+        include JSON::Serializable
+
+        getter data_hex : String
+        getter fabric_index : UInt8
+
+        def initialize(@data_hex : String, @fabric_index : UInt8)
+        end
+      end
+
+      struct PersistedState
+        include JSON::Serializable
+
+        getter data_version : UInt32
+        getter acl : Array(PersistedAclEntry)
+        getter extension : Array(PersistedExtensionEntry)
+
+        def initialize(
+          @data_version : UInt32,
+          @acl : Array(PersistedAclEntry),
+          @extension : Array(PersistedExtensionEntry),
+        )
+        end
+      end
+
+      def save_state : String?
+        PersistedState.new(
+          data_version: @data_version,
+          acl: @acl.map do |entry|
+            PersistedAclEntry.new(
+              privilege: entry.privilege.value,
+              auth_mode: entry.auth_mode.value,
+              subjects: entry.subjects,
+              targets: entry.targets.try do |targets|
+                targets.map { |t| PersistedTarget.new(t.cluster, t.endpoint, t.device_type) }
+              end,
+              fabric_index: entry.fabric_index
+            )
+          end,
+          extension: @extension.map do |entry|
+            PersistedExtensionEntry.new(entry.data.hexstring, entry.fabric_index)
+          end
+        ).to_json
+      rescue ex
+        Log.error(exception: ex) { "save_state failed (acl_entries=#{@acl.size} extension_entries=#{@extension.size})" }
+        nil
+      end
+
+      def restore_state(json : String) : Nil
+        state = PersistedState.from_json(json)
+        @data_version = state.data_version
+
+        @acl = state.acl.compact_map do |entry|
+          idx = entry.fabric_index
+          unless idx
+            Log.warn { "restore_state: skipping ACL entry without fabric_index" }
+            next
+          end
+
+          privilege = AccessControlEntryPrivilege.from_value?(entry.privilege)
+          auth_mode = AccessControlEntryAuthMode.from_value?(entry.auth_mode)
+          unless privilege && auth_mode
+            Log.warn { "restore_state: skipping ACL entry with invalid enums (privilege=#{entry.privilege} auth_mode=#{entry.auth_mode})" }
+            next
+          end
+
+          targets = entry.targets.try do |targets|
+            targets.map { |t| Target.new(cluster: t.cluster, endpoint: t.endpoint, device_type: t.device_type) }
+          end
+
+          AccessControlEntry.new(
+            privilege: privilege,
+            auth_mode: auth_mode,
+            subjects: entry.subjects,
+            targets: targets,
+            fabric_index: idx
+          )
+        end
+
+        @extension = state.extension.compact_map do |entry|
+          begin
+            ExtensionEntry.new(entry.data_hex.hexbytes, entry.fabric_index)
+          rescue ex
+            Log.warn(exception: ex) { "restore_state: skipping extension entry with invalid data_hex (fabric_index=#{entry.fabric_index} data_hex=#{entry.data_hex})" }
+            next
+          end
+        end
+      rescue ex
+        Log.error(exception: ex) { "restore_state failed (json_bytes=#{json.bytesize})" }
+      end
+
       def name : String
         "AccessControl"
       end
@@ -165,9 +287,18 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_ACL
-          @acl.to_tlv
+          # ACL is fabric-sensitive; only return entries for the requesting fabric.
+          if fabric_index
+            @acl.select { |entry| entry.fabric_index == fabric_index }.to_tlv
+          else
+            @acl.to_tlv
+          end
         when ATTR_EXTENSION
-          @extension.to_tlv
+          if fabric_index
+            @extension.select { |entry| entry.fabric_index == fabric_index }.to_tlv
+          else
+            @extension.to_tlv
+          end
         when ATTR_SUBJECTS_PER_ACCESS_CONTROL_ENTRY
           @subjects_per_access_control_entry.to_tlv
         when ATTR_TARGETS_PER_ACCESS_CONTROL_ENTRY
@@ -193,10 +324,12 @@ module Matter
       # Check if a subject has the required privilege
       # Supports CaseAuthenticatedTag (CAT) subject matching per Matter spec
       def check_access(subject : UInt64, fabric_index : UInt8, privilege : AccessControlEntryPrivilege,
-                       cluster : UInt32? = nil, endpoint : UInt16? = nil, device_type : UInt32? = nil) : Bool
+                       cluster : UInt32? = nil, endpoint : UInt16? = nil, device_type : UInt32? = nil,
+                       auth_mode : AccessControlEntryAuthMode = AccessControlEntryAuthMode::CASE) : Bool
         # Find matching ACL entries for this fabric
         matching_entries = @acl.select do |entry|
           entry.fabric_index == fabric_index &&
+            entry.auth_mode == auth_mode &&
             entry.subjects.any? { |acl_subject| subject_matches?(acl_subject, subject) }
         end
 
@@ -218,6 +351,21 @@ module Matter
 
           has_privilege && has_target_access
         end
+      end
+
+      # Convenience wrapper for the generated cluster metadata privilege enum.
+      def check_access(subject : UInt64, fabric_index : UInt8, privilege : Definitions::AccessControl::EntryPrivilege,
+                       cluster : UInt32? = nil, endpoint : UInt16? = nil, device_type : UInt32? = nil,
+                       auth_mode : Definitions::AccessControl::EntryAuthMode = Definitions::AccessControl::EntryAuthMode::Case) : Bool
+        check_access(
+          subject: subject,
+          fabric_index: fabric_index,
+          privilege: AccessControlEntryPrivilege.from_value(privilege.value),
+          cluster: cluster,
+          endpoint: endpoint,
+          device_type: device_type,
+          auth_mode: AccessControlEntryAuthMode.from_value(auth_mode.value)
+        )
       end
 
       # Check if a subject (from incoming request) matches an ACL subject
@@ -261,6 +409,8 @@ module Matter
       # Decode ACL list from TLV array
       private def decode_acl_list(value : Bytes) : InteractionModel::Status
         begin
+          fabric_index = request_fabric_index
+
           Log.debug { "decode_acl_list: received #{value.size} bytes" }
           Log.trace { "decode_acl_list: value_hex=#{value.hexstring}" }
 
@@ -283,10 +433,20 @@ module Matter
             # Serialize entry back to bytes and deserialize with from_slice
             entry_bytes = entry_value.to_slice
             entry = AccessControlEntry.from_slice(entry_bytes)
+            entry.fabric_index ||= fabric_index
             new_acl << entry
           end
 
-          @acl = new_acl
+          if fabric_index
+            # ACL is fabric-scoped; only replace entries for the requesting fabric.
+            @acl.reject! { |entry| entry.fabric_index == fabric_index }
+            @acl.concat(new_acl)
+          else
+            # Unit tests and some tooling call `write_attribute` directly without setting request context.
+            # In that case, behave like a full replace and keep any FabricIndex values provided in the TLV.
+            @acl = new_acl
+          end
+
           increment_version
           Log.debug { "decode_acl_list: wrote #{new_acl.size} ACL entries" }
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
@@ -341,6 +501,8 @@ module Matter
       # Decode Extension list from TLV array
       private def decode_extension_list(value : Bytes) : InteractionModel::Status
         begin
+          fabric_index = request_fabric_index
+
           Log.debug { "decode_extension_list: received #{value.size} bytes" }
           Log.trace { "decode_extension_list: value_hex=#{value.hexstring}" }
 
@@ -358,10 +520,18 @@ module Matter
           new_extension = extension_array.map do |entry_value|
             # Serialize entry back to bytes and deserialize with from_slice
             entry_bytes = entry_value.to_slice
-            ExtensionEntry.from_slice(entry_bytes)
+            entry = ExtensionEntry.from_slice(entry_bytes)
+            entry.fabric_index = fabric_index if fabric_index
+            entry
           end
 
-          @extension = new_extension
+          if fabric_index
+            @extension.reject! { |entry| entry.fabric_index == fabric_index }
+            @extension.concat(new_extension)
+          else
+            @extension = new_extension
+          end
+
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         rescue ex

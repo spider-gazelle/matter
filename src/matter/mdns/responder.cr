@@ -558,14 +558,29 @@ module Matter
           # Check for service type queries (PTR or ANY)
           if question.type == RecordBuilder::TYPE_PTR || question.type == 255 # 255 = ANY
             check_service_query(question.name)
-            # For ANY queries, also check if it's an instance-specific query
-            check_instance_query(question.name) if question.type == 255
-            # Check for specific instance queries (SRV, TXT, A, AAAA)
-          elsif question.type.in?(RecordBuilder::TYPE_SRV, RecordBuilder::TYPE_TXT, RecordBuilder::TYPE_A, RecordBuilder::TYPE_AAAA)
+
+            if question.type == 255
+              # For ANY queries, also check if it's an instance-specific query and/or
+              # a hostname query.
+              check_instance_query(question.name)
+              if hostname = advertised_hostname_for(question.name)
+                send_hostname_response(hostname)
+              end
+            end
+          elsif question.type.in?(RecordBuilder::TYPE_SRV, RecordBuilder::TYPE_TXT)
+            # Specific instance queries (SRV/TXT) use the full instance name as the query name.
             check_instance_query(question.name)
-            # Check for hostname queries
-          elsif hostname = advertised_hostname_for(question.name)
-            send_hostname_response(hostname)
+          elsif question.type.in?(RecordBuilder::TYPE_A, RecordBuilder::TYPE_AAAA)
+            # Hostname queries (A/AAAA) use the SRV target hostname as the query name.
+            if hostname = advertised_hostname_for(question.name)
+              send_hostname_response(hostname)
+            end
+          else
+            # Fallback: if we see unexpected QTYPEs but the name matches a hostname,
+            # return the hostname records anyway.
+            if hostname = advertised_hostname_for(question.name)
+              send_hostname_response(hostname)
+            end
           end
         end
       end

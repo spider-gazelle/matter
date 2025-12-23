@@ -238,6 +238,42 @@ describe Matter::Session::Pase do
       confirmation.should be_a(Bytes)
       confirmation.size.should eq(32)
     end
+
+    it "supports responder initialized from passcode verifier (w0||L)" do
+      pin_code = 95305472_u32
+      params = Matter::Session::Pase::PbkdfParameters.new(
+        iterations: 1000,
+        salt: Bytes.new(32) { |i| (i + 1).to_u8 }
+      )
+
+      crypto = Matter::Crypto::StandardCrypto.new
+      w0_l = Matter::Crypto::Spake2p.compute_w0_l(
+        crypto,
+        Matter::Crypto::Spake2p::PbkdfParameters.new(params.iterations, params.salt),
+        pin_code
+      )
+
+      w0_bytes = w0_l.w0.to_s(16).rjust(64, '0').hexbytes
+      verifier = Bytes.new(97)
+      32.times { |i| verifier[i] = w0_bytes[i] }
+      65.times { |i| verifier[32 + i] = w0_l.l[i] }
+
+      commissioner = Matter::Session::Pase::PaseCommissioner.new(pin_code: pin_code, crypto: crypto)
+      responder = Matter::Session::Pase::PaseResponder.from_passcode_verifier(verifier, params, crypto)
+
+      pbkdf_request = commissioner.create_pbkdf_param_request
+      pbkdf_response = responder.process_pbkdf_param_request(pbkdf_request)
+      commissioner.process_pbkdf_param_response(pbkdf_response)
+
+      p_a = commissioner.generate_pake1
+      p_b = responder.process_pake1(p_a)
+      c_b = responder.generate_pake3
+      c_a = commissioner.process_pake2(p_b)
+
+      # Responder should accept commissioner's confirmation and commissioner should accept responder's.
+      c_a.should eq(responder.secret_and_verifiers.not_nil!.h_ay)
+      commissioner.process_pake3(c_b).should be_true
+    end
   end
 
   describe "PASE session establishment" do

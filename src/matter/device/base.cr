@@ -53,6 +53,7 @@ module Matter
       @general_commissioning : Cluster::GeneralCommissioningCluster? = nil
       @access_control : Cluster::AccessControlCluster? = nil
       @operational_credentials : Cluster::OperationalCredentialsCluster? = nil
+      @administrator_commissioning : Cluster::AdministratorCommissioningCluster? = nil
 
       def basic_info : Cluster::BasicInformationCluster
         @basic_info.not_nil!
@@ -68,6 +69,10 @@ module Matter
 
       def operational_credentials : Cluster::OperationalCredentialsCluster
         @operational_credentials.not_nil!
+      end
+
+      def administrator_commissioning : Cluster::AdministratorCommissioningCluster
+        @administrator_commissioning.not_nil!
       end
 
       def initialize(
@@ -264,15 +269,19 @@ module Matter
       # ------------------------------------------------------------------------
       # mDNS info factories (override for ICD, TCP, etc)
       # ------------------------------------------------------------------------
-      protected def commissioning_info : MDNS::CommissioningInfo
+      protected def commissioning_info_for(mode : MDNS::CommissioningMode) : MDNS::CommissioningInfo
         MDNS::CommissioningInfo.new(
           device_name: device_name,
           vendor_id: vendor_id,
           product_id: product_id,
           discriminator: discriminator,
           device_type: primary_device_type_id,
-          commissioning_mode: MDNS::CommissioningMode::Basic
+          commissioning_mode: mode
         )
+      end
+
+      protected def commissioning_info : MDNS::CommissioningInfo
+        commissioning_info_for(MDNS::CommissioningMode::Basic)
       end
 
       protected def operational_info_for(fabric : Fabric) : MDNS::OperationalInfo
@@ -331,6 +340,14 @@ module Matter
         end
 
         administrator_commissioning = Cluster::AdministratorCommissioningCluster.new(endpoint_0)
+        @administrator_commissioning = administrator_commissioning
+
+        # Provide device identity for cluster attributes (and legacy mdns paths).
+        administrator_commissioning.device_name = device_name
+        administrator_commissioning.device_type = primary_device_type_id.to_u32
+        administrator_commissioning.vendor_id = vendor_id
+        administrator_commissioning.product_id = product_id
+
         general_diagnostics = Cluster::GeneralDiagnosticsCluster.new(endpoint_0)
         icd_management = Cluster::IcdManagementCluster.new(endpoint_0)
         network_commissioning = Cluster::NetworkCommissioningCluster.new(
@@ -342,6 +359,33 @@ module Matter
         ota_requestor = Cluster::OtaRequestorCluster.new(endpoint_0)
         diagnostic_logs = Cluster::DiagnosticLogsCluster.new(endpoint_0)
         ethernet_diagnostics = include_ethernet_diagnostics? ? Cluster::EthernetNetworkDiagnosticsCluster.new(endpoint_0) : nil
+
+        # Wire commissioning-window mDNS advertisement via the new Responder.
+        # This enables multi-admin flows (chip-tool/iOS) that require _matterc advertising
+        # while the commissioning window is open, even when already operational.
+        administrator_commissioning.on_start_commissioning_advertising = ->(disc : UInt16, mode : MDNS::CommissioningMode) do
+          @responder.stop_commissioning
+          info = commissioning_info_for(mode)
+          info.discriminator = disc
+          @responder.advertise_commissioning(info, port: @port)
+        end
+        administrator_commissioning.on_stop_commissioning_advertising = -> do
+          @responder.stop_commissioning
+        end
+
+        # Wire commissioning-window PASE configuration into the protocol layer.
+        # Enhanced windows provide a pre-computed SPAKE2+ verifier (w0||L).
+        administrator_commissioning.on_configure_pase_server = ->(verifier : Bytes, iterations : UInt32, salt : Bytes) do
+          @message_handler.configure_pase_server(verifier, iterations, salt)
+        end
+        administrator_commissioning.on_configure_pase_pin = ->(_pin : UInt32, iterations : UInt32, salt : Bytes) do
+          # OpenBasicCommissioningWindow uses the device's default passcode; ignore any
+          # test pin passed by the cluster implementation.
+          @message_handler.configure_pase_pin(setup_pin, iterations, salt)
+        end
+        administrator_commissioning.on_stop_pase_server = -> do
+          @message_handler.reset_pase_server
+        end
 
         # Wire root clusters (overwrites MessageHandler defaults)
         @message_handler.clusters[{0_u16, Cluster::BasicInformationCluster::CLUSTER_ID}] = basic_info
