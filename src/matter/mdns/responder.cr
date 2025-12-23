@@ -167,9 +167,14 @@ module Matter
         if sock4 = @socket_ipv4
           begin
             sock4.leave_group(MDNS_IPV4)
-            sock4.close unless sock4.closed?
           rescue ex
-            Log.warn(exception: ex) { "Error stopping IPv4" }
+            Log.warn(exception: ex) { "Error leaving IPv4 multicast group" }
+          ensure
+            begin
+              sock4.close unless sock4.closed?
+            rescue ex
+              Log.warn(exception: ex) { "Error closing IPv4 socket" }
+            end
           end
         end
 
@@ -177,9 +182,14 @@ module Matter
         if sock6 = @socket_ipv6
           begin
             sock6.leave_group(MDNS_IPV6)
-            sock6.close unless sock6.closed?
           rescue ex
-            Log.warn(exception: ex) { "Error stopping IPv6" }
+            Log.warn(exception: ex) { "Error leaving IPv6 multicast group" }
+          ensure
+            begin
+              sock6.close unless sock6.closed?
+            rescue ex
+              Log.warn(exception: ex) { "Error closing IPv6 socket" }
+            end
           end
         end
       end

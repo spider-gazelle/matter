@@ -213,9 +213,21 @@ describe Matter::MDNS::Responder do
       responder.start
       responder.close
 
-      # Both sockets should be closed
-      responder.socket_ipv4.try(&.closed?).should be_true
-      responder.socket_ipv6.try(&.closed?).should be_true
+      # Sockets should be closed (if present); allow a brief delay for the receive loops to unwind.
+      deadline = Time.monotonic + 200.milliseconds
+      loop do
+        closed4 = responder.socket_ipv4.try(&.closed?) || responder.socket_ipv4.nil?
+        closed6 = responder.socket_ipv6.try(&.closed?) || responder.socket_ipv6.nil?
+        break if (closed4 && closed6) || Time.monotonic >= deadline
+        sleep 10.milliseconds
+      end
+
+      if sock4 = responder.socket_ipv4
+        sock4.closed?.should be_true
+      end
+      if sock6 = responder.socket_ipv6
+        sock6.closed?.should be_true
+      end
     end
   end
 

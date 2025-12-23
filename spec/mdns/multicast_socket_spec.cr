@@ -54,8 +54,16 @@ module Matter::MDNS
         socket.join_multicast_group
 
         data = Bytes[1, 2, 3, 4, 5]
-        bytes_sent = socket.send_multicast(data)
-        bytes_sent.should eq(5)
+        begin
+          bytes_sent = socket.send_multicast(data)
+          bytes_sent.should eq(5)
+        rescue ex : Socket::Error
+          {% if flag?(:darwin) %}
+            pending "macOS CI runners often don't have multicast routing (224.0.0.251) enabled: #{ex.message}"
+          {% else %}
+            raise ex
+          {% end %}
+        end
 
         socket.close
       end
