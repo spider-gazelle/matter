@@ -19,7 +19,6 @@ dependencies:
 
   openssl_ext:
     github: spider-gazelle/openssl_ext
-    branch: master
 
   spake2_plus:
     github: spider-gazelle/spake2_plus
