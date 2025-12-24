@@ -314,7 +314,7 @@ def run_check(
   storage_dir : String?,
   name : String,
   args : Array(String),
-  &block : ChipResult -> CheckResult
+  & : ChipResult -> CheckResult
 )
   print name
   result = run_chip_tool(chip_tool, args, storage_dir: storage_dir)

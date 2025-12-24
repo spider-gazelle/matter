@@ -19,7 +19,7 @@ describe "Endpoint Ergonomics" do
       cluster = endpoint.get_cluster(Matter::Cluster::OnOffCluster)
       cluster.should_not be_nil
       cluster.not_nil!.cluster_id.id.should eq(0x0006_u32)
-      cluster.not_nil!.on_off.should be_false
+      cluster.not_nil!.on_off?.should be_false
     end
 
     it "gets cluster with bang method that raises on missing" do
@@ -65,7 +65,7 @@ describe "Endpoint Ergonomics" do
 
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).success?.should be_true
-      on_off.on_off.should be_true
+      on_off.on_off?.should be_true
     end
 
     it "works with node-level command invocation" do
@@ -86,7 +86,7 @@ describe "Endpoint Ergonomics" do
       )
 
       result.as(Matter::InteractionModel::Status).success?.should be_true
-      on_off.on_off.should be_false
+      on_off.on_off?.should be_false
     end
   end
 
@@ -106,14 +106,14 @@ describe "Endpoint Ergonomics" do
 
       # Pattern 1: Direct cluster access for reading state (most ergonomic)
       light = node.get_cluster!(1_u16, Matter::Cluster::OnOffCluster)
-      light.on_off.should be_false
+      light.on_off?.should be_false
 
       dimmer = node.get_cluster!(1_u16, Matter::Cluster::LevelControlCluster)
       dimmer.current_level.should eq(0_u8)
 
       # Use commands to control (directly on cluster reference)
       light.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON)
-      light.on_off.should be_true
+      light.on_off?.should be_true
 
       # Pattern 2: Command invocation (protocol-level)
       result = node.invoke_command(
@@ -122,7 +122,7 @@ describe "Endpoint Ergonomics" do
         Matter::Cluster::OnOffCluster::CMD_OFF
       )
       result.as(Matter::InteractionModel::Status).success?.should be_true
-      on_off.on_off.should be_false
+      on_off.on_off?.should be_false
 
       # Pattern 3: Attribute read (protocol-level)
       result = node.read_attribute(
@@ -160,8 +160,8 @@ describe "Endpoint Ergonomics" do
       light1_ref.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON)
       light2_ref.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF)
 
-      light1.on_off.should be_true
-      light2.on_off.should be_false
+      light1.on_off?.should be_true
+      light2.on_off?.should be_false
 
       # Or control both at once
       [1_u16, 2_u16].each do |ep_id|
@@ -172,8 +172,8 @@ describe "Endpoint Ergonomics" do
         )
       end
 
-      light1.on_off.should be_true
-      light2.on_off.should be_true
+      light1.on_off?.should be_true
+      light2.on_off?.should be_true
     end
   end
 end

@@ -16,40 +16,40 @@ describe Matter::Network::WiFiCredentials do
     it "identifies open network (0 bytes)" do
       creds = Matter::Network::WiFiCredentials.new(Bytes.new(0))
       creds.security_type.should eq(Matter::Network::WiFiSecurityType::Open)
-      creds.is_psk.should be_false
+      creds.is_psk?.should be_false
     end
 
     it "identifies WEP-64 passphrase (5 bytes ASCII)" do
       creds = Matter::Network::WiFiCredentials.new("12345".to_slice)
       creds.security_type.should eq(Matter::Network::WiFiSecurityType::WEP)
-      creds.is_psk.should be_false
+      creds.is_psk?.should be_false
       creds.passphrase.should eq("12345")
     end
 
     it "identifies WEP-64 PSK (10 hex chars)" do
       creds = Matter::Network::WiFiCredentials.new("0123456789".to_slice)
       creds.security_type.should eq(Matter::Network::WiFiSecurityType::WEP)
-      creds.is_psk.should be_true
+      creds.is_psk?.should be_true
       creds.psk_hex.should eq("30313233343536373839")
     end
 
     it "identifies WEP-128 passphrase (13 bytes ASCII)" do
       creds = Matter::Network::WiFiCredentials.new("1234567890123".to_slice)
       creds.security_type.should eq(Matter::Network::WiFiSecurityType::WEP)
-      creds.is_psk.should be_false
+      creds.is_psk?.should be_false
       creds.passphrase.should eq("1234567890123")
     end
 
     it "identifies WEP-128 PSK (26 hex chars)" do
       creds = Matter::Network::WiFiCredentials.new("01234567890123456789012345".to_slice)
       creds.security_type.should eq(Matter::Network::WiFiSecurityType::WEP)
-      creds.is_psk.should be_true
+      creds.is_psk?.should be_true
     end
 
     it "identifies WPA2 passphrase (8-63 bytes)" do
       creds = Matter::Network::WiFiCredentials.new("mypassword1234".to_slice)
       creds.security_type.should eq(Matter::Network::WiFiSecurityType::WPA2_Personal)
-      creds.is_psk.should be_false
+      creds.is_psk?.should be_false
       creds.passphrase.should eq("mypassword1234")
     end
 
@@ -57,7 +57,7 @@ describe Matter::Network::WiFiCredentials do
       psk = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       creds = Matter::Network::WiFiCredentials.new(psk.to_slice)
       creds.security_type.should eq(Matter::Network::WiFiSecurityType::WPA2_Personal)
-      creds.is_psk.should be_true
+      creds.is_psk?.should be_true
       creds.psk_hex.size.should eq(128) # Each char becomes 2 hex chars
     end
 
@@ -65,13 +65,13 @@ describe Matter::Network::WiFiCredentials do
       non_hex = "x" * 64
       creds = Matter::Network::WiFiCredentials.new(non_hex.to_slice)
       creds.security_type.should eq(Matter::Network::WiFiSecurityType::WPA2_Personal)
-      creds.is_psk.should be_false
+      creds.is_psk?.should be_false
     end
 
     it "defaults unusual lengths to WPA2 passphrase" do
       creds = Matter::Network::WiFiCredentials.new("ab".to_slice)
       creds.security_type.should eq(Matter::Network::WiFiSecurityType::WPA2_Personal)
-      creds.is_psk.should be_false
+      creds.is_psk?.should be_false
     end
   end
 
@@ -133,7 +133,7 @@ describe Matter::Network::ThreadCredentials do
 
     it "parses Network Key (Type 0x05)" do
       xpan = Bytes[0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]
-      key = Bytes.new(16) { |i| i.to_u8 }
+      key = Bytes.new(16, &.to_u8)
       dataset = build_thread_dataset({
         0x02_u8 => xpan,
         0x05_u8 => key,
@@ -216,7 +216,7 @@ describe Matter::Network::WiFiNetworkInfo do
       info.ssid.should eq(ssid)
       info.ssid_string.should eq("TestNetwork")
       info.credentials.security_type.should eq(Matter::Network::WiFiSecurityType::WPA2_Personal)
-      info.credentials.is_psk.should be_false
+      info.credentials.is_psk?.should be_false
       info.credentials.passphrase.should eq("mypassword1234")
     end
 

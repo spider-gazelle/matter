@@ -66,13 +66,13 @@ module Matter
           include TLV::Serializable
 
           @[TLV::Field(tag: 0)]
-          property numberOfTransitionsForSequence : UInt8
+          property number_of_transitions_for_sequence : UInt8
 
           @[TLV::Field(tag: 1)]
-          property dayOfWeekForSequence : UInt8
+          property day_of_week_for_sequence : UInt8
 
           @[TLV::Field(tag: 2)]
-          property modeForSequence : UInt8
+          property mode_for_sequence : UInt8
 
           @[TLV::Field(tag: 3)]
           property transitions : Array(ThermostatScheduleTransition)

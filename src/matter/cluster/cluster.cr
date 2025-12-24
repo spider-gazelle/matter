@@ -12,9 +12,9 @@ module Matter
       property id : DataType::AttributeId
       property name : String
       property type : Symbol # :bool, :uint8, :uint16, :uint32, :int8, :string, :array, etc.
-      property writable : Bool
-      property optional : Bool
-      property fixed : Bool
+      property? writable : Bool
+      property? optional : Bool
+      property? fixed : Bool
       property default : Bytes?
       property min : Int64?
       property max : Int64?
@@ -39,7 +39,7 @@ module Matter
     struct CommandMetadata
       property id : DataType::CommandId
       property name : String
-      property optional : Bool
+      property? optional : Bool
       property access : Definitions::AccessControl::EntryPrivilege
 
       def initialize(
@@ -84,7 +84,7 @@ module Matter
       # These are intentionally prefixed to avoid colliding with cluster-specific state.
       property request_session_id : UInt64? = nil
       property request_peer_node_id : UInt64? = nil
-      property request_is_case_session : Bool = false
+      property? request_is_case_session : Bool = false
       property request_fabric_index : UInt8? = nil
 
       # Callback for attribute change notifications (used by subscription system)
@@ -145,7 +145,7 @@ module Matter
           return encode_cluster_revision_global
         end
 
-        metadata = attributes.find { |a| a.id.id == attribute_id }
+        metadata = attributes.find { |attr| attr.id.id == attribute_id }
         return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless metadata
 
         # Return stored value or default
@@ -189,9 +189,9 @@ module Matter
 
       # Write an attribute value
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
-        metadata = attributes.find { |a| a.id.id == attribute_id }
+        metadata = attributes.find { |attr| attr.id.id == attribute_id }
         return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless metadata
-        return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedWrite) unless metadata.writable
+        return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedWrite) unless metadata.writable?
 
         # Validate value (simplified - real implementation would decode and validate)
         @attribute_values[attribute_id] = value
@@ -202,7 +202,7 @@ module Matter
 
       # Invoke a command
       def invoke_command(command_id : UInt32, fields : Bytes = Bytes.new(0), session_id : UInt64? = nil, is_case_session : Bool = false, fabric_index : UInt8? = nil) : InteractionModel::Status | CommandResponse
-        metadata = commands.find { |c| c.id.id == command_id }
+        metadata = commands.find { |cmd| cmd.id.id == command_id }
         return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand) unless metadata
 
         # Store session_id for clusters that need it (like OperationalCredentials)
@@ -251,12 +251,12 @@ module Matter
 
       # Get attribute metadata by ID
       def get_attribute_metadata(attribute_id : UInt32) : AttributeMetadata?
-        attributes.find { |a| a.id.id == attribute_id }
+        attributes.find { |attr| attr.id.id == attribute_id }
       end
 
       # Get command metadata by ID
       def get_command_metadata(command_id : UInt32) : CommandMetadata?
-        commands.find { |c| c.id.id == command_id }
+        commands.find { |cmd| cmd.id.id == command_id }
       end
 
       # Returns a unique key for this cluster instance for persistence

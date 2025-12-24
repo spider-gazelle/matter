@@ -11,7 +11,7 @@ module Matter
       def initialize(@generator : Interface -> T, @expiration_ms : Int64, @expire_callback : (Interface, T -> Nil)? = nil)
         spawn do
           loop do
-            if has_expired = @periodic_timer.receive?
+            if @periodic_timer.receive?
               expire
             end
           end
@@ -58,8 +58,8 @@ module Matter
       private def delete_entry(key : Interface)
         value = @values[key]?
 
-        unless @expire_callback.nil? || value.nil?
-          @expire_callback.not_nil!.call(key, value)
+        if (callback = @expire_callback) && value
+          callback.call(key, value)
         end
 
         @values.delete(key)

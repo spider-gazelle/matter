@@ -12,7 +12,7 @@ describe "Subscription Notifications" do
         cluster = Matter::Cluster::OnOffCluster.new(endpoint)
 
         callback_called = false
-        cluster.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) {
+        cluster.on_attribute_changed = ->(_ep : UInt16, _cl : UInt32, _attr : UInt32) {
           callback_called = true
         }
 
@@ -61,7 +61,7 @@ describe "Subscription Notifications" do
         notification_received = false
         notified_attribute : UInt32 = 0_u32
 
-        cluster.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) {
+        cluster.on_attribute_changed = ->(_ep : UInt16, _cl : UInt32, attr : UInt32) {
           notification_received = true
           notified_attribute = attr
         }
@@ -78,7 +78,7 @@ describe "Subscription Notifications" do
 
         notification_count = 0
 
-        cluster.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) {
+        cluster.on_attribute_changed = ->(_ep : UInt16, _cl : UInt32, _attr : UInt32) {
           notification_count += 1
         }
 
@@ -97,7 +97,7 @@ describe "Subscription Notifications" do
 
         notification_count = 0
 
-        cluster.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) {
+        cluster.on_attribute_changed = ->(_ep : UInt16, _cl : UInt32, _attr : UInt32) {
           notification_count += 1
         }
 
@@ -125,7 +125,7 @@ describe "Subscription Notifications" do
         state_callback_called = false
         state_value : Bool? = nil
 
-        cluster.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) {
+        cluster.on_attribute_changed = ->(_ep : UInt16, _cl : UInt32, _attr : UInt32) {
           attribute_callback_called = true
         }
 
@@ -398,8 +398,8 @@ def create_mock_session : Matter::Session::SecureContext
     session_type: Matter::Session::SessionType::Unicast,
     encryption_key: Bytes.new(16),
     decryption_key: Bytes.new(16),
-    is_initiator: false,
-    is_case: true,
+    initiator: false,
+    case_session: true,
     fabric_index: 1_u8
   )
 end

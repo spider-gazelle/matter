@@ -128,7 +128,7 @@ module Matter
 
         # Store for potential retransmission if requires ACK
         if message.payload_header.requires_acknowledge? && exchange
-          exchange.set_pending_message(message)
+          exchange.pending_message = message
         end
 
         # Encode and send
@@ -214,7 +214,7 @@ module Matter
       # Process retransmissions
       # Should be called periodically (e.g., every 50ms)
       def process_retransmissions : Nil
-        candidates = @exchange_manager.get_retransmit_candidates
+        candidates = @exchange_manager.retransmit_candidates
 
         candidates.each do |exchange_id, message|
           if exchange = @exchange_manager.get_exchange(exchange_id)
@@ -394,7 +394,7 @@ module Matter
           )
 
           # Handle acknowledgments
-          if ack_msg_id = message.payload_header.acknowledged_message_id
+          if message.payload_header.acknowledged_message_id
             # This message acknowledges a previous message
             exchange.clear_pending_message
           end

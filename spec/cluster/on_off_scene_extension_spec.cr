@@ -12,7 +12,7 @@ describe Matter::Cluster::OnOffCluster do
 
     applied = cluster.apply_scene_extension_field_set(field_set)
     applied.should be_true
-    cluster.on_off.should be_false
+    cluster.on_off?.should be_false
 
     on_field_set = Matter::Cluster::ScenesManagementCluster::ExtensionFieldSet.new(
       cluster_id: Matter::Cluster::OnOffCluster::CLUSTER_ID,
@@ -21,6 +21,6 @@ describe Matter::Cluster::OnOffCluster do
 
     applied = cluster.apply_scene_extension_field_set(on_field_set)
     applied.should be_true
-    cluster.on_off.should be_true
+    cluster.on_off?.should be_true
   end
 end

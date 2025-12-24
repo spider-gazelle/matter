@@ -11,7 +11,7 @@ describe "IMHandler - matter.js Compatibility" do
       # ReadRequest TLV from chip-tool (captured during commissioning)
       # This is the first ReadRequest sent after PASE is established
       read_request_hex = "15360017240200240330240404181724020024033024040018172402002403302404011817240200240330240402181724020024033024040318172402002403282404021817240200240328240404181724020024033818172403312504fcff1818280324ff0c18"
-      read_request_bytes = Bytes.new(read_request_hex.scan(/../).map { |m| m[0].to_u8(16) }.to_unsafe, read_request_hex.size // 2)
+      read_request_bytes = Bytes.new(read_request_hex.scan(/../).map(&.[0].to_u8(16)).to_unsafe, read_request_hex.size // 2)
 
       # Parse ReadRequest
       request = Matter::Protocol::IMHandler.parse_read_request(read_request_bytes)
@@ -179,7 +179,7 @@ describe "IMHandler - matter.js Compatibility" do
 
       # Parse the real ReadRequest from chip-tool
       read_request_hex = "15360017240200240330240404181724020024033024040018172402002403302404011817240200240330240402181724020024033024040318172402002403282404021817240200240328240404181724020024033818172403312504fcff1818280324ff0c18"
-      read_request_bytes = Bytes.new(read_request_hex.scan(/../).map { |m| m[0].to_u8(16) }.to_unsafe, read_request_hex.size // 2)
+      read_request_bytes = Bytes.new(read_request_hex.scan(/../).map(&.[0].to_u8(16)).to_unsafe, read_request_hex.size // 2)
 
       request = Matter::Protocol::IMHandler.parse_read_request(read_request_bytes)
       request.should_not be_nil
@@ -216,7 +216,7 @@ describe "IMHandler - matter.js Compatibility" do
       # Size: 210 bytes
       # Hex: 1536011535012600b89644d3370124020024033024040418290218181535012600b89644d337012402002403302404001824020018181535012600b89644d3370124020024033024040118350224003c250184031818181535012600b89644d337012402002403302404021824020218181535012600b89644d337012402002403302404031824020218181535012600c860c1e23701240200240328240402182502f1ff18181535012600c860c1e237012402002403282404041825020080181818290424ff0d18
       matterjs_response_hex = "1536011535012600b89644d3370124020024033024040418290218181535012600b89644d337012402002403302404001824020018181535012600b89644d3370124020024033024040118350224003c250184031818181535012600b89644d337012402002403302404021824020218181535012600b89644d337012402002403302404031824020218181535012600c860c1e23701240200240328240402182502f1ff18181535012600c860c1e237012402002403282404041825020080181818290424ff0d18"
-      matterjs_response_bytes = Bytes.new(matterjs_response_hex.scan(/../).map { |m| m[0].to_u8(16) }.to_unsafe, matterjs_response_hex.size // 2)
+      matterjs_response_bytes = Bytes.new(matterjs_response_hex.scan(/../).map(&.[0].to_u8(16)).to_unsafe, matterjs_response_hex.size // 2)
 
       puts "=== matter.js ReadResponse TLV ==="
       puts "Size: #{matterjs_response_bytes.size} bytes"

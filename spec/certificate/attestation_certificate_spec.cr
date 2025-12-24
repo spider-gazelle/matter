@@ -153,11 +153,11 @@ describe Matter::Certificate::AttestationCertificateManager do
     dac1.serial.should_not eq(dac2.serial)
   end
 
-  it "returns PAI certificate via get_pai_cert" do
+  it "returns PAI certificate via pai_cert" do
     vendor_id = 0xFFF1_u16
     manager = Matter::Certificate::AttestationCertificateManager.new(vendor_id)
 
-    pai_cert = manager.get_pai_cert
+    pai_cert = manager.pai_cert
     pai_cert.should eq(manager.pai_cert)
     pai_cert.should_not be_nil
     pai_cert.size.should be > 0

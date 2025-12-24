@@ -35,7 +35,7 @@ module Matter
         end
 
         def session_established(handler : MessageHandler, session : Session::SecureContext) : Nil
-          return unless session.is_case
+          return unless session.case_session?
 
           sessions = load_case_sessions
           sessions[session.session_id.to_s] = session.to_h
@@ -49,7 +49,7 @@ module Matter
         end
 
         def session_updated(handler : MessageHandler, session : Session::SecureContext) : Nil
-          return unless session.is_case
+          return unless session.case_session?
 
           sessions = load_case_sessions
           sessions[session.session_id.to_s] = session.to_h
@@ -103,7 +103,7 @@ module Matter
           stored.each do |id, session_h|
             begin
               session = Session::SecureContext.from_h(session_h)
-              next unless session.is_case
+              next unless session.case_session?
 
               fabric_index = session.fabric_index
               if fabric_index && handler.fabric_table.get_fabric(fabric_index)
@@ -169,12 +169,12 @@ module Matter
 
         private def load_case_sessions : Hash(String, Hash(String, String | UInt64 | UInt32 | UInt16 | UInt8 | Int64 | Bool))
           stored = @storage.get(SESSION_CONTEXT, SESSION_KEY)
-          return ({} of String => Hash(String, String | UInt64 | UInt32 | UInt16 | UInt8 | Int64 | Bool)) unless stored.is_a?(String) && !stored.empty?
+          return ({} of String => Hash(String, String | UInt64 | UInt32 | UInt16 | UInt8 | Int64 | Bool)) if !stored.is_a?(String) || stored.empty?
 
           data = Hash(String, Hash(String, JSON::Any)).from_json(stored)
           sessions = {} of String => Hash(String, String | UInt64 | UInt32 | UInt16 | UInt8 | Int64 | Bool)
-          data.each do |id, h|
-            sessions[id] = json_any_hash_to_session_hash(h)
+          data.each do |id, hash|
+            sessions[id] = json_any_hash_to_session_hash(hash)
           end
           sessions
         rescue
@@ -191,7 +191,7 @@ module Matter
 
           stored.each do |_, session_h|
             session = Session::SecureContext.from_h(session_h)
-            next unless session.is_case
+            next unless session.case_session?
             sessions[session.session_id] = session
           rescue
             # Skip invalid entries
@@ -202,12 +202,12 @@ module Matter
 
         private def load_subscriptions : Hash(String, Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil))))
           stored = @storage.get(SESSION_CONTEXT, SUBSCRIPTIONS_KEY)
-          return ({} of String => Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil)))) unless stored.is_a?(String) && !stored.empty?
+          return ({} of String => Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil)))) if !stored.is_a?(String) || stored.empty?
 
           data = Hash(String, Hash(String, JSON::Any)).from_json(stored)
           subs = {} of String => Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil)))
-          data.each do |id, h|
-            subs[id] = json_any_hash_to_subscription_hash(h)
+          data.each do |id, hash|
+            subs[id] = json_any_hash_to_subscription_hash(hash)
           end
           subs
         rescue
@@ -269,17 +269,17 @@ module Matter
               paths = paths_any.map do |path_any|
                 path_h_any = path_any.as_h
                 converted = {} of String => (UInt32 | UInt16 | Nil)
-                path_h_any.each do |pk, pv_any|
+                path_h_any.each do |path_key, pv_any|
                   pv = pv_any.raw
                   if pv.nil?
-                    converted[pk] = nil
+                    converted[path_key] = nil
                   else
                     i = pv.as(Int64)
-                    case pk
+                    case path_key
                     when "endpoint", "list_index"
-                      converted[pk] = i.to_u16
+                      converted[path_key] = i.to_u16
                     else
-                      converted[pk] = i.to_u32
+                      converted[path_key] = i.to_u32
                     end
                   end
                 end

@@ -129,7 +129,7 @@ module Matter
           include TLV::Serializable
 
           @[TLV::Field(tag: 0)]
-          property update_Token : Slice(UInt8)
+          property update_token : Slice(UInt8)
 
           @[TLV::Field(tag: 1)]
           property software_version : UInt32

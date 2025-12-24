@@ -63,7 +63,7 @@ module Matter
           # to that furthest valid position. If the SampledPosition attribute is supported it shall be updated on the
           # cluster accordingly.
           @[TLV::Field(tag: 0)]
-          property deltaPositionMilliseconds : UInt64
+          property delta_position_milliseconds : UInt64
         end
 
         # Input to the MediaPlayback skipBackward command
@@ -77,7 +77,7 @@ module Matter
           # earliest valid position. If the SampledPosition attribute is supported it shall be updated on the cluster
           # accordingly.
           @[TLV::Field(tag: 0)]
-          property deltaPositionMilliseconds : UInt64
+          property delta_position_milliseconds : UInt64
         end
 
         # This structure defines a playback position within a media stream being played.

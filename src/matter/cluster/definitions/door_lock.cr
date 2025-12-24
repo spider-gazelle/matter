@@ -461,7 +461,7 @@ module Matter
           include TLV::Serializable
 
           @[TLV::Field(tag: 0)]
-          property credential_exists : Bool
+          property? credential_exists : Bool
 
           @[TLV::Field(tag: 1)]
           property user_index : UInt16?

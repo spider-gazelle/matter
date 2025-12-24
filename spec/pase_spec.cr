@@ -292,7 +292,7 @@ describe Matter::Session::Pase do
       result[:initiator].session_id.should eq(initiator_session_id)
       result[:initiator].peer_session_id.should eq(responder_session_id)
       result[:initiator].session_type.should eq(Matter::Session::SessionType::Unicast)
-      result[:initiator].is_initiator.should be_true
+      result[:initiator].initiator?.should be_true
       result[:initiator].encryption_key.size.should eq(16)
       result[:initiator].decryption_key.size.should eq(16)
 
@@ -300,7 +300,7 @@ describe Matter::Session::Pase do
       result[:responder].session_id.should eq(responder_session_id)
       result[:responder].peer_session_id.should eq(initiator_session_id)
       result[:responder].session_type.should eq(Matter::Session::SessionType::Unicast)
-      result[:responder].is_initiator.should be_false
+      result[:responder].initiator?.should be_false
       result[:responder].encryption_key.size.should eq(16)
       result[:responder].decryption_key.size.should eq(16)
     end

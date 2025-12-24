@@ -56,23 +56,23 @@ module Matter
       @administrator_commissioning : Cluster::AdministratorCommissioningCluster? = nil
 
       def basic_info : Cluster::BasicInformationCluster
-        @basic_info.not_nil!
+        @basic_info.as(Cluster::BasicInformationCluster)
       end
 
       def general_commissioning : Cluster::GeneralCommissioningCluster
-        @general_commissioning.not_nil!
+        @general_commissioning.as(Cluster::GeneralCommissioningCluster)
       end
 
       def access_control : Cluster::AccessControlCluster
-        @access_control.not_nil!
+        @access_control.as(Cluster::AccessControlCluster)
       end
 
       def operational_credentials : Cluster::OperationalCredentialsCluster
-        @operational_credentials.not_nil!
+        @operational_credentials.as(Cluster::OperationalCredentialsCluster)
       end
 
       def administrator_commissioning : Cluster::AdministratorCommissioningCluster
-        @administrator_commissioning.not_nil!
+        @administrator_commissioning.as(Cluster::AdministratorCommissioningCluster)
       end
 
       def initialize(
@@ -457,7 +457,7 @@ module Matter
       end
 
       private def inject_and_populate_descriptors : Nil
-        endpoints = @message_handler.clusters.keys.map(&.[0]).uniq.sort
+        endpoints = @message_handler.clusters.keys.map(&.[0]).uniq!.sort!
         endpoints << 0_u16 unless endpoints.includes?(0_u16)
 
         endpoints.each do |endpoint_id|
@@ -475,8 +475,8 @@ module Matter
             .select { |k, _| k[0] == endpoint_id }
             .keys
             .map(&.[1])
-            .uniq
-            .sort
+            .uniq!
+            .sort!
 
           cluster_ids.each { |id| descriptor.server_list << id unless descriptor.server_list.includes?(id) }
 

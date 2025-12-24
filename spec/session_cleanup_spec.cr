@@ -32,10 +32,10 @@ module SessionCleanupTestHelpers
       session_type: Matter::Session::SessionType::Unicast,
       encryption_key: Random::Secure.random_bytes(16),
       decryption_key: Random::Secure.random_bytes(16),
-      is_initiator: false,
+      initiator: false,
       peer_node_id: Matter::DataType::NodeId.new(peer_node_id),
       local_node_id: Matter::DataType::NodeId.new(1_u64),
-      is_case: true,
+      case_session: true,
       fabric_index: fabric_index
     )
     # Adjust creation time for testing supersession order
@@ -120,8 +120,8 @@ describe Matter::Protocol::MessageHandler do
         session_type: Matter::Session::SessionType::Unicast,
         encryption_key: Random::Secure.random_bytes(16),
         decryption_key: Random::Secure.random_bytes(16),
-        is_initiator: false,
-        is_case: false # PASE session
+        initiator: false,
+        case_session: false # PASE session
       )
       handler.sessions[pase_session.session_id] = pase_session
 
@@ -570,7 +570,7 @@ describe Matter::Protocol::MessageHandler do
       # Should have pending cleanup
       handler.@pending_session_cleanups.size.should eq(1)
       handler.@pending_session_cleanups.first.reason.should eq(Matter::Protocol::MessageHandler::CleanupReason::TransportFailure)
-      handler.@pending_session_cleanups.first.cancel_on_traffic.should be_true
+      handler.@pending_session_cleanups.first.cancel_on_traffic?.should be_true
 
       transport.close
     end
@@ -605,7 +605,7 @@ describe Matter::Protocol::MessageHandler do
       # Should have pending cleanup with short grace period
       handler.@pending_session_cleanups.size.should eq(1)
       handler.@pending_session_cleanups.first.reason.should eq(Matter::Protocol::MessageHandler::CleanupReason::CaseResumptionFailed)
-      handler.@pending_session_cleanups.first.cancel_on_traffic.should be_false
+      handler.@pending_session_cleanups.first.cancel_on_traffic?.should be_false
 
       transport.close
     end
@@ -725,7 +725,7 @@ describe Matter::Protocol::MessageHandler do
 
       cleanup.session_id.should eq(100_u16)
       cleanup.reason.should eq(Matter::Protocol::MessageHandler::CleanupReason::TransportFailure)
-      cleanup.cancel_on_traffic.should be_true
+      cleanup.cancel_on_traffic?.should be_true
     end
   end
 end

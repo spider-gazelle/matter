@@ -26,7 +26,7 @@ describe Matter::Cluster do
       device_type_list = attrs.find { |a| a.id.id == Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST }
       device_type_list.should_not be_nil
       device_type_list.not_nil!.name.should eq("DeviceTypeList")
-      device_type_list.not_nil!.writable.should be_false
+      device_type_list.not_nil!.writable?.should be_false
 
       server_list = attrs.find { |a| a.id.id == Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST }
       server_list.should_not be_nil
@@ -74,7 +74,7 @@ describe Matter::Cluster do
 
       cluster.name.should eq("OnOff")
       cluster.cluster_id.id.should eq(0x0006_u32)
-      cluster.on_off.should be_false
+      cluster.on_off?.should be_false
     end
 
     it "has required attributes" do
@@ -90,7 +90,7 @@ describe Matter::Cluster do
       on_off_attr.should_not be_nil
       on_off_attr.not_nil!.name.should eq("onOff")
       on_off_attr.not_nil!.type.should eq(:bool)
-      on_off_attr.not_nil!.writable.should be_false
+      on_off_attr.not_nil!.writable?.should be_false
 
       # Global attributes can be read via read_attribute
       result = cluster.read_attribute(0xFFFC_u32) # FeatureMap
@@ -128,13 +128,13 @@ describe Matter::Cluster do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::OnOffCluster.new(endpoint, on_off: true)
 
-      cluster.on_off.should be_true
+      cluster.on_off?.should be_true
 
       result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF, Bytes.new(0))
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).success?.should be_true
 
-      cluster.on_off.should be_false
+      cluster.on_off?.should be_false
 
       # Check attribute value updated
       attr_value = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
@@ -145,13 +145,13 @@ describe Matter::Cluster do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::OnOffCluster.new(endpoint, on_off: false)
 
-      cluster.on_off.should be_false
+      cluster.on_off?.should be_false
 
       result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).success?.should be_true
 
-      cluster.on_off.should be_true
+      cluster.on_off?.should be_true
     end
 
     it "executes Toggle command" do
@@ -160,11 +160,11 @@ describe Matter::Cluster do
 
       # Toggle off -> on
       cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
-      cluster.on_off.should be_true
+      cluster.on_off?.should be_true
 
       # Toggle on -> off
       cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
-      cluster.on_off.should be_false
+      cluster.on_off?.should be_false
     end
 
     it "increments data version on command" do

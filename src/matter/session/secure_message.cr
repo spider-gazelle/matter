@@ -60,9 +60,9 @@ module Matter
         # CRITICAL: The node_id in the nonce MUST match the source_node_id in the packet header!
         # Use packet_header.source_node_id if present, otherwise fall back to context.local_node_id or 0
         source_node_id = if packet_header.source_node_id
-                           packet_header.source_node_id.not_nil!.id
+                           packet_header.source_node_id.as(DataType::NodeId).id
                          elsif context.local_node_id
-                           context.local_node_id.not_nil!.id
+                           context.local_node_id.as(DataType::NodeId).id
                          else
                            # During PASE without source_node_id in header, use node_id=0 (UNSPECIFIED)
                            # This matches matter.js behavior (NodeId.UNSPECIFIED_NODE_ID)
@@ -135,9 +135,9 @@ module Matter
         # node_id=0 (UNSPECIFIED_NODE_ID) in the nonce, NOT the PASE temporary IDs
         # (0xFFFFFFFB00000001/0xFFFFFFFB00000002) which are only used in packet headers
         peer_node_id = if context.peer_node_id
-                         context.peer_node_id.not_nil!.id
+                         context.peer_node_id.as(DataType::NodeId).id
                        elsif packet_header.source_node_id
-                         packet_header.source_node_id.not_nil!.id
+                         packet_header.source_node_id.as(DataType::NodeId).id
                        else
                          # During PASE, use node_id=0 (UNSPECIFIED) in nonce
                          # This matches matter.js behavior (NodeId.UNSPECIFIED_NODE_ID)

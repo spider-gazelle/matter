@@ -9,14 +9,14 @@ describe Matter::Cluster::OnOffCluster do
 
       cluster.cluster_id.id.should eq(0x0006_u32)
       cluster.name.should eq("OnOff")
-      cluster.on_off.should be_false
+      cluster.on_off?.should be_false
     end
 
     it "creates on/off cluster with initial on state" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: true)
 
-      cluster.on_off.should be_true
+      cluster.on_off?.should be_true
     end
   end
 
@@ -32,7 +32,7 @@ describe Matter::Cluster::OnOffCluster do
       on_off_attr.should_not be_nil
       on_off_attr.not_nil!.name.should eq("onOff")
       on_off_attr.not_nil!.type.should eq(:bool)
-      on_off_attr.not_nil!.writable.should be_false
+      on_off_attr.not_nil!.writable?.should be_false
     end
 
     it "reads OnOff attribute when off" do
@@ -96,19 +96,19 @@ describe Matter::Cluster::OnOffCluster do
 
         result.should be_a(Matter::InteractionModel::Status)
         result.as(Matter::InteractionModel::Status).success?.should be_true
-        cluster.on_off.should be_false
+        cluster.on_off?.should be_false
       end
 
       it "turns off when on" do
         endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
         cluster = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: true)
 
-        cluster.on_off.should be_true
+        cluster.on_off?.should be_true
 
         result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF, Bytes.new(0))
 
         result.as(Matter::InteractionModel::Status).success?.should be_true
-        cluster.on_off.should be_false
+        cluster.on_off?.should be_false
       end
 
       it "updates attribute value after Off command" do
@@ -130,19 +130,19 @@ describe Matter::Cluster::OnOffCluster do
         result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
 
         result.as(Matter::InteractionModel::Status).success?.should be_true
-        cluster.on_off.should be_true
+        cluster.on_off?.should be_true
       end
 
       it "turns on when off" do
         endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
         cluster = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: false)
 
-        cluster.on_off.should be_false
+        cluster.on_off?.should be_false
 
         result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
 
         result.as(Matter::InteractionModel::Status).success?.should be_true
-        cluster.on_off.should be_true
+        cluster.on_off?.should be_true
       end
 
       it "updates attribute value after On command" do
@@ -164,7 +164,7 @@ describe Matter::Cluster::OnOffCluster do
         result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
 
         result.as(Matter::InteractionModel::Status).success?.should be_true
-        cluster.on_off.should be_true
+        cluster.on_off?.should be_true
       end
 
       it "toggles from on to off" do
@@ -174,23 +174,23 @@ describe Matter::Cluster::OnOffCluster do
         result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
 
         result.as(Matter::InteractionModel::Status).success?.should be_true
-        cluster.on_off.should be_false
+        cluster.on_off?.should be_false
       end
 
       it "toggles multiple times correctly" do
         endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
         cluster = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: false)
 
-        cluster.on_off.should be_false
+        cluster.on_off?.should be_false
 
         cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
-        cluster.on_off.should be_true
+        cluster.on_off?.should be_true
 
         cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
-        cluster.on_off.should be_false
+        cluster.on_off?.should be_false
 
         cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
-        cluster.on_off.should be_true
+        cluster.on_off?.should be_true
       end
     end
 
@@ -206,7 +206,7 @@ describe Matter::Cluster::OnOffCluster do
         result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF_WITH_EFFECT, Bytes.new(0))
 
         result.as(Matter::InteractionModel::Status).success?.should be_true
-        cluster.on_off.should be_false
+        cluster.on_off?.should be_false
       end
     end
 
@@ -222,7 +222,7 @@ describe Matter::Cluster::OnOffCluster do
         result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON_WITH_RECALL_GLOBAL_SCENE, Bytes.new(0))
 
         result.as(Matter::InteractionModel::Status).success?.should be_true
-        cluster.on_off.should be_true
+        cluster.on_off?.should be_true
       end
     end
 
@@ -238,7 +238,7 @@ describe Matter::Cluster::OnOffCluster do
         result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON_WITH_TIMED_OFF, Bytes.new(0))
 
         result.as(Matter::InteractionModel::Status).success?.should be_true
-        cluster.on_off.should be_true
+        cluster.on_off?.should be_true
       end
     end
   end
@@ -306,7 +306,7 @@ describe Matter::Cluster::OnOffCluster do
 
       callback_called = false
 
-      cluster.on_state_changed do |state|
+      cluster.on_state_changed do |_|
         callback_called = true
       end
 
@@ -404,15 +404,15 @@ describe Matter::Cluster::OnOffCluster do
       light = Matter::Cluster::OnOffCluster.new(endpoint_id)
 
       # Initially off
-      light.on_off.should be_false
+      light.on_off?.should be_false
 
       # User turns on light
       light.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
-      light.on_off.should be_true
+      light.on_off?.should be_true
 
       # User turns off light
       light.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF, Bytes.new(0))
-      light.on_off.should be_false
+      light.on_off?.should be_false
     end
 
     it "simulates toggle button presses" do
@@ -424,7 +424,7 @@ describe Matter::Cluster::OnOffCluster do
       # Simulate 5 button presses
       5.times do
         outlet.invoke_command(Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
-        states << outlet.on_off
+        states << outlet.on_off?
       end
 
       states.should eq([true, false, true, false, true])
@@ -457,13 +457,13 @@ describe Matter::Cluster::OnOffCluster do
       cluster1 = Matter::Cluster::OnOffCluster.new(endpoint1, on_off: false)
       cluster2 = Matter::Cluster::OnOffCluster.new(endpoint2, on_off: true)
 
-      cluster1.on_off.should be_false
-      cluster2.on_off.should be_true
+      cluster1.on_off?.should be_false
+      cluster2.on_off?.should be_true
 
       cluster1.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
 
-      cluster1.on_off.should be_true
-      cluster2.on_off.should be_true # Unchanged
+      cluster1.on_off?.should be_true
+      cluster2.on_off?.should be_true # Unchanged
     end
   end
 end

@@ -131,7 +131,7 @@ module Matter
       raise "Operational key has no public bits" unless public_key_bytes
 
       # Serialize CATs as comma-separated hex values
-      cats_str = @cats.map { |cat| cat.value.to_s(16) }.join(",")
+      cats_str = @cats.map(&.value.to_s(16)).join(",")
 
       {
         "fabric_id"              => @fabric_id,
@@ -144,8 +144,8 @@ module Matter
         "ipk"                    => Base64.strict_encode(@ipk),
         "vendor_id"              => @vendor_id,
         "label"                  => @label,
-        "intermediate_cert"      => @intermediate_cert ? Base64.strict_encode(@intermediate_cert.not_nil!) : "",
-        "root_cert"              => @root_cert ? Base64.strict_encode(@root_cert.not_nil!) : "",
+        "intermediate_cert"      => @intermediate_cert.try { |cert| Base64.strict_encode(cert) } || "",
+        "root_cert"              => @root_cert.try { |cert| Base64.strict_encode(cert) } || "",
         "created_at"             => @created_at,
         "last_used_at"           => @last_used_at,
         "cats"                   => cats_str,

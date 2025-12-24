@@ -28,7 +28,7 @@ module Matter
 
           # This shall indicate the type of input
           @[TLV::Field(tag: 1)]
-          property inputType : InputType
+          property input_type : InputType
 
           # This shall indicate the input name, such as “HDMI 1”. This field may be blank, but SHOULD be provided when
           # known.

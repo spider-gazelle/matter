@@ -92,7 +92,7 @@ module Matter
           # linked to the network technology (e.g. Associated for a Wi-Fi network, media connected for an Ethernet
           # network).
           @[TLV::Field(tag: 1)]
-          property connected : Bool
+          property? connected : Bool
 
           def initialize(@network_id : Slice(UInt8), @connected : Bool)
           end
@@ -261,9 +261,9 @@ module Matter
           # entry in the Networks attribute that was last added, updated or removed successfully by the associated
           # request command.
           @[TLV::Field(tag: 2)]
-          property networkIndex : UInt8?
+          property network_index : UInt8?
 
-          def initialize(@status_code : StatusCode, @debug_text : String? = nil, @networkIndex : UInt8? = nil)
+          def initialize(@status_code : StatusCode, @debug_text : String? = nil, @network_index : UInt8? = nil)
           end
         end
 
@@ -353,12 +353,12 @@ module Matter
           property network_id : Slice(UInt8)
 
           @[TLV::Field(tag: 1)]
-          property networkIndex : UInt8
+          property network_index : UInt8
 
           @[TLV::Field(tag: 2)]
           property breadcrumb : UInt64
 
-          def initialize(@network_id : Slice(UInt8), @networkIndex : UInt8, @breadcrumb : UInt64)
+          def initialize(@network_id : Slice(UInt8), @network_index : UInt8, @breadcrumb : UInt64)
           end
         end
 

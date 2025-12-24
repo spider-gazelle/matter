@@ -269,9 +269,9 @@ module Matter
       # Failsafe context state for tracking CSR and root cert operations
       class FailsafeContext
         property csr_session_id : UInt64?
-        property is_for_update_noc : Bool
-        property root_cert_set : Bool
-        property noc_added_or_updated : Bool
+        property? is_for_update_noc : Bool
+        property? root_cert_set : Bool
+        property? noc_added_or_updated : Bool
 
         def initialize
           @csr_session_id = nil
@@ -335,7 +335,7 @@ module Matter
       property current_fabric_index : UInt8
       property session_id : UInt64?
       property session_fabric_index : UInt8?
-      property failsafe_armed : Bool
+      property? failsafe_armed : Bool
 
       # Alias for session_fabric_index to match base Cluster interface
       # The base Cluster.invoke_command sets fabric_index= from the session
@@ -499,7 +499,7 @@ module Matter
         dac_cert, dac_key = cert_manager.get_dac_cert(product_id)
 
         # Get PAI certificate
-        pai_cert = cert_manager.get_pai_cert
+        pai_cert = cert_manager.pai_cert
 
         # Set the credentials
         @dac = dac_cert
@@ -544,7 +544,7 @@ module Matter
 
       # Get fabric descriptor by index (for tests)
       def get_fabric_by_index(index : UInt8) : FabricDescriptor?
-        fabrics.find { |f| f.fabric_index == index }
+        fabrics.find { |fabric| fabric.fabric_index == index }
       end
 
       # Check if there's capacity for more fabrics (for tests)
@@ -554,7 +554,7 @@ module Matter
 
       # Get NOC by fabric index (for tests)
       def get_noc_by_fabric_index(index : UInt8) : NOCStruct?
-        nocs.find { |n| n.fabric_index == index }
+        nocs.find { |noc| noc.fabric_index == index }
       end
 
       # SupportedFabrics attribute (0x02) - Maximum supported fabrics
@@ -685,7 +685,7 @@ module Matter
         end
 
         # Check if NOC already added/updated in current failsafe
-        if @failsafe_context.noc_added_or_updated
+        if @failsafe_context.noc_added_or_updated?
           # CSRRequest response payload cannot encode an error; failures must be
           # returned as a StatusIB in the InvokeResponse.
           return InteractionModel::Status.new(
@@ -695,10 +695,11 @@ module Matter
         end
 
         # Generate new operational key pair
-        @pending_noc_key = Crypto::Key.generate_key_pair
+        pending_noc_key = Crypto::Key.generate_key_pair
+        @pending_noc_key = pending_noc_key
 
         # Build CSR elements (TLV structure with public key and nonce)
-        csr_elements = build_csr_elements(request.csr_nonce, @pending_noc_key.not_nil!)
+        csr_elements = build_csr_elements(request.csr_nonce, pending_noc_key)
 
         # Sign CSR with attestation key (pass session_id for attestation challenge)
         csr_signature = sign_attestation(csr_elements, @session_id)
@@ -725,7 +726,7 @@ module Matter
         end
 
         # Cannot call AddNOC twice in same failsafe
-        if @failsafe_context.noc_added_or_updated
+        if @failsafe_context.noc_added_or_updated?
           return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "AddNOC/UpdateNOC already called in this failsafe")
         end
 
@@ -737,7 +738,7 @@ module Matter
         end
 
         # Must have root certificate set
-        unless @failsafe_context.root_cert_set
+        unless @failsafe_context.root_cert_set?
           return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Root certificate not set")
         end
 
@@ -792,7 +793,7 @@ module Matter
           node_id: node_id,
           root_public_key: root_public_key,
           operational_cert: request.noc_value,
-          operational_key: @pending_noc_key.not_nil!,
+          operational_key: @pending_noc_key.as(Crypto::Key),
           ipk: request.ipk_value,
           vendor_id: request.admin_vendor_id,
           label: "",
@@ -862,19 +863,19 @@ module Matter
         session_fabric_index = @session_fabric_index || request.fabric_index || 0_u8
 
         # Cannot call UpdateNOC after AddNOC in same failsafe
-        if @failsafe_context.noc_added_or_updated
+        if @failsafe_context.noc_added_or_updated?
           return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "AddNOC/UpdateNOC already called in this failsafe")
         end
 
         # Must have CSR from this session with is_for_update_noc=true
         # NOTE: @session_id should be set by protocol layer, defaults to 0 for testing
         session_id = @session_id || 0_u64
-        unless @failsafe_context.csr_exists?(session_id) && @failsafe_context.is_for_update_noc
+        unless @failsafe_context.csr_exists?(session_id) && @failsafe_context.is_for_update_noc?
           return encode_noc_response(NodeOperationalCertStatus::MissingCsr, nil, "CSR for update not found")
         end
 
         # Root certificate cannot be set for updates
-        if @failsafe_context.root_cert_set
+        if @failsafe_context.root_cert_set?
           return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Cannot set root certificate for NOC update")
         end
 
@@ -900,7 +901,7 @@ module Matter
         # Update fabric with new NOC, node_id, and operational key
         fabric.operational_cert = request.noc_value
         fabric.intermediate_cert = request.icac_value
-        fabric.operational_key = @pending_noc_key.not_nil!
+        fabric.operational_key = @pending_noc_key.as(Crypto::Key)
         fabric.node_id = new_node_id
 
         @fabric_table.update_fabric(fabric)
@@ -931,8 +932,8 @@ module Matter
         end
 
         # Check for label conflict
-        @fabric_table.all_fabrics.each do |f|
-          if f.fabric_index != fabric_idx && f.label == request.label
+        @fabric_table.all_fabrics.each do |existing_fabric|
+          if existing_fabric.fabric_index != fabric_idx && existing_fabric.label == request.label
             return encode_noc_response(NodeOperationalCertStatus::LabelConflict, nil, "Label already in use")
           end
         end
@@ -1050,13 +1051,13 @@ module Matter
         end
 
         # Cannot set root cert twice in same failsafe
-        if @failsafe_context.root_cert_set
+        if @failsafe_context.root_cert_set?
           Log.warn { "AddTrustedRootCertificate failed: Root cert already set" }
           return Bytes.new(0)
         end
 
         # Cannot set root cert after AddNOC/UpdateNOC
-        if @failsafe_context.noc_added_or_updated
+        if @failsafe_context.noc_added_or_updated?
           Log.warn { "AddTrustedRootCertificate failed: NOC already added/updated" }
           return Bytes.new(0)
         end
@@ -1161,15 +1162,16 @@ module Matter
         end
 
         # Cannot call CSR after AddNOC/UpdateNOC in same failsafe
-        if @failsafe_context.noc_added_or_updated
+        if @failsafe_context.noc_added_or_updated?
           return nil
         end
 
         # Generate new operational key pair
-        @pending_noc_key = Crypto::Key.generate_key_pair
+        pending_noc_key = Crypto::Key.generate_key_pair
+        @pending_noc_key = pending_noc_key
 
         # Build CSR elements (TLV structure with public key and nonce)
-        csr_elements = build_csr_elements(cmd.csr_nonce, @pending_noc_key.not_nil!)
+        csr_elements = build_csr_elements(cmd.csr_nonce, pending_noc_key)
 
         # Sign CSR with attestation key
         csr_signature = sign_attestation(csr_elements)
@@ -1193,7 +1195,7 @@ module Matter
         return nil unless failsafe_armed
 
         # Cannot set root cert twice in same failsafe
-        if @failsafe_context.root_cert_set
+        if @failsafe_context.root_cert_set?
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::InvalidNoc,
             debug_text: "Root certificate already set in this failsafe context"
@@ -1201,7 +1203,7 @@ module Matter
         end
 
         # Cannot set root cert after AddNOC/UpdateNOC
-        if @failsafe_context.noc_added_or_updated
+        if @failsafe_context.noc_added_or_updated?
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::InvalidNoc,
             debug_text: "Cannot set root certificate after AddNOC/UpdateNOC"
@@ -1240,7 +1242,7 @@ module Matter
         end
 
         # Cannot call AddNOC twice in same failsafe
-        if @failsafe_context.noc_added_or_updated
+        if @failsafe_context.noc_added_or_updated?
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::InvalidNoc,
             debug_text: "AddNOC/UpdateNOC already called in this failsafe"
@@ -1256,7 +1258,7 @@ module Matter
         end
 
         # Must have root certificate set
-        unless @failsafe_context.root_cert_set
+        unless @failsafe_context.root_cert_set?
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::InvalidNoc,
             debug_text: "Root certificate not set"
@@ -1292,7 +1294,7 @@ module Matter
           node_id: node_id,
           root_public_key: root_public_key,
           operational_cert: cmd.noc_value,
-          operational_key: @pending_noc_key.not_nil!,
+          operational_key: @pending_noc_key.as(Crypto::Key),
           ipk: cmd.ipk_value,
           vendor_id: cmd.admin_vendor_id,
           label: "",
@@ -1354,7 +1356,7 @@ module Matter
         end
 
         # Cannot call UpdateNOC after AddNOC in same failsafe
-        if @failsafe_context.noc_added_or_updated
+        if @failsafe_context.noc_added_or_updated?
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::InvalidNoc,
             debug_text: "AddNOC/UpdateNOC already called in this failsafe"
@@ -1362,7 +1364,7 @@ module Matter
         end
 
         # Must have CSR from this session with is_for_update_noc=true
-        unless @failsafe_context.csr_exists?(session_id) && @failsafe_context.is_for_update_noc
+        unless @failsafe_context.csr_exists?(session_id) && @failsafe_context.is_for_update_noc?
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::MissingCsr,
             debug_text: "CSR for update not found"
@@ -1370,7 +1372,7 @@ module Matter
         end
 
         # Root certificate cannot be set for updates
-        if @failsafe_context.root_cert_set
+        if @failsafe_context.root_cert_set?
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::InvalidNoc,
             debug_text: "Cannot set root certificate for NOC update"
@@ -1401,7 +1403,7 @@ module Matter
         # Update fabric with new NOC, node_id, and operational key
         fabric.operational_cert = cmd.noc_value
         fabric.intermediate_cert = cmd.icac_value
-        fabric.operational_key = @pending_noc_key.not_nil!
+        fabric.operational_key = @pending_noc_key.as(Crypto::Key)
         fabric.node_id = new_node_id
 
         @fabric_table.update_fabric(fabric)
@@ -1431,8 +1433,8 @@ module Matter
         end
 
         # Check for label conflict
-        @fabric_table.all_fabrics.each do |f|
-          if f.fabric_index != session_fabric_index && f.label == cmd.label
+        @fabric_table.all_fabrics.each do |existing_fabric|
+          if existing_fabric.fabric_index != session_fabric_index && existing_fabric.label == cmd.label
             return NOCResponse.new(
               status_code: NodeOperationalCertStatus::LabelConflict,
               debug_text: "Label already in use"
@@ -1514,7 +1516,7 @@ module Matter
         # Get attestation challenge from session if available
         # Per Matter spec: signature is over (attestation_elements || attestation_challenge)
         attestation_challenge = if session_id && @session_lookup
-                                  @session_lookup.not_nil!.call(session_id)
+                                  @session_lookup.as(Proc(UInt64, Bytes?)).call(session_id)
                                 else
                                   nil
                                 end
@@ -1651,40 +1653,38 @@ module Matter
             temp >>= 8
           end
           io.write_byte (0x80 | bytes.size).to_u8
-          bytes.each { |b| io.write_byte b }
+          bytes.each { |byte| io.write_byte byte }
         end
       end
 
       private def extract_fabric_id_from_noc(noc : Bytes) : UInt64
         # Parse Matter certificate TLV using the MatterCertificate struct
-        begin
-          cert = Crypto::MatterCertificate.from_slice(noc)
-          Log.debug { "Parsed NOC certificate: fabric_id=#{cert.fabric_id}, node_id=#{cert.node_id}" }
 
-          fabric_id = cert.fabric_id
-          unless fabric_id
-            raise "fabricId not found in NOC certificate subject"
-          end
-          fabric_id
-        rescue ex
-          raise "Failed to parse NOC certificate: #{ex.message}"
+        cert = Crypto::MatterCertificate.from_slice(noc)
+        Log.debug { "Parsed NOC certificate: fabric_id=#{cert.fabric_id}, node_id=#{cert.node_id}" }
+
+        fabric_id = cert.fabric_id
+        unless fabric_id
+          raise "fabricId not found in NOC certificate subject"
         end
+        fabric_id
+      rescue ex
+        raise "Failed to parse NOC certificate: #{ex.message}"
       end
 
       private def extract_node_id_from_noc(noc : Bytes) : UInt64
         # Parse Matter certificate TLV using the MatterCertificate struct
-        begin
-          cert = Crypto::MatterCertificate.from_slice(noc)
-          Log.debug { "Parsed NOC certificate: fabric_id=#{cert.fabric_id}, node_id=#{cert.node_id}" }
 
-          node_id = cert.node_id
-          unless node_id
-            raise "nodeId not found in NOC certificate subject"
-          end
-          node_id
-        rescue ex
-          raise "Failed to parse NOC certificate: #{ex.message}"
+        cert = Crypto::MatterCertificate.from_slice(noc)
+        Log.debug { "Parsed NOC certificate: fabric_id=#{cert.fabric_id}, node_id=#{cert.node_id}" }
+
+        node_id = cert.node_id
+        unless node_id
+          raise "nodeId not found in NOC certificate subject"
         end
+        node_id
+      rescue ex
+        raise "Failed to parse NOC certificate: #{ex.message}"
       end
 
       # Extract the public key from a certificate (supports both TLV and DER formats)
@@ -1706,58 +1706,54 @@ module Matter
       # Extract public key from Matter TLV certificate
       # Matter TLV certificates have tag 9 for the EC public key field
       private def extract_public_key_from_tlv_certificate(cert_tlv : Bytes) : Bytes
-        begin
-          # Parse the TLV certificate using the MatterCertificate struct
-          cert = Crypto::MatterCertificate.from_slice(cert_tlv)
-          public_key_bytes = cert.ec_public_key
+        # Parse the TLV certificate using the MatterCertificate struct
+        cert = Crypto::MatterCertificate.from_slice(cert_tlv)
+        public_key_bytes = cert.ec_public_key
 
-          # Validate that it's the correct format (65 bytes starting with 0x04)
-          if public_key_bytes.size != 65
-            raise "Invalid public key size: expected 65 bytes, got #{public_key_bytes.size}"
-          end
-
-          if public_key_bytes[0] != 0x04
-            raise "Invalid public key format: expected uncompressed point (0x04), got 0x#{public_key_bytes[0].to_s(16)}"
-          end
-
-          Log.debug { "Extracted public key from TLV certificate: #{public_key_bytes.size} bytes" }
-          Log.trace { "Public key hex: #{public_key_bytes.hexstring}" }
-          public_key_bytes
-        rescue ex
-          Log.error(exception: ex) { "Failed to extract public key from TLV certificate (cert_hex=#{cert_tlv.hexstring})" }
-          raise "Failed to extract public key from TLV certificate: #{ex.message}"
+        # Validate that it's the correct format (65 bytes starting with 0x04)
+        if public_key_bytes.size != 65
+          raise "Invalid public key size: expected 65 bytes, got #{public_key_bytes.size}"
         end
+
+        if public_key_bytes[0] != 0x04
+          raise "Invalid public key format: expected uncompressed point (0x04), got 0x#{public_key_bytes[0].to_s(16)}"
+        end
+
+        Log.debug { "Extracted public key from TLV certificate: #{public_key_bytes.size} bytes" }
+        Log.trace { "Public key hex: #{public_key_bytes.hexstring}" }
+        public_key_bytes
+      rescue ex
+        Log.error(exception: ex) { "Failed to extract public key from TLV certificate (cert_hex=#{cert_tlv.hexstring})" }
+        raise "Failed to extract public key from TLV certificate: #{ex.message}"
       end
 
       # Extract public key from X.509 DER certificate using OpenSSL
       private def extract_public_key_from_der_certificate(cert_der : Bytes) : Bytes
-        begin
-          # Load the certificate from DER bytes
-          x509 = OpenSSL::X509::Certificate.from_der(cert_der)
+        # Load the certificate from DER bytes
+        x509 = OpenSSL::X509::Certificate.from_der(cert_der)
 
-          # Get the public key from the certificate
-          pkey = x509.public_key
+        # Get the public key from the certificate
+        pkey = x509.public_key
 
-          # For EC keys, extract the uncompressed point bytes
-          # The public key should be in the form: 0x04 || x (32 bytes) || y (32 bytes)
-          if pkey.is_a?(OpenSSL::PKey::EC)
-            # Use OpenSSL's API to get the public key bytes directly
-            # This returns the uncompressed EC point (65 bytes: 0x04 || x || y)
-            public_key_bytes = pkey.public_key_bytes
+        # For EC keys, extract the uncompressed point bytes
+        # The public key should be in the form: 0x04 || x (32 bytes) || y (32 bytes)
+        if pkey.is_a?(OpenSSL::PKey::EC)
+          # Use OpenSSL's API to get the public key bytes directly
+          # This returns the uncompressed EC point (65 bytes: 0x04 || x || y)
+          public_key_bytes = pkey.public_key_bytes
 
-            if public_key_bytes.size == 65 && public_key_bytes[0] == 0x04
-              Log.debug { "Extracted public key from DER certificate: #{public_key_bytes.size} bytes" }
-              return public_key_bytes
-            else
-              raise "Invalid EC public key format (expected 65 bytes starting with 0x04, got #{public_key_bytes.size} bytes)"
-            end
+          if public_key_bytes.size == 65 && public_key_bytes[0] == 0x04
+            Log.debug { "Extracted public key from DER certificate: #{public_key_bytes.size} bytes" }
+            public_key_bytes
           else
-            raise "Certificate does not contain an EC public key"
+            raise "Invalid EC public key format (expected 65 bytes starting with 0x04, got #{public_key_bytes.size} bytes)"
           end
-        rescue ex
-          Log.error(exception: ex) { "Failed to extract public key from DER certificate (cert_hex=#{cert_der.hexstring})" }
-          raise "Failed to extract public key from DER certificate: #{ex.message}"
+        else
+          raise "Certificate does not contain an EC public key"
         end
+      rescue ex
+        Log.error(exception: ex) { "Failed to extract public key from DER certificate (cert_hex=#{cert_der.hexstring})" }
+        raise "Failed to extract public key from DER certificate: #{ex.message}"
       end
 
       # Helper method to recursively find a TLV field by tag

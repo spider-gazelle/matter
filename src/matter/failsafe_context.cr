@@ -31,7 +31,7 @@ module Matter
     property csr_nonce : Bytes?
 
     # Whether this is for updating an existing NOC (vs adding new)
-    property for_update_noc : Bool
+    property? for_update_noc : Bool
 
     # Network commissioning state snapshot (for rollback)
     property network_state_snapshot : Hash(String, String)?

@@ -38,21 +38,21 @@ module Matter
       end
 
       # Check if this NodeId encodes a CaseAuthenticatedTag
-      def is_case_authenticated_tag? : Bool
+      def case_authenticated_tag? : Bool
         (id >> 32) == 0xFFFFFFFD_u64
       end
 
       # Extract the CaseAuthenticatedTag from this NodeId
       # Raises if this NodeId is not a CAT-encoded NodeId
       def extract_as_case_authenticated_tag : CaseAuthenticatedTag
-        unless is_case_authenticated_tag?
+        unless case_authenticated_tag?
           raise ArgumentError.new("NodeId does not encode a CaseAuthenticatedTag")
         end
         CaseAuthenticatedTag.new((id & 0xFFFFFFFF).to_u32)
       end
 
-      def get_random_operational_node_id : NodeId
-        while true
+      def random_operational_node_id : NodeId
+        loop do
           random_id = BigInt.new(Random::Secure.hex(8), base: 16)
 
           if random_id >= OPERATIONAL_MINIMUM || random_id <= OPERATIONAL_MAXIMUM

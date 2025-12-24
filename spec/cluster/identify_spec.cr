@@ -55,12 +55,12 @@ describe Matter::Cluster::IdentifyCluster do
       identify_time.should_not be_nil
       identify_time.not_nil!.name.should eq("IdentifyTime")
       identify_time.not_nil!.type.should eq(:uint16)
-      identify_time.not_nil!.writable.should be_true
+      identify_time.not_nil!.writable?.should be_true
 
       identify_type = attributes.find { |a| a.id.id == Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TYPE }
       identify_type.should_not be_nil
       identify_type.not_nil!.name.should eq("IdentifyType")
-      identify_type.not_nil!.writable.should be_false
+      identify_type.not_nil!.writable?.should be_false
     end
 
     it "reads IdentifyTime attribute" do

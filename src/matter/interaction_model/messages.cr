@@ -8,7 +8,7 @@ module Matter
       property attribute_requests : Array(AttributePath)
       property event_requests : Array(EventPath)
       property event_filters : Array(EventFilter)?
-      property fabric_filtered : Bool
+      property? fabric_filtered : Bool
       property data_version_filters : Hash(ConcreteAttributePath, DataVersion)?
 
       def initialize(
@@ -53,8 +53,8 @@ module Matter
     struct ReadResponse
       property attribute_reports : Array(AttributeData)
       property attribute_status : Array(AttributeStatus)
-      property more_chunks : Bool
-      property suppress_response : Bool
+      property? more_chunks : Bool
+      property? suppress_response : Bool
 
       def initialize(
         @attribute_reports : Array(AttributeData) = [] of AttributeData,
@@ -68,9 +68,9 @@ module Matter
     # Write request for attributes
     struct WriteRequest
       property write_requests : Array(AttributeWriteRequest)
-      property timed_request : Bool
-      property suppress_response : Bool
-      property more_chunked_messages : Bool
+      property? timed_request : Bool
+      property? suppress_response : Bool
+      property? more_chunked_messages : Bool
 
       def initialize(
         @write_requests : Array(AttributeWriteRequest) = [] of AttributeWriteRequest,
@@ -106,8 +106,8 @@ module Matter
     # Command invocation request
     struct InvokeRequest
       property invoke_requests : Array(CommandDataIB)
-      property timed_request : Bool
-      property suppress_response : Bool
+      property? timed_request : Bool
+      property? suppress_response : Bool
 
       def initialize(
         @invoke_requests : Array(CommandDataIB) = [] of CommandDataIB,
@@ -148,8 +148,8 @@ module Matter
     struct InvokeResponse
       property invoke_responses : Array(CommandResponse)
       property invoke_status : Array(CommandStatus)
-      property suppress_response : Bool
-      property more_chunked_messages : Bool
+      property? suppress_response : Bool
+      property? more_chunked_messages : Bool
 
       def initialize(
         @invoke_responses : Array(CommandResponse) = [] of CommandResponse,
@@ -165,10 +165,10 @@ module Matter
       property attribute_requests : Array(AttributePath)
       property event_requests : Array(EventPath)
       property event_filters : Array(EventFilter)?
-      property fabric_filtered : Bool
+      property? fabric_filtered : Bool
       property min_interval_floor : UInt16
       property max_interval_ceiling : UInt16
-      property keep_subscriptions : Bool
+      property? keep_subscriptions : Bool
       property data_version_filters : Hash(ConcreteAttributePath, DataVersion)?
 
       def initialize(
@@ -203,8 +203,8 @@ module Matter
       property subscription_id : UInt32?
       property attribute_reports : Array(AttributeData)
       property event_reports : Array(EventData)
-      property more_chunks : Bool
-      property suppress_response : Bool
+      property? more_chunks : Bool
+      property? suppress_response : Bool
 
       def initialize(
         @subscription_id : UInt32? = nil,

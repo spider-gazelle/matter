@@ -37,7 +37,7 @@ module Matter
       property curve : CurveType?
       property algorithm : String?
       property operations : Array(String)?
-      property extractable : Bool
+      property? extractable : Bool
 
       # Private key material (d in JWK)
       @private_bits : Bytes?
@@ -93,12 +93,14 @@ module Matter
 
       # Import/export public key in SEC1/SPKI format (0x04 || x || y)
       def public_bits : Bytes?
-        return nil unless @x_bits && @y_bits
+        x = @x_bits
+        y = @y_bits
+        return nil unless x && y
 
         io = IO::Memory.new
         io.write_byte(0x04_u8) # Uncompressed point indicator
-        io.write(@x_bits.not_nil!)
-        io.write(@y_bits.not_nil!)
+        io.write(x)
+        io.write(y)
         io.to_slice
       end
 

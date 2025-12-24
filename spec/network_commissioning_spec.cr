@@ -8,7 +8,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
 
       cluster.max_networks.should eq(1_u8)
       cluster.networks.should be_empty
-      cluster.interface_enabled.should be_true
+      cluster.interface_enabled?.should be_true
       cluster.last_networking_status.should be_nil
       cluster.last_network_id.should be_nil
       cluster.last_connect_error_value.should be_nil
@@ -59,10 +59,10 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       cluster = Matter::Cluster::NetworkCommissioningCluster.new
 
       cluster.interface_enabled = false
-      cluster.interface_enabled.should be_false
+      cluster.interface_enabled?.should be_false
 
       cluster.interface_enabled = true
-      cluster.interface_enabled.should be_true
+      cluster.interface_enabled?.should be_true
     end
   end
 
@@ -241,7 +241,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       response.network_index.should eq(0_u8)
       cluster.networks.size.should eq(1)
       cluster.networks[0].network_id.should eq(ssid)
-      cluster.networks[0].connected.should be_false
+      cluster.networks[0].connected?.should be_false
     end
 
     it "updates existing WiFi network" do
@@ -521,7 +521,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
 
       response.networking_status.should eq(Matter::Cluster::NetworkCommissioningCluster::NetworkCommissioningStatus::Success)
       response.error_value.should be_nil
-      cluster.networks[0].connected.should be_true
+      cluster.networks[0].connected?.should be_true
     end
 
     it "disconnects other networks when connecting to target" do
@@ -545,8 +545,8 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       )
       cluster.handle_connect_network(connect_cmd, failsafe_armed: true)
 
-      cluster.networks[0].connected.should be_false
-      cluster.networks[1].connected.should be_true
+      cluster.networks[0].connected?.should be_false
+      cluster.networks[1].connected?.should be_true
     end
 
     it "updates state attributes after connect" do
@@ -740,7 +740,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       )
 
       callback_called = false
-      cluster.breadcrumb_callback = ->(value : UInt64) { callback_called = true }
+      cluster.breadcrumb_callback = ->(_value : UInt64) { callback_called = true }
 
       cmd = Matter::Cluster::NetworkCommissioningCluster::AddOrUpdateWiFiNetworkRequest.new(
         ssid: "Test".to_slice,

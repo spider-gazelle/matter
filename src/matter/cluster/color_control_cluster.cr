@@ -113,7 +113,7 @@ module Matter
       property enhanced_current_hue : UInt16
 
       # ColorLoop feature attributes
-      property color_loop_active : Bool
+      property? color_loop_active : Bool
       property color_loop_direction : UInt8
       property color_loop_time : UInt16
       property color_loop_start_enhanced_hue : UInt16
@@ -763,7 +763,7 @@ module Matter
         (1_000_000_u32 / @color_temperature_mireds).to_u32
       end
 
-      def set_color_temperature_kelvin(kelvin : UInt32) : InteractionModel::Status
+      def color_temperature_kelvin=(kelvin : UInt32) : InteractionModel::Status
         mireds = (1_000_000_u32 / kelvin).to_u16
         move_to_color_temperature(mireds)
       end

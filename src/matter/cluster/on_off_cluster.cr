@@ -54,11 +54,11 @@ module Matter
       end
 
       # State
-      property on_off : Bool
+      property? on_off : Bool
       property feature_map : Feature
 
       # Lighting feature attributes
-      property global_scene_control : Bool
+      property? global_scene_control : Bool
       property on_time : UInt16
       property off_wait_time : UInt16
       property start_up_on_off : StartUpOnOff?
@@ -388,8 +388,8 @@ module Matter
       private struct PersistedState
         include JSON::Serializable
 
-        getter on_off : Bool
-        getter global_scene_control : Bool
+        getter? on_off : Bool
+        getter? global_scene_control : Bool
         getter on_time : UInt16
         getter off_wait_time : UInt16
         getter start_up_on_off : UInt8?
@@ -420,11 +420,11 @@ module Matter
       def restore_state(json : String) : Nil
         state = PersistedState.from_json(json)
 
-        @on_off = state.on_off
+        @on_off = state.on_off?
         @attribute_values[ATTR_ON_OFF] = @on_off.to_tlv
 
         if feature_map.lighting?
-          @global_scene_control = state.global_scene_control
+          @global_scene_control = state.global_scene_control?
           @on_time = state.on_time
           @off_wait_time = state.off_wait_time
           @start_up_on_off = state.start_up_on_off.try { |v| StartUpOnOff.from_value(v) }

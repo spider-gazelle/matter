@@ -54,12 +54,12 @@ module Matter
       # Session metadata
       property creation_time : Time
       property last_activity_time : Time
-      property is_initiator : Bool
+      property? initiator : Bool
 
       # Session type and fabric association
-      # is_case: true for CASE sessions, false for PASE sessions
+      # case_session: true for CASE sessions, false for PASE sessions
       # fabric_index: the fabric index for CASE sessions (nil for PASE)
-      property is_case : Bool
+      property? case_session : Bool
       property fabric_index : UInt8?
 
       def initialize(
@@ -68,11 +68,11 @@ module Matter
         @session_type : SessionType,
         @encryption_key : Bytes,
         @decryption_key : Bytes,
-        @is_initiator : Bool = true,
+        @initiator : Bool = true,
         @peer_node_id : DataType::NodeId? = nil,
         @local_node_id : DataType::NodeId? = nil,
         @attestation_challenge : Bytes? = nil,
-        @is_case : Bool = false,
+        @case_session : Bool = false,
         @fabric_index : UInt8? = nil,
       )
         # Matter spec requires message counter to start at a random value
@@ -137,7 +137,7 @@ module Matter
       end
 
       # Set activity time (for testing)
-      def set_last_activity_time(time : Time)
+      def last_activity_time=(time : Time)
         @last_activity_time = time
       end
 
@@ -154,8 +154,8 @@ module Matter
         h["session_type"] = @session_type.value.to_i64
         h["encryption_key"] = @encryption_key.hexstring
         h["decryption_key"] = @decryption_key.hexstring
-        h["is_initiator"] = @is_initiator
-        h["is_case"] = @is_case
+        h["is_initiator"] = @initiator
+        h["is_case"] = @case_session
         h["local_message_counter"] = @local_message_counter
         h["peer_message_counter"] = @peer_message_counter.try(&.to_i64) || 0_i64
         h["has_peer_message_counter"] = !@peer_message_counter.nil?
@@ -218,11 +218,11 @@ module Matter
           session_type: session_type,
           encryption_key: encryption_key,
           decryption_key: decryption_key,
-          is_initiator: is_initiator,
+          initiator: is_initiator,
           peer_node_id: peer_node_id,
           local_node_id: local_node_id,
           attestation_challenge: attestation_challenge,
-          is_case: is_case,
+          case_session: is_case,
           fabric_index: fabric_index
         )
 

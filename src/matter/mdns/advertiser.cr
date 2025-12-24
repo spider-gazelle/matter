@@ -135,8 +135,7 @@ module Matter
       # - Continue for up to 15 minutes
       # - Apply ±25% jitter to avoid collisions
       private def run_broadcast_schedule : Nil
-        start_time : Time::Span? = nil
-        interval : Time::Span? = INITIAL_INTERVAL
+        interval = INITIAL_INTERVAL
         announcement_count = 0
 
         channel = @broadcast_channel
@@ -146,7 +145,7 @@ module Matter
 
         while @broadcasting
           # Check if we've exceeded max broadcast time
-          elapsed = Time.monotonic - start_time.not_nil!
+          elapsed = Time.monotonic - start_time
           if elapsed >= MAX_BROADCAST_TIME
             Log.debug { "Max broadcast time (#{MAX_BROADCAST_TIME.total_minutes.to_i}m) reached, stopping announcements" }
             break
@@ -155,10 +154,10 @@ module Matter
           # Send announcement
           @server.announce
           announcement_count += 1
-          Log.debug { "Sent announcement ##{announcement_count} (interval: #{interval.not_nil!.total_seconds}s)" }
+          Log.debug { "Sent announcement ##{announcement_count} (interval: #{interval.total_seconds}s)" }
 
           # Apply jitter: ±25%
-          jittered_interval = apply_jitter(interval.not_nil!)
+          jittered_interval = apply_jitter(interval)
 
           # Wait for next interval or cancellation
           select
@@ -171,13 +170,13 @@ module Matter
           end
 
           # Double interval for next time (up to max)
-          interval = {interval.not_nil! * 2, MAX_INTERVAL}.min
+          interval = {interval * 2, MAX_INTERVAL}.min
         end
 
-        Log.debug { "Broadcast schedule completed: #{announcement_count} announcements in #{(Time.monotonic - start_time.not_nil!).total_minutes.round(1)}m" }
+        Log.debug { "Broadcast schedule completed: #{announcement_count} announcements in #{(Time.monotonic - start_time).total_minutes.round(1)}m" }
       rescue ex
         elapsed = start_time ? (Time.monotonic - start_time) : Time::Span.zero
-        interval_seconds = interval.try { |i| i.total_seconds.round(3) }
+        interval_seconds = interval.try(&.total_seconds.round(3))
         Log.error(exception: ex) do
           "Error in broadcast schedule (broadcasting=#{@broadcasting} announcements=#{announcement_count} elapsed=#{elapsed.total_seconds.round(3)}s interval=#{interval_seconds}s)"
         end

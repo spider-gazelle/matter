@@ -27,7 +27,7 @@ module Matter
           property number_of_calls_to_fail : UInt32
 
           @[TLV::Field(tag: 4)]
-          property take_mutex : Bool
+          property? take_mutex : Bool
         end
 
         # Input to the FaultInjection failRandomlyAtFault command

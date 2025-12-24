@@ -85,7 +85,7 @@ describe Matter::Transport::Exchange do
         payload: Bytes.new(0)
       )
 
-      exchange.set_pending_message(message)
+      exchange.pending_message = message
       exchange.close
 
       exchange.needs_retransmit?.should be_nil
@@ -142,7 +142,7 @@ describe Matter::Transport::Exchange do
         payload: Bytes.new(0)
       )
 
-      exchange.set_pending_message(message)
+      exchange.pending_message = message
 
       # Should not need retransmit immediately
       exchange.needs_retransmit?.should be_nil
@@ -182,7 +182,7 @@ describe Matter::Transport::Exchange do
         payload: Bytes.new(0)
       )
 
-      exchange.set_pending_message(message)
+      exchange.pending_message = message
 
       # Wait for timeout (200ms base timeout)
       sleep 250.milliseconds
@@ -227,7 +227,7 @@ describe Matter::Transport::Exchange do
         payload: Bytes.new(0)
       )
 
-      exchange.set_pending_message(message)
+      exchange.pending_message = message
       exchange.clear_pending_message
 
       # Even after timeout, should not retransmit

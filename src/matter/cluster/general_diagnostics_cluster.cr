@@ -49,7 +49,7 @@ module Matter
         property name : String
 
         @[TLV::Field(tag: 1)]
-        property is_operational : Bool
+        property? is_operational : Bool
 
         @[TLV::Field(tag: 2)]
         property off_premise_services_reachable_ipv4 : Bool?
@@ -97,7 +97,7 @@ module Matter
       property active_hardware_faults : Array(HardwareFault)
       property active_radio_faults : Array(RadioFault)
       property active_network_faults : Array(NetworkFault)
-      property test_event_triggers_enabled : Bool
+      property? test_event_triggers_enabled : Bool
 
       @start_time : Time
 

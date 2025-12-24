@@ -78,7 +78,7 @@ describe Matter::Cluster::DescriptorCluster do
       device_type = attributes.find { |a| a.id.id == Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST }
       device_type.should_not be_nil
       device_type.not_nil!.name.should eq("DeviceTypeList")
-      device_type.not_nil!.writable.should be_false
+      device_type.not_nil!.writable?.should be_false
     end
   end
 

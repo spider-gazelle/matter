@@ -111,7 +111,7 @@ module Matter
         @connected_network_id = nil
       end
 
-      def is_connected?(network_id : Bytes) : Bool
+      def connected?(network_id : Bytes) : Bool
         @connected_network_id == network_id
       end
     end

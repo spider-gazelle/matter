@@ -113,7 +113,7 @@ module Matter
 
     # Get all CASE sessions for a specific fabric
     def get_fabric_sessions(fabric_index : UInt8) : Array(CaseSession)
-      @case_sessions.values.select { |s| s.fabric_index == fabric_index }
+      @case_sessions.values.select { |session| session.fabric_index == fabric_index }
     end
 
     # Remove all CASE sessions for a specific fabric

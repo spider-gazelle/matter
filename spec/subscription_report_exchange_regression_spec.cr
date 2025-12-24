@@ -62,10 +62,10 @@ describe "Subscription report exchange regression" do
       session_type: Matter::Session::SessionType::Unicast,
       encryption_key: Bytes.new(16, 0x11_u8),
       decryption_key: Bytes.new(16, 0x22_u8),
-      is_initiator: false,
+      initiator: false,
       peer_node_id: Matter::DataType::NodeId.new(0x2222_u64),
       local_node_id: Matter::DataType::NodeId.new(0x1111_u64),
-      is_case: true,
+      case_session: true,
       fabric_index: 1_u8
     )
 

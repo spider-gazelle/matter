@@ -94,8 +94,8 @@ module Matter
       private def self.build_pkcs7_signed_data(content : Bytes) : Bytes
         # Load the test private key
         key_bytes = Bytes.new(TEST_CMS_SIGNER_PRIVATE_KEY.hexbytes.size)
-        TEST_CMS_SIGNER_PRIVATE_KEY.hexbytes.to_a.each_with_index do |b, i|
-          key_bytes[i] = b
+        TEST_CMS_SIGNER_PRIVATE_KEY.hexbytes.to_a.each_with_index do |byte, i|
+          key_bytes[i] = byte
         end
 
         # Derive public key from private key using OpenSSL
@@ -111,8 +111,8 @@ module Matter
 
         # Subject Key Identifier as bytes
         ski_bytes = Bytes.new(TEST_CMS_SIGNER_SKI.hexbytes.size)
-        TEST_CMS_SIGNER_SKI.hexbytes.to_a.each_with_index do |b, i|
-          ski_bytes[i] = b
+        TEST_CMS_SIGNER_SKI.hexbytes.to_a.each_with_index do |byte, i|
+          ski_bytes[i] = byte
         end
 
         # Build SignerInfo SEQUENCE manually in RFC 5652 order:
@@ -128,9 +128,9 @@ module Matter
         ski_io.write(ski_bytes)
         signer_info_fields << ski_io.to_slice # sid
 
-        signer_info_fields << Codec::DERCodec::Base.encode(Codec::DERCodec::SHA256_CMS.call)           # digestAlgorithm
-        signer_info_fields << Codec::DERCodec::Base.encode(Codec::DERCodec::EcdsaWithSHA256_X962.call) # signatureAlgorithm
-        signer_info_fields << Codec::DERCodec::Base.encode(signature)                                  # signature
+        signer_info_fields << Codec::DERCodec::Base.encode(Codec::DERCodec::SHA256_CMS.call)             # digestAlgorithm
+        signer_info_fields << Codec::DERCodec::Base.encode(Codec::DERCodec::ECDSA_WITH_SHA256_X962.call) # signatureAlgorithm
+        signer_info_fields << Codec::DERCodec::Base.encode(signature)                                    # signature
         signer_info_seq = Codec::DERCodec::Base.encode_sequence(Slice(UInt8).join(signer_info_fields))
 
         # Build SET OF SignerInfo (tag 0x31 = SET | CONSTRUCTED)

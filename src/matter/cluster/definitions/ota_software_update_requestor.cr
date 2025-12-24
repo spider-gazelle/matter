@@ -85,7 +85,7 @@ module Matter
           property vendor_id : DataType::VendorId
 
           @[TLV::Field(tag: 2)]
-          property announcement_Reason : AnnouncementReason
+          property announcement_reason : AnnouncementReason
 
           @[TLV::Field(tag: 3)]
           property metadata_for_node : Slice(UInt8)?

@@ -142,7 +142,7 @@ describe Matter::InteractionModel do
       path.endpoint.should eq(1_u16)
       path.cluster.should eq(0x0006_u32)
       path.event.should eq(0x0000_u32)
-      path.is_urgent.should be_false
+      path.is_urgent?.should be_false
     end
 
     it "creates urgent event path" do
@@ -153,7 +153,7 @@ describe Matter::InteractionModel do
         is_urgent: true
       )
 
-      path.is_urgent.should be_true
+      path.is_urgent?.should be_true
       path.to_s.should contain("(urgent)")
     end
   end
@@ -200,7 +200,7 @@ describe Matter::InteractionModel do
 
       request.attribute_requests.size.should eq(1)
       request.attribute_requests.first.should eq(path)
-      request.fabric_filtered.should be_true
+      request.fabric_filtered?.should be_true
     end
 
     it "creates read request with data version filter" do
@@ -280,7 +280,7 @@ describe Matter::InteractionModel do
 
       response.attribute_reports.size.should eq(1)
       response.attribute_reports.first.should eq(data)
-      response.more_chunks.should be_false
+      response.more_chunks?.should be_false
     end
   end
 
@@ -302,7 +302,7 @@ describe Matter::InteractionModel do
       )
 
       request.write_requests.size.should eq(1)
-      request.timed_request.should be_false
+      request.timed_request?.should be_false
     end
 
     it "creates timed write request" do
@@ -323,7 +323,7 @@ describe Matter::InteractionModel do
         timed_request: true
       )
 
-      request.timed_request.should be_true
+      request.timed_request?.should be_true
       request.write_requests.first.data_version.should eq(10_u32)
     end
   end
@@ -367,7 +367,7 @@ describe Matter::InteractionModel do
       request.attribute_requests.size.should eq(1)
       request.min_interval_floor.should eq(1_u16)
       request.max_interval_ceiling.should eq(60_u16)
-      request.keep_subscriptions.should be_false
+      request.keep_subscriptions?.should be_false
     end
   end
 
@@ -406,7 +406,7 @@ describe Matter::InteractionModel do
 
       report.subscription_id.should eq(1234_u32)
       report.attribute_reports.size.should eq(1)
-      report.more_chunks.should be_false
+      report.more_chunks?.should be_false
     end
   end
 

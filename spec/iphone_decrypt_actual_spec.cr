@@ -50,7 +50,7 @@ describe "iPhone Message Decryption - Actual Data" do
       session_type: Matter::Session::SessionType::Unicast,
       encryption_key: encryption_key,
       decryption_key: decryption_key,
-      is_initiator: false # We're the responder
+      initiator: false # We're the responder
     )
 
     # Test nonce construction

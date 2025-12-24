@@ -49,7 +49,7 @@ module Matter
       CMD_ANNOUNCE_OTA_PROVIDER = 0x00_u32
 
       # Instance variables
-      property update_possible : Bool
+      property? update_possible : Bool
       property update_state : UpdateState
       property update_state_progress : UInt8?
 

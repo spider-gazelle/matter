@@ -48,9 +48,9 @@ module Matter
         # Use official Matter Test PAA (pre-loaded in chip-tool's trust store)
         # We cannot generate our own PAA because chip-tool only trusts the official test PAAs
         @paa_key_pair = Crypto::Key.new(Crypto::KeyType::EC, Crypto::CurveType::P256)
-        @paa_key_pair.private_bits = ChipPAAuthorities::TestCert_PAA_NoVID_PrivateKey
-        @paa_key_pair.public_bits = ChipPAAuthorities::TestCert_PAA_NoVID_PublicKey
-        @paa_cert = ChipPAAuthorities::TestCert_PAA_NoVID_Cert
+        @paa_key_pair.private_bits = ChipPAAuthorities::TEST_CERT_PAA_NO_VID_PRIVATE_KEY
+        @paa_key_pair.public_bits = ChipPAAuthorities::TEST_CERT_PAA_NO_VID_PUBLIC_KEY
+        @paa_cert = ChipPAAuthorities::TEST_CERT_PAA_NO_VID_CERT
 
         # Generate PAI (intermediate CA)
         @pai_key_pair = Crypto::Key.generate_key_pair
@@ -58,7 +58,7 @@ module Matter
       end
 
       # Get PAI certificate
-      def get_pai_cert : Bytes
+      def pai_cert : Bytes
         @pai_cert
       end
 
@@ -145,7 +145,7 @@ module Matter
 
         # Authority Key Identifier (AKI) - references PAA's SKI
         # Use the official test PAA's SKID
-        cert.add_extension(create_aki_extension(ChipPAAuthorities::TestCert_PAA_NoVID_SKID))
+        cert.add_extension(create_aki_extension(ChipPAAuthorities::TEST_CERT_PAA_NO_VID_SKID))
 
         # Note: Matter vendor/product IDs are automatically added as subject DN attributes
         # by build_subject_name() using custom OID entries per Matter spec section 6.3.5:

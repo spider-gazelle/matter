@@ -189,7 +189,7 @@ module Matter
         # Validate Battery feature: if feature is enabled, mandatory attributes must be set
         if @feature_map.battery?
           battery_attrs = [@bat_charge_level, @bat_replacement_needed, @bat_replaceability]
-          if battery_attrs.any?(&.nil?) && battery_attrs.any?(&.!=(nil))
+          if battery_attrs.any?(Nil) && battery_attrs.any?(&.!=(nil))
             raise ArgumentError.new("Battery feature requires bat_charge_level, bat_replacement_needed, and bat_replaceability")
           end
         end
@@ -202,7 +202,7 @@ module Matter
         # Validate Replaceable feature: if feature is enabled, mandatory attributes must be set
         if @feature_map.replaceable?
           replaceable_attrs = [@bat_replacement_description, @bat_quantity]
-          if replaceable_attrs.any?(&.nil?) && replaceable_attrs.any?(&.!=(nil))
+          if replaceable_attrs.any?(Nil) && replaceable_attrs.any?(&.!=(nil))
             raise ArgumentError.new("Replaceable feature requires bat_replacement_description and bat_quantity")
           end
         end

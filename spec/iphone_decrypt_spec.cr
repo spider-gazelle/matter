@@ -24,7 +24,7 @@ describe "iPhone Message Decryption" do
       session_type: Matter::Session::SessionType::Unicast,
       encryption_key: encryption_key,
       decryption_key: decryption_key,
-      is_initiator: false # We're the responder
+      initiator: false # We're the responder
     )
 
     # From logs: Raw packet hex: 00f17f00b3aeaf0b51e49d2084671e5da31f120326a18b...

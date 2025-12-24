@@ -31,7 +31,7 @@ module Matter
           #
           # for use by the respective thread.
           @[TLV::Field(tag: 4)]
-          property stackSize : UInt32?
+          property stack_size : UInt32?
         end
 
         # Body of the SoftwareDiagnostics softwareFault event

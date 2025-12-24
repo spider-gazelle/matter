@@ -101,7 +101,7 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
       measured_value = attributes.find { |a| a.id.id == 0x0000_u32 }
       measured_value.should_not be_nil
       measured_value.not_nil!.name.should eq("MeasuredValue")
-      measured_value.not_nil!.writable.should be_false
+      measured_value.not_nil!.writable?.should be_false
 
       min_value = attributes.find { |a| a.id.id == 0x0001_u32 }
       min_value.should_not be_nil
@@ -269,7 +269,7 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
 
       callback_called = false
 
-      cluster.on_temperature_changed do |old, new|
+      cluster.on_temperature_changed do |_, _|
         callback_called = true
       end
 

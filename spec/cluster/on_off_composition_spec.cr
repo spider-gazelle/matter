@@ -261,12 +261,12 @@ describe Matter::Cluster::OnOffCluster do
 
       # Turn on first
       cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
-      cluster.on_off.should be_true
+      cluster.on_off?.should be_true
 
       result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF_WITH_EFFECT, Bytes.new(0))
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::Success)
-      cluster.on_off.should be_false
+      cluster.on_off?.should be_false
     end
   end
 
@@ -278,7 +278,7 @@ describe Matter::Cluster::OnOffCluster do
       )
 
       cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
-      cluster.global_scene_control.should be_true
+      cluster.global_scene_control?.should be_true
     end
 
     it "sets globalSceneControl to false on Off command" do
@@ -292,7 +292,7 @@ describe Matter::Cluster::OnOffCluster do
 
       # Then off
       cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF, Bytes.new(0))
-      cluster.global_scene_control.should be_false
+      cluster.global_scene_control?.should be_false
     end
   end
 

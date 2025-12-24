@@ -164,13 +164,13 @@ describe "Cluster Composition" do
       attr_map = attrs.index_by(&.name)
 
       # With PA_LF, currentPositionLiftPercent100ths becomes mandatory (not optional)
-      attr_map["currentPositionLiftPercent100ths"].optional.should be_false
+      attr_map["currentPositionLiftPercent100ths"].optional?.should be_false
 
       # numberOfActuationsLift is always optional even with Lift feature
-      attr_map["numberOfActuationsLift"].optional.should be_true
+      attr_map["numberOfActuationsLift"].optional?.should be_true
 
       # currentPositionLiftPercentage is optional even with PA_LF
-      attr_map["currentPositionLiftPercentage"].optional.should be_true
+      attr_map["currentPositionLiftPercentage"].optional?.should be_true
     end
 
     it "marks commands as mandatory when required by feature combination" do
@@ -184,12 +184,12 @@ describe "Cluster Composition" do
       cmd_map = cmds.index_by(&.name)
 
       # goToLiftPercentage is mandatory with LF + PA_LF
-      cmd_map["goToLiftPercentage"].optional.should be_false
+      cmd_map["goToLiftPercentage"].optional?.should be_false
 
       # Base commands are always mandatory
-      cmd_map["upOrOpen"].optional.should be_false
-      cmd_map["downOrClose"].optional.should be_false
-      cmd_map["stopMotion"].optional.should be_false
+      cmd_map["upOrOpen"].optional?.should be_false
+      cmd_map["downOrClose"].optional?.should be_false
+      cmd_map["stopMotion"].optional?.should be_false
     end
 
     it "marks fixed attributes correctly" do
@@ -201,12 +201,12 @@ describe "Cluster Composition" do
       attr_map = attrs.index_by(&.name)
 
       # type and endProductType are fixed (read-only constants)
-      attr_map["type"].fixed.should be_true
-      attr_map["endProductType"].fixed.should be_true
+      attr_map["type"].fixed?.should be_true
+      attr_map["endProductType"].fixed?.should be_true
 
       # mode is writable, not fixed
-      attr_map["mode"].fixed.should be_false
-      attr_map["mode"].writable.should be_true
+      attr_map["mode"].fixed?.should be_false
+      attr_map["mode"].writable?.should be_true
     end
   end
 

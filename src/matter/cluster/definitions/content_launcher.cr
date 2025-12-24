@@ -234,7 +234,7 @@ module Matter
           # This shall indicate whether to automatically start playing content, where: * TRUE means best match should
           # start playing automatically. * FALSE means matches should be displayed on screen for user selection.
           @[TLV::Field(tag: 1)]
-          property auto_play : Bool
+          property? auto_play : Bool
 
           # This shall indicate Optional app-specific data.
           @[TLV::Field(tag: 2)]

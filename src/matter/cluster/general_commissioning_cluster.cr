@@ -163,7 +163,7 @@ module Matter
       property location_capability : RegulatoryLocationType = RegulatoryLocationType::IndoorOutdoor
 
       # SupportsConcurrentConnection attribute (0x0004)
-      property supports_concurrent_connection : Bool = true
+      property? supports_concurrent_connection : Bool = true
 
       # ========================================================================
       # Commands
@@ -181,7 +181,7 @@ module Matter
       # ========================================================================
 
       # Terms & Conditions feature support
-      property terms_conditions_required : Bool = false
+      property? terms_conditions_required : Bool = false
 
       # Country code whitelist (nil = all countries allowed)
       property country_code_whitelist : Array(String)? = nil
@@ -197,7 +197,7 @@ module Matter
 
       # Session context properties (set by base class invoke_command via responds_to?)
       # These are populated automatically when commands are invoked through the cluster base class
-      property is_case_session : Bool = false
+      property? is_case_session : Bool = false
       property fabric_index : UInt8? = nil
 
       # ========================================================================
@@ -359,7 +359,7 @@ module Matter
 
         # Convert to cluster request struct
         request = ArmFailSafeRequest.new(
-          expiry_length_seconds: request_def.expiryLengthSeconds,
+          expiry_length_seconds: request_def.expiry_length_seconds,
           breadcrumb: request_def.breadcrumb
         )
 
@@ -390,7 +390,7 @@ module Matter
         )
 
         # Call public command handler
-        response = set_regulatory_config(request)
+        response = (self.regulatory_config = request)
 
         # Encode response as TLV and return with response command ID
         Cluster::CommandResponse.new(
@@ -509,12 +509,13 @@ module Matter
           end
         else
           # Create new context
-          @failsafe_context = FailsafeContext.new(
+          failsafe_ctx = FailsafeContext.new(
             associated_fabric_index: session_fabric_index,
             breadcrumb: request.breadcrumb,
             expiry_callback: -> { handle_failsafe_expiry }
           )
-          @failsafe_context.not_nil!.arm(
+          @failsafe_context = failsafe_ctx
+          failsafe_ctx.arm(
             request.expiry_length_seconds,
             @max_cumulative_failsafe_seconds
           )
@@ -630,7 +631,7 @@ module Matter
       #
       # @param request SetRegulatoryConfig request
       # @return SetRegulatoryConfig response with status
-      def set_regulatory_config(
+      def regulatory_config=(
         request : SetRegulatoryConfigRequest,
       ) : SetRegulatoryConfigResponse
         Log.info { "SetRegulatoryConfig: location=#{request.new_regulatory_config}, country=#{request.country_code}" }
@@ -750,7 +751,7 @@ module Matter
         end
 
         # Arm the failsafe with the specified duration
-        @failsafe_context.not_nil!.arm(expiry_seconds, @max_cumulative_failsafe_seconds)
+        @failsafe_context.as(FailsafeContext).arm(expiry_seconds, @max_cumulative_failsafe_seconds)
       end
 
       # Disarm the failsafe
@@ -762,7 +763,7 @@ module Matter
       end
 
       # Check if failsafe is expired
-      def is_fail_safe_expired? : Bool
+      def fail_safe_expired? : Bool
         if context = @failsafe_context
           !context.armed?
         else

@@ -170,7 +170,7 @@ describe Matter::MDNS::Scanner do
       scanner = Matter::MDNS::Scanner.new
 
       discovered = false
-      scanner.on_device_discovered = ->(device : Matter::MDNS::DiscoveredDevice) {
+      scanner.on_device_discovered = ->(_device : Matter::MDNS::DiscoveredDevice) {
         discovered = true
         nil
       }
@@ -182,7 +182,7 @@ describe Matter::MDNS::Scanner do
       scanner = Matter::MDNS::Scanner.new
 
       updated = false
-      scanner.on_device_updated = ->(device : Matter::MDNS::DiscoveredDevice) {
+      scanner.on_device_updated = ->(_device : Matter::MDNS::DiscoveredDevice) {
         updated = true
         nil
       }
@@ -194,7 +194,7 @@ describe Matter::MDNS::Scanner do
       scanner = Matter::MDNS::Scanner.new
 
       removed = false
-      scanner.on_device_removed = ->(instance_name : String) {
+      scanner.on_device_removed = ->(_instance_name : String) {
         removed = true
         nil
       }
@@ -281,8 +281,8 @@ describe Matter::MDNS::Scanner do
       )
 
       device.addresses.size.should eq(2)
-      device.addresses.any? { |a| a.family.inet? }.should be_true
-      device.addresses.any? { |a| a.family.inet6? }.should be_true
+      device.addresses.any?(&.family.inet?).should be_true
+      device.addresses.any?(&.family.inet6?).should be_true
     end
   end
 

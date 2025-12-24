@@ -36,11 +36,11 @@ module Matter
         def encode(value : Value) : Slice(UInt8)
           case value
           when .is_a?(Array)
-            return encode_array(value)
+            encode_array(value)
           when .is_a?(Slice(UInt8))
-            return encode_slice(value.as(Slice(UInt8)))
+            encode_slice(value.as(Slice(UInt8)))
           when .is_a?(Time)
-            return encode_time(value.as(Time))
+            encode_time(value.as(Time))
           when .is_a?(Hash)
             if value
                  .as(Hash(String, Value))
@@ -57,19 +57,19 @@ module Matter
               end
             end
 
-            return encode_hash(value)
+            encode_hash(value)
           when .is_a?(String)
-            return encode_string(value.as(String))
+            encode_string(value.as(String))
           when .is_a?(UInt8)
-            return encode_unsigned_int(value.as(UInt8))
+            encode_unsigned_int(value.as(UInt8))
           when .is_a?(UInt16)
-            return encode_unsigned_int(value.as(UInt16))
+            encode_unsigned_int(value.as(UInt16))
           when .is_a?(UInt32)
-            return encode_unsigned_int(value.as(UInt32))
+            encode_unsigned_int(value.as(UInt32))
           when .is_a?(Bool)
-            return encode_bool(value.as(Bool))
-          when .is_a?(Nil)
-            return Slice(UInt8).new(1, 0)
+            encode_bool(value.as(Bool))
+          when .nil?
+            Slice(UInt8).new(1, 0)
           else
             raise Exception.new("An unsupported type was passed to the encoder")
           end
@@ -385,7 +385,7 @@ module Matter
         end
       end
 
-      PublicKeyEcPrime256v1_X962 = ->(key : Slice(UInt8)) {
+      PUBLIC_KEY_EC_PRIME256V1_X962 = ->(key : Slice(UInt8)) {
         value = {
           "type" => {
             "algorithm" => ObjectId.new("2A8648CE3D0201").value.as(Matter::Codec::DERCodec::Value),   # EC Public Key
@@ -397,7 +397,7 @@ module Matter
         value.as(Matter::Codec::DERCodec::Value)
       }
 
-      EcdsaWithSHA256_X962 = -> {
+      ECDSA_WITH_SHA256_X962 = -> {
         Object.new("2A8648CE3D040302").value
       }
 
@@ -405,23 +405,23 @@ module Matter
         Object.new("608648016503040201").value
       }
 
-      OrganisationName_X520 = ->(name : String) {
+      ORGANISATION_NAME_X520 = ->(name : String) {
         [Object.new("55040A", {"name" => name}).value] of Value
       }
 
-      SubjectKeyIdentifier_X509 = ->(identifier : Slice(UInt8)) {
+      SUBJECT_KEY_IDENTIFIER_X509 = ->(identifier : Slice(UInt8)) {
         Object.new("551d0e", {"value" => Base.encode(identifier)}).value
       }
 
-      AuthorityKeyIdentifier_X509 = ->(identifier : Slice(UInt8)) {
+      AUTHORITY_KEY_IDENTIFIER_X509 = ->(identifier : Slice(UInt8)) {
         Object.new("551d23", {"value" => Base.encode({"id" => ContextTaggedSlice.new(0, identifier).value})}).value
       }
 
-      BasicConstraints_X509 = ->(constraints : Value) {
+      BASIC_CONSTRAINTS_X509 = ->(constraints : Value) {
         Object.new("551d13", {"critical" => true, "value" => Base.encode(constraints)}).value
       }
 
-      ExtendedKeyUsage_X509 = ->(client_auth : Bool, server_auth : Bool) {
+      EXTENDED_KEY_USAGE_X509 = ->(client_auth : Bool, server_auth : Bool) {
         Object.new("551d25", {
           "critical" => true,
           "value"    => Base.encode({
@@ -431,14 +431,14 @@ module Matter
         }).value
       }
 
-      KeyUsage_Signature_X509 = -> {
+      KEY_USAGE_SIGNATURE_X509 = -> {
         Object.new("551d0f", {
           "critical" => true.as(Value),
           "value"    => Base.encode(ByteArray.new(Slice(UInt8).new(1, (0x03 << 1).to_u8), 1).value),
         } of String => Value).value
       }
 
-      KeyUsage_Signature_ContentCommited_X509 = -> {
+      KEY_USAGE_SIGNATURE_CONTENT_COMMITTED_X509 = -> {
         Object.new("551d0f", {
           "critical" => true,
           "value"    => Base.encode(ByteArray.new(Slice(UInt8).new(1, (0x03 << 1).to_u8), 1).value),

@@ -76,7 +76,7 @@ module Matter
         raise Exception.new("Context must not be empty!") if contexts.size == 0
 
         context_key = create_context_key(contexts)
-        @store[context_key]?.try(&.keys.sort) || ([] of String)
+        @store[context_key]?.try(&.keys.sort!) || ([] of String)
       end
 
       # Get all key-value pairs in a context

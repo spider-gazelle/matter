@@ -43,7 +43,7 @@ describe Matter::Cluster::GroupsCluster do
       name_support.should_not be_nil
       name_support.not_nil!.name.should eq("nameSupport")
       name_support.not_nil!.type.should eq(:uint8)
-      name_support.not_nil!.writable.should be_false
+      name_support.not_nil!.writable?.should be_false
 
       # Global attributes can be read via read_attribute
       result = cluster.read_attribute(0xFFFC_u32) # FeatureMap

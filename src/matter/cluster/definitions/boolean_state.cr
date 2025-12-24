@@ -8,7 +8,7 @@ module Matter
             include TLV::Serializable
 
             @[TLV::Field(tag: 0)]
-            property value : Bool
+            property? value : Bool
           end
         end
       end

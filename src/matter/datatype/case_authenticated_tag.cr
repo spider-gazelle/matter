@@ -28,42 +28,42 @@ module Matter
 
       # Validate the tag value
       private def validate!
-        version = get_version
-        if version == 0
+        ver = version
+        if ver == 0
           raise ArgumentError.new("CaseAuthenticatedTag version number must not be 0.")
         end
       end
 
       # Get the identity value (upper 16 bits)
-      def get_identity_value : UInt16
+      def identity_value : UInt16
         ((value >> 16) & 0xFFFF).to_u16
       end
 
       # Get the version (lower 16 bits)
-      def get_version : UInt16
+      def version : UInt16
         (value & 0xFFFF).to_u16
       end
 
       # Increase the version by 1
       # Raises if version would exceed 0xFFFF
       def increase_version : CaseAuthenticatedTag
-        current_version = get_version
+        current_version = version
         if current_version >= 0xFFFF
           raise ArgumentError.new("CaseAuthenticatedTag version number must not exceed 0xffff.")
         end
 
-        identity = get_identity_value.to_u32
+        identity = identity_value.to_u32
         new_version = (current_version + 1).to_u32
         CaseAuthenticatedTag.new((identity << 16) | new_version)
       end
 
       # Class methods that mirror matter.js static methods
-      def self.get_identity_value(tag : CaseAuthenticatedTag) : UInt16
-        tag.get_identity_value
+      def self.identity_value(tag : CaseAuthenticatedTag) : UInt16
+        tag.identity_value
       end
 
-      def self.get_version(tag : CaseAuthenticatedTag) : UInt16
-        tag.get_version
+      def self.version(tag : CaseAuthenticatedTag) : UInt16
+        tag.version
       end
 
       def self.increase_version(tag : CaseAuthenticatedTag) : CaseAuthenticatedTag

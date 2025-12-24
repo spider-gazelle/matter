@@ -214,7 +214,7 @@ module Matter
 
       # Tag 0: KeepSubscriptions
       @[TLV::Field(tag: 0)]
-      property keep_subscriptions : Bool
+      property? keep_subscriptions : Bool
 
       # Tag 1: MinIntervalFloor
       @[TLV::Field(tag: 1)]
@@ -242,7 +242,7 @@ module Matter
 
       # Tag 7: IsFabricFiltered
       @[TLV::Field(tag: 7)]
-      property is_fabric_filtered : Bool
+      property? is_fabric_filtered : Bool
 
       # Tag 0xFF: InteractionModelRevision
       @[TLV::Field(tag: 0xFF, optional: true)]
@@ -370,7 +370,7 @@ module Matter
 
       # Tag 0: SuppressResponse
       @[TLV::Field(tag: 0)]
-      property suppress_response : Bool
+      property? suppress_response : Bool
 
       # Tag 1: InvokeResponses (array of InvokeResponseIB)
       @[TLV::Field(tag: 1)]

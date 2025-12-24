@@ -324,7 +324,7 @@ describe Matter::Endpoint do
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).success?.should be_true
 
-      on_off.on_off.should be_true
+      on_off.on_off?.should be_true
     end
   end
 
@@ -526,7 +526,7 @@ describe Matter::MatterNode do
       result = node.invoke_command(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
       result.as(Matter::InteractionModel::Status).success?.should be_true
 
-      on_off.on_off.should be_true
+      on_off.on_off?.should be_true
     end
   end
 

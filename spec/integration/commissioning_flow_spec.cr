@@ -631,7 +631,7 @@ module Matter
           country_code: "US",
           breadcrumb: 100_u64
         )
-        response_us = general_comm.set_regulatory_config(request_us)
+        response_us = (general_comm.regulatory_config = request_us)
         response_us.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
 
         # Try to set non-whitelisted country (should fail)
@@ -640,7 +640,7 @@ module Matter
           country_code: "JP",
           breadcrumb: 200_u64
         )
-        response_jp = general_comm.set_regulatory_config(request_jp)
+        response_jp = (general_comm.regulatory_config = request_jp)
         response_jp.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
         response_jp.debug_text.should contain("not in whitelist")
       end

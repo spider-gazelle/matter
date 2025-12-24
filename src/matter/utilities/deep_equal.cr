@@ -23,7 +23,7 @@ module Matter
           end
         end
 
-        return true
+        true
       end
     end
   end

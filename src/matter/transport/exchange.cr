@@ -65,7 +65,7 @@ module Matter
       end
 
       # Store message for retransmission if needed
-      def set_pending_message(message : Codec::MessageCodec::Message) : Nil
+      def pending_message=(message : Codec::MessageCodec::Message) : Nil
         @pending_message = message
         @last_activity = Time.utc
       end
@@ -188,7 +188,7 @@ module Matter
       end
 
       # Get all exchanges that need retransmission
-      def get_retransmit_candidates : Array(Tuple(UInt16, Codec::MessageCodec::Message))
+      def retransmit_candidates : Array(Tuple(UInt16, Codec::MessageCodec::Message))
         candidates = [] of Tuple(UInt16, Codec::MessageCodec::Message)
 
         @exchanges.each do |exchange_id, exchange|

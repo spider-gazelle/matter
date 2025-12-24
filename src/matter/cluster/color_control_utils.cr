@@ -140,7 +140,7 @@ module Matter::Cluster::ColorControlUtils
     return xy if xy
 
     # Find nearest lower and upper entries for interpolation
-    sorted_keys = KELVIN_TO_XY_LOOKUP.keys.sort
+    sorted_keys = KELVIN_TO_XY_LOOKUP.keys.sort!
     lower_kelvin = sorted_keys.select { |k| k <= kelvin }.max?
     upper_kelvin = sorted_keys.select { |k| k >= kelvin }.min?
 

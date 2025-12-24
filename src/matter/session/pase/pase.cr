@@ -67,13 +67,14 @@ module Matter
             )
 
             # Compute w0 and w1 from PIN using PBKDF2
+            pbkdf = @pbkdf_params.as(PbkdfParameters)
             @w0_w1 = Crypto::Spake2p.compute_w0_w1(@crypto,
-              Crypto::Spake2p::PbkdfParameters.new(@pbkdf_params.not_nil!.iterations, @pbkdf_params.not_nil!.salt),
+              Crypto::Spake2p::PbkdfParameters.new(pbkdf.iterations, pbkdf.salt),
               @pin_code
             )
 
             # Create SPAKE2+ instance with w0
-            @spake = Crypto::Spake2p.create(@crypto, @context, @w0_w1.not_nil!.w0)
+            @spake = Crypto::Spake2p.create(@crypto, @context, @w0_w1.as(Crypto::Spake2p::W0W1).w0)
           else
             raise "PBKDF parameters not found in response"
           end
@@ -86,7 +87,7 @@ module Matter
 
           # Compute X (commissioner/prover's public value)
           @p_a = spake.compute_x
-          @p_a.not_nil!
+          @p_a.as(Bytes)
         end
 
         # Step 4: Process pB (responder's public value) and compute confirmation
@@ -105,7 +106,7 @@ module Matter
           )
 
           # Return our confirmation value (h_ay)
-          @secret_and_verifiers.not_nil!.h_ay
+          @secret_and_verifiers.as(Crypto::Spake2p::SecretAndVerifiers).h_ay
         end
 
         # Step 5: Verify responder's confirmation
@@ -232,7 +233,7 @@ module Matter
           )
 
           # Create SPAKE2+ instance with w0
-          @spake = Crypto::Spake2p.create(@crypto, @context, @w0_l.not_nil!.w0)
+          @spake = Crypto::Spake2p.create(@crypto, @context, @w0_l.as(Crypto::Spake2p::W0L).w0)
         end
 
         # Step 3: Process pA (initiator's public value) and generate pB
@@ -248,22 +249,23 @@ module Matter
 
           # Compute Y (responder/verifier's public value)
           @p_b = spake.compute_y
-          Log.debug { "Generated pB (bytes=#{@p_b.not_nil!.size})" }
-          Log.trace { "pB (first 16 bytes): #{@p_b.not_nil![0, 16].hexstring}" }
+          p_b = @p_b.as(Bytes)
+          Log.debug { "Generated pB (bytes=#{p_b.size})" }
+          Log.trace { "pB (first 16 bytes): #{p_b[0, 16].hexstring}" }
 
           # Compute shared secret and verifiers from X (initiator's public value)
           @secret_and_verifiers = spake.compute_secret_and_verifiers_from_x(
             w0_l.l,
             p_a,
-            @p_b.not_nil!
+            p_b
           )
 
           Log.trace do
-            sav = @secret_and_verifiers.not_nil!
+            sav = @secret_and_verifiers.as(Crypto::Spake2p::SecretAndVerifiers)
             "Computed shared secret and confirmations (ke_bytes=#{sav.ke.size}, h_ay_bytes=#{sav.h_ay.size}, h_bx_bytes=#{sav.h_bx.size})"
           end
 
-          @p_b.not_nil!
+          p_b
         end
 
         # Step 4: Generate confirmation value
@@ -350,7 +352,7 @@ module Matter
           session_type: SessionType::Unicast,
           encryption_key: commissioner_keys[:encryption],
           decryption_key: commissioner_keys[:decryption],
-          is_initiator: true
+          initiator: true
         )
 
         responder_context = SecureContext.new(
@@ -359,7 +361,7 @@ module Matter
           session_type: SessionType::Unicast,
           encryption_key: responder_keys[:encryption],
           decryption_key: responder_keys[:decryption],
-          is_initiator: false
+          initiator: false
         )
 
         {initiator: initiator_context, responder: responder_context}

@@ -256,8 +256,8 @@ module Matter
         ttl : Time::Span = 120.seconds,
       ) : Nil
         service = ServiceNames::COMMISSIONING
-        @commissioning_instance_id ||= Random::Secure.rand(UInt64).to_s(16).upcase.rjust(16, '0')
-        instance = ServiceNames.commissioning_instance(@commissioning_instance_id.not_nil!)
+        commissioning_instance_id = @commissioning_instance_id ||= Random::Secure.rand(UInt64).to_s(16).upcase.rjust(16, '0')
+        instance = ServiceNames.commissioning_instance(commissioning_instance_id)
         hostname = @hostname
 
         # Track this service for query responses
@@ -352,8 +352,8 @@ module Matter
         service = ServiceNames.service_name(service_type)
 
         # Check if query is asking for our service
-        matches = query.questions.any? do |q|
-          q.name == service || q.name == instance || q.name == hostname
+        matches = query.questions.any? do |question|
+          question.name == service || question.name == instance || question.name == hostname
         end
 
         return unless matches
@@ -459,8 +459,8 @@ module Matter
 
       private def send_announcement(records : Array(DNS::Packet::ResourceRecord)) : Nil
         # Split records into appropriate sections
-        ptr_records = records.select { |r| r.type == RecordBuilder::TYPE_PTR }
-        additional_records = records.select { |r| r.type != RecordBuilder::TYPE_PTR }
+        ptr_records = records.select { |record| record.type == RecordBuilder::TYPE_PTR }
+        additional_records = records.select { |record| record.type != RecordBuilder::TYPE_PTR }
 
         # Build mDNS announcement packet per RFC 6763
         # PTR records in Answer Section

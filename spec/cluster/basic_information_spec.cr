@@ -43,23 +43,23 @@ describe Matter::Cluster::BasicInformationCluster do
       data_model_revision = attributes.find { |a| a.id.id == Matter::Cluster::BasicInformationCluster::ATTR_DATA_MODEL_REVISION }
       data_model_revision.should_not be_nil
       data_model_revision.not_nil!.name.should eq("DataModelRevision")
-      data_model_revision.not_nil!.writable.should be_false
+      data_model_revision.not_nil!.writable?.should be_false
 
       vendor_name = attributes.find { |a| a.id.id == Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME }
       vendor_name.should_not be_nil
-      vendor_name.not_nil!.writable.should be_false
+      vendor_name.not_nil!.writable?.should be_false
 
       vendor_id = attributes.find { |a| a.id.id == Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_ID }
       vendor_id.should_not be_nil
-      vendor_id.not_nil!.writable.should be_false
+      vendor_id.not_nil!.writable?.should be_false
 
       product_name = attributes.find { |a| a.id.id == Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_NAME }
       product_name.should_not be_nil
-      product_name.not_nil!.writable.should be_false
+      product_name.not_nil!.writable?.should be_false
 
       node_label = attributes.find { |a| a.id.id == Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL }
       node_label.should_not be_nil
-      node_label.not_nil!.writable.should be_true # User can set node label
+      node_label.not_nil!.writable?.should be_true # User can set node label
     end
   end
 
@@ -308,7 +308,7 @@ describe Matter::Cluster::BasicInformationCluster do
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCAL_CONFIG_DISABLED, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
-      cluster.local_config_disabled.should eq(true)
+      cluster.local_config_disabled?.should eq(true)
     end
 
     it "rejects write to read-only VENDOR_NAME" do
@@ -375,12 +375,12 @@ describe Matter::Cluster::BasicInformationCluster do
       event_data = cluster.emit_reachable_changed_event(false)
       event_data.should be_a(Bytes)
 
-      cluster.reachable.should eq(false)
+      cluster.reachable?.should eq(false)
       cluster.data_version.should eq(initial_version + 1)
 
       # Parse using TLV::Serializable
       parsed = Matter::Cluster::BasicInformationCluster::ReachableChangedEvent.from_slice(event_data)
-      parsed.reachable_new_value.should eq(false)
+      parsed.reachable_new_value?.should eq(false)
     end
   end
 

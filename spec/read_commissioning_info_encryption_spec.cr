@@ -19,7 +19,7 @@ describe "ReadCommissioningInfo Response Encryption - matter.js Compatibility" d
         session_type: Matter::Session::SessionType::Unicast,
         encryption_key: Bytes.new(16, 0xFF_u8),
         decryption_key: Bytes.new(16, 0x00_u8),
-        is_initiator: false # We're the responder
+        initiator: false # We're the responder
       )
 
       # Build packet header like send_im_response does
@@ -137,7 +137,7 @@ describe "ReadCommissioningInfo Response Encryption - matter.js Compatibility" d
         session_type: Matter::Session::SessionType::Unicast,
         encryption_key: encryption_key,
         decryption_key: Bytes.new(16, 0_u8),
-        is_initiator: false
+        initiator: false
       )
 
       # Simulated ReadResponse TLV payload (simplified)

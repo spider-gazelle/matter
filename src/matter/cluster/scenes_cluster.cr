@@ -67,7 +67,7 @@ module Matter
       property scenes : Hash({UInt16, UInt8}, SceneData)
       property current_scene : UInt8
       property current_group : UInt16
-      property scene_valid : Bool
+      property? scene_valid : Bool
 
       # Callback for when scene is recalled
       property on_recall_scene : Proc(UInt16, UInt8, Nil)?
@@ -439,7 +439,7 @@ module Matter
       end
 
       private def recall_scene(group_id : UInt16, scene_id : UInt8) : InteractionModel::StatusCode
-        if scene_data = @scenes[{group_id, scene_id}]?
+        if @scenes.has_key?({group_id, scene_id})
           # Update current scene tracking
           @current_group = group_id
           @current_scene = scene_id

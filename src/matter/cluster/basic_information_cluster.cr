@@ -139,7 +139,7 @@ module Matter
         include TLV::Serializable
 
         @[TLV::Field(tag: 0)]
-        property reachable_new_value : Bool
+        property? reachable_new_value : Bool
 
         def initialize(@reachable_new_value : Bool)
         end
@@ -164,8 +164,8 @@ module Matter
       property product_url : String
       property product_label : String
       property serial_number : String
-      property local_config_disabled : Bool
-      property reachable : Bool
+      property? local_config_disabled : Bool
+      property? reachable : Bool
       property unique_id : String
       property capability_minima : CapabilityMinimaStruct
       property product_appearance : ProductAppearanceStruct?
@@ -447,7 +447,7 @@ module Matter
           end
 
           # Validate it contains only ASCII letters or is "XX" (region-agnostic)
-          unless str == "XX" || str.chars.all? { |c| c.ascii_letter? }
+          unless str == "XX" || str.chars.all?(&.ascii_letter?)
             return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
           end
 
@@ -476,7 +476,7 @@ module Matter
 
         property node_label : String
         property location : String
-        property local_config_disabled : Bool
+        property? local_config_disabled : Bool
         property data_version : UInt32
 
         def initialize(
@@ -501,7 +501,7 @@ module Matter
         state = PersistedState.from_json(json)
         @node_label = state.node_label
         @location = state.location
-        @local_config_disabled = state.local_config_disabled
+        @local_config_disabled = state.local_config_disabled?
         @data_version = state.data_version
       rescue ex
         # Start fresh if restore fails

@@ -15,7 +15,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       cluster.cluster_id.id.should eq(0x0031_u32)
       cluster.network_type.should eq(Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi)
       cluster.max_networks.should eq(1_u8)
-      cluster.interface_enabled.should be_true
+      cluster.interface_enabled?.should be_true
       cluster.name.should eq("NetworkCommissioning")
     end
 
@@ -112,7 +112,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       )
 
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
-      cluster.interface_enabled.should be_false
+      cluster.interface_enabled?.should be_false
     end
 
     it "reads LastNetworkingStatus when nil" do
@@ -160,7 +160,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       max_networks = attributes.find { |a| a.id.id == Matter::Cluster::NetworkCommissioningCluster::ATTR_MAX_NETWORKS }
       max_networks.should_not be_nil
       max_networks.not_nil!.name.should eq("MaxNetworks")
-      max_networks.not_nil!.writable.should be_false
+      max_networks.not_nil!.writable?.should be_false
     end
 
     it "provides command metadata" do
@@ -186,16 +186,16 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       info = Matter::Cluster::NetworkCommissioningCluster::NetworkInfo.new(ssid, false)
 
       info.network_id.should eq(ssid)
-      info.connected.should be_false
+      info.connected?.should be_false
     end
 
     it "tracks connected status" do
       ssid = "MyNetwork".to_slice
       info = Matter::Cluster::NetworkCommissioningCluster::NetworkInfo.new(ssid, true)
 
-      info.connected.should be_true
+      info.connected?.should be_true
       info.connected = false
-      info.connected.should be_false
+      info.connected?.should be_false
     end
   end
 

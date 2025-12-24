@@ -288,7 +288,7 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
       )
 
       callback_called = false
-      cluster.on_illuminance_changed do |old, new|
+      cluster.on_illuminance_changed do |_, _|
         callback_called = true
       end
 

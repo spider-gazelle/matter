@@ -135,8 +135,8 @@ module Matter
     # Get a typed cluster by class
     # Usage: endpoint.get_cluster(OnOffCluster)
     def get_cluster(cluster_type : T.class) : T? forall T
-      cluster = @clusters.values.find { |c| c.is_a?(T) }
-      cluster.as(T) if cluster
+      found_cluster = @clusters.values.find { |clust| clust.is_a?(T) }
+      found_cluster.as(T) if found_cluster
     end
 
     # Get a typed cluster by class (raises if not found)

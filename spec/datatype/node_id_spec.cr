@@ -36,7 +36,7 @@ describe Matter::DataType::NodeId do
   describe "random operational node id" do
     it "generates a random operational NodeId" do
       node_id = Matter::DataType::NodeId.new(0_u64)
-      random_node = node_id.get_random_operational_node_id
+      random_node = node_id.random_operational_node_id
 
       # Operational NodeIds must be within the valid range
       random_node.id.should be >= 1
@@ -86,13 +86,13 @@ describe Matter::DataType::NodeId do
       cat = Matter::DataType::CaseAuthenticatedTag.new(0x12345678_u32)
       node_id = Matter::DataType::NodeId.from_case_authenticated_tag(cat)
 
-      node_id.is_case_authenticated_tag?.should eq(true)
+      node_id.case_authenticated_tag?.should eq(true)
     end
 
     it "returns false for non-CAT NodeId" do
       node_id = Matter::DataType::NodeId.new(0x123456789ABCDEF0_u64)
 
-      node_id.is_case_authenticated_tag?.should eq(false)
+      node_id.case_authenticated_tag?.should eq(false)
     end
 
     it "extracts CaseAuthenticatedTag from NodeId" do
@@ -101,8 +101,8 @@ describe Matter::DataType::NodeId do
 
       extracted_cat = node_id.extract_as_case_authenticated_tag
       extracted_cat.value.should eq(original_cat.value)
-      extracted_cat.get_identity_value.should eq(0xABCD_u16)
-      extracted_cat.get_version.should eq(0x1234_u16)
+      extracted_cat.identity_value.should eq(0xABCD_u16)
+      extracted_cat.version.should eq(0x1234_u16)
     end
 
     it "raises when extracting CAT from non-CAT NodeId" do

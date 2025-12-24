@@ -243,7 +243,7 @@ describe Matter::Cluster::OccupancySensingCluster do
       )
 
       callback_called = false
-      cluster.on_occupancy_changed do |old, new|
+      cluster.on_occupancy_changed do |_, _|
         callback_called = true
       end
 
@@ -348,7 +348,7 @@ describe Matter::Cluster::OccupancySensingCluster do
       )
 
       changes = [] of Bool
-      sensor.on_occupancy_changed do |old, new|
+      sensor.on_occupancy_changed do |_, new|
         changes << (new == 1_u8)
       end
 

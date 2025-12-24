@@ -131,7 +131,7 @@ module Matter
       # NetworkInfoStruct - Represents a configured network
       struct NetworkInfo
         property network_id : Bytes # 1-32 bytes (SSID or XPAN ID)
-        property connected : Bool   # Current connection status
+        property? connected : Bool  # Current connection status
 
         def initialize(@network_id : Bytes, @connected : Bool)
           raise ArgumentError.new("network_id must be 1-32 bytes") unless network_id.size.in?(1..32)
@@ -301,7 +301,7 @@ module Matter
       property networks : Array(NetworkInfo)
       property scan_max_time_seconds : UInt8
       property connect_max_time_seconds : UInt8
-      property interface_enabled : Bool
+      property? interface_enabled : Bool
       property last_networking_status : NetworkCommissioningStatus?
       property last_network_id : Bytes?
       property last_connect_error_value : Int32?
@@ -521,7 +521,7 @@ module Matter
         @networks.map do |network|
           Definitions::NetworkCommissioning::NetworkInformation.new(
             network_id: network.network_id,
-            connected: network.connected
+            connected: network.connected?
           )
         end.to_tlv
       end
@@ -635,7 +635,7 @@ module Matter
         end
 
         # Check if network already exists (update) or new (add)
-        existing_index = @networks.index { |n| n.network_id == cmd.ssid }
+        existing_index = @networks.index { |net| net.network_id == cmd.ssid }
 
         # Check max networks limit for new additions
         if !existing_index && @networks.size >= @max_networks
@@ -661,7 +661,7 @@ module Matter
         # Update internal state
         if existing_index
           # Update existing network
-          @networks[existing_index] = NetworkInfo.new(cmd.ssid, @networks[existing_index].connected)
+          @networks[existing_index] = NetworkInfo.new(cmd.ssid, @networks[existing_index].connected?)
           network_index = existing_index.to_u8
         else
           # Add new network
@@ -708,7 +708,7 @@ module Matter
         network_id = extract_thread_network_id(cmd.operational_dataset)
 
         # Check if network already exists
-        existing_index = @networks.index { |n| n.network_id == network_id }
+        existing_index = @networks.index { |net| net.network_id == network_id }
 
         # Check max networks limit for new additions
         if !existing_index && @networks.size >= @max_networks
@@ -734,7 +734,7 @@ module Matter
         # Update internal state
         if existing_index
           # Update existing network
-          @networks[existing_index] = NetworkInfo.new(network_id, @networks[existing_index].connected)
+          @networks[existing_index] = NetworkInfo.new(network_id, @networks[existing_index].connected?)
           network_index = existing_index.to_u8
         else
           # Add new network
@@ -770,7 +770,7 @@ module Matter
         end
 
         # Find network by ID
-        index = @networks.index { |n| n.network_id == cmd.network_id }
+        index = @networks.index { |net| net.network_id == cmd.network_id }
 
         unless index
           return NetworkConfigResponse.new(
@@ -822,7 +822,7 @@ module Matter
         end
 
         # Find network by ID
-        index = @networks.index { |n| n.network_id == cmd.network_id }
+        index = @networks.index { |net| net.network_id == cmd.network_id }
 
         unless index
           return ConnectNetworkResponse.new(
@@ -886,7 +886,7 @@ module Matter
         end
 
         # Find network by ID
-        current_index = @networks.index { |n| n.network_id == cmd.network_id }
+        current_index = @networks.index { |net| net.network_id == cmd.network_id }
 
         unless current_index
           return NetworkConfigResponse.new(
@@ -936,16 +936,16 @@ module Matter
 
         # Convert internal WiFi results to Definitions struct (skip incomplete results)
         wifi_results = if results = response.wifi_scan_results
-                         results.compact_map do |r|
-                           next nil unless r.ssid && r.bssid && r.channel
-                           band = r.wifi_band.try { |b| Definitions::NetworkCommissioning::Band.new(b.value) }
+                         results.compact_map do |result|
+                           next nil unless result.ssid && result.bssid && result.channel
+                           band = result.wifi_band.try { |wifi_band| Definitions::NetworkCommissioning::Band.new(wifi_band.value) }
                            Definitions::NetworkCommissioning::WiFiInterfaceScanResult.new(
-                             security: r.security.try(&.value) || 0_u8,
-                             ssid: r.ssid.not_nil!,
-                             bssid: r.bssid.not_nil!,
-                             channel: r.channel.not_nil!,
+                             security: result.security.try(&.value) || 0_u8,
+                             ssid: result.ssid.as(Bytes),
+                             bssid: result.bssid.as(Bytes),
+                             channel: result.channel.as(UInt16),
                              band: band,
-                             rssi: r.rssi
+                             rssi: result.rssi
                            )
                          end
                        else
@@ -954,16 +954,16 @@ module Matter
 
         # Convert internal Thread results to Definitions struct
         thread_results = if results = response.thread_scan_results
-                           results.map do |r|
+                           results.map do |result|
                              Definitions::NetworkCommissioning::ThreadInterfaceScanResult.new(
-                               pan_id: r.pan_id,
-                               extended_pan_id: r.extended_pan_id,
-                               network_name: r.network_name,
-                               channel: r.channel,
-                               version: r.version,
-                               extended_address: r.extended_address,
-                               rssi: r.rssi,
-                               lqi: r.lqi
+                               pan_id: result.pan_id,
+                               extended_pan_id: result.extended_pan_id,
+                               network_name: result.network_name,
+                               channel: result.channel,
+                               version: result.version,
+                               extended_address: result.extended_address,
+                               rssi: result.rssi,
+                               lqi: result.lqi
                              )
                            end
                          else
@@ -974,8 +974,8 @@ module Matter
         Definitions::NetworkCommissioning::ScanNetworksResponse.new(
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
-          wifi_scan_results: wifi_results.try { |r| r.empty? ? nil : r },
-          thread_scan_results: thread_results.try { |r| r.empty? ? nil : r }
+          wifi_scan_results: wifi_results.try { |wifi_res| wifi_res.empty? ? nil : wifi_res },
+          thread_scan_results: thread_results.try { |thread_res| thread_res.empty? ? nil : thread_res }
         ).to_slice
       end
 
@@ -997,7 +997,7 @@ module Matter
         Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
-          networkIndex: response.network_index
+          network_index: response.network_index
         ).to_slice
       end
 
@@ -1018,7 +1018,7 @@ module Matter
         Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
-          networkIndex: response.network_index
+          network_index: response.network_index
         ).to_slice
       end
 
@@ -1039,7 +1039,7 @@ module Matter
         Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
-          networkIndex: response.network_index
+          network_index: response.network_index
         ).to_slice
       end
 
@@ -1071,7 +1071,7 @@ module Matter
         # Convert to simple struct
         req = ReorderNetworkRequest.new(
           network_id: tlv_req.network_id,
-          network_index: tlv_req.networkIndex,
+          network_index: tlv_req.network_index,
           breadcrumb: tlv_req.breadcrumb
         )
 
@@ -1082,7 +1082,7 @@ module Matter
         Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
-          networkIndex: response.network_index
+          network_index: response.network_index
         ).to_slice
       end
 
@@ -1184,12 +1184,12 @@ module Matter
 
       # Helper: Get current connected network
       def connected_network : NetworkInfo?
-        @networks.find(&.connected)
+        @networks.find(&.connected?)
       end
 
       # Helper: Check if network exists
       def has_network?(network_id : Bytes) : Bool
-        @networks.any? { |n| n.network_id == network_id }
+        @networks.any? { |net| net.network_id == network_id }
       end
     end
   end

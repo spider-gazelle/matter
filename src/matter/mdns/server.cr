@@ -17,7 +17,7 @@ module Matter
       # Check if this generator handles a specific query name
       def handles?(query_name : String) : Bool
         query_lowercase = query_name.downcase
-        query_lowercase == instance_name.downcase || queries_handled.any? { |q| q.downcase == query_lowercase }
+        query_lowercase == instance_name.downcase || queries_handled.any? { |query| query.downcase == query_lowercase }
       end
 
       # Additional query names this generator responds to (PTR queries, subtypes)

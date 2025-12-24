@@ -180,7 +180,7 @@ describe "IMHandler - Message Chunking" do
       chunks.size.should be >= 2
 
       # All chunks except the last should have more_chunks = true
-      chunks[0...-1].each_with_index do |(chunk_bytes, is_last), idx|
+      chunks[0...-1].each do |(chunk_bytes, is_last)|
         is_last.should be_false
 
         root = decode_chunk(chunk_bytes)

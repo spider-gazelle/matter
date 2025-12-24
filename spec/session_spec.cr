@@ -15,13 +15,13 @@ describe Matter::Session do
         session_type: Matter::Session::SessionType::Unicast,
         encryption_key: encryption_key,
         decryption_key: decryption_key,
-        is_initiator: true
+        initiator: true
       )
 
       context.session_id.should eq(1000_u16)
       context.peer_session_id.should eq(2000_u16)
       context.session_type.should eq(Matter::Session::SessionType::Unicast)
-      context.is_initiator.should be_true
+      context.initiator?.should be_true
       # Counter should be initialized to a random value (not 0)
       context.local_message_counter.should be_a(UInt32)
       context.peer_message_counter.should be_nil
@@ -87,7 +87,7 @@ describe Matter::Session do
       context.expired?(5.minutes).should be_false
 
       # Simulate old session by setting last_activity_time
-      context.set_last_activity_time(Time.utc - 10.minutes)
+      context.last_activity_time = Time.utc - 10.minutes
       context.expired?(5.minutes).should be_true
     end
   end
@@ -221,7 +221,7 @@ describe Matter::Session do
         session_type: Matter::Session::SessionType::Unicast,
         encryption_key: i2r_key,
         decryption_key: r2i_key,
-        is_initiator: true,
+        initiator: true,
         local_node_id: Matter::DataType::NodeId.new(0x1111111111111111_u64),
         peer_node_id: Matter::DataType::NodeId.new(0x2222222222222222_u64)
       )
@@ -233,7 +233,7 @@ describe Matter::Session do
         session_type: Matter::Session::SessionType::Unicast,
         encryption_key: r2i_key,
         decryption_key: i2r_key,
-        is_initiator: false,
+        initiator: false,
         local_node_id: Matter::DataType::NodeId.new(0x2222222222222222_u64),
         peer_node_id: Matter::DataType::NodeId.new(0x1111111111111111_u64)
       )

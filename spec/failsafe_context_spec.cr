@@ -230,9 +230,9 @@ module Matter
           expiry_callback: -> { }
         )
 
-        context.for_update_noc.should be_false
+        context.for_update_noc?.should be_false
         context.mark_for_update_noc
-        context.for_update_noc.should be_true
+        context.for_update_noc?.should be_true
 
         context.close
       end
@@ -275,7 +275,7 @@ module Matter
         context.network_state_snapshot.should be_nil
         context.csr_nonce.should be_nil
         context.root_cert.should be_nil
-        context.for_update_noc.should be_false
+        context.for_update_noc?.should be_false
 
         context.close
       end

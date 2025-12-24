@@ -100,7 +100,7 @@ module Matter
         pin_str = pin.to_s.rjust(8, '0')
 
         # Check if all digits are the same
-        next if pin_str.chars.uniq.size == 1
+        next if pin_str.chars.uniq!.size == 1
 
         # Check blacklisted PINs
         next if pin == 12345678 || pin == 87654321
@@ -130,7 +130,7 @@ module Matter
 
         # Check for invalid repeating digit PINs
         pin_str = pin.to_s.rjust(8, '0')
-        if pin_str.chars.uniq.size == 1
+        if pin_str.chars.uniq!.size == 1
           raise ArgumentError.new("PIN cannot be all the same digit")
         end
 

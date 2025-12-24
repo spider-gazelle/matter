@@ -417,60 +417,57 @@ module Matter
 
       private def handle_open_commissioning_window(fields : Bytes) : InteractionModel::Status
         # Parse TLV-encoded command using the TLV library
+
+        request = OpenCommissioningWindowRequest.from_slice(fields)
+
+        fabric_index = @session_fabric_index
+        vendor_id = @session_vendor_id
+
         begin
-          request = OpenCommissioningWindowRequest.from_slice(fields)
-
-          fabric_index = @session_fabric_index
-          vendor_id = @session_vendor_id
-
-          begin
-            open_commissioning_window(request, fabric_index, vendor_id)
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
-          rescue ex : BusyError
-            InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
-          rescue ex : PAKEParameterError
-            InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
-          rescue ex
-            InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
-          end
+          open_commissioning_window(request, fabric_index, vendor_id)
+          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        rescue ex : BusyError
+          InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
+        rescue ex : PAKEParameterError
+          InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
         rescue ex
-          Log.error(exception: ex) { "OpenCommissioningWindow: failed to parse request (bytes=#{fields.hexstring})" }
           InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
         end
+      rescue ex
+        Log.error(exception: ex) { "OpenCommissioningWindow: failed to parse request (bytes=#{fields.hexstring})" }
+        InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
       end
 
       private def handle_open_basic_commissioning_window(fields : Bytes) : InteractionModel::Status
         # Parse TLV-encoded command using the TLV library
+
+        request = OpenBasicCommissioningWindowRequest.from_slice(fields)
+
+        fabric_index = @session_fabric_index
+        vendor_id = @session_vendor_id
+
         begin
-          request = OpenBasicCommissioningWindowRequest.from_slice(fields)
-
-          fabric_index = @session_fabric_index
-          vendor_id = @session_vendor_id
-
-          begin
-            open_basic_commissioning_window(request, fabric_index, vendor_id)
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
-          rescue ex : BusyError
-            InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
-          rescue ex
-            InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
-          end
+          open_basic_commissioning_window(request, fabric_index, vendor_id)
+          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        rescue ex : BusyError
+          InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
         rescue ex
-          Log.error(exception: ex) { "OpenBasicCommissioningWindow: failed to parse request (bytes=#{fields.hexstring})" }
-          InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+          InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
         end
+      rescue ex
+        Log.error(exception: ex) { "OpenBasicCommissioningWindow: failed to parse request (bytes=#{fields.hexstring})" }
+        InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
       end
 
       private def handle_revoke_commissioning(fields : Bytes) : InteractionModel::Status
         # RevokeCommissioning command has no parameters
-        begin
-          revoke_commissioning
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
-        rescue ex : WindowNotOpenError
-          InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
-        rescue ex
-          InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
-        end
+
+        revoke_commissioning
+        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+      rescue ex : WindowNotOpenError
+        InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+      rescue ex
+        InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
       end
 
       # ========================================================================
@@ -501,13 +498,13 @@ module Matter
       end
 
       # Check if window is expired
-      def is_window_expired? : Bool
+      def window_expired? : Bool
         return false unless timeout = @window_timeout
         Time.utc >= timeout
       end
 
-      # Check if any commissioning window is open (backward compatibility)
-      def is_window_open? : Bool
+      # Check if any commissioning window is open
+      def window_open? : Bool
         !@window_status.window_not_open?
       end
 
@@ -694,8 +691,8 @@ module Matter
           advertisement = MDNS::CommissionableAdvertisement.new(description, @addresses)
 
           # Create and start advertiser if needed
-          @mdns_advertiser ||= MDNS::Advertiser.new(Socket::Family::INET)
-          @mdns_advertiser.not_nil!.start_advertising(advertisement)
+          mdns_advertiser = @mdns_advertiser ||= MDNS::Advertiser.new(Socket::Family::INET)
+          mdns_advertiser.start_advertising(advertisement)
 
           Log.info { "Started mDNS advertising: discriminator=#{discriminator}, mode=#{mode}" }
         rescue ex

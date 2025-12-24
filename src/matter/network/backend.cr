@@ -74,7 +74,7 @@ module Matter
       #
       # @param network_id Network identifier (SSID for WiFi, XPAN for Thread)
       # @return True if connected
-      abstract def is_connected?(network_id : Bytes) : Bool
+      abstract def connected?(network_id : Bytes) : Bool
     end
   end
 end

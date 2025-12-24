@@ -13,8 +13,8 @@ describe Matter::Protocol::Persistence::StorageBackend do
       session_type: Matter::Session::SessionType::Unicast,
       encryption_key: Bytes.new(16, 1_u8),
       decryption_key: Bytes.new(16, 2_u8),
-      is_initiator: false,
-      is_case: true,
+      initiator: false,
+      case_session: true,
       fabric_index: 1_u8
     )
 

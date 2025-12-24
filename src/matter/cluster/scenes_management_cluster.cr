@@ -27,7 +27,7 @@ module Matter
       property current_group : UInt16
 
       @[TLV::Field(tag: 3)]
-      property scene_valid : Bool
+      property? scene_valid : Bool
 
       @[TLV::Field(tag: 4)]
       property remaining_capacity : UInt8
@@ -395,7 +395,7 @@ module Matter
         property scene_count : UInt8
         property current_scene : UInt8
         property current_group : UInt16
-        property scene_valid : Bool
+        property? scene_valid : Bool
         property remaining_capacity : UInt8
         property fabric_index : UInt8
 
@@ -609,7 +609,7 @@ module Matter
           scene_count: scene_info.scene_count,
           current_scene: scene_info.current_scene,
           current_group: scene_info.current_group,
-          scene_valid: scene_info.scene_valid,
+          scene_valid: scene_info.scene_valid?,
           remaining_capacity: scene_info.remaining_capacity,
           fabric_index: fabric_index
         )

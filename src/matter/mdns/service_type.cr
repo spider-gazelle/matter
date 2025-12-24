@@ -153,7 +153,7 @@ module Matter
       # For always-on devices, leave these nil to avoid advertising ICD capability
       property session_idle_interval : UInt32?   # milliseconds (SII)
       property session_active_interval : UInt32? # milliseconds (SAI)
-      property tcp_supported : Bool
+      property? tcp_supported : Bool
 
       def initialize(
         @compressed_fabric_id : Bytes,

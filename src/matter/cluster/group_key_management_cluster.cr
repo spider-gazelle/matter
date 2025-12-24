@@ -143,9 +143,9 @@ module Matter
 
         private def validate_epoch_ordering! : Nil
           times = [] of UInt64
-          times << epoch_start_time0.not_nil! if epoch_start_time0
-          times << epoch_start_time1.not_nil! if epoch_start_time1
-          times << epoch_start_time2.not_nil! if epoch_start_time2
+          times << epoch_start_time0.as(UInt64) if epoch_start_time0
+          times << epoch_start_time1.as(UInt64) if epoch_start_time1
+          times << epoch_start_time2.as(UInt64) if epoch_start_time2
 
           # Check strict ordering: each time must be less than the next
           (0...times.size - 1).each do |i|
@@ -421,7 +421,7 @@ module Matter
 
         # Check resource limits: max_group_keys_per_fabric
         # Don't count the key set being updated
-        existing_count = fabric_key_sets.keys.reject { |id| id == key_set.group_key_set_id }.size
+        existing_count = fabric_key_sets.keys.count { |id| id != key_set.group_key_set_id }
         if existing_count >= max_group_keys_per_fabric
           raise ArgumentError.new("Cannot exceed max_group_keys_per_fabric (#{max_group_keys_per_fabric})")
         end
@@ -498,7 +498,7 @@ module Matter
         fabric_key_sets = @key_sets[fabric_index]?
         return KeySetReadAllIndicesResponse.new([] of UInt16) unless fabric_key_sets
 
-        key_set_ids = fabric_key_sets.keys.sort
+        key_set_ids = fabric_key_sets.keys.sort!
         KeySetReadAllIndicesResponse.new(key_set_ids)
       end
 
@@ -616,7 +616,7 @@ module Matter
         existing = @group_table[existing_index]
 
         # Remove endpoint from group
-        new_endpoints = existing.endpoints.reject { |ep| ep == endpoint_id }
+        new_endpoints = existing.endpoints.reject { |endpoint| endpoint == endpoint_id }
 
         if new_endpoints.empty?
           # Remove entire group if no endpoints remain
@@ -657,7 +657,7 @@ module Matter
         fabric_key_sets = @key_sets[fabric_index]?
         return [] of UInt16 unless fabric_key_sets
 
-        fabric_key_sets.keys.sort
+        fabric_key_sets.keys.sort!
       end
 
       # ------------------------------------------------------------------------
@@ -711,17 +711,17 @@ module Matter
       def save_state : String?
         key_sets_json = {} of String => Array(PersistedKeySet)
         @key_sets.each do |fabric_idx, sets|
-          key_sets_json[fabric_idx.to_s] = sets.values.map do |ks|
+          key_sets_json[fabric_idx.to_s] = sets.values.map do |key_set|
             PersistedKeySet.new(
-              group_key_set_id: ks.group_key_set_id,
-              group_key_security_policy: ks.group_key_security_policy.value,
-              epoch_key0: ks.epoch_key0.try(&.hexstring),
-              epoch_start_time0: ks.epoch_start_time0,
-              epoch_key1: ks.epoch_key1.try(&.hexstring),
-              epoch_start_time1: ks.epoch_start_time1,
-              epoch_key2: ks.epoch_key2.try(&.hexstring),
-              epoch_start_time2: ks.epoch_start_time2,
-              group_key_multicast_policy: ks.group_key_multicast_policy.try(&.value)
+              group_key_set_id: key_set.group_key_set_id,
+              group_key_security_policy: key_set.group_key_security_policy.value,
+              epoch_key0: key_set.epoch_key0.try(&.hexstring),
+              epoch_start_time0: key_set.epoch_start_time0,
+              epoch_key1: key_set.epoch_key1.try(&.hexstring),
+              epoch_start_time1: key_set.epoch_start_time1,
+              epoch_key2: key_set.epoch_key2.try(&.hexstring),
+              epoch_start_time2: key_set.epoch_start_time2,
+              group_key_multicast_policy: key_set.group_key_multicast_policy.try(&.value)
             )
           end
         end
@@ -742,18 +742,18 @@ module Matter
         state.key_sets.each do |fabric_idx_str, key_sets|
           fabric_idx = fabric_idx_str.to_u8
           @key_sets[fabric_idx] ||= Hash(UInt16, GroupKeySetStruct).new
-          key_sets.each do |ks|
-            policy = GroupKeySecurityPolicyEnum.from_value(ks.group_key_security_policy)
-            multicast = ks.group_key_multicast_policy.try { |v| GroupKeyMulticastPolicyEnum.from_value(v) }
-            @key_sets[fabric_idx][ks.group_key_set_id] = GroupKeySetStruct.new(
-              group_key_set_id: ks.group_key_set_id,
+          key_sets.each do |key_set|
+            policy = GroupKeySecurityPolicyEnum.from_value(key_set.group_key_security_policy)
+            multicast = key_set.group_key_multicast_policy.try { |value| GroupKeyMulticastPolicyEnum.from_value(value) }
+            @key_sets[fabric_idx][key_set.group_key_set_id] = GroupKeySetStruct.new(
+              group_key_set_id: key_set.group_key_set_id,
               group_key_security_policy: policy,
-              epoch_key0: ks.epoch_key0.try(&.hexbytes),
-              epoch_start_time0: ks.epoch_start_time0,
-              epoch_key1: ks.epoch_key1.try(&.hexbytes),
-              epoch_start_time1: ks.epoch_start_time1,
-              epoch_key2: ks.epoch_key2.try(&.hexbytes),
-              epoch_start_time2: ks.epoch_start_time2,
+              epoch_key0: key_set.epoch_key0.try(&.hexbytes),
+              epoch_start_time0: key_set.epoch_start_time0,
+              epoch_key1: key_set.epoch_key1.try(&.hexbytes),
+              epoch_start_time1: key_set.epoch_start_time1,
+              epoch_key2: key_set.epoch_key2.try(&.hexbytes),
+              epoch_start_time2: key_set.epoch_start_time2,
               group_key_multicast_policy: multicast
             )
           end

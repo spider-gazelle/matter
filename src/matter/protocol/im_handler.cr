@@ -134,7 +134,7 @@ module Matter
                 end
               else
                 # Specific attribute on wildcard endpoint/cluster
-                expanded_paths << {endpoint_id, cluster_id, path.attribute.not_nil!}
+                expanded_paths << {endpoint_id, cluster_id, path.attribute.as(UInt32)}
               end
             end
 
@@ -145,7 +145,7 @@ module Matter
               cluster = clusters[{endpoint_id, cluster_id}]
               next unless cluster
 
-              required = cluster.attributes.find { |a| a.id.id == attribute_id }.try(&.access) || Cluster::Definitions::AccessControl::EntryPrivilege::View
+              required = cluster.attributes.find { |attr| attr.id.id == attribute_id }.try(&.access) || Cluster::Definitions::AccessControl::EntryPrivilege::View
               unless authorized?(clusters, required, endpoint_id, cluster_id, is_case_session, fabric_index, peer_node_id)
                 concrete_path = InteractionModel::AttributePath.new(
                   endpoint: endpoint_id,
@@ -186,9 +186,9 @@ module Matter
           end
 
           # Concrete path - read specific attribute
-          endpoint_id = path.endpoint.not_nil!
-          cluster_id = path.cluster.not_nil!
-          attribute_id = path.attribute.not_nil!
+          endpoint_id = path.endpoint.as(UInt16)
+          cluster_id = path.cluster.as(UInt32)
+          attribute_id = path.attribute.as(UInt32)
 
           # Find cluster
           cluster = clusters[{endpoint_id, cluster_id}]?
@@ -203,7 +203,7 @@ module Matter
             next
           end
 
-          required = cluster.attributes.find { |a| a.id.id == attribute_id }.try(&.access) || Cluster::Definitions::AccessControl::EntryPrivilege::View
+          required = cluster.attributes.find { |attr| attr.id.id == attribute_id }.try(&.access) || Cluster::Definitions::AccessControl::EntryPrivilege::View
           unless authorized?(clusters, required, endpoint_id, cluster_id, is_case_session, fabric_index, peer_node_id)
             attribute_status << InteractionModel::AttributeStatus.new(
               path: path,
@@ -332,8 +332,8 @@ module Matter
         # Build ReportDataMessage
         report_msg = InteractionModel::ReportDataMessage.new(
           attribute_reports: attribute_reports.empty? ? nil : attribute_reports,
-          more_chunked_messages: response.more_chunks ? true : nil,
-          suppress_response: response.suppress_response ? true : nil,
+          more_chunked_messages: response.more_chunks? ? true : nil,
+          suppress_response: response.suppress_response? ? true : nil,
           interaction_model_revision: 12_u8
         )
 
@@ -483,7 +483,7 @@ module Matter
             next
           end
 
-          if metadata = cluster.attributes.find { |a| a.id.id == attribute_id }
+          if metadata = cluster.attributes.find { |attr| attr.id.id == attribute_id }
             unless authorized?(clusters, metadata.access, endpoint_id, cluster_id, is_case_session, fabric_index, peer_node_id)
               write_responses << InteractionModel::AttributeStatus.new(
                 path: path,
@@ -651,8 +651,8 @@ module Matter
         report_msg = InteractionModel::ReportDataMessage.new(
           subscription_id: subscription_id,
           attribute_reports: attribute_reports.empty? ? nil : attribute_reports,
-          more_chunked_messages: response.more_chunks ? true : nil,
-          suppress_response: response.suppress_response,
+          more_chunked_messages: response.more_chunks? ? true : nil,
+          suppress_response: response.suppress_response?,
           interaction_model_revision: 12_u8
         )
 
@@ -934,7 +934,7 @@ module Matter
             next
           end
 
-          if metadata = cluster.commands.find { |c| c.id.id == path.command }
+          if metadata = cluster.commands.find { |cmd| cmd.id.id == path.command }
             unless authorized?(clusters, metadata.access, endpoint_id, path.cluster, is_case_session, fabric_index, peer_node_id)
               invoke_status << InteractionModel::CommandStatus.new(
                 path: path,
@@ -1017,9 +1017,9 @@ module Matter
         end
 
         msg = InteractionModel::InvokeResponseMessage.new(
-          suppress_response: response.suppress_response,
+          suppress_response: response.suppress_response?,
           invoke_responses: invoke_responses,
-          more_chunked_messages: response.more_chunked_messages ? true : nil,
+          more_chunked_messages: response.more_chunked_messages? ? true : nil,
           interaction_model_revision: 12_u8
         )
         msg.to_slice

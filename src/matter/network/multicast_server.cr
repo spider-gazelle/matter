@@ -3,7 +3,7 @@ module Matter
     class MulticastServer
       getter socket : UDPSocket
 
-      def initialize(@address : Socket::IPAddress = Constants::MDNS_ADDRESS_IPv4, buffer_size = 16, loopback = false, hops = 255)
+      def initialize(@address : Socket::IPAddress = Constants::MDNS_ADDRESS_IPV4, buffer_size = 16, loopback = false, hops = 255)
         interface = @address.family.inet? ? Constants::DEFAULT_INTERFACE_IPV4 : Constants::DEFAULT_INTERFACE_IPV6
 
         @socket = UDPSocket.new @address.family

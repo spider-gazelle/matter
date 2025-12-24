@@ -147,12 +147,12 @@ module Matter
 
     # Find a fabric by fabric_id
     def find_by_fabric_id(fabric_id : UInt64) : Fabric?
-      @fabrics.values.find { |f| f.fabric_id == fabric_id }
+      @fabrics.values.find { |fabric| fabric.fabric_id == fabric_id }
     end
 
     # Find a fabric by its identity (root_public_key + fabric_id).
     def find_by_fabric_identity(fabric_id : UInt64, root_public_key : Bytes) : Fabric?
-      @fabrics.values.find { |f| f.fabric_id == fabric_id && f.root_public_key == root_public_key }
+      @fabrics.values.find { |fabric| fabric.fabric_id == fabric_id && fabric.root_public_key == root_public_key }
     end
 
     # Get all fabrics
@@ -190,12 +190,12 @@ module Matter
 
     # Get all fabric indices currently in use
     def used_indices : Array(UInt8)
-      @fabrics.keys.sort
+      @fabrics.keys.sort!
     end
 
     # Get all fabric descriptors (for Fabrics attribute)
     def fabric_descriptors : Array(FabricDescriptor)
-      @fabrics.values.map { |f| FabricDescriptor.from_fabric(f) }.to_a
+      @fabrics.values.map { |fabric| FabricDescriptor.from_fabric(fabric) }.to_a
     end
 
     # Clear all fabrics (used for factory reset)
@@ -281,45 +281,43 @@ module Matter
 
     # Export all fabrics for backup
     def export : String
-      data = @fabrics.transform_values { |fabric| fabric.to_h }
+      data = @fabrics.transform_values(&.to_h)
       data.to_json
     end
 
     # Import fabrics from backup (replaces existing)
     def import(json : String) : Bool
-      begin
-        data = Hash(String, Hash(String, JSON::Any)).from_json(json)
+      data = Hash(String, Hash(String, JSON::Any)).from_json(json)
 
-        # Validate before clearing existing fabrics
-        new_fabrics = Hash(UInt8, Fabric).new
-        data.each do |index_str, fabric_data|
-          fabric_hash = fabric_data.transform_values do |value|
-            case value.raw
-            when String
-              value.as_s
-            when Int64
-              value.as_i64
-            when Float64
-              value.as_f
-            when Bool
-              value.as_bool
-            else
-              value.raw
-            end
+      # Validate before clearing existing fabrics
+      new_fabrics = Hash(UInt8, Fabric).new
+      data.each do |_, fabric_data|
+        fabric_hash = fabric_data.transform_values do |value|
+          case value.raw
+          when String
+            value.as_s
+          when Int64
+            value.as_i64
+          when Float64
+            value.as_f
+          when Bool
+            value.as_bool
+          else
+            value.raw
           end
-
-          fabric = Fabric.from_h(fabric_hash)
-          new_fabrics[fabric.fabric_index] = fabric
         end
 
-        # All valid, replace existing
-        @fabrics = new_fabrics
-        persist_to_storage
-        true
-      rescue ex
-        Log.error(exception: ex) { "Failed to import fabrics (json=#{json})" }
-        false
+        fabric = Fabric.from_h(fabric_hash)
+        new_fabrics[fabric.fabric_index] = fabric
       end
+
+      # All valid, replace existing
+      @fabrics = new_fabrics
+      persist_to_storage
+      true
+    rescue ex
+      Log.error(exception: ex) { "Failed to import fabrics (json=#{json})" }
+      false
     end
 
     # Validate fabric table consistency
@@ -327,7 +325,7 @@ module Matter
       errors = [] of String
 
       # Check for duplicate fabric identities (root_public_key + fabric_id)
-      identities = @fabrics.values.map { |f| {f.fabric_id, f.root_public_key.hexstring} }
+      identities = @fabrics.values.map { |fabric| {fabric.fabric_id, fabric.root_public_key.hexstring} }
       if identities.size != identities.uniq.size
         errors << "Duplicate fabric identities detected"
       end
@@ -356,13 +354,13 @@ module Matter
       now = Time.utc.to_unix
       fabrics_array = @fabrics.values
 
-      active_count = fabrics_array.count { |f| !f.expired? }
+      active_count = fabrics_array.count { |fabric| !fabric.expired? }
       expired_count = fabrics_array.size - active_count
 
-      ages = fabrics_array.map { |f| now - f.created_at }
+      ages = fabrics_array.map { |fabric| now - fabric.created_at }
       avg_age = ages.empty? ? 0.0 : ages.sum.to_f / ages.size
 
-      last_used_ages = fabrics_array.map { |f| now - f.last_used_at }
+      last_used_ages = fabrics_array.map { |fabric| now - fabric.last_used_at }
       avg_last_used = last_used_ages.empty? ? 0.0 : last_used_ages.sum.to_f / last_used_ages.size
 
       {

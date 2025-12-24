@@ -167,7 +167,7 @@ describe Matter::Cluster::AccessControlCluster do
       acl_attr = attributes.find { |a| a.id.id == Matter::Cluster::AccessControlCluster::ATTR_ACL }
       acl_attr.should_not be_nil
       acl_attr.not_nil!.name.should eq("ACL")
-      acl_attr.not_nil!.writable.should be_true
+      acl_attr.not_nil!.writable?.should be_true
     end
   end
 

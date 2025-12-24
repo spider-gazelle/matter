@@ -571,7 +571,7 @@ describe Matter::Cluster::ColorControlCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::ColorControlCluster.new(endpoint_id)
 
-      cluster.set_color_temperature_kelvin(4000_u32)
+      cluster.color_temperature_kelvin = 4000_u32
 
       cluster.color_temperature_mireds.should eq(250_u16)
     end
@@ -621,7 +621,7 @@ describe Matter::Cluster::ColorControlCluster do
       light = Matter::Cluster::ColorControlCluster.new(endpoint_id)
 
       # 2700K = 370 mireds
-      light.set_color_temperature_kelvin(2700_u32)
+      light.color_temperature_kelvin = 2700_u32
 
       light.color_temperature_mireds.should eq(370_u16)
       light.color_temperature_kelvin.should eq(2702_u32) # Close to 2700
@@ -632,7 +632,7 @@ describe Matter::Cluster::ColorControlCluster do
       light = Matter::Cluster::ColorControlCluster.new(endpoint_id)
 
       # 6500K = 154 mireds
-      light.set_color_temperature_kelvin(6500_u32)
+      light.color_temperature_kelvin = 6500_u32
 
       light.color_temperature_mireds.should eq(153_u16)
       light.color_temperature_kelvin.should be_close(6500_u32, 100_u32)
@@ -670,7 +670,7 @@ describe Matter::Cluster::ColorControlCluster do
       light = Matter::Cluster::ColorControlCluster.new(endpoint_id, current_hue: 0_u8)
 
       # Step through hues
-      10.times do |i|
+      10.times do |_|
         light.invoke_command(
           Matter::Cluster::ColorControlCluster::CMD_STEP_HUE,
           Bytes[

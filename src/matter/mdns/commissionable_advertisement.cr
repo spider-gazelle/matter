@@ -190,7 +190,7 @@ module Matter
           fields << "SAT=#{threshold}"
         end
 
-        if @description.tcp_supported
+        if @description.tcp_supported?
           fields << "T=1"
         end
 

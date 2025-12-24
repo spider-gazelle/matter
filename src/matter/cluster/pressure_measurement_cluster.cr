@@ -133,7 +133,7 @@ module Matter
           if tolerance = @tolerance
             tolerance.to_tlv
           else
-            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         else
           super

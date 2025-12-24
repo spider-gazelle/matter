@@ -14,7 +14,7 @@ describe "DER Format Generation" do
     our_der = crypto.build_ec_private_key_der(private_key_bytes, public_key_bytes)
 
     our_der.each_slice(16) do |slice|
-      hex = slice.map { |b| b.to_s(16).rjust(2, '0') }.join(" ")
+      hex = slice.map(&.to_s(16).rjust(2, '0')).join(" ")
       ascii = slice.map { |b| (32..126).includes?(b) ? b.chr : '.' }.join
     end
 
@@ -30,7 +30,7 @@ describe "DER Format Generation" do
     our_der = crypto.build_ec_public_key_der(public_key_bytes)
 
     our_der.each_slice(16) do |slice|
-      hex = slice.map { |b| b.to_s(16).rjust(2, '0') }.join(" ")
+      hex = slice.map(&.to_s(16).rjust(2, '0')).join(" ")
       ascii = slice.map { |b| (32..126).includes?(b) ? b.chr : '.' }.join
     end
 

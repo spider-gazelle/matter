@@ -66,7 +66,7 @@ module Matter
           return context
             .as(Hash(String, Type))
             .keys
-            .sort
+            .sort!
         end
 
         [] of String

@@ -22,7 +22,7 @@ module Matter
       getter security_type : WiFiSecurityType
 
       # Whether this is a raw PSK (true) or passphrase (false)
-      getter is_psk : Bool
+      getter? is_psk : Bool
 
       def initialize(@credentials : Bytes)
         @security_type, @is_psk = infer_security_type(@credentials)
@@ -75,10 +75,10 @@ module Matter
 
       # Check if bytes represent a valid hex string (all chars 0-9, A-F, a-f)
       private def hex_string?(bytes : Bytes) : Bool
-        bytes.all? do |b|
-          (b >= 0x30 && b <= 0x39) ||   # 0-9
-            (b >= 0x41 && b <= 0x46) || # A-F
-            (b >= 0x61 && b <= 0x66)    # a-f
+        bytes.all? do |byte|
+          (byte >= 0x30 && byte <= 0x39) ||   # 0-9
+            (byte >= 0x41 && byte <= 0x46) || # A-F
+            (byte >= 0x61 && byte <= 0x66)    # a-f
         end
       end
 

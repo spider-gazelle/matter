@@ -211,7 +211,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       supported_fabrics = attributes.find { |a| a.id.id == Matter::Cluster::OperationalCredentialsCluster::ATTR_SUPPORTED_FABRICS }
       supported_fabrics.should_not be_nil
       supported_fabrics.not_nil!.name.should eq("SupportedFabrics")
-      supported_fabrics.not_nil!.writable.should be_false
+      supported_fabrics.not_nil!.writable?.should be_false
     end
 
     it "provides command metadata" do
@@ -1071,7 +1071,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
             create_csr_request_tlv(nonce, false)
           )
 
-          root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
+          root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |j| root_public_key[j] = j.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
           cluster.invoke_command(
             Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
             create_add_trusted_root_cert_request_tlv(root_cert)

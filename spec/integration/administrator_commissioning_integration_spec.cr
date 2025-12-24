@@ -94,7 +94,7 @@ module Matter
         pase_stopped = false
 
         # Wire up callbacks
-        admin_comm.on_configure_pase_pin = ->(pin : UInt32, iterations : UInt32, salt : Bytes) : Nil {
+        admin_comm.on_configure_pase_pin = ->(_pin : UInt32, _iterations : UInt32, _salt : Bytes) : Nil {
           # PASE server started
         }
 
@@ -122,7 +122,7 @@ module Matter
         pase_stopped = false
 
         # Wire up callbacks
-        admin_comm.on_configure_pase_pin = ->(pin : UInt32, iterations : UInt32, salt : Bytes) : Nil {
+        admin_comm.on_configure_pase_pin = ->(_pin : UInt32, _iterations : UInt32, _salt : Bytes) : Nil {
           # PASE server started
         }
 
@@ -245,7 +245,7 @@ module Matter
         pase_pin : UInt32? = nil
 
         # Wire up all callbacks
-        admin_comm.on_configure_pase_pin = ->(pin : UInt32, iterations : UInt32, salt : Bytes) : Nil {
+        admin_comm.on_configure_pase_pin = ->(pin : UInt32, _iterations : UInt32, _salt : Bytes) : Nil {
           pase_started = true
           pase_pin = pin
         }

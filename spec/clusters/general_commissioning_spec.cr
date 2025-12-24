@@ -12,7 +12,7 @@ module Matter::Cluster
         cluster.max_network_commissioning_seconds.should eq(900_u16)
         cluster.regulatory_config.should eq(GeneralCommissioningCluster::RegulatoryLocationType::IndoorOutdoor)
         cluster.location_capability.should eq(GeneralCommissioningCluster::RegulatoryLocationType::IndoorOutdoor)
-        cluster.supports_concurrent_connection.should be_true
+        cluster.supports_concurrent_connection?.should be_true
         cluster.failsafe_armed?.should be_false
       end
 
@@ -250,7 +250,7 @@ module Matter::Cluster
           breadcrumb: 456_u64
         )
 
-        response = cluster.set_regulatory_config(request)
+        response = (cluster.regulatory_config = request)
 
         response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         cluster.regulatory_config.should eq(GeneralCommissioningCluster::RegulatoryLocationType::Outdoor)
@@ -268,7 +268,7 @@ module Matter::Cluster
           breadcrumb: 456_u64
         )
 
-        response = cluster.set_regulatory_config(request)
+        response = (cluster.regulatory_config = request)
 
         response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
         cluster.regulatory_config.should eq(GeneralCommissioningCluster::RegulatoryLocationType::IndoorOutdoor) # Not changed
@@ -284,7 +284,7 @@ module Matter::Cluster
           country_code: "U",
           breadcrumb: 456_u64
         )
-        response1 = cluster.set_regulatory_config(request1)
+        response1 = (cluster.regulatory_config = request1)
         response1.error_code.should eq(GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
 
         # Lowercase
@@ -293,7 +293,7 @@ module Matter::Cluster
           country_code: "us",
           breadcrumb: 456_u64
         )
-        response2 = cluster.set_regulatory_config(request2)
+        response2 = (cluster.regulatory_config = request2)
         response2.error_code.should eq(GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
 
         # Numbers
@@ -302,7 +302,7 @@ module Matter::Cluster
           country_code: "U1",
           breadcrumb: 456_u64
         )
-        response3 = cluster.set_regulatory_config(request3)
+        response3 = (cluster.regulatory_config = request3)
         response3.error_code.should eq(GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
       end
 
@@ -316,7 +316,7 @@ module Matter::Cluster
             breadcrumb: 100_u64
           )
 
-          response = cluster.set_regulatory_config(request)
+          response = (cluster.regulatory_config = request)
           response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         end
       end
@@ -338,7 +338,7 @@ module Matter::Cluster
             breadcrumb: 100_u64
           )
 
-          response = cluster.set_regulatory_config(request)
+          response = (cluster.regulatory_config = request)
           response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         end
       end
@@ -353,7 +353,7 @@ module Matter::Cluster
           country_code: "US",
           breadcrumb: 100_u64
         )
-        response1 = cluster.set_regulatory_config(request1)
+        response1 = (cluster.regulatory_config = request1)
         response1.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
 
         # Outdoor should fail
@@ -362,7 +362,7 @@ module Matter::Cluster
           country_code: "US",
           breadcrumb: 200_u64
         )
-        response2 = cluster.set_regulatory_config(request2)
+        response2 = (cluster.regulatory_config = request2)
         response2.error_code.should eq(GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
       end
     end
@@ -399,7 +399,7 @@ module Matter::Cluster
           country_code: "US",
           breadcrumb: 200_u64
         )
-        cluster.set_regulatory_config(reg_request)
+        (cluster.regulatory_config = reg_request)
         cluster.breadcrumb.should eq(100_u64) # Still 100, not 200
 
         # Successful SetRegulatoryConfig updates breadcrumb
@@ -408,7 +408,7 @@ module Matter::Cluster
           country_code: "US",
           breadcrumb: 300_u64
         )
-        cluster.set_regulatory_config(reg_request2)
+        (cluster.regulatory_config = reg_request2)
         cluster.breadcrumb.should eq(300_u64)
       end
     end
@@ -598,7 +598,7 @@ module Matter::Cluster
           breadcrumb: 100_u64
         )
 
-        response = cluster.set_regulatory_config(request)
+        response = (cluster.regulatory_config = request)
         response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
       end
 
@@ -612,7 +612,7 @@ module Matter::Cluster
           breadcrumb: 100_u64
         )
 
-        response = cluster.set_regulatory_config(request)
+        response = (cluster.regulatory_config = request)
         response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         cluster.country_code.should eq("US")
       end
@@ -627,7 +627,7 @@ module Matter::Cluster
           breadcrumb: 100_u64
         )
 
-        response = cluster.set_regulatory_config(request)
+        response = (cluster.regulatory_config = request)
         response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
         response.debug_text.should contain("not in whitelist")
       end
@@ -643,7 +643,7 @@ module Matter::Cluster
             breadcrumb: 100_u64
           )
 
-          response = cluster.set_regulatory_config(request)
+          response = (cluster.regulatory_config = request)
           response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
           cluster.country_code.should eq(country)
         end

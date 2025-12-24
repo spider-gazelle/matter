@@ -155,7 +155,7 @@ module Matter
         property session_id : UInt16
         property cleanup_at : Time
         property reason : CleanupReason
-        property cancel_on_traffic : Bool
+        property? cancel_on_traffic : Bool
 
         def initialize(
           @session_id,
@@ -275,11 +275,11 @@ module Matter
       # Call this periodically (e.g., every 30s) or before graceful shutdown
       # to ensure message counters and other session state are up to date
       def persist_all_sessions : Nil
-        return unless (persistence = @persistence)
+        return unless persistence = @persistence
 
         persisted = 0
         @sessions.each_value do |session|
-          next unless session.is_case
+          next unless session.case_session?
           begin
             persistence.session_updated(self, session)
             persisted += 1
@@ -528,9 +528,7 @@ module Matter
       # This should be called after all clusters have been added to the clusters hash
       # It enables automatic subscription updates when attributes change
       def setup_cluster_notifications
-        @clusters.each do |key, cluster|
-          endpoint_id = key[0]
-          cluster_id = key[1]
+        @clusters.each do |_key, cluster|
           cluster.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) do
             notify_subscriptions(ep, cl, attr)
           end
@@ -964,7 +962,7 @@ module Matter
             # Success - check if there are more chunks to send
             if !pending.remaining_chunks.empty?
               # Send next chunk
-              next_chunk, is_last = pending.remaining_chunks.shift
+              next_chunk, _ = pending.remaining_chunks.shift
               Log.debug { "StatusResponse for subscription #{pending.subscription_id}: sending next chunk (#{pending.remaining_chunks.size} remaining)" }
 
               # Send next ReportData chunk
@@ -1035,7 +1033,7 @@ module Matter
             # Success - check if there are more chunks to send
             if !pending_read.remaining_chunks.empty?
               # Send next chunk
-              next_chunk, is_last = pending_read.remaining_chunks.shift
+              next_chunk, _ = pending_read.remaining_chunks.shift
               Log.debug { "StatusResponse for read response: sending next chunk (#{pending_read.remaining_chunks.size} remaining)" }
 
               # Send next ReportData chunk
@@ -1183,7 +1181,7 @@ module Matter
           request.attribute_requests,
           @clusters,
           session.fabric_index,
-          session.is_case,
+          session.case_session?,
           session.peer_node_id.try(&.id)
         )
 
@@ -1257,8 +1255,8 @@ module Matter
         # Log what attributes are being subscribed to
         request.attribute_requests.each_with_index do |path, idx|
           endpoint = path.endpoint.try(&.to_s) || "*"
-          cluster = path.cluster.try { |c| "0x#{c.to_s(16)}" } || "*"
-          attribute = path.attribute.try { |a| "0x#{a.to_s(16)}" } || "*"
+          cluster = path.cluster.try { |cluster_id| "0x#{cluster_id.to_s(16)}" } || "*"
+          attribute = path.attribute.try { |attr_id| "0x#{attr_id.to_s(16)}" } || "*"
           Log.debug { "  Subscribe #{idx}: endpoint=#{endpoint} cluster=#{cluster} attr=#{attribute}" }
         end
 
@@ -1273,7 +1271,7 @@ module Matter
           request.attribute_requests,
           @clusters,
           session.fabric_index,
-          session.is_case,
+          session.case_session?,
           session.peer_node_id.try(&.id)
         )
 
@@ -1353,7 +1351,7 @@ module Matter
           return
         end
 
-        if request.timed_request
+        if request.timed_request?
           unless consume_timed_request?(session.session_id, original_msg.payload_header.exchange_id)
             Log.warn do
               "WriteRequest rejected: missing/expired TimedRequest " \
@@ -1379,7 +1377,7 @@ module Matter
           request.write_requests,
           @clusters,
           session_id: session.session_id,
-          is_case_session: session.is_case,
+          is_case_session: session.case_session?,
           fabric_index: session.fabric_index,
           peer_node_id: session.peer_node_id.try(&.id)
         )
@@ -1387,7 +1385,7 @@ module Matter
         Log.debug { "WriteResponse: #{response.write_responses.size} status(es)" }
 
         # Check if response should be suppressed
-        if request.suppress_response && response.write_responses.all? { |s| s.status.status == InteractionModel::StatusCode::Success }
+        if request.suppress_response? && response.write_responses.all? { |write_status| write_status.status.status == InteractionModel::StatusCode::Success }
           Log.info { "Response suppressed per suppressResponse flag (all writes succeeded)" }
           return
         end
@@ -1431,7 +1429,7 @@ module Matter
           return
         end
 
-        if request.timed_request
+        if request.timed_request?
           unless consume_timed_request?(session.session_id, original_msg.payload_header.exchange_id)
             Log.warn do
               "InvokeRequest rejected: missing/expired TimedRequest " \
@@ -1457,7 +1455,7 @@ module Matter
           request.invoke_requests,
           @clusters,
           session.session_id.to_u64,
-          session.is_case,
+          session.case_session?,
           session.fabric_index,
           session.peer_node_id.try(&.id)
         )
@@ -1465,7 +1463,7 @@ module Matter
         Log.info { "InvokeResponse: #{response.invoke_responses.size} response(s), #{response.invoke_status.size} status(es)" }
 
         # Check if response should be suppressed
-        if request.suppress_response && response.invoke_status.empty?
+        if request.suppress_response? && response.invoke_status.empty?
           Log.info { "Response suppressed per suppressResponse flag" }
           return
         end
@@ -1607,9 +1605,9 @@ module Matter
 
         # Determine node_id for nonce (must match source_node_id in header)
         source_node_id = if packet_header.source_node_id
-                           packet_header.source_node_id.not_nil!.id
+                           packet_header.source_node_id.as(DataType::NodeId).id
                          elsif session.local_node_id
-                           session.local_node_id.not_nil!.id
+                           session.local_node_id.as(DataType::NodeId).id
                          else
                            0_u64 # PASE uses node_id=0
                          end
@@ -1698,15 +1696,16 @@ module Matter
         )
 
         # Store response payload for context hashing (needed for SPAKE2+ context)
-        @pbkdf_response_payload = response.to_slice
-        Log.debug { "PBKDF Response payload (#{@pbkdf_response_payload.not_nil!.size} bytes): #{@pbkdf_response_payload.not_nil!.hexstring}" }
+        pbkdf_response_payload = response.to_slice
+        @pbkdf_response_payload = pbkdf_response_payload
+        Log.debug { "PBKDF Response payload (#{pbkdf_response_payload.size} bytes): #{pbkdf_response_payload.hexstring}" }
 
         # Send response
         send_secure_channel_response(
           msg: msg,
           peer: peer,
           message_type: MSG_PBKDF_PARAM_RESPONSE,
-          payload: @pbkdf_response_payload.not_nil!
+          payload: pbkdf_response_payload
         )
 
         Log.info { "Sent PBKDFParamResponse with session ID: #{responder_session_id}" }
@@ -1716,8 +1715,8 @@ module Matter
         spake_context = "CHIP PAKE V1 Commissioning"
         digest = OpenSSL::Digest.new("SHA256")
         digest.update(spake_context.to_slice)
-        digest.update(@pbkdf_request_payload.not_nil!)
-        digest.update(@pbkdf_response_payload.not_nil!)
+        digest.update(@pbkdf_request_payload.as(Bytes))
+        digest.update(pbkdf_response_payload)
         context_hash = digest.final
 
         Log.debug { "  SPAKE2+ context hash: #{context_hash.hexstring}" }
@@ -1854,7 +1853,7 @@ module Matter
           encryption_key: keys[:encryption],
           decryption_key: keys[:decryption],
           attestation_challenge: keys[:attestation_challenge],
-          is_initiator: false # We're the responder
+          initiator: false # We're the responder
         )
 
         # Enforce session table size limit before adding new session
@@ -1951,7 +1950,7 @@ module Matter
         if pending = @pending_subscriptions[exchange_id]?
           if !pending.remaining_chunks.empty?
             # Send next chunk
-            next_chunk, is_last = pending.remaining_chunks.shift
+            next_chunk, _ = pending.remaining_chunks.shift
             Log.debug { "StandaloneAck for subscription #{pending.subscription_id}: sending next chunk (#{pending.remaining_chunks.size} remaining)" }
 
             # Send next ReportData chunk
@@ -2013,7 +2012,7 @@ module Matter
         elsif pending_read = @pending_read_responses[exchange_id]?
           if !pending_read.remaining_chunks.empty?
             # Send next chunk
-            next_chunk, is_last = pending_read.remaining_chunks.shift
+            next_chunk, _ = pending_read.remaining_chunks.shift
             Log.debug { "StandaloneAck for read response: sending next chunk (#{pending_read.remaining_chunks.size} remaining)" }
 
             # Send next ReportData chunk
@@ -2043,34 +2042,32 @@ module Matter
 
       # Handle StatusReport messages (sent by controllers to indicate errors or status)
       private def handle_status_report(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
-        begin
-          # Parse StatusReport from binary payload (NOT TLV!)
-          status_report = Session::Pase::Definitions::StatusReport.from_bytes(msg.payload)
+        # Parse StatusReport from binary payload (NOT TLV!)
+        status_report = Session::Pase::Definitions::StatusReport.from_bytes(msg.payload)
 
-          general = status_report.general_status
-          protocol = status_report.protocol_status
+        general = status_report.general_status
+        protocol = status_report.protocol_status
 
-          if general == 0 && protocol == 0
-            Log.debug { "StatusReport: SUCCESS (peer=#{peer})" }
-            return
-          end
-
-          Log.warn { "StatusReport: general=0x#{general.to_s(16).rjust(4, '0')}, protocol=0x#{protocol.to_s(16).rjust(4, '0')} (peer=#{peer})" }
-
-          # If this is an error, provide context-specific help
-          return if general == 0
-
-          if @case_responder
-            Log.debug do
-              "StatusReport during CASE: protocol=0x#{protocol.to_s(16).rjust(4, '0')} " \
-              "(e.g. 0x0002 NO_SHARED_TRUST_ROOTS; check ICAC/root trust)"
-            end
-          else
-            Log.debug { "StatusReport during PASE: check PIN, SPAKE2+, and crypto parameter compatibility" }
-          end
-        rescue ex
-          Log.error(exception: ex) { "Failed to parse StatusReport (#{msg.payload.size} bytes): #{msg.payload.hexstring}" }
+        if general == 0 && protocol == 0
+          Log.debug { "StatusReport: SUCCESS (peer=#{peer})" }
+          return
         end
+
+        Log.warn { "StatusReport: general=0x#{general.to_s(16).rjust(4, '0')}, protocol=0x#{protocol.to_s(16).rjust(4, '0')} (peer=#{peer})" }
+
+        # If this is an error, provide context-specific help
+        return if general == 0
+
+        if @case_responder
+          Log.debug do
+            "StatusReport during CASE: protocol=0x#{protocol.to_s(16).rjust(4, '0')} " \
+            "(e.g. 0x0002 NO_SHARED_TRUST_ROOTS; check ICAC/root trust)"
+          end
+        else
+          Log.debug { "StatusReport during PASE: check PIN, SPAKE2+, and crypto parameter compatibility" }
+        end
+      rescue ex
+        Log.error(exception: ex) { "Failed to parse StatusReport (#{msg.payload.size} bytes): #{msg.payload.hexstring}" }
       end
 
       private def send_status_report_success(
@@ -2122,13 +2119,13 @@ module Matter
           # First try fabric_table (preferred)
           if @fabric_table.size > 0
             Log.debug { "Searching #{@fabric_table.size} fabrics for destination_id match" }
-            @fabric_table.all_fabrics.each do |f|
-              expected_dest_id = f.compute_destination_id(sigma1.initiator_random)
-              Log.debug { "  Fabric #{f.fabric_id.to_s(16)}: expected=#{expected_dest_id.hexstring}" }
-              Log.debug { "  Fabric #{f.fabric_id.to_s(16)}: received=#{sigma1.destination_id.hexstring}" }
+            @fabric_table.all_fabrics.each do |fabric_entry|
+              expected_dest_id = fabric_entry.compute_destination_id(sigma1.initiator_random)
+              Log.debug { "  Fabric #{fabric_entry.fabric_id.to_s(16)}: expected=#{expected_dest_id.hexstring}" }
+              Log.debug { "  Fabric #{fabric_entry.fabric_id.to_s(16)}: received=#{sigma1.destination_id.hexstring}" }
               if expected_dest_id == sigma1.destination_id
-                fabric = f
-                Log.info { "  Matched fabric by destination_id: #{f.fabric_id.to_s(16)}" }
+                fabric = fabric_entry
+                Log.info { "  Matched fabric by destination_id: #{fabric_entry.fabric_id.to_s(16)}" }
                 break
               end
             end
@@ -2248,20 +2245,20 @@ module Matter
       # - It has a lower session_id than the new session (new > old)
       # - It is a CASE session (not PASE)
       private def find_superseded_sessions(new_session : Session::SecureContext) : Array(Session::SecureContext)
-        return [] of Session::SecureContext unless new_session.is_case
+        return [] of Session::SecureContext unless new_session.case_session?
         return [] of Session::SecureContext unless new_session.fabric_index
 
-        new_fabric = new_session.fabric_index.not_nil!
+        new_fabric = new_session.fabric_index.as(UInt8)
         new_peer_node = new_session.peer_node_id
 
         @sessions.values.select do |session|
-          next false unless session.is_case                              # Only CASE sessions
+          next false unless session.case_session?                        # Only CASE sessions
           next false unless session.fabric_index == new_fabric           # Same fabric
           next false unless session.session_id != new_session.session_id # Not the new session itself
           next false if new_peer_node.nil? || session.peer_node_id.nil?  # Both must have peer_node_id
 
                         # Check same peer node
-          same_peer = session.peer_node_id.not_nil!.id == new_peer_node.not_nil!.id
+          same_peer = session.peer_node_id.as(DataType::NodeId).id == new_peer_node.as(DataType::NodeId).id
 
           # For supersession, typically the new session ID > old session ID
           # However, session IDs can wrap around, so we compare creation time as tiebreaker
@@ -2277,21 +2274,21 @@ module Matter
       private def find_superseding_session(old_session_id : UInt16) : Session::SecureContext?
         old_session = @sessions[old_session_id]?
         return nil unless old_session
-        return nil unless old_session.is_case
+        return nil unless old_session.case_session?
         return nil unless old_session.fabric_index
 
-        old_fabric = old_session.fabric_index.not_nil!
+        old_fabric = old_session.fabric_index.as(UInt8)
         old_peer_node = old_session.peer_node_id
         return nil if old_peer_node.nil?
 
         # Find all newer sessions for the same fabric/peer
         candidates = @sessions.values.select do |session|
-          next false unless session.is_case
+          next false unless session.case_session?
           next false unless session.fabric_index == old_fabric
           next false unless session.session_id != old_session_id
           next false if session.peer_node_id.nil?
 
-          same_peer = session.peer_node_id.not_nil!.id == old_peer_node.not_nil!.id
+          same_peer = session.peer_node_id.as(DataType::NodeId).id == old_peer_node.as(DataType::NodeId).id
           newer_session = session.creation_time > old_session.creation_time
 
           same_peer && newer_session
@@ -2370,7 +2367,7 @@ module Matter
         clear_mrp_response_cache_for_session(session_id)
 
         # Remove the session from pending cleanups if present
-        @pending_session_cleanups.reject! { |p| p.session_id == session_id }
+        @pending_session_cleanups.reject! { |pending| pending.session_id == session_id }
 
         # Remove the session
         if session = @sessions.delete(session_id)
@@ -2546,11 +2543,11 @@ module Matter
         return if @sessions.size < @max_sessions
 
         # Find oldest sessions to evict (PASE sessions first, then oldest CASE)
-        sessions_to_evict = @sessions.values.sort_by do |s|
+        sessions_to_evict = @sessions.values.sort_by! do |session|
           # PASE sessions get higher priority for eviction (lower sort value)
           # Then sort by creation time (oldest first)
-          pase_priority = s.is_case ? 1 : 0
-          {pase_priority, s.creation_time}
+          pase_priority = session.case_session? ? 1 : 0
+          {pase_priority, session.creation_time}
         end
 
         # Evict oldest sessions until we're under the limit
@@ -2625,7 +2622,7 @@ module Matter
           unless session_has_subscriptions?(session_id)
             # Schedule session for cleanup with grace period
             # Use cancel_on_traffic=true so new traffic cancels the cleanup
-            already_pending = @pending_session_cleanups.any? { |p| p.session_id == session_id }
+            already_pending = @pending_session_cleanups.any? { |pending| pending.session_id == session_id }
             unless already_pending
               Log.info { "Session #{session_id} has no more subscriptions - scheduling cleanup with #{@subscription_grace_period} grace period" }
               @pending_session_cleanups << PendingSessionCleanup.new(
@@ -2674,7 +2671,7 @@ module Matter
       # Handle subscription renewal - called when a new SubscribeRequest comes in
       # for the same attribute paths from the same session
       def renew_subscription(old_subscription_id : UInt32, new_subscription : ActiveSubscription) : Nil
-        if old_sub = @active_subscriptions.delete(old_subscription_id)
+        if @active_subscriptions.delete(old_subscription_id)
           Log.info { "Renewed subscription #{old_subscription_id} -> #{new_subscription.subscription_id}" }
 
           # Notify device about old subscription removal
@@ -2722,7 +2719,7 @@ module Matter
       def cancel_cleanup_on_traffic(session_id : UInt16) : Bool
         canceled = false
         @pending_session_cleanups.reject! do |pending|
-          if pending.session_id == session_id && pending.cancel_on_traffic
+          if pending.session_id == session_id && pending.cancel_on_traffic?
             Log.info { "Canceling pending cleanup for session #{session_id} - traffic detected" }
             canceled = true
             true # Remove from array
@@ -2743,7 +2740,7 @@ module Matter
         return unless @sessions.has_key?(session_id)
 
         # Check if already pending cleanup
-        already_pending = @pending_session_cleanups.any? { |p| p.session_id == session_id }
+        already_pending = @pending_session_cleanups.any? { |pending| pending.session_id == session_id }
         return if already_pending
 
         Log.warn { "Transport failure for session #{session_id} - scheduling cleanup after #{@transport_retry_window}" }
@@ -2768,7 +2765,7 @@ module Matter
         return unless @sessions.has_key?(session_id)
 
         # Check if already pending cleanup
-        already_pending = @pending_session_cleanups.any? { |p| p.session_id == session_id }
+        already_pending = @pending_session_cleanups.any? { |pending| pending.session_id == session_id }
         return if already_pending
 
         Log.warn { "CASE resumption failed for session #{session_id} - scheduling cleanup" }
@@ -2857,10 +2854,10 @@ module Matter
             encryption_key: keys[:encryption],
             decryption_key: keys[:decryption],
             attestation_challenge: keys[:attestation_challenge], # CRITICAL for attestation signatures
-            is_initiator: false,                                 # We're the responder
+            initiator: false,                                    # We're the responder
             local_node_id: DataType::NodeId.new(fabric.node_id),
             peer_node_id: peer_node_id_value ? DataType::NodeId.new(peer_node_id_value) : nil,
-            is_case: true,
+            case_session: true,
             fabric_index: fabric.fabric_index
           )
 

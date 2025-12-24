@@ -227,7 +227,7 @@ describe Matter::Cluster::PressureMeasurementCluster do
       )
 
       callback_called = false
-      cluster.on_pressure_changed do |old, new|
+      cluster.on_pressure_changed do |_, _|
         callback_called = true
       end
 

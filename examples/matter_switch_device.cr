@@ -172,7 +172,7 @@ module MatterSwitch
     private def print_state : Nil
       puts "📁 Loading device state..."
       puts "   Name: #{device_name}"
-      puts "   Switch: #{switch.on_off ? "🟢 ON" : "⚫ OFF"}"
+      puts "   Switch: #{switch.on_off? ? "🟢 ON" : "⚫ OFF"}"
       puts "   Data Version: #{switch.data_version}"
       puts "   Commissioned: #{fabric_table.empty? ? "❌ No" : "✅ Yes"}"
       puts "   Fabrics: #{fabric_table.size}"
@@ -261,7 +261,7 @@ module MatterSwitch
       puts ""
       puts "📊 Device Status:"
       puts "   Name: #{device_name}"
-      puts "   Switch State: #{switch.on_off ? "🟢 ON" : "⚫ OFF"}"
+      puts "   Switch State: #{switch.on_off? ? "🟢 ON" : "⚫ OFF"}"
       puts "   Data Version: #{switch.data_version}"
       puts "   Commissioned: #{fabric_table.empty? ? "❌ No" : "✅ Yes"}"
       puts "   Fabrics: #{fabric_table.size}"

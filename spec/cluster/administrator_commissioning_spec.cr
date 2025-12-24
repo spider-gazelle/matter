@@ -92,7 +92,7 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
       window_status = attributes.find { |a| a.id.id == Matter::Cluster::AdministratorCommissioningCluster::ATTR_WINDOW_STATUS }
       window_status.should_not be_nil
       window_status.not_nil!.name.should eq("WindowStatus")
-      window_status.not_nil!.writable.should be_false
+      window_status.not_nil!.writable?.should be_false
     end
 
     it "provides command metadata" do
@@ -210,7 +210,7 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
         )
 
         # First open succeeds
-        result1 = cluster.invoke_command(
+        cluster.invoke_command(
           Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
           tlv_data
         )
@@ -414,7 +414,7 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
       cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
 
       cluster.open_basic_window(0_u16, 1_u8, 0xFFF1_u16) # Expires immediately
-      cluster.is_window_expired?.should be_true
+      cluster.window_expired?.should be_true
     end
 
     it "checks if window is not expired" do
@@ -422,7 +422,7 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
       cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
 
       cluster.open_basic_window(300_u16, 1_u8, 0xFFF1_u16)
-      cluster.is_window_expired?.should be_false
+      cluster.window_expired?.should be_false
     end
   end
 
@@ -431,10 +431,10 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
 
-      cluster.is_window_open?.should be_false
+      cluster.window_open?.should be_false
 
       cluster.open_basic_window(300_u16, 1_u8, 0xFFF1_u16)
-      cluster.is_window_open?.should be_true
+      cluster.window_open?.should be_true
     end
 
     it "checks window type" do

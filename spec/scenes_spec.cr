@@ -15,7 +15,7 @@ describe Matter::Cluster::ScenesCluster do
       cluster.scene_count.should eq(0)
       cluster.current_scene.should eq(0_u8)
       cluster.current_group.should eq(0_u16)
-      cluster.scene_valid.should be_false
+      cluster.scene_valid?.should be_false
     end
 
     it "creates cluster with custom values" do
@@ -44,12 +44,12 @@ describe Matter::Cluster::ScenesCluster do
       scene_count.should_not be_nil
       scene_count.not_nil!.name.should eq("sceneCount")
       scene_count.not_nil!.type.should eq(:uint8)
-      scene_count.not_nil!.writable.should be_false
+      scene_count.not_nil!.writable?.should be_false
 
       # Check CurrentScene attribute
       current_scene = attrs.find { |a| a.id.id == Matter::Cluster::ScenesCluster::CURRENT_SCENE }
       current_scene.should_not be_nil
-      current_scene.not_nil!.writable.should be_false
+      current_scene.not_nil!.writable?.should be_false
 
       # Check SceneValid attribute
       scene_valid = attrs.find { |a| a.id.id == Matter::Cluster::ScenesCluster::SCENE_VALID }
@@ -347,7 +347,7 @@ describe Matter::Cluster::ScenesCluster do
       IO::ByteFormat::LittleEndian.encode(30_u16, io)
       cluster.invoke_command(Matter::Cluster::ScenesCluster::CMD_ADD_SCENE, io.to_slice)
 
-      cluster.scene_valid.should be_false
+      cluster.scene_valid?.should be_false
       initial_version = cluster.data_version
 
       # Recall it
@@ -365,7 +365,7 @@ describe Matter::Cluster::ScenesCluster do
 
       cluster.current_group.should eq(0x0003_u16)
       cluster.current_scene.should eq(0x07_u8)
-      cluster.scene_valid.should be_true
+      cluster.scene_valid?.should be_true
       cluster.data_version.should eq(initial_version + 1)
     end
 
@@ -388,7 +388,7 @@ describe Matter::Cluster::ScenesCluster do
         Matter::InteractionModel::StatusCode::Success
       )
 
-      cluster.scene_valid.should be_false
+      cluster.scene_valid?.should be_false
     end
 
     it "executes GetSceneMembership command" do
@@ -546,7 +546,7 @@ describe Matter::Cluster::ScenesCluster do
       cluster = Matter::Cluster::ScenesCluster.new(endpoint, max_scenes: 3_u8)
 
       # Add scenes up to the limit
-      [0x01_u8, 0x02_u8, 0x03_u8].each_with_index do |scene_id, idx|
+      [0x01_u8, 0x02_u8, 0x03_u8].each do |scene_id|
         io = IO::Memory.new
         IO::ByteFormat::LittleEndian.encode(0x0001_u16, io)
         io.write_byte(scene_id)
@@ -615,7 +615,7 @@ describe Matter::Cluster::ScenesCluster do
       io.write_byte(0x05_u8)
       cluster.invoke_command(Matter::Cluster::ScenesCluster::CMD_RECALL_SCENE, io.to_slice)
 
-      cluster.scene_valid.should be_true
+      cluster.scene_valid?.should be_true
 
       # Remove the current scene
       io = IO::Memory.new
@@ -623,7 +623,7 @@ describe Matter::Cluster::ScenesCluster do
       io.write_byte(0x05_u8)
       cluster.invoke_command(Matter::Cluster::ScenesCluster::CMD_REMOVE_SCENE, io.to_slice)
 
-      cluster.scene_valid.should be_false
+      cluster.scene_valid?.should be_false
     end
 
     it "invalidates current scene when group is cleared" do
@@ -642,14 +642,14 @@ describe Matter::Cluster::ScenesCluster do
       io.write_byte(0x05_u8)
       cluster.invoke_command(Matter::Cluster::ScenesCluster::CMD_RECALL_SCENE, io.to_slice)
 
-      cluster.scene_valid.should be_true
+      cluster.scene_valid?.should be_true
 
       # Remove all scenes for the group
       io = IO::Memory.new
       IO::ByteFormat::LittleEndian.encode(0x0001_u16, io)
       cluster.invoke_command(Matter::Cluster::ScenesCluster::CMD_REMOVE_ALL_SCENES, io.to_slice)
 
-      cluster.scene_valid.should be_false
+      cluster.scene_valid?.should be_false
     end
   end
 
@@ -738,11 +738,11 @@ describe Matter::Cluster::ScenesCluster do
       io.write_byte(0x05_u8)
       cluster.invoke_command(Matter::Cluster::ScenesCluster::CMD_RECALL_SCENE, io.to_slice)
 
-      cluster.scene_valid.should be_true
+      cluster.scene_valid?.should be_true
 
       cluster.invalidate_current_scene
 
-      cluster.scene_valid.should be_false
+      cluster.scene_valid?.should be_false
     end
   end
 

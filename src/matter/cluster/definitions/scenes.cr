@@ -223,7 +223,7 @@ module Matter
           property group_id : DataType::GroupId
 
           @[TLV::Field(tag: 3)]
-          property sceneList : Array(UInt8)?
+          property scene_list : Array(UInt8)?
         end
 
         # Input to the Scenes copyScene command

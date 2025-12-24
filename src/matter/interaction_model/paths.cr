@@ -102,7 +102,7 @@ module Matter
       property event : UInt32?
 
       @[TLV::Field(tag: 5)]
-      property is_urgent : Bool = false
+      property? is_urgent : Bool = false
 
       def initialize(
         @endpoint : UInt16? = nil,
@@ -122,7 +122,7 @@ module Matter
         parts << "E:#{endpoint || "*"}"
         parts << "C:0x#{(cluster || 0).to_s(16)}" if cluster
         parts << "Evt:0x#{(event || 0).to_s(16)}" if event
-        parts << "(urgent)" if is_urgent
+        parts << "(urgent)" if is_urgent?
         parts.join("/")
       end
 
@@ -130,7 +130,7 @@ module Matter
         @endpoint == other.endpoint &&
           @cluster == other.cluster &&
           @event == other.event &&
-          @is_urgent == other.is_urgent
+          @is_urgent == other.is_urgent?
       end
     end
 

@@ -364,7 +364,7 @@ describe Matter::MDNS::Responder do
       )
 
       query_received = false
-      responder.on_query = ->(query : DNS::Packet, peer : Socket::IPAddress) do
+      responder.on_query = ->(_query : DNS::Packet, _peer : Socket::IPAddress) do
         query_received = true
       end
 

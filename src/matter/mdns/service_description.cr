@@ -60,7 +60,7 @@ module Matter
       property session_active_threshold_ms : UInt16?
 
       # TCP support (T field) - optional
-      property tcp_supported : Bool = false
+      property? tcp_supported : Bool = false
 
       # ICD (Intermittently Connected Device) operating mode - optional
       property icd_operating_mode : UInt8?

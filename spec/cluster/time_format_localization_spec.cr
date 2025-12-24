@@ -146,7 +146,7 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
       cluster = Matter::Cluster::TimeFormatLocalizationCluster.new(endpoint_id)
       attr = cluster.attributes.find { |a| a.name == "hourFormat" }
       attr.should_not be_nil
-      attr.not_nil!.writable.should be_true
+      attr.not_nil!.writable?.should be_true
     end
 
     it "marks ActiveCalendarType as writable" do
@@ -160,7 +160,7 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
       )
       attr = cluster.attributes.find { |a| a.name == "activeCalendarType" }
       attr.should_not be_nil
-      attr.not_nil!.writable.should be_true
+      attr.not_nil!.writable?.should be_true
     end
   end
 

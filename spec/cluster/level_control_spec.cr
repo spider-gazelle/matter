@@ -47,7 +47,7 @@ describe Matter::Cluster::LevelControlCluster do
       current_level = attributes.find { |a| a.id.id == Matter::Cluster::LevelControlCluster::ATTR_CURRENT_LEVEL }
       current_level.should_not be_nil
       current_level.not_nil!.name.should eq("currentLevel")
-      current_level.not_nil!.writable.should be_false
+      current_level.not_nil!.writable?.should be_false
 
       min_level = attributes.find { |a| a.id.id == Matter::Cluster::LevelControlCluster::ATTR_MIN_LEVEL }
       min_level.should_not be_nil

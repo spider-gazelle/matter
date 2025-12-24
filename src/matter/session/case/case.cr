@@ -57,8 +57,9 @@ module Matter
           # Generate session ID
           session_id = @crypto.random_uint16
 
+          eph_key = @ephemeral_key.as(Crypto::Key)
           {
-            ephemeral_public_key: @ephemeral_key.not_nil!.public_key,
+            ephemeral_public_key: eph_key.public_key,
             random:               random,
             session_id:           session_id,
           }
@@ -83,9 +84,11 @@ module Matter
             peer_ephemeral_public_key
           )
 
+          shared = @shared_secret.as(Bytes)
+
           # Derive encryption keys from shared secret using HKDF
           encryption_key = @crypto.create_hkdf_key(
-            @shared_secret.not_nil!,
+            shared,
             Bytes.new(0),
             "Sigma2EncryptionKey".to_slice,
             16
@@ -94,7 +97,7 @@ module Matter
           # Decrypt peer certificate using AES-128-CCM
           # Derive nonce deterministically from shared secret for decryption
           nonce_material = @crypto.create_hkdf_key(
-            @shared_secret.not_nil!,
+            shared,
             Bytes.new(0),
             "Sigma2Nonce".to_slice,
             13
@@ -107,12 +110,12 @@ module Matter
 
             # Parse the DER-encoded certificate to verify it's valid
             begin
-              peer_cert_obj = OpenSSL::X509::Certificate.from_der(decrypted_cert_der)
+              OpenSSL::X509::Certificate.from_der(decrypted_cert_der)
               Log.debug { "Successfully parsed peer certificate in Sigma2" }
               # Note: Full certificate chain validation should be done after the handshake
               # by calling validate_certificate_chain(trusted_roots) with appropriate trusted roots
-            rescue parse_ex
-              Log.warn(exception: parse_ex) { "Failed to parse peer certificate" }
+            rescue e
+              Log.warn(exception: e) { "Failed to parse peer certificate" }
             end
           rescue ex
             # If decryption fails, store encrypted cert for now (backward compatibility with tests)
@@ -125,7 +128,7 @@ module Matter
 
           # Encrypt our certificate with deterministic nonce
           our_nonce = @crypto.create_hkdf_key(
-            @shared_secret.not_nil!,
+            shared,
             Bytes.new(0),
             "Sigma3Nonce".to_slice,
             13
@@ -303,23 +306,26 @@ module Matter
 
           # Initialize progressive hashing context (like chip-tool's mCommissioningHash)
           # Add sigma1 bytes to the hash - this matches chip-tool's AddData(Sigma1)
-          @transcript_hash = OpenSSL::Digest.new("SHA256")
-          @transcript_hash.not_nil!.update(sigma1_bytes)
+          transcript_hash = OpenSSL::Digest.new("SHA256")
+          @transcript_hash = transcript_hash
+          transcript_hash.update(sigma1_bytes)
 
           # Store peer ephemeral key
           @peer_ephemeral_key = peer_ephemeral_public_key
 
           # Generate our ephemeral ECDH key pair
-          @ephemeral_key = Crypto::ECDH.generate_key_pair
+          eph_key = Crypto::ECDH.generate_key_pair
+          @ephemeral_key = eph_key
 
           # Compute shared secret using ECDH
-          @shared_secret = Crypto::ECDH.compute_shared_secret(
-            @ephemeral_key.not_nil!.private_key,
+          shared_secret = Crypto::ECDH.compute_shared_secret(
+            eph_key.private_key,
             peer_ephemeral_public_key
           )
-          Log.debug { "CASE Sigma2: ECDH shared_secret: #{@shared_secret.not_nil!.hexstring}" }
-          Log.debug { "CASE Sigma2: Our ephemeral public key: #{@ephemeral_key.not_nil!.public_key.hexstring}" }
-          Log.debug { "CASE Sigma2: Our ephemeral PRIVATE key: #{@ephemeral_key.not_nil!.private_key.hexstring}" }
+          @shared_secret = shared_secret
+          Log.debug { "CASE Sigma2: ECDH shared_secret: #{shared_secret.hexstring}" }
+          Log.debug { "CASE Sigma2: Our ephemeral public key: #{eph_key.public_key.hexstring}" }
+          Log.debug { "CASE Sigma2: Our ephemeral PRIVATE key: #{eph_key.private_key.hexstring}" }
           Log.debug { "CASE Sigma2: Peer ephemeral public key: #{peer_ephemeral_public_key.hexstring}" }
 
           # Generate random nonce for Sigma2 response
@@ -327,13 +333,13 @@ module Matter
           @our_random = random # Store for later signature verification
 
           # Store our ephemeral public key for later signature verification
-          ephemeral_public = @ephemeral_key.not_nil!.public_key
+          ephemeral_public = eph_key.public_key
           @our_ephemeral_public = ephemeral_public
 
           # Get intermediate digest from progressive hash (like chip-tool's GetDigest)
           # Dup the hash context to get digest WITHOUT finalizing
           # This way we can continue adding data (Sigma2, Sigma3) later
-          sigma1_hash = @transcript_hash.not_nil!.dup.final
+          sigma1_hash = transcript_hash.dup.final
           Log.debug { "CASE Sigma2: sigma1_bytes size: #{sigma1_bytes.size}, hash: #{sigma1_hash.hexstring}" }
           Log.debug { "CASE Sigma2: sigma1_bytes hex: #{sigma1_bytes.hexstring}" }
 
@@ -356,7 +362,7 @@ module Matter
           # Derive Sigma2 encryption key using HKDF
           # Key = HKDF(sharedSecret, salt, "Sigma2", 16)
           sigma2_key = @crypto.create_hkdf_key(
-            @shared_secret.not_nil!,
+            shared_secret,
             salt_bytes,
             KDFSR2_INFO,
             16
@@ -376,7 +382,7 @@ module Matter
           signed_data_bytes = signed_data.to_slice
           Log.debug { "CASE Sigma2 TBS_Data2: #{signed_data_bytes.size} bytes" }
           Log.debug { "  TBS_Data2 FULL hex: #{signed_data_bytes.hexstring}" }
-          Log.debug { "  TBS_Data2 first 10 bytes: #{signed_data_bytes[0, [10, signed_data_bytes.size].min].map { |b| "0x%02x" % b }.join(" ")}" }
+          Log.debug { "  TBS_Data2 first 10 bytes: #{signed_data_bytes[0, [10, signed_data_bytes.size].min].map { |byte| "0x%02x" % byte }.join(" ")}" }
           Log.debug { "  NOC size: #{@cert_chain.noc.size}, ICAC size: #{@cert_chain.icac.try(&.size) || 0}" }
           Log.debug { "  Responder eph pub key: #{ephemeral_public.size} bytes" }
           Log.debug { "  Initiator eph pub key: #{peer_ephemeral_public_key.size} bytes" }
@@ -438,7 +444,7 @@ module Matter
 
           # Log all values needed to verify decryption
           Log.debug { "=== CASE Sigma2 Debug Values (for chip-tool simulation) ===" }
-          Log.debug { "  Shared secret: #{@shared_secret.not_nil!.hexstring}" }
+          Log.debug { "  Shared secret: #{shared_secret.hexstring}" }
           Log.debug { "  Responder eph pub key hex: #{ephemeral_public.hexstring}" }
           Log.debug { "  Initiator eph pub key hex: #{peer_ephemeral_public_key.hexstring}" }
           Log.debug { "  Sigma1 bytes (for hash): #{sigma1_bytes.size} bytes" }
@@ -460,7 +466,7 @@ module Matter
 
           # Add sigma2_bytes to progressive hash (like chip-tool's AddData(Sigma2))
           # This is done AFTER building sigma2, matching chip-tool's sequence
-          @transcript_hash.not_nil!.update(sigma2_bytes)
+          transcript_hash.update(sigma2_bytes)
 
           # DEBUG: Log the actual Sigma2 TLV bytes for comparison with matter.js
           Log.debug { "=== CASE Sigma2 TLV Debug ===" }
@@ -499,7 +505,7 @@ module Matter
           # Get the combined hash from progressive hashing context (like chip-tool's GetDigest)
           # At this point, transcript_hash contains: Sigma1 + Sigma2
           # Dup to get digest WITHOUT finalizing (so we can add Sigma3 later for session keys)
-          combined_hash = @transcript_hash.not_nil!.dup.final
+          combined_hash = @transcript_hash.as(OpenSSL::Digest).dup.final
           Log.debug { "CASE Sigma3: SHA256(sigma1||sigma2) = #{combined_hash.hexstring}" }
 
           # Build Sigma3 salt: IPK + SHA256(sigma1_bytes || sigma2_bytes)
@@ -547,8 +553,8 @@ module Matter
 
             # Build TBS_Data3 for signature verification
             # This contains: initiator NOC, ICAC (optional), initiator eph pub key, responder eph pub key
-            peer_eph_key = @peer_ephemeral_key.not_nil!
-            our_eph_key = @our_ephemeral_public.not_nil!
+            peer_eph_key = @peer_ephemeral_key.as(Bytes)
+            our_eph_key = @our_ephemeral_public.as(Bytes)
 
             signed_data = Definitions::SignedData.new(
               responder_noc: encrypted_data3.responder_noc,
@@ -810,7 +816,7 @@ module Matter
           session_type: SessionType::Unicast,
           encryption_key: initiator_keys[:encryption],
           decryption_key: initiator_keys[:decryption],
-          is_initiator: true,
+          initiator: true,
           local_node_id: DataType::NodeId.new(initiator_node_id),
           peer_node_id: DataType::NodeId.new(responder_node_id)
         )
@@ -821,7 +827,7 @@ module Matter
           session_type: SessionType::Unicast,
           encryption_key: responder_keys[:encryption],
           decryption_key: responder_keys[:decryption],
-          is_initiator: false,
+          initiator: false,
           local_node_id: DataType::NodeId.new(responder_node_id),
           peer_node_id: DataType::NodeId.new(initiator_node_id)
         )

@@ -293,7 +293,7 @@ module Matter
         lines = [] of String
         lines << "-----BEGIN #{label}-----"
         # Split into 64-character lines
-        encoded.scan(/.{1,64}/) { |m| lines << m[0] }
+        encoded.scan(/.{1,64}/) { |match| lines << match[0] }
         lines << "-----END #{label}-----"
         lines.join("\n") + "\n"
       end
@@ -384,7 +384,7 @@ module Matter
             temp >>= 8
           end
           io.write_byte (0x80 | bytes.size).to_u8
-          bytes.each { |b| io.write_byte b }
+          bytes.each { |byte| io.write_byte byte }
         end
       end
 

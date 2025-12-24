@@ -36,7 +36,7 @@ describe Matter::Cluster::BasicInformationCluster do
 
     cluster2.node_label.should eq("Kitchen")
     cluster2.location.should eq("AU")
-    cluster2.local_config_disabled.should be_true
+    cluster2.local_config_disabled?.should be_true
     cluster2.data_version.should eq(42_u32)
   end
 end

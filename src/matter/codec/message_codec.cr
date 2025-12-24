@@ -128,14 +128,14 @@ module Matter
 
         def encode_payload(message : Message) : Packet
           io = IO::Memory.new
-          header = encode_payload_header(message.payload_header, io)
+          encode_payload_header(message.payload_header, io)
 
           Packet.new(header: message.packet_header, payload: Slice.join([io.rewind.to_slice, message.payload]))
         end
 
         def encode_packet(packet : Packet) : Slice(UInt8)
           io = IO::Memory.new
-          header = encode_packet_header(packet.header, io)
+          encode_packet_header(packet.header, io)
 
           Slice.join([io.rewind.to_slice, packet.payload])
         end
@@ -161,9 +161,9 @@ module Matter
           source_node_id = packet_header.source_node_id
           dest_node_id = packet_header.destination_node_id
 
-          byte_format.encode(UInt64.new(source_node_id.not_nil!.id), io) unless source_node_id.nil?
-          byte_format.encode(UInt64.new(dest_node_id.not_nil!.id), io) unless dest_node_id.nil?
-          byte_format.encode(UInt32.new(packet_header.destination_group_id.not_nil!.id), io) unless packet_header.destination_group_id.nil?
+          byte_format.encode(UInt64.new(source_node_id.as(DataType::NodeId).id), io) if source_node_id
+          byte_format.encode(UInt64.new(dest_node_id.as(DataType::NodeId).id), io) if dest_node_id
+          byte_format.encode(UInt32.new(packet_header.destination_group_id.as(DataType::GroupId).id), io) if packet_header.destination_group_id
         end
 
         def encode_payload_header(payload_header : PayloadHeader, io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian)
@@ -179,7 +179,7 @@ module Matter
           byte_format.encode(UInt16.new(payload_header.exchange_id), io)
 
           vendor_id != COMMON_VENDOR_ID ? byte_format.encode(UInt32.new(payload_header.protocol_id), io) : byte_format.encode(UInt16.new(payload_header.protocol_id), io)
-          byte_format.encode(UInt32.new(payload_header.acknowledged_message_id.not_nil!), io) unless payload_header.acknowledged_message_id.nil?
+          byte_format.encode(UInt32.new(payload_header.acknowledged_message_id.as(UInt32)), io) if payload_header.acknowledged_message_id
         end
 
         private def decode_packet_header(io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian) : PacketHeader

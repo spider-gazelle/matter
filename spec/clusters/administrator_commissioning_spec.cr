@@ -614,7 +614,7 @@ module Matter::Cluster
         received_pin = 0_u32
         received_iterations = 0_u32
 
-        cluster.on_configure_pase_pin = ->(pin : UInt32, iterations : UInt32, salt : Bytes) {
+        cluster.on_configure_pase_pin = ->(pin : UInt32, iterations : UInt32, _salt : Bytes) {
           callback_invoked = true
           received_pin = pin
           received_iterations = iterations

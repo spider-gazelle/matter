@@ -246,61 +246,61 @@ module Matter
           if value = @measured_value
             encode_float(value)
           else
-            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         when ATTR_MIN_MEASURED_VALUE
           if value = @min_measured_value
             encode_float(value)
           else
-            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         when ATTR_MAX_MEASURED_VALUE
           if value = @max_measured_value
             encode_float(value)
           else
-            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         when ATTR_UNCERTAINTY
           if value = @uncertainty
             encode_float(value)
           else
-            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         when ATTR_MEASUREMENT_UNIT
           if unit = @measurement_unit
             Bytes[unit.value.to_u8]
           else
-            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         when ATTR_LEVEL_VALUE
           if value = @level_value
             Bytes[value.value.to_u8]
           else
-            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         when ATTR_PEAK_MEASURED_VALUE
           if value = @peak_measured_value
             encode_float(value)
           else
-            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         when ATTR_PEAK_MEASURED_VALUE_WINDOW
           if value = @peak_measured_value_window
             value.to_tlv
           else
-            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         when ATTR_AVERAGE_MEASURED_VALUE
           if value = @average_measured_value
             encode_float(value)
           else
-            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         when ATTR_AVERAGE_MEASURED_VALUE_WINDOW
           if value = @average_measured_value_window
             value.to_tlv
           else
-            return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         else
           super

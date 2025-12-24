@@ -127,7 +127,7 @@ module Matter
           # This field shall indicate if the Node is currently advertising itself operationally on this network
           # interface and is capable of successfully receiving incoming traffic from other Nodes.
           @[TLV::Field(tag: 1)]
-          property is_operational : Bool
+          property? is_operational : Bool
 
           # This field shall indicate whether the Node is currently able to reach off-premise services it uses by
           # utilizing IPv4. The value shall be null if the Node does not use such services or does not know whether it
@@ -155,7 +155,7 @@ module Matter
           # interface. This list shall include the Node’s link-local address and SHOULD include any assigned GUA and ULA
           # addresses. This list shall NOT include any multicast group addresses to which the Node is subscribed.
           @[TLV::Field(tag: 6)]
-          property ipv6_Addresses : Array(Slice(UInt8))
+          property ipv6_addresses : Array(Slice(UInt8))
 
           # This field shall indicate the type of the interface using the InterfaceTypeEnum.
           @[TLV::Field(tag: 7)]

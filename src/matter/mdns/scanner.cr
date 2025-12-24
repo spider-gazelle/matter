@@ -269,10 +269,10 @@ module Matter
 
       private def process_instance_records(instance : String, records : Array(DNS::Packet::ResourceRecord)) : Nil
         # Extract information from records
-        srv_record = records.find { |r| r.type == RecordBuilder::TYPE_SRV }
-        txt_record = records.find { |r| r.type == RecordBuilder::TYPE_TXT }
-        a_records = records.select { |r| r.type == RecordBuilder::TYPE_A }
-        aaaa_records = records.select { |r| r.type == RecordBuilder::TYPE_AAAA }
+        srv_record = records.find { |record| record.type == RecordBuilder::TYPE_SRV }
+        txt_record = records.find { |record| record.type == RecordBuilder::TYPE_TXT }
+        a_records = records.select { |record| record.type == RecordBuilder::TYPE_A }
+        aaaa_records = records.select { |record| record.type == RecordBuilder::TYPE_AAAA }
 
         # Need at least SRV record to identify the service
         return unless srv_record
@@ -286,13 +286,13 @@ module Matter
 
         # Collect IP addresses
         addresses = [] of Socket::IPAddress
-        a_records.each do |r|
-          if addr = parse_a_record(r)
+        a_records.each do |record|
+          if addr = parse_a_record(record)
             addresses << addr
           end
         end
-        aaaa_records.each do |r|
-          if addr = parse_aaaa_record(r)
+        aaaa_records.each do |record|
+          if addr = parse_aaaa_record(record)
             addresses << addr
           end
         end
@@ -349,8 +349,8 @@ module Matter
         io = IO::Memory.new(record.resource_data)
 
         begin
-          priority = io.read_bytes(UInt16, IO::ByteFormat::BigEndian)
-          weight = io.read_bytes(UInt16, IO::ByteFormat::BigEndian)
+          io.read_bytes(UInt16, IO::ByteFormat::BigEndian) # priority (unused)
+          io.read_bytes(UInt16, IO::ByteFormat::BigEndian) # weight (unused)
           port = io.read_bytes(UInt16, IO::ByteFormat::BigEndian)
 
           # Parse target domain name

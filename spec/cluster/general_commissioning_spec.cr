@@ -119,7 +119,7 @@ describe Matter::Cluster::GeneralCommissioningCluster do
       breadcrumb = attributes.find { |a| a.id.id == Matter::Cluster::GeneralCommissioningCluster::ATTR_BREADCRUMB }
       breadcrumb.should_not be_nil
       breadcrumb.not_nil!.name.should eq("Breadcrumb")
-      breadcrumb.not_nil!.writable.should be_true
+      breadcrumb.not_nil!.writable?.should be_true
     end
 
     it "provides command metadata" do
@@ -230,7 +230,7 @@ describe Matter::Cluster::GeneralCommissioningCluster do
       cluster = Matter::Cluster::GeneralCommissioningCluster.new(endpoint_id)
 
       cluster.arm_fail_safe(0_u16) # Expired immediately
-      cluster.is_fail_safe_expired?.should be_true
+      cluster.fail_safe_expired?.should be_true
     end
   end
 
@@ -297,7 +297,7 @@ describe Matter::Cluster::GeneralCommissioningCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::GeneralCommissioningCluster.new(endpoint_id)
 
-      cluster.supports_concurrent_connection.should be_true
+      cluster.supports_concurrent_connection?.should be_true
     end
   end
 

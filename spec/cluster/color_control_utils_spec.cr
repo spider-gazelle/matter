@@ -12,7 +12,7 @@ describe Matter::Cluster::ColorControlUtils do
       (g * 255).should be_close(0.0, 0.5)
       (b * 255).should be_close(0.0, 0.5)
 
-      h, s, v = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
+      h, s, _ = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
       h.should be_close(0.0, 0.5)
       s.should be_close(1.0, 0.05)
     end
@@ -23,7 +23,7 @@ describe Matter::Cluster::ColorControlUtils do
       (g * 255).should be_close(255.0, 0.5)
       (b * 255).should be_close(0.0, 0.5)
 
-      h, s, v = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
+      h, s, _ = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
       h.should be_close(120.0, 0.5)
       s.should be_close(1.0, 0.05)
     end
@@ -34,7 +34,7 @@ describe Matter::Cluster::ColorControlUtils do
       (g * 255).should be_close(0.0, 0.5)
       (b * 255).should be_close(255.0, 0.5)
 
-      h, s, v = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
+      h, s, _ = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
       h.should be_close(240.0, 0.5)
       s.should be_close(1.0, 0.05)
     end
@@ -45,7 +45,7 @@ describe Matter::Cluster::ColorControlUtils do
       (g * 255).should be_close(0.0, 0.5)
       (b * 255).should be_close(183.0, 0.5)
 
-      h, s, v = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
+      h, s, _ = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
       h.should be_close(317.0, 0.5)
       s.should be_close(1.0, 0.05)
     end
@@ -56,7 +56,7 @@ describe Matter::Cluster::ColorControlUtils do
       (g * 255).should be_close(255.0, 0.5)
       (b * 255).should be_close(136.0, 0.5)
 
-      h, s, v = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
+      h, s, _ = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
       h.should be_close(152.0, 0.5)
       s.should be_close(1.0, 0.05)
     end
@@ -67,7 +67,7 @@ describe Matter::Cluster::ColorControlUtils do
       (g * 255).should be_close(255.0, 0.5)
       (b * 255).should be_close(134.0, 0.5)
 
-      h, s, v = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
+      h, s, _ = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
       h.should be_close(123.0, 0.5)
       s.should be_close(0.5, 0.05)
     end
@@ -78,7 +78,7 @@ describe Matter::Cluster::ColorControlUtils do
       (g * 255).should be_close(255.0, 0.5)
       (b * 255).should be_close(255.0, 0.5)
 
-      h, s, v = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
+      h, s, _ = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
       # Hue is 0 when saturation is 0 (undefined, defaults to 0)
       h.should be_close(0.0, 0.0)
       s.should be_close(0.0, 0.05)
@@ -90,7 +90,7 @@ describe Matter::Cluster::ColorControlUtils do
       (g * 255).should be_close(179.0, 0.5)
       (b * 255).should be_close(0.0, 0.5)
 
-      h, s, v = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
+      h, s, _ = Matter::Cluster::ColorControlUtils.rgb_to_hsv(r, g, b)
       h.should be_close(42.0, 0.5)
       s.should be_close(1.0, 0.05)
     end
