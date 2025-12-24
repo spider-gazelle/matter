@@ -33,4 +33,7 @@ development_dependencies:
   goban:
     github: soya-daizu/goban
 
+  ameba:
+    github: veelenga/ameba
+
 license: MIT

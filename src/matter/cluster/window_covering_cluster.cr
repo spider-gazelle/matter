@@ -512,8 +512,5 @@ module Matter
 
       # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
     end
-
-    # Backward compatibility alias
-    WindowCovering = WindowCoveringCluster
   end
 end

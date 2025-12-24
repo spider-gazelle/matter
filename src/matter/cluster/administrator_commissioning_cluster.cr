@@ -32,9 +32,6 @@ module Matter
         BasicWindowOpen    = 2 # Basic commissioning window open
       end
 
-      # Alias for backward compatibility
-      alias WindowStatus = CommissioningWindowStatus
-
       # Status Codes
       enum StatusCode : UInt8
         Busy               = 2 # Commissioning window already open
@@ -149,11 +146,6 @@ module Matter
       property on_start_commissioning_advertising : Proc(UInt16, MDNS::CommissioningMode, Nil)? # (discriminator, mode) -> nil
       property on_stop_commissioning_advertising : Proc(Nil)?
 
-      # Backward compatibility callbacks from cluster/ version
-      property on_open_commissioning_window : Proc(UInt16, Bytes, UInt16, Bytes, UInt32, UInt8, UInt16, StatusCode)?
-      property on_open_basic_commissioning_window : Proc(UInt16, UInt8, UInt16, StatusCode)?
-      property on_revoke_commissioning : Proc(StatusCode)?
-
       # ========================================================================
       # Initialization
       # ========================================================================
@@ -192,9 +184,6 @@ module Matter
         @on_close_failsafe = nil
         @on_start_commissioning_advertising = nil
         @on_stop_commissioning_advertising = nil
-        @on_open_commissioning_window = nil
-        @on_open_basic_commissioning_window = nil
-        @on_revoke_commissioning = nil
       end
 
       # ========================================================================
@@ -431,42 +420,19 @@ module Matter
         begin
           request = OpenCommissioningWindowRequest.from_slice(fields)
 
-          # Invoke new-style handler
           fabric_index = @session_fabric_index
           vendor_id = @session_vendor_id
 
-          # Try backward compatibility callback first
-          status_code = if callback = @on_open_commissioning_window
-                          callback.call(
-                            request.commissioning_timeout,
-                            request.pake_passcode_verifier,
-                            request.discriminator,
-                            request.salt,
-                            request.iterations,
-                            fabric_index || 1_u8,
-                            vendor_id || 0xFFF1_u16
-                          )
-                        else
-                          # Use new handler
-                          begin
-                            open_commissioning_window(request, fabric_index, vendor_id)
-                            StatusCode.new(0) # Success
-                          rescue ex : BusyError
-                            StatusCode::Busy
-                          rescue ex : PAKEParameterError
-                            StatusCode::PAKEParameterError
-                          rescue ex
-                            StatusCode::PAKEParameterError
-                          end
-                        end
-
-          # Map StatusCode to InteractionModel::StatusCode
-          im_status_code = case status_code.value
-                           when 0                      then InteractionModel::StatusCode::Success
-                           when StatusCode::Busy.value then InteractionModel::StatusCode::Busy
-                           else                             InteractionModel::StatusCode::Failure
-                           end
-          InteractionModel::Status.new(im_status_code)
+          begin
+            open_commissioning_window(request, fabric_index, vendor_id)
+            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          rescue ex : BusyError
+            InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
+          rescue ex : PAKEParameterError
+            InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+          rescue ex
+            InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+          end
         rescue ex
           Log.error(exception: ex) { "OpenCommissioningWindow: failed to parse request (bytes=#{fields.hexstring})" }
           InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
@@ -478,36 +444,17 @@ module Matter
         begin
           request = OpenBasicCommissioningWindowRequest.from_slice(fields)
 
-          # Invoke new-style handler
           fabric_index = @session_fabric_index
           vendor_id = @session_vendor_id
 
-          # Try backward compatibility callback first
-          status_code = if callback = @on_open_basic_commissioning_window
-                          callback.call(
-                            request.commissioning_timeout,
-                            fabric_index || 1_u8,
-                            vendor_id || 0xFFF1_u16
-                          )
-                        else
-                          # Use new handler
-                          begin
-                            open_basic_commissioning_window(request, fabric_index, vendor_id)
-                            StatusCode.new(0) # Success
-                          rescue ex : BusyError
-                            StatusCode::Busy
-                          rescue ex
-                            StatusCode::Busy
-                          end
-                        end
-
-          # Map StatusCode to InteractionModel::StatusCode
-          im_status_code = case status_code.value
-                           when 0                      then InteractionModel::StatusCode::Success
-                           when StatusCode::Busy.value then InteractionModel::StatusCode::Busy
-                           else                             InteractionModel::StatusCode::Failure
-                           end
-          InteractionModel::Status.new(im_status_code)
+          begin
+            open_basic_commissioning_window(request, fabric_index, vendor_id)
+            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          rescue ex : BusyError
+            InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
+          rescue ex
+            InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
+          end
         rescue ex
           Log.error(exception: ex) { "OpenBasicCommissioningWindow: failed to parse request (bytes=#{fields.hexstring})" }
           InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
@@ -516,36 +463,18 @@ module Matter
 
       private def handle_revoke_commissioning(fields : Bytes) : InteractionModel::Status
         # RevokeCommissioning command has no parameters
-
-        # Try backward compatibility callback first
-        status_code = if callback = @on_revoke_commissioning
-                        callback.call
-                      else
-                        # Use new handler
-                        begin
-                          revoke_commissioning
-                          StatusCode.new(0) # Success
-                        rescue ex : WindowNotOpenError
-                          StatusCode::WindowNotOpen
-                        rescue ex
-                          StatusCode::WindowNotOpen
-                        end
-                      end
-
-        # Map StatusCode to InteractionModel::StatusCode
-        im_status_code = if status_code.is_a?(StatusCode)
-                           case status_code.value
-                           when 0 then InteractionModel::StatusCode::Success
-                           else        InteractionModel::StatusCode::Failure
-                           end
-                         else
-                           InteractionModel::StatusCode::Success
-                         end
-        InteractionModel::Status.new(im_status_code)
+        begin
+          revoke_commissioning
+          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        rescue ex : WindowNotOpenError
+          InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+        rescue ex
+          InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+        end
       end
 
       # ========================================================================
-      # Window Management Methods (backward compatibility with cluster/ version)
+      # Window Management Methods
       # ========================================================================
 
       # Open enhanced commissioning window (with PAKE)
@@ -686,7 +615,7 @@ module Matter
         # Track window timing
         @window_start_time = Time.utc
         @window_expiry_time = Time.utc + timeout.seconds
-        @window_timeout = @window_expiry_time # Backward compatibility
+        @window_timeout = @window_expiry_time
 
         # Start DNS-SD advertising
         start_mdns_advertising(discriminator)
@@ -866,8 +795,5 @@ module Matter
         end
       end
     end
-
-    # Backward compatibility alias
-    alias AdministratorCommissioning = AdministratorCommissioningCluster
   end
 end

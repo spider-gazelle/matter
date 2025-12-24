@@ -9,7 +9,7 @@ describe Matter::Cluster::ScenesCluster do
 
       cluster.name.should eq("Scenes")
       cluster.cluster_id.id.should eq(0x0005_u32)
-      cluster.name_support.should be_true
+      cluster.feature_map.scene_names?.should be_true
       cluster.feature_map.scene_names?.should be_true
       cluster.scenes.should be_empty
       cluster.scene_count.should eq(0)
@@ -26,7 +26,7 @@ describe Matter::Cluster::ScenesCluster do
         max_scenes: 8_u8
       )
 
-      cluster.name_support.should be_false
+      cluster.feature_map.scene_names?.should be_false
       cluster.feature_map.scene_names?.should be_false
     end
   end

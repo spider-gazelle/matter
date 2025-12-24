@@ -154,9 +154,5 @@ module Matter
         end
       end
     end
-
-    # Alias for consistency
-    alias OtaRequestor = OtaRequestorCluster
-    alias OtaSoftwareUpdateRequestor = OtaRequestorCluster
   end
 end

@@ -9,7 +9,7 @@ describe Matter::Cluster::GroupsCluster do
 
       cluster.name.should eq("Groups")
       cluster.cluster_id.id.should eq(0x0004_u32)
-      cluster.name_support.should be_true
+      cluster.feature_map.group_names?.should be_true
       cluster.feature_map.group_names?.should be_true
       cluster.groups.should be_empty
       cluster.group_count.should eq(0)
@@ -23,7 +23,7 @@ describe Matter::Cluster::GroupsCluster do
         max_groups: 8_u8
       )
 
-      cluster.name_support.should be_false
+      cluster.feature_map.group_names?.should be_false
       cluster.feature_map.group_names?.should be_false
     end
   end

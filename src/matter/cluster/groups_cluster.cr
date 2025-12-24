@@ -59,11 +59,6 @@ module Matter
         @attribute_values[NAME_SUPPORT] = (@feature_map.group_names? ? 0x80_u8 : 0x00_u8).to_tlv
       end
 
-      # Backward compatibility
-      def name_support : Bool
-        @feature_map.group_names?
-      end
-
       def name : String
         "Groups"
       end

@@ -91,11 +91,6 @@ module Matter
         @attribute_values[NAME_SUPPORT] = (@feature_map.scene_names? ? 0x80_u8 : 0x00_u8).to_tlv
       end
 
-      # Backward compatibility
-      def name_support : Bool
-        @feature_map.scene_names?
-      end
-
       def name : String
         "Scenes"
       end

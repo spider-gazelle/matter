@@ -21,9 +21,6 @@ module Matter
         end
       end
 
-      # Alias for backward compatibility (deprecated - use OperationalCertChain)
-      alias CertificateChain = OperationalCertChain
-
       # CASE session establishment (initiator side - controller/commissioner)
       class CaseInitiator
         Log = ::Log.for("matter.session.case.initiator")
@@ -243,7 +240,7 @@ module Matter
         TBE_DATA3_NONCE   = "NCASE_Sigma3N".to_slice
         SESSION_KEYS_INFO = "SessionKeys".to_slice
 
-        property cert_chain : CertificateChain
+        property cert_chain : OperationalCertChain
         property operational_key : Crypto::Key
         property ephemeral_key : Crypto::Key?
         property peer_cert : Bytes?
@@ -265,7 +262,7 @@ module Matter
         property peer_node_id : UInt64?
 
         def initialize(
-          @cert_chain : CertificateChain,
+          @cert_chain : OperationalCertChain,
           operational_key : Crypto::Key,
           @fabric_id : UInt64,
           @node_id : UInt64,
@@ -752,7 +749,7 @@ module Matter
       def self.establish_session(
         initiator_cert : Bytes,
         initiator_key : Crypto::Key,
-        responder_cert_chain : CertificateChain,
+        responder_cert_chain : OperationalCertChain,
         responder_key : Crypto::Key,
         fabric_id : UInt64,
         initiator_node_id : UInt64,

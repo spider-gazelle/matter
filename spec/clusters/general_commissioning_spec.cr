@@ -1,30 +1,30 @@
 require "../spec_helper"
 require "../../src/matter/cluster/general_commissioning_cluster"
 
-module Matter::Clusters
-  describe GeneralCommissioning do
+module Matter::Cluster
+  describe GeneralCommissioningCluster do
     describe "initialization and attributes" do
       it "initializes with default values" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
         cluster.breadcrumb.should eq(0_u64)
         cluster.max_cumulative_failsafe_seconds.should eq(900_u16)
         cluster.max_network_commissioning_seconds.should eq(900_u16)
-        cluster.regulatory_config.should eq(GeneralCommissioning::RegulatoryLocationType::IndoorOutdoor)
-        cluster.location_capability.should eq(GeneralCommissioning::RegulatoryLocationType::IndoorOutdoor)
+        cluster.regulatory_config.should eq(GeneralCommissioningCluster::RegulatoryLocationType::IndoorOutdoor)
+        cluster.location_capability.should eq(GeneralCommissioningCluster::RegulatoryLocationType::IndoorOutdoor)
         cluster.supports_concurrent_connection.should be_true
         cluster.failsafe_armed?.should be_false
       end
 
       it "exposes cluster ID" do
-        GeneralCommissioning::CLUSTER_ID.should eq(0x0030_u32)
+        GeneralCommissioningCluster::CLUSTER_ID.should eq(0x0030_u32)
       end
     end
 
     describe "ArmFailSafe command" do
       it "arms failsafe with valid parameters" do
-        cluster = GeneralCommissioning.new
-        request = GeneralCommissioning::ArmFailSafeRequest.new(
+        cluster = GeneralCommissioningCluster.new
+        request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 123_u64
         )
@@ -35,14 +35,14 @@ module Matter::Clusters
           is_pase_session: true
         )
 
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         cluster.failsafe_armed?.should be_true
         cluster.breadcrumb.should eq(123_u64)
       end
 
       it "rejects expiry length exceeding max cumulative" do
-        cluster = GeneralCommissioning.new
-        request = GeneralCommissioning::ArmFailSafeRequest.new(
+        cluster = GeneralCommissioningCluster.new
+        request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 1000_u16, # Exceeds 900s default max
           breadcrumb: 123_u64
         )
@@ -53,15 +53,15 @@ module Matter::Clusters
           is_pase_session: true
         )
 
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::ValueOutsideRange)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
         cluster.failsafe_armed?.should be_false
       end
 
       it "disarms failsafe with expiry_length=0" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
         # First arm
-        request1 = GeneralCommissioning::ArmFailSafeRequest.new(
+        request1 = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 123_u64
         )
@@ -69,88 +69,88 @@ module Matter::Clusters
         cluster.failsafe_armed?.should be_true
 
         # Then disarm
-        request2 = GeneralCommissioning::ArmFailSafeRequest.new(
+        request2 = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 0_u16,
           breadcrumb: 456_u64
         )
         response = cluster.arm_failsafe(request2, nil, true)
 
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         cluster.failsafe_armed?.should be_false
         # Breadcrumb should NOT be updated on disarm
         cluster.breadcrumb.should eq(123_u64)
       end
 
       it "re-arms existing failsafe with matching fabric" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
         # Initial arm
-        request1 = GeneralCommissioning::ArmFailSafeRequest.new(
+        request1 = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
         cluster.arm_failsafe(request1, 1_u8, false)
 
         # Re-arm with same fabric
-        request2 = GeneralCommissioning::ArmFailSafeRequest.new(
+        request2 = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 120_u16,
           breadcrumb: 200_u64
         )
         response = cluster.arm_failsafe(request2, 1_u8, false)
 
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         cluster.failsafe_armed?.should be_true
         cluster.breadcrumb.should eq(200_u64)
       end
 
       it "rejects CASE session when different fabric is active" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
         # Arm with fabric 1
-        request1 = GeneralCommissioning::ArmFailSafeRequest.new(
+        request1 = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
         cluster.arm_failsafe(request1, 1_u8, false)
 
         # Try to arm with fabric 2 (CASE session)
-        request2 = GeneralCommissioning::ArmFailSafeRequest.new(
+        request2 = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 200_u64
         )
         response = cluster.arm_failsafe(request2, 2_u8, false)
 
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::BusyWithOtherAdmin)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::BusyWithOtherAdmin)
         cluster.breadcrumb.should eq(100_u64) # Not updated
       end
 
       it "allows PASE session to take over when commissioning window is open" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
         cluster.open_commissioning_window
 
         # Arm with fabric 1 (CASE session)
-        request1 = GeneralCommissioning::ArmFailSafeRequest.new(
+        request1 = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
         cluster.arm_failsafe(request1, 1_u8, false)
 
         # PASE session takes over
-        request2 = GeneralCommissioning::ArmFailSafeRequest.new(
+        request2 = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 200_u64
         )
         response = cluster.arm_failsafe(request2, nil, true)
 
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         cluster.breadcrumb.should eq(200_u64)
       end
 
       it "invokes expiry callback when failsafe timer expires" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
         # Set initial breadcrumb via ArmFailSafe
-        request = GeneralCommissioning::ArmFailSafeRequest.new(
+        request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 1_u16, # 1 second
           breadcrumb: 42_u64
         )
@@ -168,10 +168,10 @@ module Matter::Clusters
 
     describe "CommissioningComplete command" do
       it "completes commissioning successfully with valid CASE session" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
         # Arm failsafe
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 123_u64
         )
@@ -183,16 +183,16 @@ module Matter::Clusters
           is_case_session: true
         )
 
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         cluster.failsafe_armed?.should be_false
         cluster.breadcrumb.should eq(0_u64) # Reset on success
       end
 
       it "rejects PASE session" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
         # Arm failsafe with PASE
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 123_u64
         )
@@ -204,26 +204,26 @@ module Matter::Clusters
           is_case_session: false
         )
 
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::InvalidAuthentication)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::InvalidAuthentication)
         cluster.failsafe_armed?.should be_true # Still armed
       end
 
       it "rejects when no failsafe is armed" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
         response = cluster.commissioning_complete(
           session_fabric_index: 1_u8,
           is_case_session: true
         )
 
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::NoFailSafe)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::NoFailSafe)
       end
 
       it "rejects when fabric doesn't match" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
         # Arm with fabric 1
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 123_u64
         )
@@ -235,141 +235,141 @@ module Matter::Clusters
           is_case_session: true
         )
 
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::InvalidAuthentication)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::InvalidAuthentication)
         cluster.failsafe_armed?.should be_true # Still armed
       end
     end
 
     describe "SetRegulatoryConfig command" do
       it "sets regulatory config with valid parameters" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
-        request = GeneralCommissioning::SetRegulatoryConfigRequest.new(
-          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Outdoor,
+        request = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioningCluster::RegulatoryLocationType::Outdoor,
           country_code: "US",
           breadcrumb: 456_u64
         )
 
         response = cluster.set_regulatory_config(request)
 
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
-        cluster.regulatory_config.should eq(GeneralCommissioning::RegulatoryLocationType::Outdoor)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
+        cluster.regulatory_config.should eq(GeneralCommissioningCluster::RegulatoryLocationType::Outdoor)
         cluster.breadcrumb.should eq(456_u64)
       end
 
       it "rejects location exceeding capability" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
         # Set capability to Indoor only
-        cluster.location_capability = GeneralCommissioning::RegulatoryLocationType::Indoor
+        cluster.location_capability = GeneralCommissioningCluster::RegulatoryLocationType::Indoor
 
-        request = GeneralCommissioning::SetRegulatoryConfigRequest.new(
-          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Outdoor,
+        request = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioningCluster::RegulatoryLocationType::Outdoor,
           country_code: "US",
           breadcrumb: 456_u64
         )
 
         response = cluster.set_regulatory_config(request)
 
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::ValueOutsideRange)
-        cluster.regulatory_config.should eq(GeneralCommissioning::RegulatoryLocationType::IndoorOutdoor) # Not changed
-        cluster.breadcrumb.should eq(0_u64)                                                              # Not updated on error
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
+        cluster.regulatory_config.should eq(GeneralCommissioningCluster::RegulatoryLocationType::IndoorOutdoor) # Not changed
+        cluster.breadcrumb.should eq(0_u64)                                                                     # Not updated on error
       end
 
       it "rejects invalid country code format" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
         # Too short
-        request1 = GeneralCommissioning::SetRegulatoryConfigRequest.new(
-          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Indoor,
+        request1 = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioningCluster::RegulatoryLocationType::Indoor,
           country_code: "U",
           breadcrumb: 456_u64
         )
         response1 = cluster.set_regulatory_config(request1)
-        response1.error_code.should eq(GeneralCommissioning::CommissioningError::ValueOutsideRange)
+        response1.error_code.should eq(GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
 
         # Lowercase
-        request2 = GeneralCommissioning::SetRegulatoryConfigRequest.new(
-          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Indoor,
+        request2 = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioningCluster::RegulatoryLocationType::Indoor,
           country_code: "us",
           breadcrumb: 456_u64
         )
         response2 = cluster.set_regulatory_config(request2)
-        response2.error_code.should eq(GeneralCommissioning::CommissioningError::ValueOutsideRange)
+        response2.error_code.should eq(GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
 
         # Numbers
-        request3 = GeneralCommissioning::SetRegulatoryConfigRequest.new(
-          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Indoor,
+        request3 = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioningCluster::RegulatoryLocationType::Indoor,
           country_code: "U1",
           breadcrumb: 456_u64
         )
         response3 = cluster.set_regulatory_config(request3)
-        response3.error_code.should eq(GeneralCommissioning::CommissioningError::ValueOutsideRange)
+        response3.error_code.should eq(GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
       end
 
       it "accepts various valid country codes" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
         ["US", "GB", "JP", "DE", "FR", "CA"].each do |country_code|
-          request = GeneralCommissioning::SetRegulatoryConfigRequest.new(
-            new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Indoor,
+          request = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+            new_regulatory_config: GeneralCommissioningCluster::RegulatoryLocationType::Indoor,
             country_code: country_code,
             breadcrumb: 100_u64
           )
 
           response = cluster.set_regulatory_config(request)
-          response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+          response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         end
       end
     end
 
     describe "regulatory location validation" do
       it "allows any location with IndoorOutdoor capability" do
-        cluster = GeneralCommissioning.new
-        cluster.location_capability = GeneralCommissioning::RegulatoryLocationType::IndoorOutdoor
+        cluster = GeneralCommissioningCluster.new
+        cluster.location_capability = GeneralCommissioningCluster::RegulatoryLocationType::IndoorOutdoor
 
         [
-          GeneralCommissioning::RegulatoryLocationType::Indoor,
-          GeneralCommissioning::RegulatoryLocationType::Outdoor,
-          GeneralCommissioning::RegulatoryLocationType::IndoorOutdoor,
+          GeneralCommissioningCluster::RegulatoryLocationType::Indoor,
+          GeneralCommissioningCluster::RegulatoryLocationType::Outdoor,
+          GeneralCommissioningCluster::RegulatoryLocationType::IndoorOutdoor,
         ].each do |location|
-          request = GeneralCommissioning::SetRegulatoryConfigRequest.new(
+          request = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
             new_regulatory_config: location,
             country_code: "US",
             breadcrumb: 100_u64
           )
 
           response = cluster.set_regulatory_config(request)
-          response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+          response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         end
       end
 
       it "restricts to Indoor only with Indoor capability" do
-        cluster = GeneralCommissioning.new
-        cluster.location_capability = GeneralCommissioning::RegulatoryLocationType::Indoor
+        cluster = GeneralCommissioningCluster.new
+        cluster.location_capability = GeneralCommissioningCluster::RegulatoryLocationType::Indoor
 
         # Indoor should succeed
-        request1 = GeneralCommissioning::SetRegulatoryConfigRequest.new(
-          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Indoor,
+        request1 = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioningCluster::RegulatoryLocationType::Indoor,
           country_code: "US",
           breadcrumb: 100_u64
         )
         response1 = cluster.set_regulatory_config(request1)
-        response1.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        response1.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
 
         # Outdoor should fail
-        request2 = GeneralCommissioning::SetRegulatoryConfigRequest.new(
-          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Outdoor,
+        request2 = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioningCluster::RegulatoryLocationType::Outdoor,
           country_code: "US",
           breadcrumb: 200_u64
         )
         response2 = cluster.set_regulatory_config(request2)
-        response2.error_code.should eq(GeneralCommissioning::CommissioningError::ValueOutsideRange)
+        response2.error_code.should eq(GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
       end
     end
 
     describe "commissioning window management" do
       it "opens and closes commissioning window" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
         cluster.open_commissioning_window
         cluster.close_commissioning_window
@@ -381,11 +381,11 @@ module Matter::Clusters
 
     describe "breadcrumb atomicity" do
       it "updates breadcrumb only on successful command execution" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
         cluster.breadcrumb.should eq(0_u64)
 
         # Successful ArmFailSafe updates breadcrumb
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
@@ -393,9 +393,9 @@ module Matter::Clusters
         cluster.breadcrumb.should eq(100_u64)
 
         # Failed SetRegulatoryConfig doesn't update breadcrumb
-        cluster.location_capability = GeneralCommissioning::RegulatoryLocationType::Indoor
-        reg_request = GeneralCommissioning::SetRegulatoryConfigRequest.new(
-          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Outdoor,
+        cluster.location_capability = GeneralCommissioningCluster::RegulatoryLocationType::Indoor
+        reg_request = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioningCluster::RegulatoryLocationType::Outdoor,
           country_code: "US",
           breadcrumb: 200_u64
         )
@@ -403,8 +403,8 @@ module Matter::Clusters
         cluster.breadcrumb.should eq(100_u64) # Still 100, not 200
 
         # Successful SetRegulatoryConfig updates breadcrumb
-        reg_request2 = GeneralCommissioning::SetRegulatoryConfigRequest.new(
-          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Indoor,
+        reg_request2 = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioningCluster::RegulatoryLocationType::Indoor,
           country_code: "US",
           breadcrumb: 300_u64
         )
@@ -415,9 +415,9 @@ module Matter::Clusters
 
     describe "failsafe expiry behavior" do
       it "resets breadcrumb to 0 on failsafe expiry" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 1_u16,
           breadcrumb: 999_u64
         )
@@ -432,10 +432,10 @@ module Matter::Clusters
       end
 
       it "closes commissioning window on failsafe expiry" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
         cluster.open_commissioning_window
 
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 1_u16,
           breadcrumb: 100_u64
         )
@@ -451,27 +451,27 @@ module Matter::Clusters
 
     describe "Terms & Conditions feature" do
       it "allows commissioning complete when TC not required" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
         cluster.terms_conditions_required = false
 
         # Arm failsafe and complete commissioning
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
         cluster.arm_failsafe(arm_request, 1_u8, false)
 
         response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
       end
 
       it "blocks commissioning complete when TC required but not accepted" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
         cluster.terms_conditions_required = true
         cluster.terms_conditions_accepted?.should be_false
 
         # Arm failsafe
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
@@ -479,17 +479,17 @@ module Matter::Clusters
 
         # Try to complete commissioning without accepting TC
         response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::RequiredTCNotAccepted)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::RequiredTCNotAccepted)
       end
 
       it "allows commissioning complete when TC accepted" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
         cluster.terms_conditions_required = true
         cluster.accept_terms_conditions
         cluster.terms_conditions_accepted?.should be_true
 
         # Arm failsafe
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
@@ -497,11 +497,11 @@ module Matter::Clusters
 
         # Complete commissioning
         response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
       end
 
       it "uses callback to check TC acceptance" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
         cluster.terms_conditions_required = true
 
         tc_check_called = false
@@ -511,7 +511,7 @@ module Matter::Clusters
         }
 
         # Arm failsafe
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
@@ -519,14 +519,14 @@ module Matter::Clusters
 
         # Complete commissioning
         response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         tc_check_called.should be_true
       end
     end
 
     describe "commissioning complete callbacks" do
       it "calls persist fabric table callback" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
         persist_called = false
         cluster.on_persist_fabric_table = -> : Nil {
@@ -534,7 +534,7 @@ module Matter::Clusters
         }
 
         # Arm failsafe
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
@@ -542,12 +542,12 @@ module Matter::Clusters
 
         # Complete commissioning
         response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         persist_called.should be_true
       end
 
       it "calls clear PASE sessions callback" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
 
         clear_pase_called = false
         cluster.on_clear_pase_sessions = -> : Nil {
@@ -555,7 +555,7 @@ module Matter::Clusters
         }
 
         # Arm failsafe
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
@@ -563,16 +563,16 @@ module Matter::Clusters
 
         # Complete commissioning
         response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         clear_pase_called.should be_true
       end
 
       it "closes commissioning window on successful complete" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
         cluster.open_commissioning_window
 
         # Arm failsafe
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
+        arm_request = GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 100_u64
         )
@@ -580,7 +580,7 @@ module Matter::Clusters
 
         # Complete commissioning
         response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
 
         # Commissioning window should be closed (internal state verified)
         cluster.failsafe_armed?.should be_false
@@ -589,62 +589,62 @@ module Matter::Clusters
 
     describe "country code whitelist" do
       it "allows any country code when whitelist not configured" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
         cluster.country_code_whitelist.should be_nil
 
-        request = GeneralCommissioning::SetRegulatoryConfigRequest.new(
-          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Indoor,
+        request = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioningCluster::RegulatoryLocationType::Indoor,
           country_code: "ZZ",
           breadcrumb: 100_u64
         )
 
         response = cluster.set_regulatory_config(request)
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
       end
 
       it "allows whitelisted country codes" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
         cluster.country_code_whitelist = ["US", "CA", "GB", "JP"]
 
-        request = GeneralCommissioning::SetRegulatoryConfigRequest.new(
-          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Indoor,
+        request = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioningCluster::RegulatoryLocationType::Indoor,
           country_code: "US",
           breadcrumb: 100_u64
         )
 
         response = cluster.set_regulatory_config(request)
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
         cluster.country_code.should eq("US")
       end
 
       it "blocks non-whitelisted country codes" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
         cluster.country_code_whitelist = ["US", "CA", "GB"]
 
-        request = GeneralCommissioning::SetRegulatoryConfigRequest.new(
-          new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Indoor,
+        request = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+          new_regulatory_config: GeneralCommissioningCluster::RegulatoryLocationType::Indoor,
           country_code: "FR", # Not in whitelist
           breadcrumb: 100_u64
         )
 
         response = cluster.set_regulatory_config(request)
-        response.error_code.should eq(GeneralCommissioning::CommissioningError::ValueOutsideRange)
+        response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::ValueOutsideRange)
         response.debug_text.should contain("not in whitelist")
       end
 
       it "validates all countries in whitelist" do
-        cluster = GeneralCommissioning.new
+        cluster = GeneralCommissioningCluster.new
         cluster.country_code_whitelist = ["US", "CA", "GB", "DE", "FR", "JP"]
 
         ["US", "CA", "GB", "DE", "FR", "JP"].each do |country|
-          request = GeneralCommissioning::SetRegulatoryConfigRequest.new(
-            new_regulatory_config: GeneralCommissioning::RegulatoryLocationType::Indoor,
+          request = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
+            new_regulatory_config: GeneralCommissioningCluster::RegulatoryLocationType::Indoor,
             country_code: country,
             breadcrumb: 100_u64
           )
 
           response = cluster.set_regulatory_config(request)
-          response.error_code.should eq(GeneralCommissioning::CommissioningError::OK)
+          response.error_code.should eq(GeneralCommissioningCluster::CommissioningError::OK)
           cluster.country_code.should eq(country)
         end
       end

@@ -45,7 +45,7 @@ module Matter
         iterations_received.should eq(10000_u32)
         salt_received.should eq(salt)
 
-        admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::WindowStatus::EnhancedWindowOpen)
+        admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen)
 
         admin_comm.close
       end
@@ -82,7 +82,7 @@ module Matter
         salt_received.should_not be_nil
         pin_received.not_nil!.should be > 0
 
-        admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::WindowStatus::BasicWindowOpen)
+        admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
 
         admin_comm.close
       end
@@ -112,7 +112,7 @@ module Matter
         admin_comm.revoke_commissioning
         pase_stopped.should be_true
 
-        admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::WindowStatus::WindowNotOpen)
+        admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
       end
 
       it "stops PASE server when window expires" do
@@ -140,7 +140,7 @@ module Matter
         sleep 1.5.seconds
 
         pase_stopped.should be_true
-        admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::WindowStatus::WindowNotOpen)
+        admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
       end
     end
 

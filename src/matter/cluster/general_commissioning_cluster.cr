@@ -729,11 +729,6 @@ module Matter
         end
       end
 
-      # Alias for backward compatibility
-      def fail_safe_active : Bool
-        failsafe_armed?
-      end
-
       # Get failsafe expiry time (when it will expire)
       def fail_safe_expiry_time : Time?
         if context = @failsafe_context
@@ -876,13 +871,5 @@ module Matter
         response.to_slice
       end
     end
-
-    # Alias for backward compatibility with tests expecting "GeneralCommissioning"
-    alias GeneralCommissioning = GeneralCommissioningCluster
-  end
-
-  # Top-level alias for tests
-  module Clusters
-    alias GeneralCommissioning = Cluster::GeneralCommissioningCluster
   end
 end

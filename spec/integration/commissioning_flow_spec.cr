@@ -28,7 +28,7 @@ module Matter
         )
 
         admin_comm.open_commissioning_window(open_request, 1_u8, 0x1234_u16)
-        admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::WindowStatus::EnhancedWindowOpen)
+        admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen)
         admin_comm.admin_fabric_index.should eq(1_u8)
 
         # Step 2: New commissioner establishes PASE session (simulated)
@@ -94,7 +94,7 @@ module Matter
         )
 
         admin_comm.open_basic_commissioning_window(open_request, 1_u8, 0x1234_u16)
-        admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::WindowStatus::BasicWindowOpen)
+        admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
 
         # Step 2-6: Same flow as enhanced (PASE → ArmFailSafe → NOC → Complete)
         arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(

@@ -83,9 +83,6 @@ module Matter
         WPA3        = 4 # WPA3-Personal
       end
 
-      # Alias for backward compatibility
-      alias WiFiSecurityBitmap = WiFiSecurityType
-
       # WiFiBandEnum
       # Supported WiFi frequency bands
       enum WiFiBandEnum : UInt8
@@ -143,7 +140,7 @@ module Matter
 
       # WiFiInterfaceScanResult - Result from WiFi network scan
       struct WiFiInterfaceScanResult
-        property security : WiFiSecurityBitmap?
+        property security : WiFiSecurityType?
         property ssid : Bytes?  # Max 32 bytes
         property bssid : Bytes? # Exactly 6 bytes (MAC address)
         property channel : UInt16?
@@ -151,7 +148,7 @@ module Matter
         property rssi : Int8? # dBm
 
         def initialize(
-          @security : WiFiSecurityBitmap? = nil,
+          @security : WiFiSecurityType? = nil,
           @ssid : Bytes? = nil,
           @bssid : Bytes? = nil,
           @channel : UInt16? = nil,
@@ -1195,13 +1192,5 @@ module Matter
         @networks.any? { |n| n.network_id == network_id }
       end
     end
-
-    # Backward compatibility alias
-    NetworkCommissioning = NetworkCommissioningCluster
-  end
-
-  # Backward compatibility module alias
-  module Clusters
-    NetworkCommissioning = Cluster::NetworkCommissioningCluster
   end
 end

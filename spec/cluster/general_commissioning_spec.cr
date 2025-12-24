@@ -28,7 +28,7 @@ describe Matter::Cluster::GeneralCommissioningCluster do
       cluster.cluster_id.id.should eq(0x0030_u32)
       cluster.name.should eq("GeneralCommissioning")
       cluster.breadcrumb.should eq(0_u64)
-      cluster.fail_safe_active.should be_false
+      cluster.failsafe_armed?.should be_false
     end
   end
 
@@ -200,7 +200,7 @@ describe Matter::Cluster::GeneralCommissioningCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::GeneralCommissioningCluster.new(endpoint_id)
 
-      cluster.fail_safe_active.should be_false
+      cluster.failsafe_armed?.should be_false
       cluster.fail_safe_expiry_time.should be_nil
     end
 
@@ -209,7 +209,7 @@ describe Matter::Cluster::GeneralCommissioningCluster do
       cluster = Matter::Cluster::GeneralCommissioningCluster.new(endpoint_id)
 
       cluster.arm_fail_safe(60_u16)
-      cluster.fail_safe_active.should be_true
+      cluster.failsafe_armed?.should be_true
       cluster.fail_safe_expiry_time.should_not be_nil
     end
 
@@ -218,10 +218,10 @@ describe Matter::Cluster::GeneralCommissioningCluster do
       cluster = Matter::Cluster::GeneralCommissioningCluster.new(endpoint_id)
 
       cluster.arm_fail_safe(60_u16)
-      cluster.fail_safe_active.should be_true
+      cluster.failsafe_armed?.should be_true
 
       cluster.disarm_fail_safe
-      cluster.fail_safe_active.should be_false
+      cluster.failsafe_armed?.should be_false
       cluster.fail_safe_expiry_time.should be_nil
     end
 

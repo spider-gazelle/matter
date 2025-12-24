@@ -153,7 +153,7 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
 
   describe "command parsing with TLV" do
     describe "OpenCommissioningWindow" do
-      it "parses valid TLV-encoded command" do
+      it "parses valid TLV-encoded command and opens window" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
 
@@ -166,25 +166,13 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
           salt: Bytes.new(32, 0xCD_u8)
         )
 
-        # Set callback to verify parsed parameters
-        callback_invoked = false
-        cluster.on_open_commissioning_window = ->(timeout : UInt16, verifier : Bytes, disc : UInt16, salt : Bytes, iter : UInt32, fabric : UInt8, vendor : UInt16) {
-          callback_invoked = true
-          timeout.should eq(900_u16)
-          verifier.should eq(Bytes.new(97, 0xAB_u8))
-          disc.should eq(3840_u16)
-          iter.should eq(10000_u32)
-          salt.should eq(Bytes.new(32, 0xCD_u8))
-          Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
-        }
-
         result = cluster.invoke_command(
           Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
           tlv_data
         )
 
-        callback_invoked.should be_true
         result.should be_a(Matter::InteractionModel::Status | Matter::Cluster::CommandResponse)
+        cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen)
       end
 
       it "handles malformed TLV data" do
@@ -208,7 +196,7 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
         end.should eq(1_u8) # StatusCode::PAKEParameterError
       end
 
-      it "returns error status from callback" do
+      it "returns busy status when window already open" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
 
@@ -221,48 +209,43 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
           salt: Bytes.new(32, 0xCD_u8)
         )
 
-        # Callback returns Busy error
-        cluster.on_open_commissioning_window = ->(timeout : UInt16, verifier : Bytes, disc : UInt16, salt : Bytes, iter : UInt32, fabric : UInt8, vendor : UInt16) {
-          Matter::Cluster::AdministratorCommissioningCluster::StatusCode::Busy
-        }
+        # First open succeeds
+        result1 = cluster.invoke_command(
+          Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
+          tlv_data
+        )
+        cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen)
 
-        result = cluster.invoke_command(
+        # Second open should fail with Busy
+        result2 = cluster.invoke_command(
           Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
           tlv_data
         )
 
-        result.should be_a(Matter::InteractionModel::Status | Matter::Cluster::CommandResponse)
-        if result.is_a?(Matter::Cluster::CommandResponse)
-          result.data[0]
+        result2.should be_a(Matter::InteractionModel::Status | Matter::Cluster::CommandResponse)
+        if result2.is_a?(Matter::Cluster::CommandResponse)
+          result2.data[0]
         else
-          result.as(Matter::InteractionModel::Status).status.value
-        end.should eq(156_u8) # StatusCode::Busy (implementation returns 156)
+          result2.as(Matter::InteractionModel::Status).status.value
+        end.should eq(156_u8) # InteractionModel::StatusCode::Busy
       end
     end
 
     describe "OpenBasicCommissioningWindow" do
-      it "parses valid TLV-encoded command" do
+      it "parses valid TLV-encoded command and opens window" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
 
         # Create TLV-encoded OpenBasicCommissioningWindowRequest
         tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
-        # Set callback to verify parsed parameters
-        callback_invoked = false
-        cluster.on_open_basic_commissioning_window = ->(timeout : UInt16, fabric : UInt8, vendor : UInt16) {
-          callback_invoked = true
-          timeout.should eq(600_u16)
-          Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
-        }
-
         result = cluster.invoke_command(
           Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
           tlv_data
         )
 
-        callback_invoked.should be_true
         result.should be_a(Matter::InteractionModel::Status | Matter::Cluster::CommandResponse)
+        cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
       end
 
       it "handles malformed TLV data" do
@@ -287,18 +270,21 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
         end.should eq(1_u8) # StatusCode::Failure
       end
 
-      it "returns error status from callback" do
+      it "returns busy status when window already open" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
 
         # Create TLV-encoded OpenBasicCommissioningWindowRequest
         tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
-        # Callback returns Busy error
-        cluster.on_open_basic_commissioning_window = ->(timeout : UInt16, fabric : UInt8, vendor : UInt16) {
-          Matter::Cluster::AdministratorCommissioningCluster::StatusCode::Busy
-        }
+        # First open succeeds
+        cluster.invoke_command(
+          Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+          tlv_data
+        )
+        cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
 
+        # Second open should fail with Busy
         result = cluster.invoke_command(
           Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
           tlv_data
@@ -309,28 +295,31 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
           result.data[0]
         else
           result.as(Matter::InteractionModel::Status).status.value
-        end.should eq(156_u8) # StatusCode::Busy (implementation returns 156)
+        end.should eq(156_u8) # InteractionModel::StatusCode::Busy
       end
     end
 
     describe "RevokeCommissioning" do
-      it "invokes callback when set" do
+      it "successfully revokes an open window" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
 
-        callback_invoked = false
-        cluster.on_revoke_commissioning = -> {
-          callback_invoked = true
-          Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
-        }
+        # First open a basic window
+        tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
+        cluster.invoke_command(
+          Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+          tlv_data
+        )
+        cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
 
+        # Then revoke it
         result = cluster.invoke_command(
           Matter::Cluster::AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING,
           Bytes.new(0)
         )
 
-        callback_invoked.should be_true
         result.should be_a(Matter::InteractionModel::Status | Matter::Cluster::CommandResponse)
+        cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
       end
 
       it "returns WindowNotOpen when no window is open" do
@@ -372,28 +361,6 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
           result.as(Matter::InteractionModel::Status).status.value
         end.should eq(0_u8) # Success
         cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
-      end
-
-      it "returns error status from callback" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
-
-        # Callback returns WindowNotOpen error
-        cluster.on_revoke_commissioning = -> {
-          Matter::Cluster::AdministratorCommissioningCluster::StatusCode::WindowNotOpen
-        }
-
-        result = cluster.invoke_command(
-          Matter::Cluster::AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING,
-          Bytes.new(0)
-        )
-
-        result.should be_a(Matter::InteractionModel::Status | Matter::Cluster::CommandResponse)
-        if result.is_a?(Matter::Cluster::CommandResponse)
-          result.data[0]
-        else
-          result.as(Matter::InteractionModel::Status).status.value
-        end.should eq(1_u8) # StatusCode::WindowNotOpen (implementation returns Failure)
       end
     end
   end
@@ -552,7 +519,7 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
       cluster.session_vendor_id.should be_nil
     end
 
-    it "uses session context in OpenCommissioningWindow callback" do
+    it "uses session context in OpenCommissioningWindow" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
 
@@ -569,29 +536,23 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
         salt: Bytes.new(32, 0xCD_u8)
       )
 
-      # Set callback to verify session context is passed
-      callback_invoked = false
-      cluster.on_open_commissioning_window = ->(timeout : UInt16, verifier : Bytes, disc : UInt16, salt : Bytes, iter : UInt32, fabric : UInt8, vendor : UInt16) {
-        callback_invoked = true
-        fabric.should eq(3_u8)
-        vendor.should eq(0xABCD_u16)
-        Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
-      }
-
       result = cluster.invoke_command(
         Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
         tlv_data
       )
 
-      callback_invoked.should be_true
       result.should be_a(Matter::InteractionModel::Status | Matter::Cluster::CommandResponse)
+      # Verify session context was applied to admin attributes
+      cluster.admin_fabric_index.should eq(3_u8)
+      cluster.admin_vendor_id.should eq(0xABCD_u16)
+      cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen)
     end
 
-    it "uses default values when session context not set in OpenCommissioningWindow" do
+    it "uses nil values when session context not set in OpenCommissioningWindow" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
 
-      # Don't set session context - should use defaults
+      # Don't set session context - should use nil (no session info available)
 
       # Create TLV-encoded OpenCommissioningWindowRequest
       tlv_data = create_open_commissioning_window_tlv(
@@ -602,25 +563,19 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
         salt: Bytes.new(32, 0xCD_u8)
       )
 
-      # Set callback to verify default values are used
-      callback_invoked = false
-      cluster.on_open_commissioning_window = ->(timeout : UInt16, verifier : Bytes, disc : UInt16, salt : Bytes, iter : UInt32, fabric : UInt8, vendor : UInt16) {
-        callback_invoked = true
-        fabric.should eq(1_u8)       # Default fabric_index
-        vendor.should eq(0xFFF1_u16) # Default vendor_id
-        Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
-      }
-
       result = cluster.invoke_command(
         Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
         tlv_data
       )
 
-      callback_invoked.should be_true
       result.should be_a(Matter::InteractionModel::Status | Matter::Cluster::CommandResponse)
+      # Verify nil values when no session context
+      cluster.admin_fabric_index.should be_nil
+      cluster.admin_vendor_id.should be_nil
+      cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen)
     end
 
-    it "uses session context in OpenBasicCommissioningWindow callback" do
+    it "uses session context in OpenBasicCommissioningWindow" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
 
@@ -631,49 +586,37 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
       # Create TLV-encoded OpenBasicCommissioningWindowRequest
       tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
-      # Set callback to verify session context is passed
-      callback_invoked = false
-      cluster.on_open_basic_commissioning_window = ->(timeout : UInt16, fabric : UInt8, vendor : UInt16) {
-        callback_invoked = true
-        fabric.should eq(5_u8)
-        vendor.should eq(0x1234_u16)
-        Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
-      }
-
       result = cluster.invoke_command(
         Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
         tlv_data
       )
 
-      callback_invoked.should be_true
       result.should be_a(Matter::InteractionModel::Status | Matter::Cluster::CommandResponse)
+      # Verify session context was applied to admin attributes
+      cluster.admin_fabric_index.should eq(5_u8)
+      cluster.admin_vendor_id.should eq(0x1234_u16)
+      cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
     end
 
-    it "uses default values when session context not set in OpenBasicCommissioningWindow" do
+    it "uses nil values when session context not set in OpenBasicCommissioningWindow" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint_id)
 
-      # Don't set session context - should use defaults
+      # Don't set session context - should use nil (no session info available)
 
       # Create TLV-encoded OpenBasicCommissioningWindowRequest
       tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
-      # Set callback to verify default values are used
-      callback_invoked = false
-      cluster.on_open_basic_commissioning_window = ->(timeout : UInt16, fabric : UInt8, vendor : UInt16) {
-        callback_invoked = true
-        fabric.should eq(1_u8)       # Default fabric_index
-        vendor.should eq(0xFFF1_u16) # Default vendor_id
-        Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
-      }
-
       result = cluster.invoke_command(
         Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
         tlv_data
       )
 
-      callback_invoked.should be_true
       result.should be_a(Matter::InteractionModel::Status | Matter::Cluster::CommandResponse)
+      # Verify nil values when no session context
+      cluster.admin_fabric_index.should be_nil
+      cluster.admin_vendor_id.should be_nil
+      cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
     end
 
     it "allows session context to be updated between commands" do
@@ -686,31 +629,32 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
 
       tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
-      cluster.on_open_basic_commissioning_window = ->(timeout : UInt16, fabric : UInt8, vendor : UInt16) {
-        fabric.should eq(1_u8)
-        vendor.should eq(0x1111_u16)
-        Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
-      }
-
       cluster.invoke_command(
         Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
         tlv_data
       )
+
+      # Verify first command used fabric 1
+      cluster.admin_fabric_index.should eq(1_u8)
+      cluster.admin_vendor_id.should eq(0x1111_u16)
+      cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
+
+      # Close window to allow second open
+      cluster.close_window
 
       # Second command with different fabric
       cluster.session_fabric_index = 2_u8
       cluster.session_vendor_id = 0x2222_u16
 
-      cluster.on_open_basic_commissioning_window = ->(timeout : UInt16, fabric : UInt8, vendor : UInt16) {
-        fabric.should eq(2_u8)
-        vendor.should eq(0x2222_u16)
-        Matter::Cluster::AdministratorCommissioningCluster::StatusCode.new(0)
-      }
-
       cluster.invoke_command(
         Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
         tlv_data
       )
+
+      # Verify second command used fabric 2
+      cluster.admin_fabric_index.should eq(2_u8)
+      cluster.admin_vendor_id.should eq(0x2222_u16)
+      cluster.window_status.should eq(Matter::Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
     end
   end
 end

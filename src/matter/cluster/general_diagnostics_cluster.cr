@@ -264,8 +264,5 @@ module Matter
         ].to_tlv
       end
     end
-
-    # Backward compatibility alias
-    alias GeneralDiagnostics = GeneralDiagnosticsCluster
   end
 end
