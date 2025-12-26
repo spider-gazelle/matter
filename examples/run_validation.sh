@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+mkdir -p ./bin/
+
 usage() {
   cat <<'EOF'
 Run end-to-end commissioning + device validation against the local example device.
