@@ -62,10 +62,10 @@ describe "Exact matter.js Vector Reproduction" do
     # Verify round-trip works
     decoded = Matter::InteractionModel::ReportDataMessage.from_slice(encoded)
     decoded.attribute_reports.should_not be_nil
-    reports = decoded.attribute_reports.not_nil!
+    reports = decoded.attribute_reports.as(Array(Matter::InteractionModel::AttributeReportIB))
     reports.size.should eq(1)
 
-    attr_data = reports[0].attribute_data.not_nil!
+    attr_data = reports[0].attribute_data.as(Matter::InteractionModel::AttributeDataIB)
     attr_data.path.endpoint.should eq(0_u16)
     attr_data.path.cluster.should eq(40_u32)
     attr_data.path.attribute.should eq(9_u32)

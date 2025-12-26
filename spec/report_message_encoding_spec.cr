@@ -38,12 +38,12 @@ describe "ReportDataMessage Encoding" do
 
     # Get first attribute report
     decoded.attribute_reports.should_not be_nil
-    reports = decoded.attribute_reports.not_nil!
+    reports = decoded.attribute_reports.as(Array(Matter::InteractionModel::AttributeReportIB))
     reports.size.should eq(1)
 
     report = reports[0]
     report.attribute_data.should_not be_nil
-    attr_data_ib = report.attribute_data.not_nil!
+    attr_data_ib = report.attribute_data.as(Matter::InteractionModel::AttributeDataIB)
 
     # Check path values preserved
     attr_data_ib.path.endpoint.should eq(0_u16)

@@ -80,7 +80,7 @@ module Matter
         pin_received.should_not be_nil
         iterations_received.should_not be_nil
         salt_received.should_not be_nil
-        pin_received.not_nil!.should be > 0
+        pin_received.as(UInt32).should be > 0
 
         admin_comm.window_status.should eq(Cluster::AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
 
@@ -211,19 +211,19 @@ module Matter
 
         # Use the configured parameters to create PASE protocol objects
         pbkdf_params = Session::Pase::PbkdfParameters.new(
-          iterations: configured_iterations.not_nil!.to_i32,
-          salt: configured_salt.not_nil!
+          iterations: configured_iterations.as(UInt32).to_i32,
+          salt: configured_salt.as(Bytes)
         )
 
         # Create PASE responder (device side)
         responder = Session::Pase::PaseResponder.new(
-          pin_code: configured_pin.not_nil!,
+          pin_code: configured_pin.as(UInt32),
           pbkdf_params: pbkdf_params
         )
 
         # Verify responder is ready
         responder.pin_code.should eq(configured_pin)
-        responder.pbkdf_params.iterations.should eq(configured_iterations.not_nil!.to_i32)
+        responder.pbkdf_params.iterations.should eq(configured_iterations.as(UInt32).to_i32)
 
         admin_comm.close
       end
@@ -275,7 +275,7 @@ module Matter
         admin_comm.window_open?.should be_true
 
         # Step 2: Establish PASE session
-        pase_session = SessionManager::PaseSession.new(1000_u16, passcode: pase_pin)
+        pase_session = SessionManager::PaseSession.new(1000_u16, passcode: pase_pin.as(UInt32))
         session_manager.add_pase_session(pase_session)
         session_manager.has_pase_session?(1000_u16).should be_true
 
@@ -326,7 +326,6 @@ module Matter
       it "handles commissioning failure and cleanup" do
         admin_comm = Cluster::AdministratorCommissioningCluster.new
         general_comm = Cluster::GeneralCommissioningCluster.new
-        session_manager = SessionManager.new
 
         admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
@@ -509,7 +508,7 @@ module Matter
         # Window should have approximately 5 seconds remaining
         time_remaining = admin_comm.time_remaining
         time_remaining.should_not be_nil
-        time_remaining.not_nil!.total_seconds.should be_close(5.0, 1.0)
+        time_remaining.as(Time::Span).total_seconds.should be_close(5.0, 1.0)
 
         admin_comm.close
       end

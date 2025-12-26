@@ -6,7 +6,6 @@ describe "PASE Encryption Debug" do
   it "verifies AES-CCM encryption with actual PASE session keys" do
     # Keys from actual PASE session with chip-tool
     r2i_key = "e2026b112be29895b05028cd1efe175b".hexbytes
-    i2r_key = "6505a71d0651fbc5d739b659de0cfae3".hexbytes
 
     # Simple test payload
     plaintext = "15360124000018".hexbytes

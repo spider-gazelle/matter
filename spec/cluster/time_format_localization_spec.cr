@@ -144,9 +144,9 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
 
     it "marks HourFormat as writable" do
       cluster = Matter::Cluster::TimeFormatLocalizationCluster.new(endpoint_id)
-      attr = cluster.attributes.find { |a| a.name == "hourFormat" }
+      attr = cluster.attributes.find { |attribute| attribute.name == "hourFormat" }
       attr.should_not be_nil
-      attr.not_nil!.writable?.should be_true
+      attr.as(Matter::Cluster::AttributeMetadata).writable?.should be_true
     end
 
     it "marks ActiveCalendarType as writable" do
@@ -158,9 +158,9 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
           Matter::Cluster::TimeFormatLocalizationCluster::CalendarType::Gregorian,
         ]
       )
-      attr = cluster.attributes.find { |a| a.name == "activeCalendarType" }
+      attr = cluster.attributes.find { |attribute| attribute.name == "activeCalendarType" }
       attr.should_not be_nil
-      attr.not_nil!.writable?.should be_true
+      attr.as(Matter::Cluster::AttributeMetadata).writable?.should be_true
     end
   end
 
@@ -382,7 +382,7 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
         ]
       )
 
-      device.supported_calendar_types.not_nil!.size.should eq(8)
+      device.supported_calendar_types.as(Array).size.should eq(8)
 
       # Switch between calendars
       device.write_attribute(

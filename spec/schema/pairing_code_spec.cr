@@ -5,28 +5,6 @@ require "../../src/matter/setup_payload"
 # Tests pairing code encoding/decoding compatibility
 describe "Matter SetupPayload" do
   describe "ManualPairingCode" do
-    # Test vectors from matter.js PairingCodeSchemaTest.ts
-    manual_pairing_test_vectors = [
-      {
-        discriminator:       2976_u16,
-        short_discriminator: 11,
-        passcode:            34567890_u32,
-        code:                "26318621095",
-      },
-      {
-        discriminator:       10_u16, # short_discriminator 0
-        short_discriminator: 0,
-        passcode:            12345678_u32,
-        code:                "00852607537",
-      },
-      {
-        discriminator:       2001_u16, # short_discriminator 7
-        short_discriminator: 7,
-        passcode:            23456789_u32,
-        code:                "16043714310",
-      },
-    ]
-
     describe "encode" do
       it "encodes manual pairing code (test vector 1)" do
         # discriminator 2976 = 0x0BA0 -> short = 11

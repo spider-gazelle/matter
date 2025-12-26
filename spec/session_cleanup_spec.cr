@@ -679,7 +679,7 @@ describe Matter::Protocol::MessageHandler do
       )
 
       matching.should_not be_nil
-      matching.not_nil!.subscription_id.should eq(1_u32)
+      matching.as(Matter::Protocol::MessageHandler::ActiveSubscription).subscription_id.should eq(1_u32)
 
       transport.close
     end

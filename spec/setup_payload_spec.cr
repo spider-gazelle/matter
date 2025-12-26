@@ -57,7 +57,6 @@ describe Matter::SetupPayload do
         # Create valid number with check digit
         num = "1234567890"
         check = Matter::SetupPayload::Verhoeff.compute(num)
-        valid_code = num + check.to_s
 
         # Swap first two digits - should fail validation
         corrupted = "2134567890" + check.to_s

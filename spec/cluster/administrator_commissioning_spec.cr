@@ -89,10 +89,11 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
       attributes.should_not be_empty
       attributes.size.should be >= 3
 
-      window_status = attributes.find { |a| a.id.id == Matter::Cluster::AdministratorCommissioningCluster::ATTR_WINDOW_STATUS }
+      window_status = attributes.find { |attr| attr.id.id == Matter::Cluster::AdministratorCommissioningCluster::ATTR_WINDOW_STATUS }
       window_status.should_not be_nil
-      window_status.not_nil!.name.should eq("WindowStatus")
-      window_status.not_nil!.writable?.should be_false
+      window_status_attr = window_status.as(Matter::Cluster::AttributeMetadata)
+      window_status_attr.name.should eq("WindowStatus")
+      window_status_attr.writable?.should be_false
     end
 
     it "provides command metadata" do
@@ -103,9 +104,9 @@ describe Matter::Cluster::AdministratorCommissioningCluster do
       commands.should_not be_empty
       commands.size.should be >= 3
 
-      open_window = commands.find { |c| c.id.id == Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW }
+      open_window = commands.find { |cmd| cmd.id.id == Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW }
       open_window.should_not be_nil
-      open_window.not_nil!.name.should eq("OpenCommissioningWindow")
+      open_window.as(Matter::Cluster::CommandMetadata).name.should eq("OpenCommissioningWindow")
     end
   end
 

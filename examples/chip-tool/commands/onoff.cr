@@ -139,7 +139,7 @@ module ChipTool
 
         deadline = Time.monotonic + timeout
         loop do
-          if dev = scanner.operational_devices.find { |d| d.fabric_id == fabric.fabric_id && d.node_id == node_id }
+          if dev = scanner.operational_devices.find { |device| device.fabric_id == fabric.fabric_id && device.node_id == node_id }
             address = dev.addresses.find(&.family.inet?) || dev.addresses.first?
             if addr = address
               return Socket::IPAddress.new(addr.address, dev.port)
@@ -168,8 +168,8 @@ module ChipTool
         reports = report.attribute_reports
         return nil unless reports
 
-        reports.each do |r|
-          data = r.attribute_data
+        reports.each do |attr_report|
+          data = attr_report.attribute_data
           next unless data
           path = data.path
           next unless path.cluster == Matter::Cluster::OnOffCluster::CLUSTER_ID
@@ -185,8 +185,8 @@ module ChipTool
         reports = report.attribute_reports
         return nil unless reports
 
-        reports.each do |r|
-          data = r.attribute_data
+        reports.each do |attr_report|
+          data = attr_report.attribute_data
           next unless data
           path = data.path
           next unless path.cluster == cluster_id

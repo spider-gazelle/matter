@@ -208,10 +208,11 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       attributes.should_not be_empty
       attributes.size.should be >= 5
 
-      supported_fabrics = attributes.find { |a| a.id.id == Matter::Cluster::OperationalCredentialsCluster::ATTR_SUPPORTED_FABRICS }
+      supported_fabrics = attributes.find { |attr| attr.id.id == Matter::Cluster::OperationalCredentialsCluster::ATTR_SUPPORTED_FABRICS }
       supported_fabrics.should_not be_nil
-      supported_fabrics.not_nil!.name.should eq("SupportedFabrics")
-      supported_fabrics.not_nil!.writable?.should be_false
+      supported_fabrics_attr = supported_fabrics.as(Matter::Cluster::AttributeMetadata)
+      supported_fabrics_attr.name.should eq("SupportedFabrics")
+      supported_fabrics_attr.writable?.should be_false
     end
 
     it "provides command metadata" do
@@ -222,9 +223,9 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       commands.should_not be_empty
       commands.size.should be >= 6
 
-      attestation_cmd = commands.find { |c| c.id.id == Matter::Cluster::OperationalCredentialsCluster::CMD_ATTESTATION_REQUEST }
+      attestation_cmd = commands.find { |cmd| cmd.id.id == Matter::Cluster::OperationalCredentialsCluster::CMD_ATTESTATION_REQUEST }
       attestation_cmd.should_not be_nil
-      attestation_cmd.not_nil!.name.should eq("AttestationRequest")
+      attestation_cmd.as(Matter::Cluster::CommandMetadata).name.should eq("AttestationRequest")
     end
   end
 
@@ -626,7 +627,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Step 1: Generate CSR for update
         update_nonce = Bytes.new(32, 0x99_u8)
         update_csr_request_tlv = create_csr_request_tlv(update_nonce, true) # is_for_update = true
-        csr_result = cluster.invoke_command(
+        cluster.invoke_command(
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           update_csr_request_tlv,
           session_id: 54321_u64,
@@ -873,8 +874,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster.commissioned_fabrics.should eq(2_u8)
         cluster.fabrics.size.should eq(2)
 
-        fabric1 = cluster.fabrics.find { |f| f.fabric_id == 0xAAAAAAAAAAAAAAAA_u64 }
-        fabric2 = cluster.fabrics.find { |f| f.fabric_id == 0xBBBBBBBBBBBBBBBB_u64 }
+        fabric1 = cluster.fabrics.find { |fabric| fabric.fabric_id == 0xAAAAAAAAAAAAAAAA_u64 }
+        fabric2 = cluster.fabrics.find { |fabric| fabric.fabric_id == 0xBBBBBBBBBBBBBBBB_u64 }
 
         fabric1.should_not be_nil
         fabric2.should_not be_nil

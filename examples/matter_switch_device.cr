@@ -66,7 +66,7 @@ module MatterSwitch
     end
 
     def switch : Matter::Cluster::OnOffCluster
-      @switch.not_nil!
+      @switch.as(Matter::Cluster::OnOffCluster)
     end
 
     protected def build_storage_manager : Matter::Storage::Manager
@@ -92,9 +92,9 @@ module MatterSwitch
 
       [
         switch,
-        @identify.not_nil!,
-        @groups.not_nil!,
-        @scenes_management.not_nil!,
+        @identify.as(Matter::Cluster::IdentifyCluster),
+        @groups.as(Matter::Cluster::GroupsCluster),
+        @scenes_management.as(Matter::Cluster::ScenesManagementCluster),
       ] of Matter::Cluster::Base
     end
 

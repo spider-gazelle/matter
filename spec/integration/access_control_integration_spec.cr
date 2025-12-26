@@ -468,8 +468,8 @@ describe "Access Control Integration" do
       cluster2.acl[1].privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Manage)
       cluster2.acl[1].auth_mode.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
       cluster2.acl[1].subjects.should eq([0x3333_u64])
-      cluster2.acl[1].targets.not_nil!.size.should eq(1)
-      cluster2.acl[1].targets.not_nil![0].cluster.should eq(0x0006_u32)
+      cluster2.acl[1].targets.as(Array(Matter::Cluster::AccessControlCluster::Target)).size.should eq(1)
+      cluster2.acl[1].targets.as(Array(Matter::Cluster::AccessControlCluster::Target))[0].cluster.should eq(0x0006_u32)
       cluster2.acl[1].fabric_index.should eq(1_u8)
 
       # Access control decisions should be identical

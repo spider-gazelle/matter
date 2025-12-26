@@ -7,8 +7,6 @@ require "../src/matter/crypto/crypto"
 # Test with actual values from iPhone commissioning logs
 describe "iPhone Message Decryption" do
   it "decrypts actual iPhone message from logs" do
-    crypto = Matter::Crypto::StandardCrypto.new
-
     # From logs: Session ID: 32753 (0x7FF1)
     session_id = 32753_u16
     peer_session_id = 59583_u16
@@ -18,7 +16,7 @@ describe "iPhone Message Decryption" do
     encryption_key = "d535b018f326c81400e292d5c2486274".hexbytes
 
     # Create responder context
-    context = Matter::Session::SecureContext.new(
+    Matter::Session::SecureContext.new(
       session_id: session_id,
       peer_session_id: peer_session_id,
       session_type: Matter::Session::SessionType::Unicast,
@@ -40,7 +38,7 @@ describe "iPhone Message Decryption" do
 
     # Build packet header from the raw bytes
     flags = 0x00_u8
-    packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
+    Matter::Codec::MessageCodec::PacketHeader.new(
       session_id: session_id,
       session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
       message_id: message_counter,
@@ -52,7 +50,7 @@ describe "iPhone Message Decryption" do
     )
 
     # Encrypted payload (43 bytes): 51e49d2084671e5da31f120326a18b...
-    encrypted_payload = "51e49d2084671e5da31f120326a18b".hexbytes # (truncated - need full 43 bytes)
+    Matter::Session::SecureMessage.build_nonce(0xFFFFFFFB00000001_u64, message_counter, security_flags)
 
     # Test nonce construction
     peer_node_id = 0xFFFFFFFB00000001_u64 # PASE temporary initiator node ID

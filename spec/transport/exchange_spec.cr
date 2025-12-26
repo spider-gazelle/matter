@@ -190,7 +190,7 @@ describe Matter::Transport::Exchange do
       # Should need retransmit now
       retransmit_msg = exchange.needs_retransmit?
       retransmit_msg.should_not be_nil
-      retransmit_msg.not_nil!.packet_header.message_id.should eq(1_u32)
+      retransmit_msg.as(Matter::Codec::MessageCodec::Message).packet_header.message_id.should eq(1_u32)
     end
 
     it "clears pending message on acknowledgment" do

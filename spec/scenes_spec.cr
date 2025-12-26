@@ -40,21 +40,21 @@ describe Matter::Cluster::ScenesCluster do
       attrs.size.should eq(7)
 
       # Check SceneCount attribute
-      scene_count = attrs.find { |a| a.id.id == Matter::Cluster::ScenesCluster::SCENE_COUNT }
+      scene_count = attrs.find { |attr| attr.id.id == Matter::Cluster::ScenesCluster::SCENE_COUNT }
       scene_count.should_not be_nil
-      scene_count.not_nil!.name.should eq("sceneCount")
-      scene_count.not_nil!.type.should eq(:uint8)
-      scene_count.not_nil!.writable?.should be_false
+      scene_count.as(Matter::Cluster::AttributeMetadata).name.should eq("sceneCount")
+      scene_count.as(Matter::Cluster::AttributeMetadata).type.should eq(:uint8)
+      scene_count.as(Matter::Cluster::AttributeMetadata).writable?.should be_false
 
       # Check CurrentScene attribute
-      current_scene = attrs.find { |a| a.id.id == Matter::Cluster::ScenesCluster::CURRENT_SCENE }
+      current_scene = attrs.find { |attr| attr.id.id == Matter::Cluster::ScenesCluster::CURRENT_SCENE }
       current_scene.should_not be_nil
-      current_scene.not_nil!.writable?.should be_false
+      current_scene.as(Matter::Cluster::AttributeMetadata).writable?.should be_false
 
       # Check SceneValid attribute
-      scene_valid = attrs.find { |a| a.id.id == Matter::Cluster::ScenesCluster::SCENE_VALID }
+      scene_valid = attrs.find { |attr| attr.id.id == Matter::Cluster::ScenesCluster::SCENE_VALID }
       scene_valid.should_not be_nil
-      scene_valid.not_nil!.type.should eq(:bool)
+      scene_valid.as(Matter::Cluster::AttributeMetadata).type.should eq(:bool)
     end
 
     it "reads SceneCount attribute" do
@@ -117,11 +117,11 @@ describe Matter::Cluster::ScenesCluster do
       cmds = cluster.commands
       cmds.size.should eq(8)
 
-      add_scene = cmds.find { |c| c.id.id == Matter::Cluster::ScenesCluster::CMD_ADD_SCENE }
+      add_scene = cmds.find { |cmd| cmd.id.id == Matter::Cluster::ScenesCluster::CMD_ADD_SCENE }
       add_scene.should_not be_nil
-      add_scene.not_nil!.name.should eq("addScene")
+      add_scene.as(Matter::Cluster::CommandMetadata).name.should eq("addScene")
 
-      recall_scene = cmds.find { |c| c.id.id == Matter::Cluster::ScenesCluster::CMD_RECALL_SCENE }
+      recall_scene = cmds.find { |cmd| cmd.id.id == Matter::Cluster::ScenesCluster::CMD_RECALL_SCENE }
       recall_scene.should_not be_nil
     end
 

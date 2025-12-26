@@ -104,7 +104,7 @@ describe "Subscription report exchange regression" do
     crypto = Matter::Crypto::StandardCrypto.new
     message_counter = packet.header.message_id
     security_flags = packet_header_bytes[3]
-    nonce = Matter::Session::SecureMessage.build_nonce(session.local_node_id.not_nil!.id, message_counter, security_flags)
+    nonce = Matter::Session::SecureMessage.build_nonce(session.local_node_id.as(Matter::DataType::NodeId).id, message_counter, security_flags)
     decrypted = crypto.decrypt(session.encryption_key, packet.payload, nonce, packet_header_bytes)
 
     decrypted_packet = Matter::Codec::MessageCodec::Packet.new(packet.header, decrypted)

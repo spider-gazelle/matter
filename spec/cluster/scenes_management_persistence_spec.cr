@@ -17,9 +17,10 @@ describe Matter::Cluster::ScenesManagementCluster do
 
         json = cluster.save_state
         json.should_not be_nil
-        json.not_nil!.should contain("Morning")
-        json.not_nil!.should contain("Evening")
-        json.not_nil!.should contain("Night")
+        json_str = json.as(String)
+        json_str.should contain("Morning")
+        json_str.should contain("Evening")
+        json_str.should contain("Night")
       end
 
       it "includes data_version in saved state" do
@@ -33,7 +34,7 @@ describe Matter::Cluster::ScenesManagementCluster do
         json.should_not be_nil
 
         # Parse JSON to verify data_version is included
-        parsed = JSON.parse(json.not_nil!)
+        parsed = JSON.parse(json.as(String))
         parsed["data_version"].as_i.should eq(5)
       end
     end
@@ -54,7 +55,7 @@ describe Matter::Cluster::ScenesManagementCluster do
         cluster2 = Matter::Cluster::ScenesManagementCluster.new(endpoint)
         cluster2.scene_count.should eq(0) # Empty initially
 
-        cluster2.restore_state(json.not_nil!)
+        cluster2.restore_state(json.as(String))
 
         cluster2.scene_count.should eq(2)
         cluster2.has_scene?(1_u16, 1_u8).should be_true
@@ -77,7 +78,7 @@ describe Matter::Cluster::ScenesManagementCluster do
         cluster2 = Matter::Cluster::ScenesManagementCluster.new(endpoint)
         cluster2.data_version.should eq(0)
 
-        cluster2.restore_state(json.not_nil!)
+        cluster2.restore_state(json.as(String))
 
         cluster2.data_version.should eq(10)
       end

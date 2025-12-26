@@ -39,11 +39,11 @@ describe Matter::Cluster::GroupsCluster do
       attrs.size.should eq(1) # Just nameSupport
 
       # Check NameSupport attribute
-      name_support = attrs.find { |a| a.id.id == Matter::Cluster::GroupsCluster::NAME_SUPPORT }
+      name_support = attrs.find { |attr| attr.id.id == Matter::Cluster::GroupsCluster::NAME_SUPPORT }
       name_support.should_not be_nil
-      name_support.not_nil!.name.should eq("nameSupport")
-      name_support.not_nil!.type.should eq(:uint8)
-      name_support.not_nil!.writable?.should be_false
+      name_support.as(Matter::Cluster::AttributeMetadata).name.should eq("nameSupport")
+      name_support.as(Matter::Cluster::AttributeMetadata).type.should eq(:uint8)
+      name_support.as(Matter::Cluster::AttributeMetadata).writable?.should be_false
 
       # Global attributes can be read via read_attribute
       result = cluster.read_attribute(0xFFFC_u32) # FeatureMap
@@ -96,9 +96,9 @@ describe Matter::Cluster::GroupsCluster do
       cmds = cluster.commands
       cmds.size.should eq(6)
 
-      add_group = cmds.find { |c| c.id.id == Matter::Cluster::GroupsCluster::CMD_ADD_GROUP }
+      add_group = cmds.find { |cmd| cmd.id.id == Matter::Cluster::GroupsCluster::CMD_ADD_GROUP }
       add_group.should_not be_nil
-      add_group.not_nil!.name.should eq("addGroup")
+      add_group.as(Matter::Cluster::CommandMetadata).name.should eq("addGroup")
     end
 
     it "executes AddGroup command" do

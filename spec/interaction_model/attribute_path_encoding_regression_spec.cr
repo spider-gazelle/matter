@@ -14,11 +14,11 @@ describe "InteractionModel::AttributePath encoding" do
     report_bytes = Matter::Protocol::IMHandler.encode_report_data(response, 3_u32)
 
     root = TLV::Any.from_slice(report_bytes).value.as(TLV::Structure)
-    reports = root[1_u8].not_nil!.value.as(TLV::List)
+    reports = root[1_u8].as(TLV::Any).value.as(TLV::List)
     report0 = reports[0].value.as(TLV::Structure)
-    attribute_data = report0[1_u8].not_nil!.value.as(TLV::Structure)
+    attribute_data = report0[1_u8].as(TLV::Any).value.as(TLV::Structure)
 
-    path_any = attribute_data[1_u8].not_nil!
+    path_any = attribute_data[1_u8].as(TLV::Any)
     path_any.value.should be_a(TLV::List)
   end
 end

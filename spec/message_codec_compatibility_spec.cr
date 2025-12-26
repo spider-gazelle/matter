@@ -14,7 +14,7 @@ describe "MessageCodec Compatibility with matter.js" do
       packet.header.session_type.should eq(Matter::Codec::MessageCodec::SessionType::Unicast)
       packet.header.message_id.should eq(401755914_u32)
       packet.header.source_node_id.should_not be_nil
-      packet.header.source_node_id.not_nil!.id.should eq(0x52636ACBA7C8A07E_u64)
+      packet.header.source_node_id.as(Matter::DataType::NodeId).id.should eq(0x52636ACBA7C8A07E_u64)
 
       # Verify flags
       packet.header.privacy_enhancements?.should be_false
@@ -45,7 +45,7 @@ describe "MessageCodec Compatibility with matter.js" do
       packet.header.session_id.should eq(0_u16)
       packet.header.message_id.should eq(2031257377_u32)
       packet.header.destination_node_id.should_not be_nil
-      packet.header.destination_node_id.not_nil!.id.should eq(0x52636ACBA7C8A07E_u64)
+      packet.header.destination_node_id.as(Matter::DataType::NodeId).id.should eq(0x52636ACBA7C8A07E_u64)
 
       # Decode payload
       decoded = Matter::Codec::MessageCodec::Base.decode_payload(packet)
@@ -104,7 +104,7 @@ describe "MessageCodec Compatibility with matter.js" do
       # Verify packet header matches
       decoded_message.packet_header.session_id.should eq(packet_header.session_id)
       decoded_message.packet_header.message_id.should eq(packet_header.message_id)
-      decoded_message.packet_header.source_node_id.not_nil!.id.should eq(0x1122334455667788_u64)
+      decoded_message.packet_header.source_node_id.as(Matter::DataType::NodeId).id.should eq(0x1122334455667788_u64)
 
       # Verify payload header matches
       decoded_message.payload_header.exchange_id.should eq(payload_header.exchange_id)
@@ -156,7 +156,7 @@ describe "MessageCodec Compatibility with matter.js" do
       # Verify group session
       decoded_message.packet_header.session_type.should eq(Matter::Codec::MessageCodec::SessionType::Group)
       decoded_message.packet_header.destination_group_id.should_not be_nil
-      decoded_message.packet_header.destination_group_id.not_nil!.id.should eq(0xABCD_u16)
+      decoded_message.packet_header.destination_group_id.as(Matter::DataType::GroupId).id.should eq(0xABCD_u16)
     end
 
     it "handles control messages correctly" do

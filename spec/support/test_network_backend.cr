@@ -46,7 +46,7 @@ module Matter
         end
 
         # Sort by RSSI (strongest first)
-        results.sort_by! { |r| -(r.rssi || -100) }
+        results.sort_by! { |result| -(result.rssi || -100) }
         results
       end
 
@@ -74,7 +74,7 @@ module Matter
         )
 
         # Sort by LQI (highest first)
-        results.sort_by! { |r| -(r.lqi || 0_u8).to_i32 }
+        results.sort_by! { |result| -(result.lqi || 0_u8).to_i32 }
         results
       end
 

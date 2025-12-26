@@ -98,22 +98,23 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
       attributes = cluster.attributes
       attributes.size.should eq(4)
 
-      measured_value = attributes.find { |a| a.id.id == 0x0000_u32 }
+      measured_value = attributes.find { |attr| attr.id.id == 0x0000_u32 }
       measured_value.should_not be_nil
-      measured_value.not_nil!.name.should eq("MeasuredValue")
-      measured_value.not_nil!.writable?.should be_false
+      measured_attr = measured_value.as(Matter::Cluster::AttributeMetadata)
+      measured_attr.name.should eq("MeasuredValue")
+      measured_attr.writable?.should be_false
 
-      min_value = attributes.find { |a| a.id.id == 0x0001_u32 }
+      min_value = attributes.find { |attr| attr.id.id == 0x0001_u32 }
       min_value.should_not be_nil
-      min_value.not_nil!.name.should eq("MinMeasuredValue")
+      min_value.as(Matter::Cluster::AttributeMetadata).name.should eq("MinMeasuredValue")
 
-      max_value = attributes.find { |a| a.id.id == 0x0002_u32 }
+      max_value = attributes.find { |attr| attr.id.id == 0x0002_u32 }
       max_value.should_not be_nil
-      max_value.not_nil!.name.should eq("MaxMeasuredValue")
+      max_value.as(Matter::Cluster::AttributeMetadata).name.should eq("MaxMeasuredValue")
 
-      tolerance = attributes.find { |a| a.id.id == 0x0003_u32 }
+      tolerance = attributes.find { |attr| attr.id.id == 0x0003_u32 }
       tolerance.should_not be_nil
-      tolerance.not_nil!.name.should eq("Tolerance")
+      tolerance.as(Matter::Cluster::AttributeMetadata).name.should eq("Tolerance")
     end
 
     it "reads MeasuredValue attribute when set" do
@@ -410,7 +411,7 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
       sensor.update_temperature(celsius_value)
 
       # Read back in Fahrenheit
-      measured = sensor.measured_value.not_nil!
+      measured = sensor.measured_value.as(Int16)
       result_fahrenheit = Matter::Cluster::TemperatureMeasurementCluster.to_fahrenheit(measured)
       result_fahrenheit.should be_close(72.0, 0.2)
     end

@@ -30,8 +30,9 @@ describe Matter::Cluster::NetworkCommissioningCluster do
         features: Matter::Cluster::NetworkCommissioningCluster::Feature::WiFiNetworkInterface
       )
 
-      cluster.supported_wifi_bands.should_not be_nil
-      cluster.supported_wifi_bands.not_nil!.should contain(Matter::Cluster::NetworkCommissioningCluster::WiFiBandEnum::Band2G4)
+      wifi_bands = cluster.supported_wifi_bands
+      wifi_bands.should_not be_nil
+      wifi_bands.as(Array).should contain(Matter::Cluster::NetworkCommissioningCluster::WiFiBandEnum::Band2G4)
     end
 
     it "initializes Thread-specific attributes when Thread feature enabled" do
@@ -96,8 +97,9 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       response = cluster.handle_scan_networks(cmd, failsafe_armed: true)
 
       response.networking_status.should eq(Matter::Cluster::NetworkCommissioningCluster::NetworkCommissioningStatus::Success)
-      response.wifi_scan_results.should_not be_nil
-      response.wifi_scan_results.not_nil!.size.should be > 0
+      wifi_results = response.wifi_scan_results
+      wifi_results.should_not be_nil
+      wifi_results.as(Array).size.should be > 0
     end
 
     it "performs Thread scan when Thread feature enabled" do
@@ -111,8 +113,9 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       response = cluster.handle_scan_networks(cmd, failsafe_armed: true)
 
       response.networking_status.should eq(Matter::Cluster::NetworkCommissioningCluster::NetworkCommissioningStatus::Success)
-      response.thread_scan_results.should_not be_nil
-      response.thread_scan_results.not_nil!.size.should be > 0
+      thread_results = response.thread_scan_results
+      thread_results.should_not be_nil
+      thread_results.as(Array).size.should be > 0
     end
 
     it "performs directed WiFi scan with SSID filter" do
@@ -127,8 +130,9 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       response = cluster.handle_scan_networks(cmd, failsafe_armed: true)
 
       response.networking_status.should eq(Matter::Cluster::NetworkCommissioningCluster::NetworkCommissioningStatus::Success)
-      response.wifi_scan_results.not_nil!.size.should eq(1)
-      response.wifi_scan_results.not_nil![0].ssid.should eq(ssid)
+      wifi_results = response.wifi_scan_results.as(Array)
+      wifi_results.size.should eq(1)
+      wifi_results[0].ssid.should eq(ssid)
     end
 
     it "sorts WiFi results by RSSI (strongest first)" do
@@ -139,7 +143,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
 
       response = cluster.handle_scan_networks(cmd, failsafe_armed: true)
 
-      results = response.wifi_scan_results.not_nil!
+      results = response.wifi_scan_results.as(Array)
       # Verify sorted by RSSI descending
       results.each_cons(2) do |pair|
         (pair[0].rssi || -100).should be >= (pair[1].rssi || -100)
@@ -154,7 +158,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
 
       response = cluster.handle_scan_networks(cmd, failsafe_armed: true)
 
-      results = response.thread_scan_results.not_nil!
+      results = response.thread_scan_results.as(Array)
       # Verify sorted by LQI descending
       results.each_cons(2) do |pair|
         (pair[0].lqi || 0).should be >= (pair[1].lqi || 0)

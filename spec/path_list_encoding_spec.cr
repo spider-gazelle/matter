@@ -33,9 +33,9 @@ describe "AttributePath List-Form Encoding" do
     attribute_elem.should_not be_nil
 
     # Verify the path field values
-    endpoint_elem.not_nil!.value.as(Int).should eq(0)
-    cluster_elem.not_nil!.value.as(Int).should eq(40)
-    attribute_elem.not_nil!.value.as(Int).should eq(9)
+    endpoint_elem.as(TLV::Any).value.as(Int).should eq(0)
+    cluster_elem.as(TLV::Any).value.as(Int).should eq(40)
+    attribute_elem.as(TLV::Any).value.as(Int).should eq(9)
   end
 
   it "round-trips AttributePath through serialization" do

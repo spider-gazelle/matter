@@ -32,7 +32,7 @@ describe Matter::Cluster::BasicInformationCluster do
       node_label: "Other",
       location: "XX"
     )
-    cluster2.restore_state(json.not_nil!)
+    cluster2.restore_state(json.as(String))
 
     cluster2.node_label.should eq("Kitchen")
     cluster2.location.should eq("AU")

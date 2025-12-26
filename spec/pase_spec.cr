@@ -61,8 +61,8 @@ describe Matter::Session::Pase do
       # Check pbkdf_parameters
       pbkdf = decoded.pbkdf_parameters
       pbkdf.should_not be_nil
-      pbkdf.not_nil!.iterations.should eq(1000_u32)
-      pbkdf.not_nil!.salt.should eq(salt)
+      pbkdf.as(Matter::Session::Pase::Definitions::PbkdfParametersTLV).iterations.should eq(1000_u32)
+      pbkdf.as(Matter::Session::Pase::Definitions::PbkdfParametersTLV).salt.should eq(salt)
     end
 
     it "round-trips PBKDF parameter request and response" do
@@ -83,8 +83,8 @@ describe Matter::Session::Pase do
 
       # Verify parameters were correctly transmitted
       commissioner.pbkdf_params.should_not be_nil
-      commissioner.pbkdf_params.not_nil!.iterations.should eq(params.iterations)
-      commissioner.pbkdf_params.not_nil!.salt.should eq(params.salt)
+      commissioner.pbkdf_params.as(Matter::Session::Pase::PbkdfParameters).iterations.should eq(params.iterations)
+      commissioner.pbkdf_params.as(Matter::Session::Pase::PbkdfParameters).salt.should eq(params.salt)
     end
   end
 
@@ -231,7 +231,7 @@ describe Matter::Session::Pase do
       )
       commissioner.process_pbkdf_param_response(response.to_slice)
       p_a = commissioner.generate_pake1
-      p_b = responder.process_pake1(p_a)
+      responder.process_pake1(p_a)
 
       # Now responder can generate confirmation
       confirmation = responder.generate_pake3
@@ -271,7 +271,7 @@ describe Matter::Session::Pase do
       c_a = commissioner.process_pake2(p_b)
 
       # Responder should accept commissioner's confirmation and commissioner should accept responder's.
-      c_a.should eq(responder.secret_and_verifiers.not_nil!.h_ay)
+      c_a.should eq(responder.secret_and_verifiers.as(Matter::Crypto::Spake2p::SecretAndVerifiers).h_ay)
       commissioner.process_pake3(c_b).should be_true
     end
   end

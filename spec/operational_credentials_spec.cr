@@ -330,9 +330,9 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       )
 
       response.should_not be_nil
-      response.not_nil!.nocsr_elements.should_not be_nil
-      response.not_nil!.attestation_signature.should_not be_nil
-      response.not_nil!.attestation_signature.size.should eq(64) # IEEE P1363 format for P-256
+      response.as(Matter::Cluster::OperationalCredentialsCluster::CSRResponse).nocsr_elements.should_not be_nil
+      response.as(Matter::Cluster::OperationalCredentialsCluster::CSRResponse).attestation_signature.should_not be_nil
+      response.as(Matter::Cluster::OperationalCredentialsCluster::CSRResponse).attestation_signature.size.should eq(64) # IEEE P1363 format for P-256
     end
   end
 
@@ -402,7 +402,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       # Try to add again
       response = cluster.handle_add_trusted_root_certificate(cmd, failsafe_armed: true)
       response.should_not be_nil
-      response.not_nil!.status_code.should eq(Matter::Cluster::OperationalCredentialsCluster::NodeOperationalCertStatus::InvalidNoc)
+      response.as(Matter::Cluster::OperationalCredentialsCluster::NOCResponse).status_code.should eq(Matter::Cluster::OperationalCredentialsCluster::NodeOperationalCertStatus::InvalidNoc)
     end
   end
 
@@ -700,7 +700,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       response.status_code.should eq(Matter::Cluster::OperationalCredentialsCluster::NodeOperationalCertStatus::Ok)
 
       updated_fabric = fabric_table.get_fabric(1_u8)
-      updated_fabric.not_nil!.label.should eq("NewLabel")
+      updated_fabric.as(Matter::Fabric).label.should eq("NewLabel")
     end
 
     it "rejects duplicate label" do

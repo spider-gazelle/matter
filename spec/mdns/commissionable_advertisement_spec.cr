@@ -52,7 +52,7 @@ module Matter::MDNS
         ad = CommissionableAdvertisement.new(description, ["192.168.1.100"])
         records = ad.records
 
-        ptr_records = records.select { |r| r.type == DNS::RecordType::PTR.value }
+        ptr_records = records.select { |record| record.type == DNS::RecordType::PTR.value }
 
         # Should have 6 PTR records:
         # - Main service type
@@ -64,19 +64,19 @@ module Matter::MDNS
         ptr_records.size.should eq(6)
 
         # Check for main service type
-        main_ptr = ptr_records.find { |r| r.name == "_matterc._udp.local" }
+        main_ptr = ptr_records.find { |record| record.name == "_matterc._udp.local" }
         main_ptr.should_not be_nil
 
         # Check for device type subtype
-        device_type_ptr = ptr_records.find { |r| r.name == "_T15._sub._matterc._udp.local" }
+        device_type_ptr = ptr_records.find { |record| record.name == "_T15._sub._matterc._udp.local" }
         device_type_ptr.should_not be_nil
 
         # Check for short discriminator subtype
-        short_disc_ptr = ptr_records.find { |r| r.name == "_S8._sub._matterc._udp.local" }
+        short_disc_ptr = ptr_records.find { |record| record.name == "_S8._sub._matterc._udp.local" }
         short_disc_ptr.should_not be_nil
 
         # Check for long discriminator subtype
-        long_disc_ptr = ptr_records.find { |r| r.name == "_L2048._sub._matterc._udp.local" }
+        long_disc_ptr = ptr_records.find { |record| record.name == "_L2048._sub._matterc._udp.local" }
         long_disc_ptr.should_not be_nil
       end
 
@@ -93,7 +93,7 @@ module Matter::MDNS
         ad = CommissionableAdvertisement.new(description, ["192.168.1.100"])
         records = ad.records
 
-        srv_records = records.select { |r| r.type == DNS::RecordType::SRV.value }
+        srv_records = records.select { |record| record.type == DNS::RecordType::SRV.value }
         srv_records.size.should eq(1)
 
         srv = srv_records.first
@@ -115,7 +115,7 @@ module Matter::MDNS
         ad = CommissionableAdvertisement.new(description, ["192.168.1.100"])
         records = ad.records
 
-        txt_records = records.select { |r| r.type == DNS::RecordType::TXT.value }
+        txt_records = records.select { |record| record.type == DNS::RecordType::TXT.value }
         txt_records.size.should eq(1)
 
         txt = txt_records.first
@@ -136,7 +136,7 @@ module Matter::MDNS
         ad = CommissionableAdvertisement.new(description, ["192.168.1.100", "10.0.0.50"])
         records = ad.records
 
-        a_records = records.select { |r| r.type == DNS::RecordType::A.value }
+        a_records = records.select { |record| record.type == DNS::RecordType::A.value }
         a_records.size.should eq(2)
 
         a_records.each do |record|
@@ -158,7 +158,7 @@ module Matter::MDNS
         ad = CommissionableAdvertisement.new(description, ["fe80::1", "2001:db8::1"])
         records = ad.records
 
-        aaaa_records = records.select { |r| r.type == DNS::RecordType::AAAA.value }
+        aaaa_records = records.select { |record| record.type == DNS::RecordType::AAAA.value }
         aaaa_records.size.should eq(2)
 
         aaaa_records.each do |record|

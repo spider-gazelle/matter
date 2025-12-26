@@ -40,26 +40,27 @@ describe Matter::Cluster::BasicInformationCluster do
       attributes.size.should be >= 15
 
       # Check for required attributes
-      data_model_revision = attributes.find { |a| a.id.id == Matter::Cluster::BasicInformationCluster::ATTR_DATA_MODEL_REVISION }
+      data_model_revision = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformationCluster::ATTR_DATA_MODEL_REVISION }
       data_model_revision.should_not be_nil
-      data_model_revision.not_nil!.name.should eq("DataModelRevision")
-      data_model_revision.not_nil!.writable?.should be_false
+      dmr_attr = data_model_revision.as(Matter::Cluster::AttributeMetadata)
+      dmr_attr.name.should eq("DataModelRevision")
+      dmr_attr.writable?.should be_false
 
-      vendor_name = attributes.find { |a| a.id.id == Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME }
+      vendor_name = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME }
       vendor_name.should_not be_nil
-      vendor_name.not_nil!.writable?.should be_false
+      vendor_name.as(Matter::Cluster::AttributeMetadata).writable?.should be_false
 
-      vendor_id = attributes.find { |a| a.id.id == Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_ID }
+      vendor_id = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_ID }
       vendor_id.should_not be_nil
-      vendor_id.not_nil!.writable?.should be_false
+      vendor_id.as(Matter::Cluster::AttributeMetadata).writable?.should be_false
 
-      product_name = attributes.find { |a| a.id.id == Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_NAME }
+      product_name = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_NAME }
       product_name.should_not be_nil
-      product_name.not_nil!.writable?.should be_false
+      product_name.as(Matter::Cluster::AttributeMetadata).writable?.should be_false
 
-      node_label = attributes.find { |a| a.id.id == Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL }
+      node_label = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL }
       node_label.should_not be_nil
-      node_label.not_nil!.writable?.should be_true # User can set node label
+      node_label.as(Matter::Cluster::AttributeMetadata).writable?.should be_true # User can set node label
     end
   end
 

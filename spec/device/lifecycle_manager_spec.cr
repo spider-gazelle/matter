@@ -60,7 +60,7 @@ describe Matter::Device::LifecycleManager do
     advertiser = Matter::FakeAdvertiser.new
     opcreds = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table)
 
-    manager = Matter::Device::LifecycleManager.new(
+    Matter::Device::LifecycleManager.new(
       fabric_table: fabric_table,
       message_handler: handler,
       operational_credentials: opcreds,
@@ -78,7 +78,7 @@ describe Matter::Device::LifecycleManager do
       fabric_session_cleanup_delay: 200.milliseconds
     )
 
-    opcreds.on_fabric_removed.not_nil!.call(1_u8)
+    opcreds.on_fabric_removed.as(Proc(UInt8, Nil)).call(1_u8)
 
     handler.sessions.has_key?(22282_u16).should be_true
     sleep 50.milliseconds

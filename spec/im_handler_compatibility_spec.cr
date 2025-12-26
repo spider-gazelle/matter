@@ -16,7 +16,7 @@ describe "IMHandler - matter.js Compatibility" do
       # Parse ReadRequest
       request = Matter::Protocol::IMHandler.parse_read_request(read_request_bytes)
       request.should_not be_nil
-      request = request.not_nil!
+      request = request.as(Matter::InteractionModel::ReadRequest)
 
       # Verify correct attributes were requested (from matter.js logs)
       # Should have 9 attribute requests:
@@ -71,56 +71,56 @@ describe "IMHandler - matter.js Compatibility" do
 
       # Check specific attribute values
       # 1. GeneralCommissioning.supportsConcurrentConnection (0x4) = true
-      supports_concurrent = response.attribute_reports.find do |r|
-        r.path.cluster == 0x0030 && r.path.attribute == 0x0004
+      supports_concurrent = response.attribute_reports.find do |report|
+        report.path.cluster == 0x0030 && report.path.attribute == 0x0004
       end
       supports_concurrent.should_not be_nil
-      supports_concurrent = supports_concurrent.not_nil!
+      supports_concurrent = supports_concurrent.as(Matter::InteractionModel::AttributeData)
       supports_concurrent.data_version.should eq 0xd34496b8_u32
 
       # 2. GeneralCommissioning.breadcrumb (0x0) = 0
-      breadcrumb = response.attribute_reports.find do |r|
-        r.path.cluster == 0x0030 && r.path.attribute == 0x0000
+      breadcrumb = response.attribute_reports.find do |report|
+        report.path.cluster == 0x0030 && report.path.attribute == 0x0000
       end
       breadcrumb.should_not be_nil
-      breadcrumb = breadcrumb.not_nil!
+      breadcrumb = breadcrumb.as(Matter::InteractionModel::AttributeData)
       breadcrumb.data_version.should eq 0xd34496b8_u32
 
       # 3. GeneralCommissioning.basicCommissioningInfo (0x1)
-      basic_commissioning_info = response.attribute_reports.find do |r|
-        r.path.cluster == 0x0030 && r.path.attribute == 0x0001
+      basic_commissioning_info = response.attribute_reports.find do |report|
+        report.path.cluster == 0x0030 && report.path.attribute == 0x0001
       end
       basic_commissioning_info.should_not be_nil
-      basic_commissioning_info.not_nil!.data_version.should eq 0xd34496b8_u32
+      basic_commissioning_info.as(Matter::InteractionModel::AttributeData).data_version.should eq 0xd34496b8_u32
 
       # 4. GeneralCommissioning.regulatoryConfig (0x2) = 2 (IndoorOutdoor)
-      regulatory_config = response.attribute_reports.find do |r|
-        r.path.cluster == 0x0030 && r.path.attribute == 0x0002
+      regulatory_config = response.attribute_reports.find do |report|
+        report.path.cluster == 0x0030 && report.path.attribute == 0x0002
       end
       regulatory_config.should_not be_nil
-      regulatory_config.not_nil!.data_version.should eq 0xd34496b8_u32
+      regulatory_config.as(Matter::InteractionModel::AttributeData).data_version.should eq 0xd34496b8_u32
 
       # 5. GeneralCommissioning.locationCapability (0x3) = 2 (IndoorOutdoor)
-      location_capability = response.attribute_reports.find do |r|
-        r.path.cluster == 0x0030 && r.path.attribute == 0x0003
+      location_capability = response.attribute_reports.find do |report|
+        report.path.cluster == 0x0030 && report.path.attribute == 0x0003
       end
       location_capability.should_not be_nil
-      location_capability.not_nil!.data_version.should eq 0xd34496b8_u32
+      location_capability.as(Matter::InteractionModel::AttributeData).data_version.should eq 0xd34496b8_u32
 
       # 6. BasicInformation.vendorId (0x2) = 65521 (0xFFF1)
-      vendor_id = response.attribute_reports.find do |r|
-        r.path.cluster == 0x0028 && r.path.attribute == 0x0002
+      vendor_id = response.attribute_reports.find do |report|
+        report.path.cluster == 0x0028 && report.path.attribute == 0x0002
       end
       vendor_id.should_not be_nil
-      vendor_id = vendor_id.not_nil!
+      vendor_id = vendor_id.as(Matter::InteractionModel::AttributeData)
       vendor_id.data_version.should eq 0xe2c160c8_u32
 
       # 7. BasicInformation.productId (0x4) = 32768 (0x8000)
-      product_id = response.attribute_reports.find do |r|
-        r.path.cluster == 0x0028 && r.path.attribute == 0x0004
+      product_id = response.attribute_reports.find do |report|
+        report.path.cluster == 0x0028 && report.path.attribute == 0x0004
       end
       product_id.should_not be_nil
-      product_id = product_id.not_nil!
+      product_id = product_id.as(Matter::InteractionModel::AttributeData)
       product_id.data_version.should eq 0xe2c160c8_u32
     end
 
@@ -166,7 +166,7 @@ describe "IMHandler - matter.js Compatibility" do
 
       # Should have attributeReports array (tag 1) - matches matter.js
       decoded.attribute_reports.should_not be_nil
-      attribute_reports = decoded.attribute_reports.not_nil!
+      attribute_reports = decoded.attribute_reports.as(Array(Matter::InteractionModel::AttributeReportIB))
       attribute_reports.size.should eq 1
 
       # Should have interactionModelRevision (tag 0xFF) = 12
@@ -183,7 +183,7 @@ describe "IMHandler - matter.js Compatibility" do
 
       request = Matter::Protocol::IMHandler.parse_read_request(read_request_bytes)
       request.should_not be_nil
-      request = request.not_nil!
+      request = request.as(Matter::InteractionModel::ReadRequest)
 
       # Initialize clusters with matter.js values
       clusters = {} of Tuple(UInt16, UInt32) => Matter::Cluster::Base
@@ -231,8 +231,8 @@ describe "IMHandler - matter.js Compatibility" do
       crystal_decoded.attribute_reports.should_not be_nil
       matterjs_decoded.attribute_reports.should_not be_nil
 
-      crystal_reports = crystal_decoded.attribute_reports.not_nil!
-      matterjs_reports = matterjs_decoded.attribute_reports.not_nil!
+      crystal_reports = crystal_decoded.attribute_reports.as(Array(Matter::InteractionModel::AttributeReportIB))
+      matterjs_reports = matterjs_decoded.attribute_reports.as(Array(Matter::InteractionModel::AttributeReportIB))
 
       # Should have same number of reports
       crystal_reports.size.should eq matterjs_reports.size

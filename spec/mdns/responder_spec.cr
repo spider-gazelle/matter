@@ -49,7 +49,7 @@ describe Matter::MDNS::Responder do
 
     it "includes correct TXT records" do
       ip = Socket::IPAddress.new("192.168.1.100", 0)
-      responder = Matter::MDNS::Responder.new(
+      Matter::MDNS::Responder.new(
         hostname: "test-device.local",
         ip_addresses: [ip]
       )

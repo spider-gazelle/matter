@@ -166,7 +166,7 @@ describe Matter::Transport::UDPTransport do
 
       initial_count = transport.exchange_manager.active_count
 
-      exchange = transport.send_request(
+      transport.send_request(
         protocol_id: 0_u16,
         message_type: 1_u8,
         payload: Bytes[0x01],

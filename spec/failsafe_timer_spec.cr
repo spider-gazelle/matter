@@ -192,7 +192,7 @@ module Matter
 
         remaining = timer.primary_time_remaining
         remaining.should_not be_nil
-        remaining.not_nil!.total_seconds.should be_close(5.0, 0.5)
+        remaining.as(Time::Span).total_seconds.should be_close(5.0, 0.5)
 
         timer.close
       end
@@ -209,7 +209,7 @@ module Matter
 
         remaining = timer.cumulative_time_remaining
         remaining.should_not be_nil
-        remaining.not_nil!.total_seconds.should be_close(10.0, 0.5)
+        remaining.as(Time::Span).total_seconds.should be_close(10.0, 0.5)
 
         timer.close
       end

@@ -75,10 +75,11 @@ describe Matter::Cluster::DescriptorCluster do
       attributes.should_not be_empty
       attributes.size.should be >= 4
 
-      device_type = attributes.find { |a| a.id.id == Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST }
+      device_type = attributes.find { |attr| attr.id.id == Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST }
       device_type.should_not be_nil
-      device_type.not_nil!.name.should eq("DeviceTypeList")
-      device_type.not_nil!.writable?.should be_false
+      device_type_attr = device_type.as(Matter::Cluster::AttributeMetadata)
+      device_type_attr.name.should eq("DeviceTypeList")
+      device_type_attr.writable?.should be_false
     end
   end
 
@@ -319,7 +320,7 @@ describe Matter::Cluster::DescriptorCluster do
 
       primary = cluster.primary_device_type
       primary.should_not be_nil
-      primary.not_nil!.device_type.should eq(0x0100_u32)
+      primary.as(Matter::Cluster::DescriptorCluster::DeviceTypeStruct).device_type.should eq(0x0100_u32)
     end
   end
 
@@ -412,7 +413,7 @@ describe Matter::Cluster::DescriptorCluster do
         clusters.size.should eq(3)
 
         # Check cluster IDs
-        cluster_ids = clusters.map { |c| c.value.as(Int).to_u32 }
+        cluster_ids = clusters.map { |entry| entry.value.as(Int).to_u32 }
 
         cluster_ids.should contain(0x001D_u32) # Descriptor
         cluster_ids.should contain(0x0006_u32) # On/Off
@@ -460,7 +461,7 @@ describe Matter::Cluster::DescriptorCluster do
         clusters = parsed.value.as(Array(TLV::Any))
         clusters.size.should eq(2)
 
-        cluster_ids = clusters.map { |c| c.value.as(Int).to_u32 }
+        cluster_ids = clusters.map { |entry| entry.value.as(Int).to_u32 }
 
         cluster_ids.should contain(0x0006_u32)
         cluster_ids.should contain(0x0008_u32)
@@ -494,7 +495,7 @@ describe Matter::Cluster::DescriptorCluster do
         parts = parsed.value.as(Array(TLV::Any))
         parts.size.should eq(3)
 
-        endpoint_ids = parts.map { |p| p.value.as(Int).to_u16 }
+        endpoint_ids = parts.map { |part| part.value.as(Int).to_u16 }
 
         endpoint_ids.should contain(1_u16)
         endpoint_ids.should contain(2_u16)

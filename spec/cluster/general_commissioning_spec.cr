@@ -116,10 +116,11 @@ describe Matter::Cluster::GeneralCommissioningCluster do
       attributes.should_not be_empty
       attributes.size.should be >= 5
 
-      breadcrumb = attributes.find { |a| a.id.id == Matter::Cluster::GeneralCommissioningCluster::ATTR_BREADCRUMB }
+      breadcrumb = attributes.find { |attr| attr.id.id == Matter::Cluster::GeneralCommissioningCluster::ATTR_BREADCRUMB }
       breadcrumb.should_not be_nil
-      breadcrumb.not_nil!.name.should eq("Breadcrumb")
-      breadcrumb.not_nil!.writable?.should be_true
+      breadcrumb_attr = breadcrumb.as(Matter::Cluster::AttributeMetadata)
+      breadcrumb_attr.name.should eq("Breadcrumb")
+      breadcrumb_attr.writable?.should be_true
     end
 
     it "provides command metadata" do
@@ -130,9 +131,9 @@ describe Matter::Cluster::GeneralCommissioningCluster do
       commands.should_not be_empty
       commands.size.should be >= 3
 
-      arm_failsafe = commands.find { |c| c.id.id == Matter::Cluster::GeneralCommissioningCluster::CMD_ARM_FAIL_SAFE }
+      arm_failsafe = commands.find { |cmd| cmd.id.id == Matter::Cluster::GeneralCommissioningCluster::CMD_ARM_FAIL_SAFE }
       arm_failsafe.should_not be_nil
-      arm_failsafe.not_nil!.name.should eq("ArmFailSafe")
+      arm_failsafe.as(Matter::Cluster::CommandMetadata).name.should eq("ArmFailSafe")
     end
   end
 

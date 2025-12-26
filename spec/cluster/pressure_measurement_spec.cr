@@ -321,20 +321,20 @@ describe Matter::Cluster::PressureMeasurementCluster do
       )
 
       # Verify initial value
-      kpa = Matter::Cluster::PressureMeasurementCluster.to_kilopascals(sensor.measured_value.not_nil!)
+      kpa = Matter::Cluster::PressureMeasurementCluster.to_kilopascals(sensor.measured_value.as(Int16))
       kpa.should be_close(101.3, 0.1)
 
-      hpa = Matter::Cluster::PressureMeasurementCluster.to_hectopascals(sensor.measured_value.not_nil!)
+      hpa = Matter::Cluster::PressureMeasurementCluster.to_hectopascals(sensor.measured_value.as(Int16))
       hpa.should be_close(1013.0, 1.0)
 
       # High pressure system moves in
       sensor.update_pressure(1030_i16) # 103.0 kPa (1030 hPa)
-      hpa = Matter::Cluster::PressureMeasurementCluster.to_hectopascals(sensor.measured_value.not_nil!)
+      hpa = Matter::Cluster::PressureMeasurementCluster.to_hectopascals(sensor.measured_value.as(Int16))
       hpa.should be_close(1030.0, 1.0)
 
       # Low pressure system (storm)
       sensor.update_pressure(980_i16) # 98.0 kPa (980 hPa)
-      hpa = Matter::Cluster::PressureMeasurementCluster.to_hectopascals(sensor.measured_value.not_nil!)
+      hpa = Matter::Cluster::PressureMeasurementCluster.to_hectopascals(sensor.measured_value.as(Int16))
       hpa.should be_close(980.0, 1.0)
     end
 
@@ -351,7 +351,7 @@ describe Matter::Cluster::PressureMeasurementCluster do
       )
 
       # Verify pressure at altitude
-      kpa = Matter::Cluster::PressureMeasurementCluster.to_kilopascals(sensor.measured_value.not_nil!)
+      kpa = Matter::Cluster::PressureMeasurementCluster.to_kilopascals(sensor.measured_value.as(Int16))
       kpa.should be_close(79.5, 0.5)
     end
 
@@ -367,12 +367,12 @@ describe Matter::Cluster::PressureMeasurementCluster do
       )
 
       # Verify vacuum pressure
-      kpa = Matter::Cluster::PressureMeasurementCluster.to_kilopascals(sensor.measured_value.not_nil!)
+      kpa = Matter::Cluster::PressureMeasurementCluster.to_kilopascals(sensor.measured_value.as(Int16))
       kpa.should eq(-50.0)
 
       # Increase vacuum (more negative)
       sensor.update_pressure(-800_i16)
-      kpa = Matter::Cluster::PressureMeasurementCluster.to_kilopascals(sensor.measured_value.not_nil!)
+      kpa = Matter::Cluster::PressureMeasurementCluster.to_kilopascals(sensor.measured_value.as(Int16))
       kpa.should eq(-80.0)
     end
 

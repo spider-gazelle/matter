@@ -15,12 +15,13 @@ describe Matter::Cluster::AccessControlCluster do
       # Parse the WriteRequest using im_handler
       request = Matter::Protocol::IMHandler.parse_write_request(write_request_bytes)
       request.should_not be_nil
+      write_req = request.as(Matter::InteractionModel::WriteRequest)
 
       # Should have 1 write request
-      request.not_nil!.write_requests.size.should eq(1)
+      write_req.write_requests.size.should eq(1)
 
       # Extract the value that will be passed to write_attribute
-      acl_value = request.not_nil!.write_requests[0].value
+      acl_value = write_req.write_requests[0].value
       puts "ACL value size: #{acl_value.size} bytes"
       puts "ACL value hex: #{acl_value.hexstring}"
 
@@ -164,10 +165,11 @@ describe Matter::Cluster::AccessControlCluster do
       attributes.should_not be_empty
       attributes.size.should be >= 5
 
-      acl_attr = attributes.find { |a| a.id.id == Matter::Cluster::AccessControlCluster::ATTR_ACL }
+      acl_attr = attributes.find { |attr| attr.id.id == Matter::Cluster::AccessControlCluster::ATTR_ACL }
       acl_attr.should_not be_nil
-      acl_attr.not_nil!.name.should eq("ACL")
-      acl_attr.not_nil!.writable?.should be_true
+      acl_attribute = acl_attr.as(Matter::Cluster::AttributeMetadata)
+      acl_attribute.name.should eq("ACL")
+      acl_attribute.writable?.should be_true
     end
   end
 
@@ -215,8 +217,9 @@ describe Matter::Cluster::AccessControlCluster do
         fabric_index: 1_u8
       )
 
-      entry.targets.should_not be_nil
-      entry.targets.not_nil!.size.should eq(1)
+      targets = entry.targets
+      targets.should_not be_nil
+      targets.as(Array).size.should eq(1)
     end
   end
 
@@ -698,17 +701,18 @@ describe Matter::Cluster::AccessControlCluster do
         cluster2.acl.size.should eq(1)
         decoded_targets = cluster2.acl[0].targets
         decoded_targets.should_not be_nil
-        decoded_targets.not_nil!.size.should eq(2)
+        targets_array = decoded_targets.as(Array)
+        targets_array.size.should eq(2)
 
         # First target
-        decoded_targets.not_nil![0].cluster.should eq(0x0006_u32)
-        decoded_targets.not_nil![0].endpoint.should eq(1_u16)
-        decoded_targets.not_nil![0].device_type.should be_nil
+        targets_array[0].cluster.should eq(0x0006_u32)
+        targets_array[0].endpoint.should eq(1_u16)
+        targets_array[0].device_type.should be_nil
 
         # Second target
-        decoded_targets.not_nil![1].cluster.should be_nil
-        decoded_targets.not_nil![1].endpoint.should be_nil
-        decoded_targets.not_nil![1].device_type.should eq(0x0100_u32)
+        targets_array[1].cluster.should be_nil
+        targets_array[1].endpoint.should be_nil
+        targets_array[1].device_type.should eq(0x0100_u32)
       end
 
       it "encodes and decodes multiple ACL entries" do

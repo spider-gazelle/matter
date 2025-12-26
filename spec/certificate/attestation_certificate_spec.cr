@@ -180,7 +180,7 @@ describe Matter::Certificate::AttestationCertificateManager do
     # Find vendor ID entry
     vid_entry = entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.1") }
     vid_entry.should_not be_nil
-    vid_entry.not_nil![1].should eq("FFF1")
+    vid_entry.as(Tuple(String, String))[1].should eq("FFF1")
 
     # PAI should NOT include productId (it's only in DAC)
     pid_entry = entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.2") }
@@ -204,12 +204,12 @@ describe Matter::Certificate::AttestationCertificateManager do
     # Find vendor ID entry
     vid_entry = entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.1") }
     vid_entry.should_not be_nil
-    vid_entry.not_nil![1].should eq("FFF1")
+    vid_entry.as(Tuple(String, String))[1].should eq("FFF1")
 
     # Find product ID entry
     pid_entry = entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.2") }
     pid_entry.should_not be_nil
-    pid_entry.not_nil![1].should eq("8000")
+    pid_entry.as(Tuple(String, String))[1].should eq("8000")
   end
 
   it "properly zero-pads vendor/product IDs in subject DN" do
@@ -224,7 +224,7 @@ describe Matter::Certificate::AttestationCertificateManager do
 
     vid_entry = pai_entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.1") }
     vid_entry.should_not be_nil
-    vid_entry.not_nil![1].should eq("00AB")
+    vid_entry.as(Tuple(String, String))[1].should eq("00AB")
 
     # PAI should NOT include productId
     pid_entry = pai_entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.2") }
@@ -237,10 +237,10 @@ describe Matter::Certificate::AttestationCertificateManager do
 
     vid_entry = dac_entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.1") }
     vid_entry.should_not be_nil
-    vid_entry.not_nil![1].should eq("00AB")
+    vid_entry.as(Tuple(String, String))[1].should eq("00AB")
 
     pid_entry = dac_entries.find { |(oid, _value)| oid.starts_with?("1.3.6.1.4.1.37244.2.2") }
     pid_entry.should_not be_nil
-    pid_entry.not_nil![1].should eq("0012")
+    pid_entry.as(Tuple(String, String))[1].should eq("0012")
   end
 end

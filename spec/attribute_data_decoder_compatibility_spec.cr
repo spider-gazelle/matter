@@ -22,13 +22,13 @@ describe "AttributeDataDecoder matter.js Compatibility" do
 
     # Verify structure
     report.attribute_reports.should_not be_nil
-    attr_reports = report.attribute_reports.not_nil!
+    attr_reports = report.attribute_reports.as(Array(Matter::InteractionModel::AttributeReportIB))
     attr_reports.size.should eq(1)
 
     # First report should have attribute_data
     first_report = attr_reports[0]
     first_report.attribute_data.should_not be_nil
-    attr_data = first_report.attribute_data.not_nil!
+    attr_data = first_report.attribute_data.as(Matter::InteractionModel::AttributeDataIB)
 
     # Verify dataVersion
     attr_data.data_version.should eq(2020087125_u32) # 0x78681555 in little-endian
@@ -87,13 +87,13 @@ describe "AttributeDataDecoder matter.js Compatibility" do
     # Decode back and verify
     decoded = Matter::InteractionModel::ReportDataMessage.from_slice(encoded)
     decoded.attribute_reports.should_not be_nil
-    decoded.attribute_reports.not_nil!.size.should eq(1)
+    decoded.attribute_reports.as(Array(Matter::InteractionModel::AttributeReportIB)).size.should eq(1)
     decoded.interaction_model_revision.should eq(1_u8)
 
     # Verify the path values are correct after round-trip
-    report = decoded.attribute_reports.not_nil!.first
+    report = decoded.attribute_reports.as(Array(Matter::InteractionModel::AttributeReportIB)).first
     report.attribute_data.should_not be_nil
-    path = report.attribute_data.not_nil!.path
+    path = report.attribute_data.as(Matter::InteractionModel::AttributeDataIB).path
     path.endpoint.should eq(0_u16)
     path.cluster.should eq(0x28_u32)
     path.attribute.should eq(9_u32)

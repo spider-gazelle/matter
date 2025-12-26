@@ -21,7 +21,7 @@ describe Matter::Cluster::GroupsCluster do
     json.should_not be_nil
 
     cluster2 = Matter::Cluster::GroupsCluster.new(endpoint)
-    cluster2.restore_state(json.not_nil!)
+    cluster2.restore_state(json.as(String))
 
     cluster2.group_count.should eq(1)
     cluster2.groups[1_u16].should eq("Test")

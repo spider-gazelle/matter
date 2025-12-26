@@ -138,16 +138,16 @@ describe Matter::Cluster::FanControlCluster do
 
     it "marks fanMode as writable" do
       cluster = Matter::Cluster::FanControlCluster.new(endpoint_id)
-      attr = cluster.attributes.find { |a| a.name == "fanMode" }
+      attr = cluster.attributes.find { |attribute| attribute.name == "fanMode" }
       attr.should_not be_nil
-      attr.not_nil!.writable?.should be_true
+      attr.as(Matter::Cluster::AttributeMetadata).writable?.should be_true
     end
 
     it "marks percentSetting as writable" do
       cluster = Matter::Cluster::FanControlCluster.new(endpoint_id)
-      attr = cluster.attributes.find { |a| a.name == "percentSetting" }
+      attr = cluster.attributes.find { |attribute| attribute.name == "percentSetting" }
       attr.should_not be_nil
-      attr.not_nil!.writable?.should be_true
+      attr.as(Matter::Cluster::AttributeMetadata).writable?.should be_true
     end
   end
 

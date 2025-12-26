@@ -127,7 +127,7 @@ describe Matter::MDNS::RecordBuilder do
       io = IO::Memory.new(record.resource_data)
 
       # Read first record
-      length1 = io.read_byte.not_nil!
+      length1 = io.read_byte.as(UInt8)
       txt1 = Bytes.new(length1)
       io.read_fully(txt1)
       txt1_str = String.new(txt1)

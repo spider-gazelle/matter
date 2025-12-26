@@ -157,10 +157,11 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       attributes.should_not be_empty
       attributes.size.should be >= 4
 
-      max_networks = attributes.find { |a| a.id.id == Matter::Cluster::NetworkCommissioningCluster::ATTR_MAX_NETWORKS }
+      max_networks = attributes.find { |attr| attr.id.id == Matter::Cluster::NetworkCommissioningCluster::ATTR_MAX_NETWORKS }
       max_networks.should_not be_nil
-      max_networks.not_nil!.name.should eq("MaxNetworks")
-      max_networks.not_nil!.writable?.should be_false
+      max_networks_attr = max_networks.as(Matter::Cluster::AttributeMetadata)
+      max_networks_attr.name.should eq("MaxNetworks")
+      max_networks_attr.writable?.should be_false
     end
 
     it "provides command metadata" do
@@ -174,9 +175,9 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       commands.should_not be_empty
       commands.size.should be >= 6
 
-      scan_command = commands.find { |c| c.id.id == Matter::Cluster::NetworkCommissioningCluster::CMD_SCAN_NETWORKS }
+      scan_command = commands.find { |cmd| cmd.id.id == Matter::Cluster::NetworkCommissioningCluster::CMD_SCAN_NETWORKS }
       scan_command.should_not be_nil
-      scan_command.not_nil!.name.should eq("ScanNetworks")
+      scan_command.as(Matter::Cluster::CommandMetadata).name.should eq("ScanNetworks")
     end
   end
 
@@ -270,7 +271,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
 
       connected = cluster.connected_network
       connected.should_not be_nil
-      connected.not_nil!.network_id.should eq(ssid2)
+      connected.as(Matter::Cluster::NetworkCommissioningCluster::NetworkInfo).network_id.should eq(ssid2)
     end
 
     it "returns nil when no network connected" do

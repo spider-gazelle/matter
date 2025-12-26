@@ -168,7 +168,7 @@ describe Matter::Endpoint do
 
       retrieved = endpoint.get_cluster(0x0006_u32)
       retrieved.should_not be_nil
-      retrieved.not_nil!.cluster_id.id.should eq(0x0006_u32)
+      retrieved.as(Matter::Cluster::Base).cluster_id.id.should eq(0x0006_u32)
     end
 
     it "returns nil for missing cluster" do
@@ -377,7 +377,7 @@ describe Matter::MatterNode do
 
       retrieved = node.get_endpoint(1_u16)
       retrieved.should_not be_nil
-      retrieved.not_nil!.endpoint_id.number.should eq(1_u16)
+      retrieved.as(Matter::Endpoint).endpoint_id.number.should eq(1_u16)
     end
 
     it "returns nil for missing endpoint" do

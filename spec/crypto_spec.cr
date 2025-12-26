@@ -20,8 +20,8 @@ describe Matter::Crypto do
       key = Matter::Crypto::Key.generate_key_pair
       pub = key.public_bits
       pub.should_not be_nil
-      pub.not_nil!.size.should eq(65)
-      pub.not_nil![0].should eq(0x04) # Uncompressed format marker
+      pub.as(Bytes).size.should eq(65)
+      pub.as(Bytes)[0].should eq(0x04) # Uncompressed format marker
     end
 
     it "imports public key from uncompressed format" do
@@ -59,7 +59,7 @@ describe Matter::Crypto do
       private_key[-5, 5].should eq(short_key)
 
       # First 27 bytes should be zeros
-      private_key[0, 27].all? { |b| b == 0 }.should be_true
+      private_key[0, 27].all? { |byte| byte == 0 }.should be_true
     end
   end
 
@@ -409,10 +409,6 @@ it "verifies AES S-box generation" do
   # Generate tables
   key = Bytes.new(16, 0_u8)
   aes = Matter::Crypto::AES::Aes.new(key)
-
-  # Known AES S-box values (first 16 entries)
-  expected_sbox = [0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5,
-                   0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76]
 
   # Access the S-box through a test encryption to force table generation
   # We'll need to access the tables somehow...

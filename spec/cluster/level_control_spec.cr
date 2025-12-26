@@ -44,15 +44,16 @@ describe Matter::Cluster::LevelControlCluster do
       attributes.should_not be_empty
       attributes.size.should be >= 3
 
-      current_level = attributes.find { |a| a.id.id == Matter::Cluster::LevelControlCluster::ATTR_CURRENT_LEVEL }
+      current_level = attributes.find { |attr| attr.id.id == Matter::Cluster::LevelControlCluster::ATTR_CURRENT_LEVEL }
       current_level.should_not be_nil
-      current_level.not_nil!.name.should eq("currentLevel")
-      current_level.not_nil!.writable?.should be_false
+      current_level_attr = current_level.as(Matter::Cluster::AttributeMetadata)
+      current_level_attr.name.should eq("currentLevel")
+      current_level_attr.writable?.should be_false
 
-      min_level = attributes.find { |a| a.id.id == Matter::Cluster::LevelControlCluster::ATTR_MIN_LEVEL }
+      min_level = attributes.find { |attr| attr.id.id == Matter::Cluster::LevelControlCluster::ATTR_MIN_LEVEL }
       min_level.should_not be_nil
 
-      max_level = attributes.find { |a| a.id.id == Matter::Cluster::LevelControlCluster::ATTR_MAX_LEVEL }
+      max_level = attributes.find { |attr| attr.id.id == Matter::Cluster::LevelControlCluster::ATTR_MAX_LEVEL }
       max_level.should_not be_nil
     end
 
@@ -101,17 +102,17 @@ describe Matter::Cluster::LevelControlCluster do
       commands = cluster.commands
       commands.size.should be >= 4
 
-      move_to_level = commands.find { |c| c.id.id == Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL }
+      move_to_level = commands.find { |cmd| cmd.id.id == Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL }
       move_to_level.should_not be_nil
-      move_to_level.not_nil!.name.should eq("moveToLevel")
+      move_to_level.as(Matter::Cluster::CommandMetadata).name.should eq("moveToLevel")
 
-      move = commands.find { |c| c.id.id == Matter::Cluster::LevelControlCluster::CMD_MOVE }
+      move = commands.find { |cmd| cmd.id.id == Matter::Cluster::LevelControlCluster::CMD_MOVE }
       move.should_not be_nil
 
-      step = commands.find { |c| c.id.id == Matter::Cluster::LevelControlCluster::CMD_STEP }
+      step = commands.find { |cmd| cmd.id.id == Matter::Cluster::LevelControlCluster::CMD_STEP }
       step.should_not be_nil
 
-      stop = commands.find { |c| c.id.id == Matter::Cluster::LevelControlCluster::CMD_STOP }
+      stop = commands.find { |cmd| cmd.id.id == Matter::Cluster::LevelControlCluster::CMD_STOP }
       stop.should_not be_nil
     end
 

@@ -218,7 +218,7 @@ module Matter::Cluster
           GroupKeyManagementCluster::KeySetReadRequest.new(1_u16),
           fabric_index
         )
-        read_response.not_nil!.group_key_set.epoch_start_time0.should eq(2000_u64)
+        read_response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.epoch_start_time0.should eq(2000_u64)
       end
 
       it "enforces max_group_keys_per_fabric limit" do
@@ -312,8 +312,8 @@ module Matter::Cluster
           fabric_index
         )
         response.should_not be_nil
-        response.not_nil!.group_key_set.group_key_set_id.should eq(1_u16)
-        response.not_nil!.group_key_set.epoch_start_time0.should eq(1234_u64)
+        response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.group_key_set_id.should eq(1_u16)
+        response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.epoch_start_time0.should eq(1234_u64)
       end
 
       it "returns nil for non-existent key set" do
@@ -346,13 +346,13 @@ module Matter::Cluster
         response.should_not be_nil
 
         # Key material should be nil (sanitized)
-        response.not_nil!.group_key_set.epoch_key0.should be_nil
-        response.not_nil!.group_key_set.epoch_key1.should be_nil
-        response.not_nil!.group_key_set.epoch_key2.should be_nil
+        response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.epoch_key0.should be_nil
+        response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.epoch_key1.should be_nil
+        response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.epoch_key2.should be_nil
 
         # But start times should be present
-        response.not_nil!.group_key_set.epoch_start_time0.should eq(1000_u64)
-        response.not_nil!.group_key_set.epoch_start_time1.should eq(2000_u64)
+        response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.epoch_start_time0.should eq(1000_u64)
+        response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.epoch_start_time1.should eq(2000_u64)
       end
 
       it "isolates fabrics" do
@@ -888,7 +888,7 @@ module Matter::Cluster
         # get_key_set should return actual keys (for crypto operations)
         retrieved = cluster.get_key_set(1_u16, fabric_index)
         retrieved.should_not be_nil
-        retrieved.not_nil!.epoch_key0.should eq(key_bytes)
+        retrieved.as(GroupKeyManagementCluster::GroupKeySetStruct).epoch_key0.should eq(key_bytes)
       end
 
       it "returns nil for non-existent key set" do

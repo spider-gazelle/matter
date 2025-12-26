@@ -67,7 +67,7 @@ describe "Descriptor Integration" do
       # Verify device type can be discovered
       primary_type = descriptor.primary_device_type
       primary_type.should_not be_nil
-      primary_type.not_nil!.device_type.should eq(0x0100_u32)
+      primary_type.as(Matter::Cluster::DescriptorCluster::DeviceTypeStruct).device_type.should eq(0x0100_u32)
 
       # Controller would read this over the network
       device_types_tlv = descriptor.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
@@ -120,7 +120,7 @@ describe "Descriptor Integration" do
       clusters = parsed.value.as(Array(TLV::Any))
 
       # Convert to cluster IDs
-      cluster_ids = clusters.map { |c| extract_int_value(c) }
+      cluster_ids = clusters.map { |cluster| extract_int_value(cluster) }
 
       # Controller knows it can dim this light
       cluster_ids.should contain(Matter::Cluster::LevelControlCluster::CLUSTER_ID)
@@ -159,7 +159,7 @@ describe "Descriptor Integration" do
       parts.size.should eq(2)
 
       # Controller now knows to query endpoints 1 and 2
-      endpoint_ids = parts.map { |p| extract_u16_value(p) }
+      endpoint_ids = parts.map { |part| extract_u16_value(part) }
       endpoint_ids.should contain(1_u16)
       endpoint_ids.should contain(2_u16)
 
@@ -251,7 +251,7 @@ describe "Descriptor Integration" do
       end
 
       # Verify bridge structure
-      root.primary_device_type.not_nil!.device_type.should eq(0x000E_u32)
+      root.primary_device_type.as(Matter::Cluster::DescriptorCluster::DeviceTypeStruct).device_type.should eq(0x000E_u32)
       root.parts_list.size.should eq(5)
 
       # Each bridged device would have its own endpoint with descriptor
@@ -307,7 +307,7 @@ describe "Descriptor Integration" do
       clients = parsed.value.as(Array(TLV::Any))
       clients.size.should eq(2)
 
-      client_ids = clients.map { |c| extract_int_value(c) }
+      client_ids = clients.map { |client| extract_int_value(client) }
 
       # Controller knows this switch can be bound to On/Off and Level Control devices
       client_ids.should contain(Matter::Cluster::OnOffCluster::CLUSTER_ID)
@@ -344,7 +344,7 @@ describe "Descriptor Integration" do
       parsed = TLV::Any.from_slice(servers_tlv.as(Bytes))
       clusters = parsed.value.as(Array(TLV::Any))
 
-      cluster_ids = clusters.map { |c| extract_int_value(c) }
+      cluster_ids = clusters.map { |cluster| extract_int_value(cluster) }
 
       # Verify mandatory root clusters present
       cluster_ids.should contain(Matter::Cluster::DescriptorCluster::CLUSTER_ID)
@@ -356,7 +356,7 @@ describe "Descriptor Integration" do
       parsed = TLV::Any.from_slice(parts_tlv.as(Bytes))
       parts = parsed.value.as(Array(TLV::Any))
 
-      child_endpoints = parts.map { |p| extract_u16_value(p) }
+      child_endpoints = parts.map { |part| extract_u16_value(part) }
 
       child_endpoints.size.should eq(2)
       child_endpoints.should contain(1_u16)

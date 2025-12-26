@@ -51,16 +51,18 @@ describe Matter::Cluster::IdentifyCluster do
       attributes.should_not be_empty
       attributes.size.should be >= 2
 
-      identify_time = attributes.find { |a| a.id.id == Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME }
+      identify_time = attributes.find { |attr| attr.id.id == Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME }
       identify_time.should_not be_nil
-      identify_time.not_nil!.name.should eq("IdentifyTime")
-      identify_time.not_nil!.type.should eq(:uint16)
-      identify_time.not_nil!.writable?.should be_true
+      identify_time_attr = identify_time.as(Matter::Cluster::AttributeMetadata)
+      identify_time_attr.name.should eq("IdentifyTime")
+      identify_time_attr.type.should eq(:uint16)
+      identify_time_attr.writable?.should be_true
 
-      identify_type = attributes.find { |a| a.id.id == Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TYPE }
+      identify_type = attributes.find { |attr| attr.id.id == Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TYPE }
       identify_type.should_not be_nil
-      identify_type.not_nil!.name.should eq("IdentifyType")
-      identify_type.not_nil!.writable?.should be_false
+      identify_type_attr = identify_type.as(Matter::Cluster::AttributeMetadata)
+      identify_type_attr.name.should eq("IdentifyType")
+      identify_type_attr.writable?.should be_false
     end
 
     it "reads IdentifyTime attribute" do
@@ -119,13 +121,13 @@ describe Matter::Cluster::IdentifyCluster do
       commands = cluster.commands
       commands.size.should eq(2)
 
-      identify_cmd = commands.find { |c| c.id.id == Matter::Cluster::IdentifyCluster::CMD_IDENTIFY }
+      identify_cmd = commands.find { |cmd| cmd.id.id == Matter::Cluster::IdentifyCluster::CMD_IDENTIFY }
       identify_cmd.should_not be_nil
-      identify_cmd.not_nil!.name.should eq("Identify")
+      identify_cmd.as(Matter::Cluster::CommandMetadata).name.should eq("Identify")
 
-      trigger_effect_cmd = commands.find { |c| c.id.id == Matter::Cluster::IdentifyCluster::CMD_TRIGGER_EFFECT }
+      trigger_effect_cmd = commands.find { |cmd| cmd.id.id == Matter::Cluster::IdentifyCluster::CMD_TRIGGER_EFFECT }
       trigger_effect_cmd.should_not be_nil
-      trigger_effect_cmd.not_nil!.name.should eq("TriggerEffect")
+      trigger_effect_cmd.as(Matter::Cluster::CommandMetadata).name.should eq("TriggerEffect")
     end
 
     it "executes Identify command" do

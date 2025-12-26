@@ -28,11 +28,12 @@ describe Matter::Cluster::OnOffCluster do
       attributes = cluster.attributes
       attributes.should_not be_empty
 
-      on_off_attr = attributes.find { |a| a.id.id == Matter::Cluster::OnOffCluster::ATTR_ON_OFF }
+      on_off_attr = attributes.find { |attr| attr.id.id == Matter::Cluster::OnOffCluster::ATTR_ON_OFF }
       on_off_attr.should_not be_nil
-      on_off_attr.not_nil!.name.should eq("onOff")
-      on_off_attr.not_nil!.type.should eq(:bool)
-      on_off_attr.not_nil!.writable?.should be_false
+      on_off_attribute = on_off_attr.as(Matter::Cluster::AttributeMetadata)
+      on_off_attribute.name.should eq("onOff")
+      on_off_attribute.type.should eq(:bool)
+      on_off_attribute.writable?.should be_false
     end
 
     it "reads OnOff attribute when off" do
@@ -74,17 +75,17 @@ describe Matter::Cluster::OnOffCluster do
       commands = cluster.commands
       commands.size.should be >= 3
 
-      off_cmd = commands.find { |c| c.id.id == Matter::Cluster::OnOffCluster::CMD_OFF }
+      off_cmd = commands.find { |cmd| cmd.id.id == Matter::Cluster::OnOffCluster::CMD_OFF }
       off_cmd.should_not be_nil
-      off_cmd.not_nil!.name.should eq("off")
+      off_cmd.as(Matter::Cluster::CommandMetadata).name.should eq("off")
 
-      on_cmd = commands.find { |c| c.id.id == Matter::Cluster::OnOffCluster::CMD_ON }
+      on_cmd = commands.find { |cmd| cmd.id.id == Matter::Cluster::OnOffCluster::CMD_ON }
       on_cmd.should_not be_nil
-      on_cmd.not_nil!.name.should eq("on")
+      on_cmd.as(Matter::Cluster::CommandMetadata).name.should eq("on")
 
-      toggle_cmd = commands.find { |c| c.id.id == Matter::Cluster::OnOffCluster::CMD_TOGGLE }
+      toggle_cmd = commands.find { |cmd| cmd.id.id == Matter::Cluster::OnOffCluster::CMD_TOGGLE }
       toggle_cmd.should_not be_nil
-      toggle_cmd.not_nil!.name.should eq("toggle")
+      toggle_cmd.as(Matter::Cluster::CommandMetadata).name.should eq("toggle")
     end
 
     describe "Off command" do

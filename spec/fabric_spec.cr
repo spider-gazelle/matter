@@ -521,7 +521,7 @@ describe Matter::FabricTable do
       )
 
       fabric.should_not be_nil
-      fabric.not_nil!.fabric_index.should eq(1_u8)
+      fabric.as(Matter::Fabric).fabric_index.should eq(1_u8)
       table.size.should eq(1)
     end
 
@@ -737,7 +737,7 @@ describe Matter::FabricTable do
       table.add_fabric(fabric)
       found = table.get_fabric(5_u8)
       found.should_not be_nil
-      found.not_nil!.fabric_id.should eq(0x1_u64)
+      found.as(Matter::Fabric).fabric_id.should eq(0x1_u64)
     end
 
     it "finds fabric by fabric ID" do
@@ -759,7 +759,7 @@ describe Matter::FabricTable do
       table.add_fabric(fabric)
       found = table.find_by_fabric_id(0xDEADBEEF_u64)
       found.should_not be_nil
-      found.not_nil!.fabric_index.should eq(1_u8)
+      found.as(Matter::Fabric).fabric_index.should eq(1_u8)
     end
   end
 
@@ -798,7 +798,7 @@ describe Matter::FabricTable do
 
       found = table2.get_fabric(1_u8)
       found.should_not be_nil
-      found.not_nil!.label.should eq("Persisted")
+      found.as(Matter::Fabric).label.should eq("Persisted")
     end
   end
 end

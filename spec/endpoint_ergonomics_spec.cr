@@ -18,8 +18,8 @@ describe "Endpoint Ergonomics" do
       # New way: endpoint.get_cluster(Matter::Cluster::OnOffCluster)
       cluster = endpoint.get_cluster(Matter::Cluster::OnOffCluster)
       cluster.should_not be_nil
-      cluster.not_nil!.cluster_id.id.should eq(0x0006_u32)
-      cluster.not_nil!.on_off?.should be_false
+      cluster.as(Matter::Cluster::OnOffCluster).cluster_id.id.should eq(0x0006_u32)
+      cluster.as(Matter::Cluster::OnOffCluster).on_off?.should be_false
     end
 
     it "gets cluster with bang method that raises on missing" do
@@ -40,11 +40,11 @@ describe "Endpoint Ergonomics" do
       endpoint.add_cluster(level_control)
       node.add_endpoint(endpoint)
 
-      # Old way: node.get_endpoint(1_u16).not_nil!.get_cluster(0x0008_u32)
+      # Old way: node.get_endpoint(1_u16).get_cluster(0x0008_u32)
       # New way: node.get_cluster(1_u16, Matter::Cluster::LevelControlCluster)
       cluster = node.get_cluster(1_u16, Matter::Cluster::LevelControlCluster)
       cluster.should_not be_nil
-      cluster.not_nil!.current_level.should eq(50_u8)
+      cluster.as(Matter::Cluster::LevelControlCluster).current_level.should eq(50_u8)
     end
   end
 

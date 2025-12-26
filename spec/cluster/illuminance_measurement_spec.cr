@@ -376,17 +376,17 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
 
       # Verify initial value
       sensor.measured_value.should_not be_nil
-      lux = Matter::Cluster::IlluminanceMeasurementCluster.to_lux(sensor.measured_value.not_nil!)
+      lux = Matter::Cluster::IlluminanceMeasurementCluster.to_lux(sensor.measured_value.as(UInt16))
       lux.round.should be_close(300.0, 10.0)
 
       # Lights turned on - increase to 500 lux
       sensor.update_illuminance(Matter::Cluster::IlluminanceMeasurementCluster.from_lux(500.0))
-      lux = Matter::Cluster::IlluminanceMeasurementCluster.to_lux(sensor.measured_value.not_nil!)
+      lux = Matter::Cluster::IlluminanceMeasurementCluster.to_lux(sensor.measured_value.as(UInt16))
       lux.round.should be_close(500.0, 10.0)
 
       # Lights dimmed - decrease to 200 lux
       sensor.update_illuminance(Matter::Cluster::IlluminanceMeasurementCluster.from_lux(200.0))
-      lux = Matter::Cluster::IlluminanceMeasurementCluster.to_lux(sensor.measured_value.not_nil!)
+      lux = Matter::Cluster::IlluminanceMeasurementCluster.to_lux(sensor.measured_value.as(UInt16))
       lux.round.should be_close(200.0, 10.0)
     end
 
@@ -406,17 +406,17 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
       )
 
       # Verify measurement
-      lux = Matter::Cluster::IlluminanceMeasurementCluster.to_lux(sensor.measured_value.not_nil!)
+      lux = Matter::Cluster::IlluminanceMeasurementCluster.to_lux(sensor.measured_value.as(UInt16))
       lux.round.should be_close(10000.0, 500.0)
 
       # Cloud cover - drops to 1000 lux
       sensor.update_illuminance(Matter::Cluster::IlluminanceMeasurementCluster.from_lux(1000.0))
-      lux = Matter::Cluster::IlluminanceMeasurementCluster.to_lux(sensor.measured_value.not_nil!)
+      lux = Matter::Cluster::IlluminanceMeasurementCluster.to_lux(sensor.measured_value.as(UInt16))
       lux.round.should be_close(1000.0, 50.0)
 
       # Direct sunlight - increases to 50000 lux
       sensor.update_illuminance(Matter::Cluster::IlluminanceMeasurementCluster.from_lux(50000.0))
-      lux = Matter::Cluster::IlluminanceMeasurementCluster.to_lux(sensor.measured_value.not_nil!)
+      lux = Matter::Cluster::IlluminanceMeasurementCluster.to_lux(sensor.measured_value.as(UInt16))
       lux.round.should be_close(50000.0, 1000.0)
     end
 

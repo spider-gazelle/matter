@@ -44,15 +44,15 @@ describe "Exact TLV Match with matter.js" do
     # Decode back and verify structure
     decoded = Matter::InteractionModel::ReportDataMessage.from_slice(encoded)
     decoded.attribute_reports.should_not be_nil
-    decoded.attribute_reports.not_nil!.size.should eq(1)
+    decoded.attribute_reports.as(Array(Matter::InteractionModel::AttributeReportIB)).size.should eq(1)
     decoded.interaction_model_revision.should eq(1_u8)
     decoded.more_chunked_messages.should eq(true)
 
     # Verify path is preserved
-    first_report = decoded.attribute_reports.not_nil![0]
+    first_report = decoded.attribute_reports.as(Array(Matter::InteractionModel::AttributeReportIB))[0]
     first_report.attribute_data.should_not be_nil
-    first_report.attribute_data.not_nil!.path.endpoint.should eq(0_u16)
-    first_report.attribute_data.not_nil!.path.cluster.should eq(40_u32)
-    first_report.attribute_data.not_nil!.path.attribute.should eq(9_u32)
+    first_report.attribute_data.as(Matter::InteractionModel::AttributeDataIB).path.endpoint.should eq(0_u16)
+    first_report.attribute_data.as(Matter::InteractionModel::AttributeDataIB).path.cluster.should eq(40_u32)
+    first_report.attribute_data.as(Matter::InteractionModel::AttributeDataIB).path.attribute.should eq(9_u32)
   end
 end

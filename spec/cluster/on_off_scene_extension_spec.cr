@@ -7,10 +7,10 @@ describe Matter::Cluster::OnOffCluster do
 
     field_set = cluster.store_scene_extension_field_set
     field_set.should_not be_nil
-    field_set = field_set.not_nil!
-    field_set.cluster_id.should eq(Matter::Cluster::OnOffCluster::CLUSTER_ID)
+    field_set_data = field_set.as(Matter::Cluster::ScenesManagementCluster::ExtensionFieldSet)
+    field_set_data.cluster_id.should eq(Matter::Cluster::OnOffCluster::CLUSTER_ID)
 
-    applied = cluster.apply_scene_extension_field_set(field_set)
+    applied = cluster.apply_scene_extension_field_set(field_set_data)
     applied.should be_true
     cluster.on_off?.should be_false
 

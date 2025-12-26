@@ -4,7 +4,7 @@ describe Matter::Crypto::Spake2p do
   it "computes passcode verifier as w0||L" do
     crypto = Matter::Crypto::StandardCrypto.new
     iterations = 1000
-    salt = Bytes.new(32) { |i| i.to_u8 }
+    salt = Bytes.new(32, &.to_u8)
     pin = 20202021_u32
 
     params = Matter::Crypto::Spake2p::PbkdfParameters.new(iterations, salt)

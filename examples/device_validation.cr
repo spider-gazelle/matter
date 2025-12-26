@@ -92,7 +92,7 @@ def parse_u64(s : String) : UInt64?
     v[2..].to_u64?(16)
   else
     # Support "0000000000000001" (hex) and "1" (decimal).
-    if v.size >= 16 && v.each_char.all? { |c| c.in?('0'..'9') || c.in?('a'..'f') || c.in?('A'..'F') }
+    if v.size >= 16 && v.each_char.all? { |char| char.in?('0'..'9') || char.in?('a'..'f') || char.in?('A'..'F') }
       v.to_u64?(16)
     else
       v.to_u64?
@@ -137,7 +137,7 @@ def extract_fabric_indices(output : String) : Array(FabricIndexInfo)
     end
 
     if current_node && current_index
-      results << FabricIndexInfo.new(current_node.not_nil!, current_index.not_nil!)
+      results << FabricIndexInfo.new(current_node.as(UInt64), current_index.as(UInt8))
       current_node = nil
       current_index = nil
     end
@@ -160,7 +160,7 @@ def extract_acl_entries(output : String) : Array(AclEntryInfo)
 
   flush = -> do
     if current_fabric && current_privilege && current_auth
-      entries << AclEntryInfo.new(current_fabric.not_nil!, current_privilege.not_nil!, current_auth.not_nil!, current_subjects.dup)
+      entries << AclEntryInfo.new(current_fabric.as(UInt8), current_privilege.as(UInt8), current_auth.as(UInt8), current_subjects.dup)
     end
     current_fabric = nil
     current_privilege = nil
@@ -272,7 +272,7 @@ def build_view_only_acl_json(subject : UInt64, endpoint_id : UInt16) : String
   end
 end
 
-chip_tool = ENV["CHIP_TOOL"]? || (File.exists?("./bin/chip-tool-crystal") ? "./bin/chip-tool-crystal" : "chip-tool")
+chip_tool = ENV["CHIP_TOOL"]? || "chip-tool"
 node_id = "1"
 endpoint_id = "1"
 node_id_b = nil.as(String?)
@@ -283,12 +283,12 @@ pairing_code_override = nil.as(String?)
 
 OptionParser.parse do |parser|
   parser.banner = "Usage: device_validation [options] [node_id_a] [endpoint_id] (defaults: 1 1)"
-  parser.on("--chip-tool PATH", "Path to chip-tool (default: chip-tool, or env CHIP_TOOL)") { |v| chip_tool = v }
-  parser.on("--storage-a DIR", "chip-tool storage directory for Fabric A (passed via --storage-directory)") { |v| storage_dir_a = v }
-  parser.on("--storage-b DIR", "chip-tool storage directory for Fabric B (default: tmp/device_validation/chip-tool-b-<random>)") { |v| storage_dir_b = v }
-  parser.on("--node-id-b NODEID", "Operational node id to assign the device in Fabric B (default: node_id_a+1)") { |v| node_id_b = v }
-  parser.on("--open-window-timeout SECONDS", "Commissioning window timeout seconds (default: 300)") { |v| open_window_timeout_s = v.to_i }
-  parser.on("--pairing-code CODE", "Skip opening a commissioning window and use this manual pairing code for Fabric B commissioning") { |v| pairing_code_override = v }
+  parser.on("--chip-tool PATH", "Path to chip-tool (default: chip-tool, or env CHIP_TOOL)") { |path| chip_tool = path }
+  parser.on("--storage-a DIR", "chip-tool storage directory for Fabric A (passed via --storage-directory)") { |dir| storage_dir_a = dir }
+  parser.on("--storage-b DIR", "chip-tool storage directory for Fabric B (default: tmp/device_validation/chip-tool-b-<random>)") { |dir| storage_dir_b = dir }
+  parser.on("--node-id-b NODEID", "Operational node id to assign the device in Fabric B (default: node_id_a+1)") { |nodeid| node_id_b = nodeid }
+  parser.on("--open-window-timeout SECONDS", "Commissioning window timeout seconds (default: 300)") { |seconds| open_window_timeout_s = seconds.to_i }
+  parser.on("--pairing-code CODE", "Skip opening a commissioning window and use this manual pairing code for Fabric B commissioning") { |code| pairing_code_override = code }
   parser.on("-h", "--help", "Show help") do
     puts parser
     exit 0
@@ -332,13 +332,13 @@ def run_check(
   end
 end
 
-run_check(checks, chip_tool, storage_dir_a, "basicinformation.vendor-name", ["basicinformation", "read", "vendor-name", node_id, "0"]) do |r|
-  check_command_ok("basicinformation.vendor-name", r)
+run_check(checks, chip_tool, storage_dir_a, "basicinformation.vendor-name", ["basicinformation", "read", "vendor-name", node_id, "0"]) do |cmd_result|
+  check_command_ok("basicinformation.vendor-name", cmd_result)
 end
 
-run_check(checks, chip_tool, storage_dir_a, "descriptor.parts-list", ["descriptor", "read", "parts-list", node_id, "0"]) do |r|
-  next check_command_ok("descriptor.parts-list", r) unless r.ok?
-  text = strip_ansi(r.output)
+run_check(checks, chip_tool, storage_dir_a, "descriptor.parts-list", ["descriptor", "read", "parts-list", node_id, "0"]) do |cmd_result|
+  next check_command_ok("descriptor.parts-list", cmd_result) unless cmd_result.ok?
+  text = strip_ansi(cmd_result.output)
   if text.match(/\bPartsList:\s*\d+\s+entries\b/) && text.match(/\[\d+\]:\s*#{Regex.escape(endpoint_id)}\b/)
     CheckResult.new("descriptor.parts-list", true, "endpoint #{endpoint_id} present")
   else
@@ -347,9 +347,9 @@ run_check(checks, chip_tool, storage_dir_a, "descriptor.parts-list", ["descripto
 end
 
 initial_on_off = nil.as(Bool?)
-run_check(checks, chip_tool, storage_dir_a, "onoff.on-off (read)", ["onoff", "read", "on-off", node_id, endpoint_id]) do |r|
-  next check_command_ok("onoff.on-off (read)", r) unless r.ok?
-  value = extract_bool(r.output, "OnOff")
+run_check(checks, chip_tool, storage_dir_a, "onoff.on-off (read)", ["onoff", "read", "on-off", node_id, endpoint_id]) do |cmd_result|
+  next check_command_ok("onoff.on-off (read)", cmd_result) unless cmd_result.ok?
+  value = extract_bool(cmd_result.output, "OnOff")
   if value.is_a?(Bool)
     initial_on_off = value
     CheckResult.new("onoff.on-off (read)", true, "OnOff=#{value}")
@@ -358,10 +358,10 @@ run_check(checks, chip_tool, storage_dir_a, "onoff.on-off (read)", ["onoff", "re
   end
 end
 
-run_check(checks, chip_tool, storage_dir_a, "onoff.attribute-list", ["onoff", "read", "attribute-list", node_id, endpoint_id]) do |r|
-  next check_command_ok("onoff.attribute-list", r) unless r.ok?
+run_check(checks, chip_tool, storage_dir_a, "onoff.attribute-list", ["onoff", "read", "attribute-list", node_id, endpoint_id]) do |cmd_result|
+  next check_command_ok("onoff.attribute-list", cmd_result) unless cmd_result.ok?
 
-  list = extract_uint_list_from_attribute_list(r.output)
+  list = extract_uint_list_from_attribute_list(cmd_result.output)
   unless list
     next CheckResult.new("onoff.attribute-list", false, "could not parse AttributeList")
   end
@@ -380,13 +380,13 @@ run_check(checks, chip_tool, storage_dir_a, "onoff.attribute-list", ["onoff", "r
   CheckResult.new("onoff.attribute-list", true, "ok (#{list.size} attrs)")
 end
 
-run_check(checks, chip_tool, storage_dir_a, "onoff.toggle", ["onoff", "toggle", node_id, endpoint_id]) do |r|
-  check_command_ok("onoff.toggle", r)
+run_check(checks, chip_tool, storage_dir_a, "onoff.toggle", ["onoff", "toggle", node_id, endpoint_id]) do |cmd_result|
+  check_command_ok("onoff.toggle", cmd_result)
 end
 
-run_check(checks, chip_tool, storage_dir_a, "onoff.on-off (read after toggle)", ["onoff", "read", "on-off", node_id, endpoint_id]) do |r|
-  next check_command_ok("onoff.on-off (read after toggle)", r) unless r.ok?
-  new_value = extract_bool(r.output, "OnOff")
+run_check(checks, chip_tool, storage_dir_a, "onoff.on-off (read after toggle)", ["onoff", "read", "on-off", node_id, endpoint_id]) do |cmd_result|
+  next check_command_ok("onoff.on-off (read after toggle)", cmd_result) unless cmd_result.ok?
+  new_value = extract_bool(cmd_result.output, "OnOff")
   if new_value.nil? || initial_on_off.nil?
     next CheckResult.new("onoff.on-off (read after toggle)", false, "invalid state, no value should be nil: initial: #{initial_on_off.inspect}, toggled: #{new_value.inspect}")
   else
@@ -453,9 +453,9 @@ if pairing_code.nil? && b_storage_ready
 
   # Some chip-tool versions require: node-id option window-timeout iteration discriminator
   # Use option=1 (enhanced window) so chip-tool outputs an ephemeral pairing code.
-  run_check(checks, chip_tool, storage_dir_a, "commissioning.open-window", ["pairing", "open-commissioning-window", node_id, "1", open_window_timeout_s.to_s, "1000", window_discriminator]) do |r|
-    next check_command_ok("commissioning.open-window", r) unless r.ok?
-    code = extract_commissioning_pairing_code(r.output)
+  run_check(checks, chip_tool, storage_dir_a, "commissioning.open-window", ["pairing", "open-commissioning-window", node_id, "1", open_window_timeout_s.to_s, "1000", window_discriminator]) do |cmd_result|
+    next check_command_ok("commissioning.open-window", cmd_result) unless cmd_result.ok?
+    code = extract_commissioning_pairing_code(cmd_result.output)
     if code
       pairing_code = code
       CheckResult.new("commissioning.open-window", true, "pairing_code=#{code} discriminator=#{window_discriminator}")
@@ -468,22 +468,22 @@ else
 end
 
 if pairing_code && b_storage_ready
-  run_check(checks, chip_tool, storage_dir_b, "commissioning.fabric-b.pairing-code", ["pairing", "code", node_id_b.not_nil!, pairing_code.not_nil!]) do |r|
-    check_command_ok("commissioning.fabric-b.pairing-code", r)
+  run_check(checks, chip_tool, storage_dir_b, "commissioning.fabric-b.pairing-code", ["pairing", "code", node_id_b.as(String), pairing_code.as(String)]) do |cmd_result|
+    check_command_ok("commissioning.fabric-b.pairing-code", cmd_result)
   end
 
   fabric_index_a = nil.as(UInt8?)
   fabric_index_b = nil.as(UInt8?)
 
-  run_check(checks, chip_tool, storage_dir_a, "operationalcredentials.fabrics", ["operationalcredentials", "read", "fabrics", node_id, "0"]) do |r|
-    next check_command_ok("operationalcredentials.fabrics", r) unless r.ok?
-    infos = extract_fabric_indices(r.output)
-    if node_id_a_u64 && (idx = infos.find { |fi| fi.node_id == node_id_a_u64 })
+  run_check(checks, chip_tool, storage_dir_a, "operationalcredentials.fabrics", ["operationalcredentials", "read", "fabrics", node_id, "0"]) do |cmd_result|
+    next check_command_ok("operationalcredentials.fabrics", cmd_result) unless cmd_result.ok?
+    infos = extract_fabric_indices(cmd_result.output)
+    if node_id_a_u64 && (idx = infos.find { |fabric_info| fabric_info.node_id == node_id_a_u64 })
       fabric_index_a = idx.fabric_index
     end
-    if node_id_b_u64 = parse_u64(node_id_b.not_nil!)
+    if node_id_b_u64 = parse_u64(node_id_b.as(String))
       # Node IDs can be reused across fabrics; pick the most recently allocated fabric index.
-      matches = infos.select { |fi| fi.node_id == node_id_b_u64 }
+      matches = infos.select { |fabric_info| fabric_info.node_id == node_id_b_u64 }
       if idx = matches.max_by?(&.fabric_index)
         fabric_index_b = idx.fabric_index
       end
@@ -499,10 +499,10 @@ if pairing_code && b_storage_ready
   subject_a = nil.as(UInt64?)
   subject_b = nil.as(UInt64?)
 
-  run_check(checks, chip_tool, storage_dir_a, "accesscontrol.acl.fabric-a (discover admin)", ["accesscontrol", "read", "acl", node_id, "0"]) do |r|
-    next check_command_ok("accesscontrol.acl.fabric-a (discover admin)", r) unless r.ok?
-    entries = extract_acl_entries(r.output)
-    entry = entries.find { |e| e.auth_mode == 2_u8 && e.privilege >= 5_u8 && !e.subjects.empty? }
+  run_check(checks, chip_tool, storage_dir_a, "accesscontrol.acl.fabric-a (discover admin)", ["accesscontrol", "read", "acl", node_id, "0"]) do |cmd_result|
+    next check_command_ok("accesscontrol.acl.fabric-a (discover admin)", cmd_result) unless cmd_result.ok?
+    entries = extract_acl_entries(cmd_result.output)
+    entry = entries.find { |acl_entry| acl_entry.auth_mode == 2_u8 && acl_entry.privilege >= 5_u8 && !acl_entry.subjects.empty? }
     subject_a = entry.try(&.subjects.first?)
     if subject_a
       CheckResult.new("accesscontrol.acl.fabric-a (discover admin)", true, "subject_a=#{subject_a}")
@@ -511,10 +511,10 @@ if pairing_code && b_storage_ready
     end
   end
 
-  run_check(checks, chip_tool, storage_dir_b, "accesscontrol.acl.fabric-b (discover admin)", ["accesscontrol", "read", "acl", node_id_b.not_nil!, "0"]) do |r|
-    next check_command_ok("accesscontrol.acl.fabric-b (discover admin)", r) unless r.ok?
-    entries = extract_acl_entries(r.output)
-    entry = entries.find { |e| e.auth_mode == 2_u8 && e.privilege >= 5_u8 && !e.subjects.empty? }
+  run_check(checks, chip_tool, storage_dir_b, "accesscontrol.acl.fabric-b (discover admin)", ["accesscontrol", "read", "acl", node_id_b.as(String), "0"]) do |cmd_result|
+    next check_command_ok("accesscontrol.acl.fabric-b (discover admin)", cmd_result) unless cmd_result.ok?
+    entries = extract_acl_entries(cmd_result.output)
+    entry = entries.find { |acl_entry| acl_entry.auth_mode == 2_u8 && acl_entry.privilege >= 5_u8 && !acl_entry.subjects.empty? }
     subject_b = entry.try(&.subjects.first?)
     if subject_b
       CheckResult.new("accesscontrol.acl.fabric-b (discover admin)", true, "subject_b=#{subject_b}")
@@ -524,22 +524,22 @@ if pairing_code && b_storage_ready
   end
 
   if subject_b
-    view_only_acl = build_view_only_acl_json(subject_b.not_nil!, endpoint_u16)
-    run_check(checks, chip_tool, storage_dir_b, "accesscontrol.write-acl.fabric-b (set view-only)", ["accesscontrol", "write", "acl", view_only_acl, node_id_b.not_nil!, "0"]) do |r|
-      check_command_ok("accesscontrol.write-acl.fabric-b (set view-only)", r)
+    view_only_acl = build_view_only_acl_json(subject_b.as(UInt64), endpoint_u16)
+    run_check(checks, chip_tool, storage_dir_b, "accesscontrol.write-acl.fabric-b (set view-only)", ["accesscontrol", "write", "acl", view_only_acl, node_id_b.as(String), "0"]) do |cmd_result|
+      check_command_ok("accesscontrol.write-acl.fabric-b (set view-only)", cmd_result)
     end
 
-    run_check(checks, chip_tool, storage_dir_b, "fabric-b.basicinformation.vendor-name (view)", ["basicinformation", "read", "vendor-name", node_id_b.not_nil!, "0"]) do |r|
-      check_command_ok("fabric-b.basicinformation.vendor-name (view)", r)
+    run_check(checks, chip_tool, storage_dir_b, "fabric-b.basicinformation.vendor-name (view)", ["basicinformation", "read", "vendor-name", node_id_b.as(String), "0"]) do |cmd_result|
+      check_command_ok("fabric-b.basicinformation.vendor-name (view)", cmd_result)
     end
 
-    run_check(checks, chip_tool, storage_dir_b, "fabric-b.descriptor.parts-list (view)", ["descriptor", "read", "parts-list", node_id_b.not_nil!, "0"]) do |r|
-      check_command_ok("fabric-b.descriptor.parts-list (view)", r)
+    run_check(checks, chip_tool, storage_dir_b, "fabric-b.descriptor.parts-list (view)", ["descriptor", "read", "parts-list", node_id_b.as(String), "0"]) do |cmd_result|
+      check_command_ok("fabric-b.descriptor.parts-list (view)", cmd_result)
     end
 
-    run_check(checks, chip_tool, storage_dir_b, "fabric-b.onoff.on-off (view)", ["onoff", "read", "on-off", node_id_b.not_nil!, endpoint_id]) do |r|
-      next check_command_ok("fabric-b.onoff.on-off (view)", r) unless r.ok?
-      value = extract_bool(r.output, "OnOff")
+    run_check(checks, chip_tool, storage_dir_b, "fabric-b.onoff.on-off (view)", ["onoff", "read", "on-off", node_id_b.as(String), endpoint_id]) do |cmd_result|
+      next check_command_ok("fabric-b.onoff.on-off (view)", cmd_result) unless cmd_result.ok?
+      value = extract_bool(cmd_result.output, "OnOff")
       if value.nil?
         CheckResult.new("fabric-b.onoff.on-off (view)", false, "could not parse OnOff value")
       else
@@ -547,24 +547,24 @@ if pairing_code && b_storage_ready
       end
     end
 
-    run_check(checks, chip_tool, storage_dir_b, "fabric-b.onoff.on (should be denied)", ["onoff", "on", node_id_b.not_nil!, endpoint_id]) do |r|
-      if expected_access_denied?(r)
+    run_check(checks, chip_tool, storage_dir_b, "fabric-b.onoff.on (should be denied)", ["onoff", "on", node_id_b.as(String), endpoint_id]) do |cmd_result|
+      if expected_access_denied?(cmd_result)
         CheckResult.new("fabric-b.onoff.on (should be denied)", true, "denied as expected")
       else
         CheckResult.new("fabric-b.onoff.on (should be denied)", false, "expected access denied/unsupported access but command appeared to succeed")
       end
     end
 
-    run_check(checks, chip_tool, storage_dir_b, "fabric-b.accesscontrol.read-acl (should be denied)", ["accesscontrol", "read", "acl", node_id_b.not_nil!, "0"]) do |r|
-      if expected_access_denied?(r)
+    run_check(checks, chip_tool, storage_dir_b, "fabric-b.accesscontrol.read-acl (should be denied)", ["accesscontrol", "read", "acl", node_id_b.as(String), "0"]) do |cmd_result|
+      if expected_access_denied?(cmd_result)
         CheckResult.new("fabric-b.accesscontrol.read-acl (should be denied)", true, "denied as expected")
       else
         CheckResult.new("fabric-b.accesscontrol.read-acl (should be denied)", false, "expected access denied/unsupported access but read appeared to succeed")
       end
     end
 
-    run_check(checks, chip_tool, storage_dir_a, "fabric-a.onoff.toggle (still allowed)", ["onoff", "toggle", node_id, endpoint_id]) do |r|
-      check_command_ok("fabric-a.onoff.toggle (still allowed)", r)
+    run_check(checks, chip_tool, storage_dir_a, "fabric-a.onoff.toggle (still allowed)", ["onoff", "toggle", node_id, endpoint_id]) do |cmd_result|
+      check_command_ok("fabric-a.onoff.toggle (still allowed)", cmd_result)
     end
   end
 end
@@ -574,7 +574,7 @@ if passed
   puts "PASS (#{checks.size} checks)"
   exit 0
 else
-  failed = checks.count { |c| !c.ok }
+  failed = checks.count { |check| !check.ok }
   puts "FAIL (#{failed}/#{checks.size} checks)"
   if pairing_code
     STDERR.puts "Note: last pairing_code=#{pairing_code} discriminator=#{window_discriminator}"

@@ -30,12 +30,13 @@ describe Matter::Cluster::GroupKeyManagementCluster do
     json.should_not be_nil
 
     cluster2 = Matter::Cluster::GroupKeyManagementCluster.new(endpoint)
-    cluster2.restore_state(json.not_nil!)
+    cluster2.restore_state(json.as(String))
 
     restored = cluster2.get_key_set(key_set_id, fabric)
     restored.should_not be_nil
-    restored.not_nil!.epoch_key0.should eq(epoch_key0)
-    restored.not_nil!.epoch_start_time0.should eq(epoch_start0)
+    restored_key_set = restored.as(Matter::Cluster::GroupKeyManagementCluster::GroupKeySetStruct)
+    restored_key_set.epoch_key0.should eq(epoch_key0)
+    restored_key_set.epoch_start_time0.should eq(epoch_start0)
 
     cluster2.group_key_map(fabric).size.should eq(1)
     cluster2.group_table(fabric).size.should eq(1)

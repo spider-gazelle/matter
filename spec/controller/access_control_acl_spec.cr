@@ -19,9 +19,9 @@ describe Matter::Controller::Clusters::AccessControl do
     entry.privilege.should eq Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::View
     entry.auth_mode.should eq Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE
     entry.subjects.should eq [3203334145_u64]
-    entry.targets.not_nil!.size.should eq 1
-    entry.targets.not_nil![0].endpoint.should eq 1_u16
-    entry.targets.not_nil![0].cluster.should eq 6_u32
-    entry.targets.not_nil![0].device_type.should be_nil
+    entry.targets.as(Array(Matter::Cluster::AccessControlCluster::Target)).size.should eq 1
+    entry.targets.as(Array(Matter::Cluster::AccessControlCluster::Target))[0].endpoint.should eq 1_u16
+    entry.targets.as(Array(Matter::Cluster::AccessControlCluster::Target))[0].cluster.should eq 6_u32
+    entry.targets.as(Array(Matter::Cluster::AccessControlCluster::Target))[0].device_type.should be_nil
   end
 end

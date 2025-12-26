@@ -16,7 +16,7 @@ describe Matter::Session::Pase::Definitions::PbkdfParamRequest do
 
     # Verify key fields are parsed correctly
     request.initiator_random.should_not be_nil
-    request.initiator_random.not_nil!.size.should eq(32)
+    request.initiator_random.as(Bytes).size.should eq(32)
     request.initiator_session_id.should eq(11806)
 
     # Note: Additional fields (passcode_id, has_pbkdf_parameters, mrp_parameters)

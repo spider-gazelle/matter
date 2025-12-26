@@ -33,7 +33,7 @@ describe "ReadResponse matter.js Compatibility" do
     # Verify structure
     # Tag 1: attributeReports (array)
     decoded.attribute_reports.should_not be_nil
-    attr_reports = decoded.attribute_reports.not_nil!
+    attr_reports = decoded.attribute_reports.as(Array(Matter::InteractionModel::AttributeReportIB))
     attr_reports.size.should eq(1)
 
     # Each report is AttributeReport: {1: AttributeData}
@@ -41,7 +41,7 @@ describe "ReadResponse matter.js Compatibility" do
 
     # AttributeReport contains AttributeData at tag 1
     report.attribute_data.should_not be_nil
-    attr_data_ib = report.attribute_data.not_nil!
+    attr_data_ib = report.attribute_data.as(Matter::InteractionModel::AttributeDataIB)
 
     puts "AttributeDataIB: path=#{attr_data_ib.path.inspect[0, 100]}"
 

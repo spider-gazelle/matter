@@ -232,8 +232,8 @@ describe "Matter::Crypto Compatibility (matter.js test vectors)" do
         key.curve.should eq(Matter::Crypto::CurveType::P256)
         key.x_bits.should_not be_nil
         key.y_bits.should_not be_nil
-        key.x_bits.not_nil!.size.should eq(32)
-        key.y_bits.not_nil!.size.should eq(32)
+        key.x_bits.as(Bytes).size.should eq(32)
+        key.y_bits.as(Bytes).size.should eq(32)
       end
     end
 
@@ -247,7 +247,7 @@ describe "Matter::Crypto Compatibility (matter.js test vectors)" do
         key.x_bits.should_not be_nil
         key.y_bits.should_not be_nil
 
-        key.private_bits.not_nil!.size.should eq(32)
+        key.private_bits.as(Bytes).size.should eq(32)
         key.public_key.size.should eq(65)
         key.public_key[0].should eq(0x04) # Uncompressed format
       end

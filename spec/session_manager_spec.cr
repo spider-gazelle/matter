@@ -31,11 +31,11 @@ describe Matter::SessionManager do
 
     it "retrieves PASE session by ID" do
       manager = Matter::SessionManager.new
-      created = manager.create_pase_session(3_u16)
+      manager.create_pase_session(3_u16)
 
       retrieved = manager.get_pase_session(3_u16)
       retrieved.should_not be_nil
-      retrieved.not_nil!.session_id.should eq(3_u16)
+      retrieved.as(Matter::SessionManager::PaseSession).session_id.should eq(3_u16)
     end
 
     it "returns nil for non-existent PASE session" do
@@ -58,7 +58,7 @@ describe Matter::SessionManager do
 
       removed = manager.remove_pase_session(5_u16)
       removed.should_not be_nil
-      removed.not_nil!.session_id.should eq(5_u16)
+      removed.as(Matter::SessionManager::PaseSession).session_id.should eq(5_u16)
       manager.pase_session_count.should eq(0)
     end
 
@@ -122,7 +122,7 @@ describe Matter::SessionManager do
 
     it "retrieves CASE session by ID" do
       manager = Matter::SessionManager.new
-      created = manager.create_case_session(
+      manager.create_case_session(
         session_id: 12_u16,
         fabric_index: 1_u8,
         peer_node_id: 0x2222222222222222_u64
@@ -130,8 +130,8 @@ describe Matter::SessionManager do
 
       retrieved = manager.get_case_session(12_u16)
       retrieved.should_not be_nil
-      retrieved.not_nil!.session_id.should eq(12_u16)
-      retrieved.not_nil!.fabric_index.should eq(1_u8)
+      retrieved.as(Matter::SessionManager::CaseSession).session_id.should eq(12_u16)
+      retrieved.as(Matter::SessionManager::CaseSession).fabric_index.should eq(1_u8)
     end
 
     it "returns nil for non-existent CASE session" do
@@ -154,7 +154,7 @@ describe Matter::SessionManager do
 
       removed = manager.remove_case_session(14_u16)
       removed.should_not be_nil
-      removed.not_nil!.session_id.should eq(14_u16)
+      removed.as(Matter::SessionManager::CaseSession).session_id.should eq(14_u16)
       manager.case_session_count.should eq(0)
     end
 

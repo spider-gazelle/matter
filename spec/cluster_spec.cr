@@ -23,12 +23,12 @@ describe Matter::Cluster do
       attrs.size.should be >= 4
 
       # Check for required attributes
-      device_type_list = attrs.find { |a| a.id.id == Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST }
+      device_type_list = attrs.find { |attr| attr.id.id == Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST }
       device_type_list.should_not be_nil
-      device_type_list.not_nil!.name.should eq("DeviceTypeList")
-      device_type_list.not_nil!.writable?.should be_false
+      device_type_list.as(Matter::Cluster::AttributeMetadata).name.should eq("DeviceTypeList")
+      device_type_list.as(Matter::Cluster::AttributeMetadata).writable?.should be_false
 
-      server_list = attrs.find { |a| a.id.id == Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST }
+      server_list = attrs.find { |attr| attr.id.id == Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST }
       server_list.should_not be_nil
     end
 
@@ -86,11 +86,11 @@ describe Matter::Cluster do
       attrs = cluster.attributes
       attrs.size.should eq(1) # Just onOff (global attrs handled separately)
 
-      on_off_attr = attrs.find { |a| a.id.id == Matter::Cluster::OnOffCluster::ATTR_ON_OFF }
+      on_off_attr = attrs.find { |attr| attr.id.id == Matter::Cluster::OnOffCluster::ATTR_ON_OFF }
       on_off_attr.should_not be_nil
-      on_off_attr.not_nil!.name.should eq("onOff")
-      on_off_attr.not_nil!.type.should eq(:bool)
-      on_off_attr.not_nil!.writable?.should be_false
+      on_off_attr.as(Matter::Cluster::AttributeMetadata).name.should eq("onOff")
+      on_off_attr.as(Matter::Cluster::AttributeMetadata).type.should eq(:bool)
+      on_off_attr.as(Matter::Cluster::AttributeMetadata).writable?.should be_false
 
       # Global attributes can be read via read_attribute
       result = cluster.read_attribute(0xFFFC_u32) # FeatureMap
@@ -104,14 +104,14 @@ describe Matter::Cluster do
       cmds = cluster.commands
       cmds.size.should eq(3) # Base cluster: off, on, toggle (Lighting commands require Lighting feature)
 
-      off_cmd = cmds.find { |c| c.id.id == Matter::Cluster::OnOffCluster::CMD_OFF }
+      off_cmd = cmds.find { |cmd| cmd.id.id == Matter::Cluster::OnOffCluster::CMD_OFF }
       off_cmd.should_not be_nil
-      off_cmd.not_nil!.name.should eq("off")
+      off_cmd.as(Matter::Cluster::CommandMetadata).name.should eq("off")
 
-      on_cmd = cmds.find { |c| c.id.id == Matter::Cluster::OnOffCluster::CMD_ON }
+      on_cmd = cmds.find { |cmd| cmd.id.id == Matter::Cluster::OnOffCluster::CMD_ON }
       on_cmd.should_not be_nil
 
-      toggle_cmd = cmds.find { |c| c.id.id == Matter::Cluster::OnOffCluster::CMD_TOGGLE }
+      toggle_cmd = cmds.find { |cmd| cmd.id.id == Matter::Cluster::OnOffCluster::CMD_TOGGLE }
       toggle_cmd.should_not be_nil
     end
 

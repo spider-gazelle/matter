@@ -54,12 +54,12 @@ module ChipTool
 
             fabrics = extract_fabrics(report, cluster_id, attribute_id) || raise "ReportData missing fabrics"
             puts "Fabrics: #{fabrics.size} entries"
-            fabrics.each_with_index do |f, idx|
+            fabrics.each_with_index do |fab, idx|
               puts "  [#{idx}]:"
-              puts "    FabricIndex: #{f.fabric_index}"
-              puts "    FabricId: 0x#{f.fabric_id.to_s(16)}"
-              puts "    NodeId: 0x#{f.node_id.to_s(16)}"
-              puts "    VendorId: #{f.vendor_id}"
+              puts "    FabricIndex: #{fab.fabric_index}"
+              puts "    FabricId: 0x#{fab.fabric_id.to_s(16)}"
+              puts "    NodeId: 0x#{fab.node_id.to_s(16)}"
+              puts "    VendorId: #{fab.vendor_id}"
             end
             0
           ensure
@@ -92,7 +92,7 @@ module ChipTool
 
         deadline = Time.monotonic + timeout
         loop do
-          if dev = scanner.operational_devices.find { |d| d.fabric_id == fabric.fabric_id && d.node_id == node_id }
+          if dev = scanner.operational_devices.find { |device| device.fabric_id == fabric.fabric_id && device.node_id == node_id }
             address = dev.addresses.find(&.family.inet?) || dev.addresses.first?
             if addr = address
               return Socket::IPAddress.new(addr.address, dev.port)
@@ -111,8 +111,8 @@ module ChipTool
         reports = report.attribute_reports
         return nil unless reports
 
-        reports.each do |r|
-          data = r.attribute_data
+        reports.each do |attr_report|
+          data = attr_report.attribute_data
           next unless data
           path = data.path
           next unless path.cluster == cluster_id

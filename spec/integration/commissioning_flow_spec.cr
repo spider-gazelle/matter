@@ -124,7 +124,6 @@ module Matter
     describe "failsafe expiry and rollback" do
       it "triggers rollback when failsafe expires during commissioning" do
         general_comm = Cluster::GeneralCommissioningCluster.new
-        rollback_invoked = Channel(Bool).new(1)
 
         # Arm failsafe with short timeout
         arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(

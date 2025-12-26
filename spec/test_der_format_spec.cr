@@ -13,11 +13,6 @@ describe "DER Format Generation" do
     # Build our DER
     our_der = crypto.build_ec_private_key_der(private_key_bytes, public_key_bytes)
 
-    our_der.each_slice(16) do |slice|
-      hex = slice.map(&.to_s(16).rjust(2, '0')).join(" ")
-      ascii = slice.map { |b| (32..126).includes?(b) ? b.chr : '.' }.join
-    end
-
     # Try to load it
     pem = crypto.der_to_pem(our_der, "EC PRIVATE KEY")
 
@@ -28,11 +23,6 @@ describe "DER Format Generation" do
   it "generates valid SPKI DER for EC public key" do
     # Build our DER
     our_der = crypto.build_ec_public_key_der(public_key_bytes)
-
-    our_der.each_slice(16) do |slice|
-      hex = slice.map(&.to_s(16).rjust(2, '0')).join(" ")
-      ascii = slice.map { |b| (32..126).includes?(b) ? b.chr : '.' }.join
-    end
 
     # Try to load it
     pem = crypto.der_to_pem(our_der, "PUBLIC KEY")

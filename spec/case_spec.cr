@@ -226,7 +226,7 @@ describe Matter::Session::Case do
       )
 
       # Generate Sigma1 first
-      sigma1 = initiator.generate_sigma1
+      initiator.generate_sigma1
 
       # Simulate peer response
       peer_key = crypto.create_key_pair
@@ -262,7 +262,7 @@ describe Matter::Session::Case do
       )
 
       # Must go through protocol flow to compute shared secret
-      sigma1 = initiator.generate_sigma1
+      initiator.generate_sigma1
 
       # Simulate peer response
       peer_key = crypto.create_key_pair

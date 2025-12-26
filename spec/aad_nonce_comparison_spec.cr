@@ -155,14 +155,9 @@ describe "AAD and Nonce Generation - matter.js Compatibility" do
       # 5. Encrypt with (key, payload, nonce, headerBytes as AAD)
 
       # Setup
-      session_id = 0x1234_u16
       peer_session_id = 0x5678_u16
       message_counter = 0x00000003_u32
       source_node_id = 0_u64 # PASE uses UNSPECIFIED
-      encryption_key = Bytes[
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-        0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
-      ]
 
       # Step 1: Build packet header (matching matter.js)
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(

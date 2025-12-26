@@ -44,9 +44,9 @@ describe Matter::Controller::StateStore do
       store.save(state)
 
       loaded = store.load
-      loaded.fabric.not_nil!.fabric_id.should eq(0x1111_u64)
-      loaded.fabric.not_nil!.controller_node_id.should eq(0x2222_u64)
-      loaded.fabric.not_nil!.ipk_value.size.should eq(16)
+      loaded.fabric.as(Matter::Controller::FabricInfo).fabric_id.should eq(0x1111_u64)
+      loaded.fabric.as(Matter::Controller::FabricInfo).controller_node_id.should eq(0x2222_u64)
+      loaded.fabric.as(Matter::Controller::FabricInfo).ipk_value.size.should eq(16)
 
       loaded.nodes.size.should eq(2)
       loaded.nodes[0x1_u64].address.should eq("192.168.1.10")

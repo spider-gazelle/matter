@@ -30,7 +30,7 @@ module ChipTool
       end
     rescue ex
       STDERR.puts "chip-tool: error: #{ex.message}"
-      ex.backtrace?.try { |bt| STDERR.puts bt.join('\n') }
+      ex.backtrace?.try { |backtrace| STDERR.puts backtrace.join('\n') }
       1
     end
   end
