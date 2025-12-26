@@ -11,6 +11,32 @@ module Matter
         alias Privilege = Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege
         alias AuthMode = Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode
 
+        struct TargetJson
+          include JSON::Serializable
+
+          @[JSON::Field(key: "endpoint")]
+          getter endpoint : UInt16?
+
+          @[JSON::Field(key: "cluster")]
+          getter cluster : UInt32?
+
+          @[JSON::Field(key: "deviceType")]
+          getter device_type : UInt32?
+        end
+
+        struct EntryJson
+          include JSON::Serializable
+
+          getter privilege : UInt8
+
+          @[JSON::Field(key: "authMode")]
+          getter auth_mode : UInt8
+
+          getter subjects : Array(UInt64)
+
+          getter targets : Array(TargetJson)?
+        end
+
         # Parses the JSON format used by CHIP's `chip-tool accesscontrol write acl ...`
         # and returns entries suitable for encoding into a TLV list for WriteRequest.
         #
@@ -21,39 +47,27 @@ module Matter
         # - targets (null or array of {endpoint, cluster, deviceType})
         # - fabricIndex (ignored; server derives from session)
         def self.parse_acl_json(json : String) : Array(Entry)
-          root = JSON.parse(json)
-          arr = root.as_a
+          entries = Array(EntryJson).from_json(json)
 
-          mapped = arr.each_with_index.map do |obj, idx|
+          mapped = entries.each_with_index.map do |obj, idx|
             begin
-              h = obj.as_h
-              privilege = Privilege.from_value(h["privilege"].as_i64.to_i)
-              auth_mode = AuthMode.from_value(h["authMode"].as_i64.to_i)
+              privilege = Privilege.from_value(obj.privilege.to_i)
+              auth_mode = AuthMode.from_value(obj.auth_mode.to_i)
 
-              subjects = h["subjects"].as_a.map do |v|
-                v.as_i64.to_u64
-              end
-
-              targets = begin
-                t = h["targets"]?
-                if t.nil? || t.raw.nil?
-                  nil
-                else
-                  t.as_a.map do |target|
-                    th = target.as_h
-                    Target.new(
-                      cluster: th["cluster"]?.try { |x| x.raw.nil? ? nil : x.as_i64.to_u32 },
-                      endpoint: th["endpoint"]?.try { |x| x.raw.nil? ? nil : x.as_i64.to_u16 },
-                      device_type: th["deviceType"]?.try { |x| x.raw.nil? ? nil : x.as_i64.to_u32 }
-                    )
-                  end
+              targets = obj.targets.try do |arr|
+                arr.map do |target|
+                  Target.new(
+                    cluster: target.cluster,
+                    endpoint: target.endpoint,
+                    device_type: target.device_type
+                  )
                 end
               end
 
               Entry.new(
                 privilege: privilege,
                 auth_mode: auth_mode,
-                subjects: subjects,
+                subjects: obj.subjects,
                 targets: targets,
                 fabric_index: nil
               )

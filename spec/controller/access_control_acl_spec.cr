@@ -2,7 +2,8 @@ require "../spec_helper"
 
 describe Matter::Controller::Clusters::AccessControl do
   it "parses ACL JSON and encodes TLV accepted by AccessControlCluster" do
-    json = %([{"fabricIndex":2,"privilege":1,"authMode":2,"subjects":[3203334145],"targets":[{"endpoint":1,"cluster":6,"deviceType":null}]}])
+    # Use a subject > Int64::MAX to ensure the parser doesn't rely on `JSON.parse` (which uses Int64).
+    json = %([{"fabricIndex":2,"privilege":1,"authMode":2,"subjects":[16234001066904631842],"targets":[{"endpoint":1,"cluster":6,"deviceType":null}]}])
 
     entries = Matter::Controller::Clusters::AccessControl.parse_acl_json(json)
     entries.size.should eq 1
@@ -18,7 +19,7 @@ describe Matter::Controller::Clusters::AccessControl do
     entry = cluster.acl[0]
     entry.privilege.should eq Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::View
     entry.auth_mode.should eq Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE
-    entry.subjects.should eq [3203334145_u64]
+    entry.subjects.should eq [16234001066904631842_u64]
     entry.targets.as(Array(Matter::Cluster::AccessControlCluster::Target)).size.should eq 1
     entry.targets.as(Array(Matter::Cluster::AccessControlCluster::Target))[0].endpoint.should eq 1_u16
     entry.targets.as(Array(Matter::Cluster::AccessControlCluster::Target))[0].cluster.should eq 6_u32

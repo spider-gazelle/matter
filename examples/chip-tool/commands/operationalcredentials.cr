@@ -40,7 +40,10 @@ module ChipTool
           state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
           store.save(state)
 
-          controller = Matter::Controller::Client.new
+          controller = Matter::Controller::Client.new(
+            unsecured_source_node_id: state.commissioner_node_id,
+            initial_unsecured_message_counter: state.unsecured_message_counter
+          )
           begin
             session = Matter::Controller::Pairing::CasePairing.new.pair(controller, peer, fabric, peer_node_id: node_id, timeout: ctx.timeout)
             im = Matter::Controller::ImClient.new(controller, ctx.timeout)
@@ -63,6 +66,8 @@ module ChipTool
             end
             0
           ensure
+            state.unsecured_message_counter = controller.transport.message_counter.counter
+            store.save(state)
             controller.close
           end
         end

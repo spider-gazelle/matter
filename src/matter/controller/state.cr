@@ -73,7 +73,22 @@ module Matter
       property fabric : FabricInfo?
       property nodes : Hash(UInt64, NodeInfo)
 
-      def initialize(@fabric : FabricInfo? = nil, @nodes : Hash(UInt64, NodeInfo) = {} of UInt64 => NodeInfo)
+      # Commissioner node id used for unsecured message source_node_id and as the
+      # controller node id when creating a new fabric.
+      @[JSON::Field(default: 0_u64)]
+      property commissioner_node_id : UInt64
+
+      # Monotonic counter for unsecured (session_id=0) messages. This must not go
+      # backwards across process restarts or peers may treat requests as stale.
+      @[JSON::Field(default: 0_u32)]
+      property unsecured_message_counter : UInt32
+
+      def initialize(
+        @fabric : FabricInfo? = nil,
+        @nodes : Hash(UInt64, NodeInfo) = {} of UInt64 => NodeInfo,
+        @commissioner_node_id : UInt64 = 0_u64,
+        @unsecured_message_counter : UInt32 = 0_u32,
+      )
       end
     end
   end

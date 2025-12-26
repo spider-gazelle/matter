@@ -323,14 +323,18 @@ module Matter
         # Check for duplicate messages
         session_id = packet.header.session_id
         if session_id == 0
-          # For unsecured messages (session_id=0), track per source_node_id
-          # This allows different nodes (e.g., different CASE initiators) to have
-          # independent message counter windows
-          source_node_id = packet.header.source_node_id.try(&.id) || 0_u64
-          counter = @unsecured_counters[source_node_id] ||= MessageCounter.new
+          # For unsecured messages (session_id=0), track per source_node_id when present,
+          # otherwise fall back to the peer socket identity. This avoids unrelated peers
+          # sharing a single message counter window when they omit the node id.
+          source_node_id = packet.header.source_node_id.try(&.id)
+          source_key = source_node_id || peer_address.hash
+          counter = @unsecured_counters[source_key] ||= MessageCounter.new
           unless counter.valid?(packet.header.message_id)
             # Duplicate message - ignore
-            Log.warn { "Duplicate message ignored (unsecured): session_id=#{session_id}, source=#{source_node_id}, message_id=#{packet.header.message_id}" }
+            Log.warn do
+              "Duplicate message ignored (unsecured): session_id=#{session_id} source_node_id=#{source_node_id || "nil"} " \
+              "peer=#{peer_address.address}:#{peer_address.port} message_id=#{packet.header.message_id}"
+            end
             return
           end
         else

@@ -29,13 +29,28 @@ module ChipTool
             peer = Socket::IPAddress.new(host, port.to_i)
           end
 
+          if peer.nil?
+            if addr = ENV["MATTER_PEER_ADDRESS"]?
+              host, port = addr.includes?(':') ? addr.split(':', 2) : {addr, "5540"}
+              peer = Socket::IPAddress.new(host, port.to_i)
+            end
+          end
+
           node_id = parse_u64(node_id_str) || raise ArgumentError.new("invalid node-id: #{node_id_str}")
 
           store = Matter::Controller::StateStore.new(ctx.storage_directory)
-          commissioner = Matter::Controller::Commissioning::Commissioner.new(store, timeout: ctx.timeout)
+          state = store.load
+          controller = Matter::Controller::Client.new(
+            unsecured_source_node_id: state.commissioner_node_id,
+            initial_unsecured_message_counter: state.unsecured_message_counter
+          )
+          commissioner = Matter::Controller::Commissioning::Commissioner.new(store, controller, timeout: ctx.timeout)
           begin
             commissioner.pairing_code(node_id, manual_code, peer: peer)
           ensure
+            latest = store.load
+            latest.unsecured_message_counter = controller.transport.message_counter.counter
+            store.save(latest)
             commissioner.close
           end
 
@@ -72,7 +87,10 @@ module ChipTool
           state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
           store.save(state)
 
-          controller = Matter::Controller::Client.new
+          controller = Matter::Controller::Client.new(
+            unsecured_source_node_id: state.commissioner_node_id,
+            initial_unsecured_message_counter: state.unsecured_message_counter
+          )
           begin
             session = Matter::Controller::Pairing::CasePairing.new.pair(controller, peer, fabric, peer_node_id: node_id, timeout: ctx.timeout)
             im = Matter::Controller::ImClient.new(controller, ctx.timeout)
@@ -113,6 +131,8 @@ module ChipTool
               2
             end
           ensure
+            state.unsecured_message_counter = controller.transport.message_counter.counter
+            store.save(state)
             controller.close
           end
         end

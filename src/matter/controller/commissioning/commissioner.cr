@@ -43,7 +43,11 @@ module Matter
           discriminator, pin_code = SetupPayload.parse_manual_code(manual_code)
           state = @store.load
 
-          fabric = state.fabric || create_fabric(state)
+          fabric = state.fabric
+          unless fabric
+            fabric = create_fabric(controller_node_id: state.commissioner_node_id)
+            state.fabric = fabric
+          end
           @store.save(state)
 
           peer_addr = peer || discover_commissionable(discriminator)
@@ -139,6 +143,7 @@ module Matter
           assert_invoke_ok!(commissioning_complete_resp, "CommissioningComplete")
 
           state.nodes[node_id] = NodeInfo.new(node_id: node_id, address: peer_addr.address, port: peer_addr.port)
+          state.unsecured_message_counter = @client.transport.message_counter.counter
           @store.save(state)
         end
 
@@ -147,10 +152,17 @@ module Matter
           scanner = MDNS::Scanner.new
           scanner.start
           scanner.query_commissioning
+          short_only = (discriminator & 0x00ff_u16) == 0_u16
+          short_discriminator = SetupPayload.short_discriminator(discriminator)
 
           deadline = Time.monotonic + @timeout
           loop do
-            if dev = scanner.commissioning_devices.find { |device| device.discriminator == discriminator }
+            if dev = scanner.commissioning_devices.find { |device|
+                 disc = device.discriminator
+                 next false unless disc
+                 next true if disc == discriminator
+                 short_only && SetupPayload.short_discriminator(disc) == short_discriminator
+               }
               address = dev.addresses.find(&.family.inet?) || dev.addresses.first?
               if addr = address
                 return Socket::IPAddress.new(addr.address, dev.port)
@@ -166,15 +178,14 @@ module Matter
           scanner.try(&.close)
         end
 
-        private def create_fabric(state : State) : FabricInfo
+        private def create_fabric(controller_node_id : UInt64) : FabricInfo
           fabric_id = loop do
             id = @crypto.random_uint64
             break id unless id == 0_u64
           end
 
-          controller_node_id = loop do
-            id = @crypto.random_uint64
-            break id unless id == 0_u64
+          if controller_node_id == 0_u64
+            raise ArgumentError.new("controller_node_id must be non-zero")
           end
 
           ipk = @crypto.random_bytes(16)
@@ -195,8 +206,6 @@ module Matter
             controller_noc_hex: controller_noc.hexstring,
             controller_private_key_hex: controller_key.private_key.hexstring
           )
-
-          state.fabric = info
           info
         end
 
@@ -239,10 +248,23 @@ module Matter
         end
 
         private def assert_invoke_ok!(response : InteractionModel::InvokeResponseMessage, name : String) : Nil
-          status = response.invoke_responses.find(&.command_status)
-          if status_ib = status.try(&.command_status)
-            raise "#{name} failed (status=#{status_ib.status.status})"
+          saw_any = false
+
+          response.invoke_responses.each do |resp|
+            if resp.command_data
+              saw_any = true
+              next
+            end
+
+            if status_ib = resp.command_status
+              saw_any = true
+              # Some commands use CommandStatusIB with Success and no CommandDataIB.
+              return if status_ib.status.status == InteractionModel::StatusCode::Success.value
+              raise "#{name} failed (status=#{status_ib.status.status})"
+            end
           end
+
+          raise "#{name} failed (empty InvokeResponse)" unless saw_any
         end
 
         private def first_command_fields(response : InteractionModel::InvokeResponseMessage, command_id : UInt32) : Bytes

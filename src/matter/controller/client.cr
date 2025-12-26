@@ -3,6 +3,7 @@ require "socket"
 
 require "../codec/message_codec"
 require "../crypto/crypto"
+require "../datatype/node_id"
 require "../session/context"
 require "../session/secure_message"
 require "../transport/udp_transport"
@@ -25,14 +26,27 @@ module Matter
       @sessions = {} of UInt16 => Session::SecureContext
       @inbox : Channel(ReceivedMessage)
       @next_exchange_id : UInt16
+      @unsecured_source_node_id : DataType::NodeId?
 
       def initialize(
         port : Int32 = 0,
         interface_ipv4 : String = "0.0.0.0",
         interface_ipv6 : String = "::",
         @crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
+        unsecured_source_node_id : UInt64? = nil,
+        initial_unsecured_message_counter : UInt32? = nil,
       )
         @transport = Transport::UDPTransport.new(port: port, interface_ipv4: interface_ipv4, interface_ipv6: interface_ipv6)
+        @unsecured_source_node_id = unsecured_source_node_id ? DataType::NodeId.new(unsecured_source_node_id) : nil
+
+        # Avoid re-using old unsecured message IDs across process restarts: peers may
+        # keep a dedupe window for unsecured traffic (session_id=0), which can cause
+        # commissioning/CASE handshakes to be ignored as duplicates/stale.
+        if initial = initial_unsecured_message_counter
+          @transport.message_counter.reset(initial)
+        else
+          @transport.message_counter.reset(Random::Secure.rand(UInt32))
+        end
         @inbox = Channel(ReceivedMessage).new(256)
         @next_exchange_id = Random.rand(UInt16).to_u16
 
@@ -73,7 +87,7 @@ module Matter
           session_id: 0_u16,
           peer_address: peer,
           peer_node_id: nil,
-          source_node_id: nil,
+          source_node_id: @unsecured_source_node_id,
           requires_ack: requires_ack
         )
         exchange.exchange_id
@@ -96,7 +110,7 @@ module Matter
         security_flags = 0_u8
         security_flags |= Codec::MessageCodec::SessionType::Unicast.value
 
-        flags = Codec::MessageCodec::Base.compute_flags(nil, nil, nil)
+        flags = Codec::MessageCodec::Base.compute_flags(@unsecured_source_node_id, nil, nil)
 
         packet_header = Codec::MessageCodec::PacketHeader.new(
           session_id: 0_u16,
@@ -107,7 +121,7 @@ module Matter
           message_extensions: false,
           flags: flags,
           security_flags: security_flags,
-          source_node_id: nil,
+          source_node_id: @unsecured_source_node_id,
           destination_node_id: nil
         )
 

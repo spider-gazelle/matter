@@ -17,6 +17,8 @@ describe Matter::Controller::StateStore do
       state = store.load
       state.fabric.should be_nil
       state.nodes.should be_empty
+      state.commissioner_node_id.should_not eq(0_u64)
+      state.unsecured_message_counter.should eq(0_u32)
     end
   end
 
@@ -44,6 +46,8 @@ describe Matter::Controller::StateStore do
       store.save(state)
 
       loaded = store.load
+      loaded.commissioner_node_id.should eq(0x2222_u64)
+      loaded.unsecured_message_counter.should eq(0_u32)
       loaded.fabric.as(Matter::Controller::FabricInfo).fabric_id.should eq(0x1111_u64)
       loaded.fabric.as(Matter::Controller::FabricInfo).controller_node_id.should eq(0x2222_u64)
       loaded.fabric.as(Matter::Controller::FabricInfo).ipk_value.size.should eq(16)

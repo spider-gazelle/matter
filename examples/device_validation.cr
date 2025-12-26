@@ -91,12 +91,9 @@ def parse_u64(s : String) : UInt64?
   if v.starts_with?("0x") || v.starts_with?("0X")
     v[2..].to_u64?(16)
   else
-    # Support "0000000000000001" (hex) and "1" (decimal).
-    if v.size >= 16 && v.each_char.all? { |char| char.in?('0'..'9') || char.in?('a'..'f') || char.in?('A'..'F') }
-      v.to_u64?(16)
-    else
-      v.to_u64?
-    end
+    # Prefer decimal when the string is digits-only; otherwise allow hex without 0x.
+    return v.to_u64? if v.each_char.all?(&.in?('0'..'9'))
+    v.to_u64?(16) || v.to_u64?
   end
 end
 
@@ -280,12 +277,14 @@ storage_dir_a = nil.as(String?)
 storage_dir_b = "tmp/device_validation/chip-tool-b-#{Random::Secure.hex(8)}"
 open_window_timeout_s = 300
 pairing_code_override = nil.as(String?)
+peer_address = ENV["MATTER_PEER_ADDRESS"]?
 
 OptionParser.parse do |parser|
   parser.banner = "Usage: device_validation [options] [node_id_a] [endpoint_id] (defaults: 1 1)"
   parser.on("--chip-tool PATH", "Path to chip-tool (default: chip-tool, or env CHIP_TOOL)") { |path| chip_tool = path }
   parser.on("--storage-a DIR", "chip-tool storage directory for Fabric A (passed via --storage-directory)") { |dir| storage_dir_a = dir }
   parser.on("--storage-b DIR", "chip-tool storage directory for Fabric B (default: tmp/device_validation/chip-tool-b-<random>)") { |dir| storage_dir_b = dir }
+  parser.on("--address ADDR", "Override peer address for commissioning (ip[:port], also respects env MATTER_PEER_ADDRESS)") { |addr| peer_address = addr }
   parser.on("--node-id-b NODEID", "Operational node id to assign the device in Fabric B (default: node_id_a+1)") { |nodeid| node_id_b = nodeid }
   parser.on("--open-window-timeout SECONDS", "Commissioning window timeout seconds (default: 300)") { |seconds| open_window_timeout_s = seconds.to_i }
   parser.on("--pairing-code CODE", "Skip opening a commissioning window and use this manual pairing code for Fabric B commissioning") { |code| pairing_code_override = code }
@@ -468,7 +467,12 @@ else
 end
 
 if pairing_code && b_storage_ready
-  run_check(checks, chip_tool, storage_dir_b, "commissioning.fabric-b.pairing-code", ["pairing", "code", node_id_b.as(String), pairing_code.as(String)]) do |cmd_result|
+  pairing_args = ["pairing", "code", node_id_b.as(String), pairing_code.as(String)]
+  if addr = peer_address
+    pairing_args += ["--address", addr]
+  end
+
+  run_check(checks, chip_tool, storage_dir_b, "commissioning.fabric-b.pairing-code", pairing_args) do |cmd_result|
     check_command_ok("commissioning.fabric-b.pairing-code", cmd_result)
   end
 

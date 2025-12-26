@@ -30,10 +30,14 @@ module ChipTool
           state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
           store.save(state)
 
-          controller = Matter::Controller::Client.new
+          controller = Matter::Controller::Client.new(
+            unsecured_source_node_id: state.commissioner_node_id,
+            initial_unsecured_message_counter: state.unsecured_message_counter
+          )
           begin
             session = Matter::Controller::Pairing::CasePairing.new.pair(controller, peer, fabric, peer_node_id: node_id, timeout: ctx.timeout)
             im = Matter::Controller::ImClient.new(controller, ctx.timeout)
+
             case attribute
             when "on-off"
               report = im.read_attribute(
@@ -44,7 +48,8 @@ module ChipTool
                 attribute_id: Matter::Cluster::OnOffCluster::ATTR_ON_OFF
               )
 
-              value = extract_report_bool(report, "OnOff") || raise "ReportData missing OnOff value"
+              value = extract_report_bool(report)
+              raise "ReportData missing OnOff value" if value.nil?
               puts "OnOff: #{value ? "TRUE" : "FALSE"}"
               0
             when "attribute-list"
@@ -67,6 +72,8 @@ module ChipTool
               2
             end
           ensure
+            state.unsecured_message_counter = controller.transport.message_counter.counter
+            store.save(state)
             controller.close
           end
         end
@@ -105,7 +112,10 @@ module ChipTool
         state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
         store.save(state)
 
-        controller = Matter::Controller::Client.new
+        controller = Matter::Controller::Client.new(
+          unsecured_source_node_id: state.commissioner_node_id,
+          initial_unsecured_message_counter: state.unsecured_message_counter
+        )
         begin
           session = Matter::Controller::Pairing::CasePairing.new.pair(controller, peer, fabric, peer_node_id: node_id, timeout: ctx.timeout)
           im = Matter::Controller::ImClient.new(controller, ctx.timeout)
@@ -121,7 +131,19 @@ module ChipTool
           puts "#{name}: OK"
           0
         ensure
+          state.unsecured_message_counter = controller.transport.message_counter.counter
+          store.save(state)
           controller.close
+        end
+      end
+
+      private def parse_u64(s : String) : UInt64?
+        v = s.strip
+        return nil if v.empty?
+        if v.starts_with?("0x") || v.starts_with?("0X")
+          v[2..].to_u64?(16)
+        else
+          v.to_u64?
         end
       end
 
@@ -154,17 +176,7 @@ module ChipTool
         scanner.try(&.close)
       end
 
-      private def parse_u64(s : String) : UInt64?
-        v = s.strip
-        return nil if v.empty?
-        if v.starts_with?("0x") || v.starts_with?("0X")
-          v[2..].to_u64?(16)
-        else
-          v.to_u64?
-        end
-      end
-
-      private def extract_report_bool(report : Matter::InteractionModel::ReportDataMessage, label : String) : Bool?
+      private def extract_report_bool(report : Matter::InteractionModel::ReportDataMessage) : Bool?
         reports = report.attribute_reports
         return nil unless reports
 
@@ -174,8 +186,14 @@ module ChipTool
           path = data.path
           next unless path.cluster == Matter::Cluster::OnOffCluster::CLUSTER_ID
           next unless path.attribute == Matter::Cluster::OnOffCluster::ATTR_ON_OFF
-          value = data.data.value
-          return value.as?(Bool)
+          case value = data.data.value
+          when Bool
+            return value
+          when Int
+            return value != 0
+          else
+            return nil
+          end
         end
 
         nil
@@ -192,37 +210,42 @@ module ChipTool
           next unless path.cluster == cluster_id
           next unless path.attribute == attribute_id
 
-          any = data.data
-          case v = any.value
-          when Array(TLV::Any)
-            out = [] of UInt32
-            v.each do |elem|
-              case raw = elem.value
-              when Int64
-                out << raw.to_u32
-              when Int32
-                out << raw.to_u32
-              when UInt32
-                out << raw
-              when UInt16
-                out << raw.to_u32
-              else
-                out << raw.to_s.to_u32
-              end
-            end
-            return out else
-            return nil
+          list = data.data.value.as?(Array(TLV::Any)) || return nil
+
+          values = [] of UInt32
+          list.each_with_index do |elem, idx|
+            break if idx >= 8192
+            v = elem.value
+            next unless v.is_a?(Int)
+            next if v < 0
+            u64 = v.to_u64
+            next if u64 > UInt32::MAX
+            values << u64.to_u32
           end
+
+          return values
         end
 
         nil
       end
 
       private def assert_invoke_ok!(response : Matter::InteractionModel::InvokeResponseMessage, name : String) : Nil
-        status = response.invoke_responses.find(&.command_status)
-        if status_ib = status.try(&.command_status)
-          raise "#{name} failed (status=#{status_ib.status.status})"
+        saw_any = false
+
+        response.invoke_responses.each do |resp|
+          if resp.command_data
+            saw_any = true
+            next
+          end
+
+          if status_ib = resp.command_status
+            saw_any = true
+            return if status_ib.status.status == Matter::InteractionModel::StatusCode::Success.value
+            raise "#{name} failed (status=#{status_ib.status.status})"
+          end
         end
+
+        raise "#{name} failed (empty InvokeResponse)" unless saw_any
       end
     end
   end

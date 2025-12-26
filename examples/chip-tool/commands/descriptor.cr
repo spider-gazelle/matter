@@ -38,7 +38,10 @@ module ChipTool
           state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
           store.save(state)
 
-          controller = Matter::Controller::Client.new
+          controller = Matter::Controller::Client.new(
+            unsecured_source_node_id: state.commissioner_node_id,
+            initial_unsecured_message_counter: state.unsecured_message_counter
+          )
           begin
             session = Matter::Controller::Pairing::CasePairing.new.pair(controller, peer, fabric, peer_node_id: node_id, timeout: ctx.timeout)
             im = Matter::Controller::ImClient.new(controller, ctx.timeout)
@@ -57,6 +60,8 @@ module ChipTool
             end
             0
           ensure
+            state.unsecured_message_counter = controller.transport.message_counter.counter
+            store.save(state)
             controller.close
           end
         end
@@ -113,27 +118,21 @@ module ChipTool
           next unless path.attribute == attribute_id
 
           any = data.data
-          case v = any.value
-          when Array(TLV::Any)
-            out = [] of UInt16
-            v.each do |elem|
-              case raw = elem.value
-              when Int64
-                out << raw.to_u16
-              when Int32
-                out << raw.to_u16
-              when UInt16
-                out << raw
-              when UInt32
-                out << raw.to_u16
-              else
-                # best-effort conversion
-                out << raw.to_s.to_u16
-              end
-            end
-            return out else
-            return nil
+          list = any.value.as?(Array(TLV::Any)) || return nil
+
+          values = [] of UInt16
+          list.each_with_index do |elem, idx|
+            break if idx >= 4096
+            v = elem.value
+            next unless v.is_a?(Int)
+            next if v < 0
+            value_u64 = v.to_u64
+
+            next if value_u64 > UInt16::MAX
+            values << value_u64.to_u16
           end
+
+          return values
         end
 
         nil
