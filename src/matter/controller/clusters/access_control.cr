@@ -39,8 +39,8 @@ module Matter
                 if t.nil? || t.raw.nil?
                   nil
                 else
-                  t.as_a.map do |tg|
-                    th = tg.as_h
+                  t.as_a.map do |target|
+                    th = target.as_h
                     Target.new(
                       cluster: th["cluster"]?.try { |x| x.raw.nil? ? nil : x.as_i64.to_u32 },
                       endpoint: th["endpoint"]?.try { |x| x.raw.nil? ? nil : x.as_i64.to_u16 },

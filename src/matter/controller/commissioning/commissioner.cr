@@ -150,7 +150,7 @@ module Matter
 
           deadline = Time.monotonic + @timeout
           loop do
-            if dev = scanner.commissioning_devices.find { |d| d.discriminator == discriminator }
+            if dev = scanner.commissioning_devices.find { |device| device.discriminator == discriminator }
               address = dev.addresses.find(&.family.inet?) || dev.addresses.first?
               if addr = address
                 return Socket::IPAddress.new(addr.address, dev.port)
@@ -246,8 +246,8 @@ module Matter
         end
 
         private def first_command_fields(response : InteractionModel::InvokeResponseMessage, command_id : UInt32) : Bytes
-          response.invoke_responses.each do |ib|
-            cmd = ib.command_data
+          response.invoke_responses.each do |invoke_response|
+            cmd = invoke_response.command_data
             next unless cmd
             next unless cmd.command_path.command == command_id
             fields = cmd.command_fields
