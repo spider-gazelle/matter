@@ -135,6 +135,9 @@ module Matter
           # Commissioner's public key (X value, pA)
           @[TLV::Field(tag: 1)]
           property x : Bytes
+
+          def initialize(@x : Bytes)
+          end
         end
 
         # PASE Pake2 message
@@ -162,6 +165,9 @@ module Matter
           # Commissioner's confirmation value (cA, h_ay)
           @[TLV::Field(tag: 1)]
           property verifier : Bytes
+
+          def initialize(@verifier : Bytes)
+          end
         end
 
         # StatusReport message

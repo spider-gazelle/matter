@@ -1,0 +1,50 @@
+# Crystal chip-tool (WIP)
+
+This is a small Crystal-native controller CLI built on top of this library, loosely modeled after `connectedhomeip/examples/chip-tool`.
+
+## Build
+
+```bash
+CRYSTAL_CACHE_DIR=./tmp/.crystal_cache crystal build examples/chip-tool.cr -o ./bin/chip-tool-crystal
+```
+
+## Usage
+
+All commands are invoked as:
+
+```bash
+./bin/chip-tool-crystal <cluster|command-set> <command> [args...] [--storage-directory <dir>] [--timeout <seconds>]
+```
+
+`--storage-directory` persists controller state to `controller.json`.
+
+## Pairing
+
+Commission a device over IP using a manual pairing code:
+
+```bash
+./bin/chip-tool-crystal pairing code 0x1 1495-753-5193
+```
+
+To skip mDNS discovery and target a specific address:
+
+```bash
+./bin/chip-tool-crystal pairing code 0x1 1495-753-5193 --address 192.168.1.50:5540
+```
+
+## OnOff
+
+Read the `OnOff` attribute:
+
+```bash
+./bin/chip-tool-crystal onoff read on-off 0x1 1
+```
+
+Send commands:
+
+```bash
+./bin/chip-tool-crystal onoff on 0x1 1
+./bin/chip-tool-crystal onoff off 0x1 1
+./bin/chip-tool-crystal onoff toggle 0x1 1
+```
+

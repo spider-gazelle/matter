@@ -1,0 +1,220 @@
+require "log"
+
+require "../../crypto/crypto"
+require "../../crypto/ecdh"
+require "../../crypto/key"
+require "../../crypto/certificate"
+require "../../fabric"
+require "../../session/case/definitions"
+require "../../session/pase/definitions"
+require "../client"
+require "../state"
+
+module Matter
+  module Controller
+    module Pairing
+      class CasePairing
+        Log = ::Log.for("matter.controller.pairing.case")
+
+        MSG_CASE_SIGMA1   = 0x30_u8
+        MSG_CASE_SIGMA2   = 0x31_u8
+        MSG_CASE_SIGMA3   = 0x32_u8
+        MSG_STATUS_REPORT = 0x40_u8
+
+        SIGMA2_INFO = "Sigma2".to_slice
+        SIGMA3_INFO = "Sigma3".to_slice
+
+        TBE_DATA2_NONCE = "NCASE_Sigma2N".to_slice
+        TBE_DATA3_NONCE = "NCASE_Sigma3N".to_slice
+
+        SESSION_KEYS_INFO = "SessionKeys".to_slice
+
+        def initialize(@crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new)
+        end
+
+        def pair(
+          client : Client,
+          peer : Socket::IPAddress,
+          fabric : FabricInfo,
+          peer_node_id : UInt64,
+          timeout : Time::Span = 10.seconds,
+        ) : Session::SecureContext
+          controller_key = Crypto::Key.new(Crypto::KeyType::EC, Crypto::CurveType::P256)
+          controller_key.private_bits = fabric.controller_private_key
+          controller_key.public_bits = Crypto::MatterCertificate.from_slice(fabric.controller_noc).ec_public_key
+
+          controller_fabric = Fabric.new(
+            fabric_id: fabric.fabric_id,
+            fabric_index: 1_u8,
+            node_id: fabric.controller_node_id,
+            root_public_key: fabric.root_public_key,
+            operational_cert: fabric.controller_noc,
+            operational_key: controller_key,
+            ipk: fabric.ipk_value,
+            vendor_id: fabric.admin_vendor_id,
+            label: "controller"
+          )
+
+          initiator_random = @crypto.random_bytes(32)
+          initiator_session_id = @crypto.random_uint16
+
+          ephemeral_key = Crypto::ECDH.generate_key_pair
+          initiator_eph_pub = ephemeral_key.public_key
+
+          destination_id = compute_destination_id(controller_fabric.derived_ipk, initiator_random, fabric.root_public_key, fabric.fabric_id, peer_node_id)
+
+          sigma1 = Session::Case::Definitions::Sigma1.new(
+            initiator_random: initiator_random,
+            initiator_session_id: initiator_session_id,
+            destination_id: destination_id,
+            initiator_eph_pub_key: initiator_eph_pub
+          )
+          sigma1_bytes = sigma1.to_slice
+
+          exchange_id = client.send_unsecured_request(
+            peer: peer,
+            protocol_id: Client::PROTOCOL_SECURE_CHANNEL,
+            message_type: MSG_CASE_SIGMA1,
+            payload: sigma1_bytes,
+            requires_ack: true
+          )
+
+          sigma2 = client.wait_for(exchange_id, Client::PROTOCOL_SECURE_CHANNEL, MSG_CASE_SIGMA2, timeout)
+          raise "CASE: timeout waiting for Sigma2" unless sigma2
+
+          sigma2_msg = Session::Case::Definitions::Sigma2.from_slice(sigma2.message.payload.to_slice)
+          sigma2_bytes = sigma2.message.payload.to_slice
+
+          shared_secret = Crypto::ECDH.compute_shared_secret(ephemeral_key.private_key, sigma2_msg.responder_eph_pub_key)
+
+          sigma1_hash = @crypto.compute_sha256(sigma1_bytes)
+          sigma2_salt = IO::Memory.new.tap do |io|
+            io.write(controller_fabric.derived_ipk)
+            io.write(sigma2_msg.responder_random)
+            io.write(sigma2_msg.responder_eph_pub_key)
+            io.write(sigma1_hash)
+          end.to_slice
+
+          sigma2_key = @crypto.create_hkdf_key(shared_secret, sigma2_salt, SIGMA2_INFO, 16)
+          decrypted2 = @crypto.decrypt(sigma2_key, sigma2_msg.encrypted2, TBE_DATA2_NONCE)
+          encrypted_data2 = Session::Case::Definitions::EncryptedDataSigma2.from_slice(decrypted2)
+
+          verify_sigma2_signature(encrypted_data2, sigma2_msg.responder_eph_pub_key, initiator_eph_pub)
+
+          signed_data3 = Session::Case::Definitions::SignedData.new(
+            responder_noc: fabric.controller_noc,
+            responder_icac: nil,
+            responder_public_key: initiator_eph_pub,
+            initiator_public_key: sigma2_msg.responder_eph_pub_key
+          )
+
+          signature3 = @crypto.sign_ecdsa(controller_key, signed_data3.to_slice)
+
+          encrypted_data3 = Session::Case::Definitions::EncryptedDataSigma3.new(
+            responder_noc: fabric.controller_noc,
+            responder_icac: nil,
+            signature: signature3
+          )
+          encrypted_data3_bytes = encrypted_data3.to_slice
+
+          sigma3_hash = @crypto.compute_sha256(sigma1_bytes + sigma2_bytes)
+          sigma3_salt = IO::Memory.new.tap do |io|
+            io.write(controller_fabric.derived_ipk)
+            io.write(sigma3_hash)
+          end.to_slice
+
+          sigma3_key = @crypto.create_hkdf_key(shared_secret, sigma3_salt, SIGMA3_INFO, 16)
+          encrypted3 = @crypto.encrypt(sigma3_key, encrypted_data3_bytes, TBE_DATA3_NONCE)
+
+          sigma3 = Session::Case::Definitions::Sigma3.new(encrypted3: encrypted3)
+          sigma3_bytes = sigma3.to_slice
+
+          client.send_unsecured_on_exchange(
+            peer: peer,
+            exchange_id: exchange_id,
+            protocol_id: Client::PROTOCOL_SECURE_CHANNEL,
+            message_type: MSG_CASE_SIGMA3,
+            payload: sigma3_bytes,
+            initiator_message: true,
+            requires_ack: true
+          )
+
+          status = client.wait_for(exchange_id, Client::PROTOCOL_SECURE_CHANNEL, MSG_STATUS_REPORT, timeout)
+          raise "CASE: timeout waiting for StatusReport" unless status
+
+          report = Session::Pase::Definitions::StatusReport.from_bytes(status.message.payload.to_slice)
+          unless report.general_status == 0_u16 && report.protocol_status == 0_u16
+            raise "CASE: status report failure (general_status=#{report.general_status} protocol_status=#{report.protocol_status})"
+          end
+
+          session_hash = @crypto.compute_sha256(sigma1_bytes + sigma2_bytes + sigma3_bytes)
+          session_salt = IO::Memory.new.tap do |io|
+            io.write(controller_fabric.derived_ipk)
+            io.write(session_hash)
+          end.to_slice
+
+          session_keys = @crypto.create_hkdf_key(shared_secret, session_salt, SESSION_KEYS_INFO, 48)
+
+          secure_context = Session::SecureContext.new(
+            session_id: initiator_session_id,
+            peer_session_id: sigma2_msg.responder_session_id,
+            session_type: Session::SessionType::Unicast,
+            encryption_key: session_keys[0, 16],  # I2R
+            decryption_key: session_keys[16, 16], # R2I
+            attestation_challenge: session_keys[32, 16],
+            initiator: true,
+            local_node_id: DataType::NodeId.new(fabric.controller_node_id),
+            peer_node_id: DataType::NodeId.new(peer_node_id),
+            case_session: true
+          )
+
+          client.register_session(secure_context)
+          secure_context
+        end
+
+        private def compute_destination_id(
+          derived_ipk : Bytes,
+          initiator_random : Bytes,
+          root_public_key : Bytes,
+          fabric_id : UInt64,
+          node_id : UInt64,
+        ) : Bytes
+          data = IO::Memory.new
+          data.write(initiator_random)
+          data.write(root_public_key)
+
+          fabric_id_bytes = Bytes.new(8)
+          IO::ByteFormat::LittleEndian.encode(fabric_id, fabric_id_bytes)
+          data.write(fabric_id_bytes)
+
+          node_id_bytes = Bytes.new(8)
+          IO::ByteFormat::LittleEndian.encode(node_id, node_id_bytes)
+          data.write(node_id_bytes)
+
+          Crypto.sign_hmac(derived_ipk, data.to_slice)
+        end
+
+        private def verify_sigma2_signature(
+          encrypted_data2 : Session::Case::Definitions::EncryptedDataSigma2,
+          responder_eph_pub : Bytes,
+          initiator_eph_pub : Bytes,
+        ) : Nil
+          signed_data = Session::Case::Definitions::SignedData.new(
+            responder_noc: encrypted_data2.responder_noc,
+            responder_icac: encrypted_data2.responder_icac,
+            responder_public_key: responder_eph_pub,
+            initiator_public_key: initiator_eph_pub
+          )
+
+          noc = Crypto::MatterCertificate.from_slice(encrypted_data2.responder_noc)
+          public_key = Crypto::Key.new(Crypto::KeyType::EC, Crypto::CurveType::P256)
+          public_key.public_bits = noc.ec_public_key
+
+          @crypto.verify_ecdsa(public_key, signed_data.to_slice, encrypted_data2.signature)
+        rescue ex
+          raise "CASE: Sigma2 signature verification failed: #{ex.message}"
+        end
+      end
+    end
+  end
+end
