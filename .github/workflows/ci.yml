@@ -13,10 +13,20 @@ jobs:
         uses: crystal-lang/install-crystal@v1
       - name: Install Dependencies
         run: shards install
-      # - name: Ameba
-      #   run: ./bin/ameba
+      - name: Ameba
+        run: ./bin/ameba
       - name: Format
         run: crystal tool format --check
+  end_to_end_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Crystal
+        uses: crystal-lang/install-crystal@v1
+      - name: Install Dependencies
+        run: shards install --ignore-crystal-version --skip-postinstall --skip-executables
+      - name: Validate
+        run: ./examples/run_validation.sh
   test:
     strategy:
       fail-fast: false
