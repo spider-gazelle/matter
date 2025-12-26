@@ -19,11 +19,6 @@ module ChipTool
             next 2
           end
 
-          unless attribute == "on-off"
-            STDERR.puts "Unsupported attribute: #{attribute} (supported: on-off)"
-            next 2
-          end
-
           node_id = parse_u64(node_id_str) || raise ArgumentError.new("invalid node-id: #{node_id_str}")
           endpoint_id = endpoint_str.to_u16
 
@@ -39,17 +34,38 @@ module ChipTool
           begin
             session = Matter::Controller::Pairing::CasePairing.new.pair(controller, peer, fabric, peer_node_id: node_id, timeout: ctx.timeout)
             im = Matter::Controller::ImClient.new(controller, ctx.timeout)
-            report = im.read_attribute(
-              session: session,
-              peer: peer,
-              endpoint_id: endpoint_id,
-              cluster_id: Matter::Cluster::OnOffCluster::CLUSTER_ID,
-              attribute_id: Matter::Cluster::OnOffCluster::ATTR_ON_OFF
-            )
+            case attribute
+            when "on-off"
+              report = im.read_attribute(
+                session: session,
+                peer: peer,
+                endpoint_id: endpoint_id,
+                cluster_id: Matter::Cluster::OnOffCluster::CLUSTER_ID,
+                attribute_id: Matter::Cluster::OnOffCluster::ATTR_ON_OFF
+              )
 
-            value = extract_report_bool(report, "OnOff") || raise "ReportData missing OnOff value"
-            puts "OnOff: #{value ? "TRUE" : "FALSE"}"
-            0
+              value = extract_report_bool(report, "OnOff") || raise "ReportData missing OnOff value"
+              puts "OnOff: #{value ? "TRUE" : "FALSE"}"
+              0
+            when "attribute-list"
+              report = im.read_attribute(
+                session: session,
+                peer: peer,
+                endpoint_id: endpoint_id,
+                cluster_id: Matter::Cluster::OnOffCluster::CLUSTER_ID,
+                attribute_id: Matter::Cluster::OnOffCluster::ATTRIBUTE_LIST
+              )
+
+              list = extract_report_u32_list(report, Matter::Cluster::OnOffCluster::CLUSTER_ID, Matter::Cluster::OnOffCluster::ATTRIBUTE_LIST) || raise "ReportData missing AttributeList"
+              puts "AttributeList: #{list.size} entries"
+              list.each_with_index do |id, idx|
+                puts "  [#{idx}]: #{id}"
+              end
+              0
+            else
+              STDERR.puts "Unsupported attribute: #{attribute} (supported: on-off, attribute-list)"
+              2
+            end
           ensure
             controller.close
           end
@@ -160,6 +176,43 @@ module ChipTool
           next unless path.attribute == Matter::Cluster::OnOffCluster::ATTR_ON_OFF
           value = data.data.value
           return value.as?(Bool)
+        end
+
+        nil
+      end
+
+      private def extract_report_u32_list(report : Matter::InteractionModel::ReportDataMessage, cluster_id : UInt32, attribute_id : UInt32) : Array(UInt32)?
+        reports = report.attribute_reports
+        return nil unless reports
+
+        reports.each do |r|
+          data = r.attribute_data
+          next unless data
+          path = data.path
+          next unless path.cluster == cluster_id
+          next unless path.attribute == attribute_id
+
+          any = data.data
+          case v = any.value
+          when Array(TLV::Any)
+            out = [] of UInt32
+            v.each do |elem|
+              case raw = elem.value
+              when Int64
+                out << raw.to_u32
+              when Int32
+                out << raw.to_u32
+              when UInt32
+                out << raw
+              when UInt16
+                out << raw.to_u32
+              else
+                out << raw.to_s.to_u32
+              end
+            end
+            return out else
+            return nil
+          end
         end
 
         nil

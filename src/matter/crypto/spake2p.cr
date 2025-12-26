@@ -106,6 +106,23 @@ module Matter
         W0L.new(w0_w1.w0, l)
       end
 
+      # Compute the passcode verifier used by AdministratorCommissioning OpenCommissioningWindow.
+      #
+      # This is 97 bytes: w0 (32-byte big-endian) || L (65-byte uncompressed EC point).
+      def self.compute_passcode_verifier(crypto : CryptoBase, params : PbkdfParameters, pin : UInt32) : Bytes
+        w0_l = compute_w0_l(crypto, params, pin)
+        w0_bytes = big_int_to_fixed_bytes(w0_l.w0, 32)
+        w0_bytes + w0_l.l
+      end
+
+      private def self.big_int_to_fixed_bytes(value : BigInt, bytes : Int32) : Bytes
+        hex = value.to_s(16)
+        padded = hex.rjust(bytes * 2, '0')
+        Bytes.new(bytes) do |i|
+          padded[i * 2, 2].to_i(16).to_u8
+        end
+      end
+
       # Create SPAKE2+ instance with context and w0
       def self.create(crypto : CryptoBase, context : Bytes, w0 : BigInt) : Spake2p
         # Create using the SPAKE2Plus library with Matter defaults (P256 + SHA256 + HMAC)

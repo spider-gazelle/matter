@@ -83,8 +83,7 @@ module Matter
                        @auth_mode : AccessControlEntryAuthMode,
                        @subjects : Array(UInt64),
                        @targets : Array(Target)?,
-                       fabric_index : UInt8)
-          @fabric_index = fabric_index
+                       @fabric_index : UInt8? = nil)
         end
       end
 

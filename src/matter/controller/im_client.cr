@@ -11,6 +11,8 @@ module Matter
 
       MSG_READ_REQUEST    = 0x02_u8
       MSG_REPORT_DATA     = 0x05_u8
+      MSG_WRITE_REQUEST   = 0x06_u8
+      MSG_WRITE_RESPONSE  = 0x07_u8
       MSG_INVOKE_REQUEST  = 0x08_u8
       MSG_INVOKE_RESPONSE = 0x09_u8
 
@@ -50,6 +52,69 @@ module Matter
         raise "IM: timeout waiting for ReportData (exchange=#{exchange_id})" unless response
 
         InteractionModel::ReportDataMessage.from_slice(response.message.payload.to_slice)
+      end
+
+      def write_attribute(
+        session : Session::SecureContext,
+        peer : Socket::IPAddress,
+        endpoint_id : UInt16,
+        cluster_id : UInt32,
+        attribute_id : UInt32,
+        value : Bytes,
+        timed_request : Bool = false,
+        suppress_response : Bool = false,
+      ) : InteractionModel::WriteResponseMessage
+        write_attributes(
+          session: session,
+          peer: peer,
+          writes: [{endpoint_id, cluster_id, attribute_id, value}],
+          timed_request: timed_request,
+          suppress_response: suppress_response
+        )
+      end
+
+      def write_attributes(
+        session : Session::SecureContext,
+        peer : Socket::IPAddress,
+        writes : Array(Tuple(UInt16, UInt32, UInt32, Bytes)),
+        timed_request : Bool = false,
+        suppress_response : Bool = false,
+      ) : InteractionModel::WriteResponseMessage
+        write_ibs = writes.map do |endpoint_id, cluster_id, attribute_id, value|
+          path = InteractionModel::AttributePath.new(
+            endpoint: endpoint_id,
+            cluster: cluster_id,
+            attribute: attribute_id
+          )
+
+          InteractionModel::AttributeDataIB.new(
+            path: path,
+            data: TLV::Any.from_slice(value),
+            data_version: nil
+          )
+        end
+
+        request = InteractionModel::WriteRequestMessage.new(
+          suppress_response: suppress_response,
+          timed_request: timed_request,
+          write_requests: write_ibs,
+          more_chunked_messages: false,
+          interaction_model_revision: 12_u8
+        )
+
+        exchange_id = @client.send_encrypted_request(
+          session: session,
+          peer: peer,
+          protocol_id: Client::PROTOCOL_INTERACTION_MODEL,
+          message_type: MSG_WRITE_REQUEST,
+          payload: request.to_slice,
+          requires_ack: true
+        )
+
+        response = @client.wait_for(exchange_id, Client::PROTOCOL_INTERACTION_MODEL, MSG_WRITE_RESPONSE, @timeout)
+        raise "IM: timeout waiting for WriteResponse (exchange=#{exchange_id})" unless response
+
+        InteractionModel::WriteResponseMessage.from_slice(response.message.payload.to_slice)
       end
 
       def invoke(

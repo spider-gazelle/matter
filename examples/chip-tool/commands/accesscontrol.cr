@@ -1,0 +1,213 @@
+require "../registry"
+
+module ChipTool
+  module Commands
+    module AccessControl
+      extend self
+
+      alias Entry = Matter::Cluster::AccessControlCluster::AccessControlEntry
+      alias Target = Matter::Cluster::AccessControlCluster::Target
+
+      def register : Nil
+        Registry.register("accesscontrol", "read", "Read AccessControl cluster attributes") do |_ctx, _args|
+          ctx = _ctx
+          args = _args.dup
+
+          attribute = args.shift?
+          node_id_str = args.shift?
+          endpoint_str = args.shift?
+
+          unless attribute && node_id_str && endpoint_str
+            STDERR.puts "Usage: accesscontrol read acl <node-id> <endpoint-id>"
+            next 2
+          end
+
+          cluster_id = Matter::Cluster::AccessControlCluster::CLUSTER_ID
+          attribute_id = case attribute
+                         when "acl" then Matter::Cluster::AccessControlCluster::ATTR_ACL
+                         else
+                           STDERR.puts "Unsupported attribute: #{attribute} (supported: acl)"
+                           next 2
+                         end
+
+          node_id = parse_u64(node_id_str) || raise ArgumentError.new("invalid node-id: #{node_id_str}")
+          endpoint_id = endpoint_str.to_u16
+
+          store = Matter::Controller::StateStore.new(ctx.storage_directory)
+          state = store.load
+          fabric = state.fabric || raise "No controller fabric found; run `pairing code ...` first"
+
+          peer = resolve_peer(state, fabric, node_id, ctx.timeout)
+          state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
+          store.save(state)
+
+          controller = Matter::Controller::Client.new
+          begin
+            session = Matter::Controller::Pairing::CasePairing.new.pair(controller, peer, fabric, peer_node_id: node_id, timeout: ctx.timeout)
+            im = Matter::Controller::ImClient.new(controller, ctx.timeout)
+            report = im.read_attribute(
+              session: session,
+              peer: peer,
+              endpoint_id: endpoint_id,
+              cluster_id: cluster_id,
+              attribute_id: attribute_id
+            )
+
+            entries = extract_entries(report, cluster_id, attribute_id) || raise "ReportData missing ACL"
+            puts "ACL: #{entries.size} entries"
+            entries.each_with_index do |e, idx|
+              puts "  [#{idx}]:"
+              puts "    FabricIndex: #{e.fabric_index || 0}"
+              puts "    Privilege: #{e.privilege.value}"
+              puts "    AuthMode: #{e.auth_mode.value}"
+              puts "    Subjects"
+              e.subjects.each_with_index do |subj, i|
+                puts "      [#{i}]: #{subj}"
+              end
+              if targets = e.targets
+                puts "    Targets"
+                targets.each_with_index do |t, i|
+                  puts "      [#{i}]: endpoint=#{t.endpoint || "null"} cluster=#{t.cluster || "null"} deviceType=#{t.device_type || "null"}"
+                end
+              end
+            end
+            0
+          ensure
+            controller.close
+          end
+        end
+
+        Registry.register("accesscontrol", "write", "Write AccessControl cluster attributes") do |_ctx, _args|
+          ctx = _ctx
+          args = _args.dup
+
+          attribute = args.shift?
+          json = args.shift?
+          node_id_str = args.shift?
+          endpoint_str = args.shift?
+
+          unless attribute && json && node_id_str && endpoint_str
+            STDERR.puts "Usage: accesscontrol write acl '<json>' <node-id> <endpoint-id>"
+            next 2
+          end
+
+          cluster_id = Matter::Cluster::AccessControlCluster::CLUSTER_ID
+          attribute_id = case attribute
+                         when "acl" then Matter::Cluster::AccessControlCluster::ATTR_ACL
+                         else
+                           STDERR.puts "Unsupported attribute: #{attribute} (supported: acl)"
+                           next 2
+                         end
+
+          node_id = parse_u64(node_id_str) || raise ArgumentError.new("invalid node-id: #{node_id_str}")
+          endpoint_id = endpoint_str.to_u16
+
+          entries = Matter::Controller::Clusters::AccessControl.parse_acl_json(json)
+          tlv = Matter::Controller::Clusters::AccessControl.encode_acl_tlv(entries)
+
+          store = Matter::Controller::StateStore.new(ctx.storage_directory)
+          state = store.load
+          fabric = state.fabric || raise "No controller fabric found; run `pairing code ...` first"
+
+          peer = resolve_peer(state, fabric, node_id, ctx.timeout)
+          state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
+          store.save(state)
+
+          controller = Matter::Controller::Client.new
+          begin
+            session = Matter::Controller::Pairing::CasePairing.new.pair(controller, peer, fabric, peer_node_id: node_id, timeout: ctx.timeout)
+            im = Matter::Controller::ImClient.new(controller, ctx.timeout)
+            resp = im.write_attribute(
+              session: session,
+              peer: peer,
+              endpoint_id: endpoint_id,
+              cluster_id: cluster_id,
+              attribute_id: attribute_id,
+              value: tlv,
+              timed_request: false,
+              suppress_response: false
+            )
+
+            status = resp.write_responses.first?.try(&.status)
+            if status && status.status != Matter::InteractionModel::StatusCode::Success.value
+              # Print in a way device_validation can treat as "denied" if needed.
+              STDERR.puts "IM Error: status=#{status.status} cluster_status=#{status.cluster_status}"
+              next 1
+            end
+
+            puts "ACL: OK"
+            0
+          ensure
+            controller.close
+          end
+        end
+      end
+
+      private def parse_u64(s : String) : UInt64?
+        v = s.strip
+        return nil if v.empty?
+        if v.starts_with?("0x") || v.starts_with?("0X")
+          v[2..].to_u64?(16)
+        else
+          v.to_u64?
+        end
+      end
+
+      private def resolve_peer(state : Matter::Controller::State, fabric : Matter::Controller::FabricInfo, node_id : UInt64, timeout : Time::Span) : Socket::IPAddress
+        if info = state.nodes[node_id]?
+          if addr = info.address
+            return Socket::IPAddress.new(addr, info.port)
+          end
+        end
+
+        scanner = nil.as(Matter::MDNS::Scanner?)
+        scanner = Matter::MDNS::Scanner.new
+        scanner.start
+        scanner.query_operational
+
+        deadline = Time.monotonic + timeout
+        loop do
+          if dev = scanner.operational_devices.find { |d| d.fabric_id == fabric.fabric_id && d.node_id == node_id }
+            address = dev.addresses.find(&.family.inet?) || dev.addresses.first?
+            if addr = address
+              return Socket::IPAddress.new(addr.address, dev.port)
+            end
+          end
+          break if Time.monotonic >= deadline
+          sleep 100.milliseconds
+        end
+
+        raise "Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})"
+      ensure
+        scanner.try(&.close)
+      end
+
+      private def extract_entries(report : Matter::InteractionModel::ReportDataMessage, cluster_id : UInt32, attribute_id : UInt32) : Array(Entry)?
+        reports = report.attribute_reports
+        return nil unless reports
+
+        reports.each do |r|
+          data = r.attribute_data
+          next unless data
+          path = data.path
+          next unless path.cluster == cluster_id
+          next unless path.attribute == attribute_id
+
+          any = data.data
+          case v = any.value
+          when Array(TLV::Any)
+            entries = [] of Entry
+            v.each do |elem|
+              entries << Entry.from_slice(elem.to_slice)
+            end
+            return entries
+          else
+            return nil
+          end
+        end
+
+        nil
+      end
+    end
+  end
+end

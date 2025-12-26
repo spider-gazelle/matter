@@ -42,6 +42,80 @@ module ChipTool
           puts "Commissioned node 0x#{node_id.to_s(16)}"
           0
         end
+
+        Registry.register("pairing", "open-commissioning-window", "Open an Enhanced or Basic commissioning window") do |_ctx, _args|
+          ctx = _ctx
+          args = _args.dup
+
+          node_id_str = args.shift?
+          option_str = args.shift?
+          window_timeout_str = args.shift?
+          iteration_str = args.shift?
+          discriminator_str = args.shift?
+
+          unless node_id_str && option_str && window_timeout_str && iteration_str && discriminator_str
+            STDERR.puts "Usage: pairing open-commissioning-window <node-id> <option> <window-timeout> <iteration> <discriminator>"
+            next 2
+          end
+
+          node_id = parse_u64(node_id_str) || raise ArgumentError.new("invalid node-id: #{node_id_str}")
+          option = option_str.to_i
+          window_timeout = window_timeout_str.to_u16
+          iterations = iteration_str.to_u32
+          discriminator = discriminator_str.to_u16
+
+          store = Matter::Controller::StateStore.new(ctx.storage_directory)
+          state = store.load
+          fabric = state.fabric || raise "No controller fabric found; run `pairing code ...` first"
+
+          peer = resolve_peer(state, fabric, node_id, ctx.timeout)
+          state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
+          store.save(state)
+
+          controller = Matter::Controller::Client.new
+          begin
+            session = Matter::Controller::Pairing::CasePairing.new.pair(controller, peer, fabric, peer_node_id: node_id, timeout: ctx.timeout)
+            im = Matter::Controller::ImClient.new(controller, ctx.timeout)
+
+            case option
+            when 0
+              request = Matter::Cluster::Definitions::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(window_timeout)
+              resp = im.invoke(
+                session: session,
+                peer: peer,
+                endpoint_id: 0_u16,
+                cluster_id: Matter::Cluster::AdministratorCommissioningCluster::CLUSTER_ID,
+                command_id: Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+                fields: request.to_slice
+              )
+              if status = resp.invoke_responses.first?.try(&.command_status).try(&.status)
+                unless status.status == Matter::InteractionModel::StatusCode::Success.value
+                  raise "OpenBasicCommissioningWindow failed (status=#{status.status})"
+                end
+              end
+              puts "OpenBasicCommissioningWindow: OK"
+              0
+            when 1
+              opener = Matter::Controller::Commissioning::CommissioningWindowOpener.new
+              window = opener.open_enhanced(
+                im: im,
+                session: session,
+                peer: peer,
+                timeout_seconds: window_timeout,
+                iterations: iterations,
+                discriminator: discriminator
+              )
+              puts "Manual pairing code: [#{window.manual_pairing_code}]"
+              puts "Discriminator: #{window.discriminator}"
+              0
+            else
+              STDERR.puts "Unsupported option: #{option} (supported: 0=basic, 1=enhanced)"
+              2
+            end
+          ensure
+            controller.close
+          end
+        end
       end
 
       private def parse_u64(s : String) : UInt64?
@@ -52,6 +126,35 @@ module ChipTool
         else
           v.to_u64?
         end
+      end
+
+      private def resolve_peer(state : Matter::Controller::State, fabric : Matter::Controller::FabricInfo, node_id : UInt64, timeout : Time::Span) : Socket::IPAddress
+        if info = state.nodes[node_id]?
+          if addr = info.address
+            return Socket::IPAddress.new(addr, info.port)
+          end
+        end
+
+        scanner = nil.as(Matter::MDNS::Scanner?)
+        scanner = Matter::MDNS::Scanner.new
+        scanner.start
+        scanner.query_operational
+
+        deadline = Time.monotonic + timeout
+        loop do
+          if dev = scanner.operational_devices.find { |d| d.fabric_id == fabric.fabric_id && d.node_id == node_id }
+            address = dev.addresses.find(&.family.inet?) || dev.addresses.first?
+            if addr = address
+              return Socket::IPAddress.new(addr.address, dev.port)
+            end
+          end
+          break if Time.monotonic >= deadline
+          sleep 100.milliseconds
+        end
+
+        raise "Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})"
+      ensure
+        scanner.try(&.close)
       end
     end
   end

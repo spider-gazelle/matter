@@ -272,7 +272,7 @@ def build_view_only_acl_json(subject : UInt64, endpoint_id : UInt16) : String
   end
 end
 
-chip_tool = ENV["CHIP_TOOL"]? || "chip-tool"
+chip_tool = ENV["CHIP_TOOL"]? || (File.exists?("./bin/chip-tool-crystal") ? "./bin/chip-tool-crystal" : "chip-tool")
 node_id = "1"
 endpoint_id = "1"
 node_id_b = nil.as(String?)
