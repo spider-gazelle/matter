@@ -605,7 +605,7 @@ module Matter
         InteractionModel::Status.new(InteractionModel::StatusCode::Success)
       end
 
-      def set_level(level : UInt8) : InteractionModel::Status
+      def level=(level : UInt8) : InteractionModel::Status
         move_to_level(level)
       end
 

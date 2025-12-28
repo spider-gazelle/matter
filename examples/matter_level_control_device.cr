@@ -303,7 +303,7 @@ module MatterLevelControl
       clamped = value
       clamped = min_level if clamped < min_level
       clamped = max_level if clamped > max_level
-      level_control.set_level(clamped.to_u8)
+      level_control.level = clamped.to_u8
     end
 
     private def show_status : Nil
