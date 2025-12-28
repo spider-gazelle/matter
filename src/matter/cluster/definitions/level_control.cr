@@ -19,14 +19,17 @@ module Matter
           @[TLV::Field(tag: 0)]
           property level : UInt8
 
-          @[TLV::Field(tag: 1)]
-          property transition_time : UInt16
+          @[TLV::Field(tag: 1, optional: false)]
+          property transition_time : UInt16?
 
           @[TLV::Field(tag: 2)]
           property mask : UInt8
 
           @[TLV::Field(tag: 3)]
           property override : UInt8
+
+          def initialize(@level : UInt8, @transition_time : UInt16?, @mask : UInt8, @override : UInt8)
+          end
         end
 
         # Input to the LevelControl move command
@@ -43,14 +46,17 @@ module Matter
           # attribute is not supported, or if the Rate field is equal to null and the value of the DefaultMoveRate
           # attribute is equal to null, then the device SHOULD move as fast as it is able. If the device is not able to
           # move at a variable rate, this field may be disregarded.
-          @[TLV::Field(tag: 1)]
-          property rate : UInt8
+          @[TLV::Field(tag: 1, optional: false)]
+          property rate : UInt8?
 
           @[TLV::Field(tag: 2)]
           property mask : UInt8
 
           @[TLV::Field(tag: 3)]
           property override : UInt8
+
+          def initialize(@move_mode : MoveMode, @rate : UInt8?, @mask : UInt8, @override : UInt8)
+          end
         end
 
         # Input to the LevelControl step command
@@ -63,14 +69,17 @@ module Matter
           @[TLV::Field(tag: 1)]
           property step_size : UInt8
 
-          @[TLV::Field(tag: 2)]
-          property transition_time : UInt16
+          @[TLV::Field(tag: 2, optional: false)]
+          property transition_time : UInt16?
 
           @[TLV::Field(tag: 3)]
           property mask : UInt8
 
           @[TLV::Field(tag: 4)]
           property override : UInt8
+
+          def initialize(@step_mode : StepMode, @step_size : UInt8, @transition_time : UInt16?, @mask : UInt8, @override : UInt8)
+          end
         end
 
         # Input to the LevelControl stop command
@@ -82,6 +91,9 @@ module Matter
 
           @[TLV::Field(tag: 1)]
           property override : UInt8
+
+          def initialize(@mask : UInt8, @override : UInt8)
+          end
         end
 
         # Input to the LevelControl moveToLevelWithOnOff command
@@ -91,14 +103,17 @@ module Matter
           @[TLV::Field(tag: 0)]
           property level : UInt8
 
-          @[TLV::Field(tag: 1)]
-          property transition_time : UInt16
+          @[TLV::Field(tag: 1, optional: false)]
+          property transition_time : UInt16?
 
           @[TLV::Field(tag: 2)]
           property mask : UInt8
 
           @[TLV::Field(tag: 3)]
           property override : UInt8
+
+          def initialize(@level : UInt8, @transition_time : UInt16?, @mask : UInt8, @override : UInt8)
+          end
         end
 
         # Input to the LevelControl moveWithOnOff command
@@ -108,14 +123,17 @@ module Matter
           @[TLV::Field(tag: 0)]
           property move_mode : MoveMode
 
-          @[TLV::Field(tag: 1)]
-          property rate : UInt8
+          @[TLV::Field(tag: 1, optional: false)]
+          property rate : UInt8?
 
           @[TLV::Field(tag: 2)]
           property mask : UInt8
 
           @[TLV::Field(tag: 3)]
           property override : UInt8
+
+          def initialize(@move_mode : MoveMode, @rate : UInt8?, @mask : UInt8, @override : UInt8)
+          end
         end
 
         # Input to the LevelControl stepWithOnOff command
@@ -128,14 +146,17 @@ module Matter
           @[TLV::Field(tag: 1)]
           property step_size : UInt8
 
-          @[TLV::Field(tag: 2)]
-          property transition_time : UInt16
+          @[TLV::Field(tag: 2, optional: false)]
+          property transition_time : UInt16?
 
           @[TLV::Field(tag: 3)]
           property mask : UInt8
 
           @[TLV::Field(tag: 4)]
           property override : UInt8
+
+          def initialize(@step_mode : StepMode, @step_size : UInt8, @transition_time : UInt16?, @mask : UInt8, @override : UInt8)
+          end
         end
 
         # Input to the LevelControl stopWithOnOff command
@@ -147,6 +168,9 @@ module Matter
 
           @[TLV::Field(tag: 1)]
           property override : UInt8
+
+          def initialize(@mask : UInt8, @override : UInt8)
+          end
         end
 
         # Input to the LevelControl moveToClosestFrequency command
@@ -155,6 +179,9 @@ module Matter
 
           @[TLV::Field(tag: 0)]
           property frequency : UInt16
+
+          def initialize(@frequency : UInt16)
+          end
         end
       end
     end

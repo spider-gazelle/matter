@@ -173,7 +173,12 @@ module Matter
         attr_ids << GLOBAL_ATTRIBUTE_LIST
         attr_ids << GLOBAL_FEATURE_MAP
         attr_ids << GLOBAL_CLUSTER_REVISION
-        attr_ids.to_tlv
+        unique_attr_ids = [] of UInt32
+        attr_ids.each do |attribute_id|
+          next if unique_attr_ids.includes?(attribute_id)
+          unique_attr_ids << attribute_id
+        end
+        unique_attr_ids.to_tlv
       end
 
       # Encode AcceptedCommandList - override in subclass for custom handling

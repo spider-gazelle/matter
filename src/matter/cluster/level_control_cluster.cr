@@ -1,4 +1,6 @@
+require "log"
 require "./cluster"
+require "./definitions/level_control"
 
 module Matter
   module Cluster
@@ -14,6 +16,8 @@ module Matter
     #
     # Matter Spec: Application 1.6
     class LevelControlCluster < Base
+      Log = ::Log.for("matter.cluster.level_control")
+
       CLUSTER_ID = 0x0008_u32
 
       # Feature flags
@@ -55,17 +59,17 @@ module Matter
       CMD_STOP_WITH_ON_OFF          = 0x07_u32 # OnOff feature
       CMD_MOVE_TO_CLOSEST_FREQUENCY = 0x08_u32 # Frequency feature
 
-      # Move Mode enum
-      enum MoveMode : UInt8
-        Up   = 0
-        Down = 1
-      end
-
-      # Step Mode enum
-      enum StepMode : UInt8
-        Up   = 0
-        Down = 1
-      end
+      alias MoveMode = Definitions::LevelControl::MoveMode
+      alias StepMode = Definitions::LevelControl::StepMode
+      alias MoveToLevelRequest = Definitions::LevelControl::MoveToLevelRequest
+      alias MoveRequest = Definitions::LevelControl::MoveRequest
+      alias StepRequest = Definitions::LevelControl::StepRequest
+      alias StopRequest = Definitions::LevelControl::StopRequest
+      alias MoveToLevelWithOnOffRequest = Definitions::LevelControl::MoveToLevelWithOnOffRequest
+      alias MoveWithOnOffRequest = Definitions::LevelControl::MoveWithOnOffRequest
+      alias StepWithOnOffRequest = Definitions::LevelControl::StepWithOnOffRequest
+      alias StopWithOnOffRequest = Definitions::LevelControl::StopWithOnOffRequest
+      alias MoveToClosestFrequencyRequest = Definitions::LevelControl::MoveToClosestFrequencyRequest
 
       # Feature map
       property feature_map : Feature
@@ -258,7 +262,7 @@ module Matter
           name: "clusterRevision",
           type: :uint16,
           writable: false,
-          default: 5_u16.to_tlv
+          default: 6_u16.to_tlv
         )
 
         attrs << AttributeMetadata.new(
@@ -392,7 +396,7 @@ module Matter
         when FEATURE_MAP
           @feature_map.value.to_tlv
         when CLUSTER_REVISION
-          5_u16.to_tlv
+          6_u16.to_tlv
         else
           super
         end
@@ -403,7 +407,7 @@ module Matter
         when ATTR_OPTIONS
           if value.size >= 1
             @options = value[0]
-            increment_version
+            increment_version_and_notify(ATTR_OPTIONS)
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
@@ -413,7 +417,7 @@ module Matter
             new_level = value[0]
             if new_level >= @min_level && new_level <= @max_level
               @on_level = new_level
-              increment_version
+              increment_version_and_notify(ATTR_ON_LEVEL)
               InteractionModel::Status.new(InteractionModel::StatusCode::Success)
             else
               InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
@@ -425,7 +429,7 @@ module Matter
           return unsupported_attribute unless @feature_map.lighting?
           if value.size >= 2
             @on_off_transition_time = IO::ByteFormat::LittleEndian.decode(UInt16, value)
-            increment_version
+            increment_version_and_notify(ATTR_ON_OFF_TRANSITION_TIME)
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
@@ -434,7 +438,7 @@ module Matter
           return unsupported_attribute unless @feature_map.lighting?
           if value.size >= 2
             @on_transition_time = IO::ByteFormat::LittleEndian.decode(UInt16, value)
-            increment_version
+            increment_version_and_notify(ATTR_ON_TRANSITION_TIME)
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
@@ -443,7 +447,7 @@ module Matter
           return unsupported_attribute unless @feature_map.lighting?
           if value.size >= 2
             @off_transition_time = IO::ByteFormat::LittleEndian.decode(UInt16, value)
-            increment_version
+            increment_version_and_notify(ATTR_OFF_TRANSITION_TIME)
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
@@ -452,7 +456,7 @@ module Matter
           return unsupported_attribute unless @feature_map.lighting?
           if value.size >= 1
             @default_move_rate = value[0]
-            increment_version
+            increment_version_and_notify(ATTR_DEFAULT_MOVE_RATE)
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
@@ -461,7 +465,7 @@ module Matter
           return unsupported_attribute unless @feature_map.lighting?
           if value.size >= 1
             @start_up_current_level = value[0]
-            increment_version
+            increment_version_and_notify(ATTR_START_UP_CURRENT_LEVEL)
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
@@ -474,25 +478,25 @@ module Matter
       protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_MOVE_TO_LEVEL
-          handle_move_to_level_command(fields)
+          handle_move_to_level_command(fields, with_on_off: false)
         when CMD_MOVE
-          handle_move_command(fields)
+          handle_move_command(fields, with_on_off: false)
         when CMD_STEP
-          handle_step_command(fields)
+          handle_step_command(fields, with_on_off: false)
         when CMD_STOP
-          handle_stop_command(fields)
+          handle_stop_command(fields, with_on_off: false)
         when CMD_MOVE_TO_LEVEL_WITH_ON_OFF
           return unsupported_command unless @feature_map.on_off?
-          handle_move_to_level_command(fields)
+          handle_move_to_level_command(fields, with_on_off: true)
         when CMD_MOVE_WITH_ON_OFF
           return unsupported_command unless @feature_map.on_off?
-          handle_move_command(fields)
+          handle_move_command(fields, with_on_off: true)
         when CMD_STEP_WITH_ON_OFF
           return unsupported_command unless @feature_map.on_off?
-          handle_step_command(fields)
+          handle_step_command(fields, with_on_off: true)
         when CMD_STOP_WITH_ON_OFF
           return unsupported_command unless @feature_map.on_off?
-          handle_stop_command(fields)
+          handle_stop_command(fields, with_on_off: true)
         when CMD_MOVE_TO_CLOSEST_FREQUENCY
           return unsupported_command unless @feature_map.frequency?
           handle_move_to_closest_frequency(fields)
@@ -502,30 +506,39 @@ module Matter
       end
 
       # Handle MoveToLevel command
-      private def handle_move_to_level_command(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand) if fields.size < 1
-
-        target_level = fields[0]
-        move_to_level(target_level)
+      private def handle_move_to_level_command(fields : Bytes, with_on_off : Bool) : InteractionModel::Status
+        command_name = with_on_off ? "MoveToLevelWithOnOff" : "MoveToLevel"
+        request = with_on_off ? MoveToLevelWithOnOffRequest.from_slice(fields) : MoveToLevelRequest.from_slice(fields)
+        move_to_level(request.level)
+      rescue ex
+        Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (bytes=#{fields.hexstring})" }
+        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
       end
 
       # Handle Move command
-      private def handle_move_command(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand) if fields.size < 1
-
-        # For simplified implementation, just indicate success
-        # Real implementation would start continuous movement
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+      private def handle_move_command(fields : Bytes, with_on_off : Bool) : InteractionModel::Status
+        command_name = with_on_off ? "MoveWithOnOff" : "Move"
+        request = with_on_off ? MoveWithOnOffRequest.from_slice(fields) : MoveRequest.from_slice(fields)
+        case request.move_mode
+        when MoveMode::Up
+          move_to_level(@max_level)
+        when MoveMode::Down
+          move_to_level(@min_level)
+        else
+          InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+        end
+      rescue ex
+        Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (bytes=#{fields.hexstring})" }
+        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
       end
 
       # Handle Step command
-      private def handle_step_command(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand) if fields.size < 2
+      private def handle_step_command(fields : Bytes, with_on_off : Bool) : InteractionModel::Status
+        command_name = with_on_off ? "StepWithOnOff" : "Step"
+        request = with_on_off ? StepWithOnOffRequest.from_slice(fields) : StepRequest.from_slice(fields)
+        step_size = request.step_size
 
-        mode = StepMode.from_value(fields[0])
-        step_size = fields[1]
-
-        case mode
+        case request.step_mode
         when StepMode::Up
           new_level = @current_level.to_u16 + step_size
           move_to_level([new_level, @max_level.to_u16].min.to_u8)
@@ -535,26 +548,42 @@ module Matter
         else
           InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
         end
+      rescue ex
+        Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (bytes=#{fields.hexstring})" }
+        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
       end
 
       # Handle Stop command
-      private def handle_stop_command(fields : Bytes) : InteractionModel::Status
+      private def handle_stop_command(fields : Bytes, with_on_off : Bool) : InteractionModel::Status
+        command_name = with_on_off ? "StopWithOnOff" : "Stop"
+        if with_on_off
+          StopWithOnOffRequest.from_slice(fields)
+        else
+          StopRequest.from_slice(fields)
+        end
         @remaining_time = 0_u16
         InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+      rescue ex
+        Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (bytes=#{fields.hexstring})" }
+        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
       end
 
       # Handle MoveToClosestFrequency command
       private def handle_move_to_closest_frequency(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand) if fields.size < 2
-
-        target_frequency = IO::ByteFormat::LittleEndian.decode(UInt16, fields)
+        request = MoveToClosestFrequencyRequest.from_slice(fields)
+        target_frequency = request.frequency
 
         # Clamp to valid range
         clamped = [@min_frequency, [target_frequency, @max_frequency].min].max
-        @current_frequency = clamped
-        increment_version
+        if @current_frequency != clamped
+          @current_frequency = clamped
+          increment_version_and_notify(ATTR_CURRENT_FREQUENCY)
+        end
 
         InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+      rescue ex
+        Log.error(exception: ex) { "LevelControl: failed to parse MoveToClosestFrequency request (bytes=#{fields.hexstring})" }
+        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
       end
 
       # Move to a specific level with clamping
@@ -566,19 +595,107 @@ module Matter
 
         @current_level = clamped_level
         @remaining_time = 0_u16 # Instant transition for simplified implementation
-        increment_version
 
         # Trigger callback if level actually changed
         if old_level != @current_level
+          increment_version_and_notify(ATTR_CURRENT_LEVEL)
           @on_level_changed.try &.call(old_level, @current_level)
         end
 
         InteractionModel::Status.new(InteractionModel::StatusCode::Success)
       end
 
+      def set_level(level : UInt8) : InteractionModel::Status
+        move_to_level(level)
+      end
+
       # Set callback for level changes
       def on_level_changed(&block : UInt8, UInt8 -> Nil)
         @on_level_changed = block
+      end
+
+      # ------------------------------------------------------------------------
+      # Persistence support
+      # ------------------------------------------------------------------------
+
+      private struct PersistedState
+        include JSON::Serializable
+
+        getter current_level : UInt8
+        getter min_level : UInt8
+        getter max_level : UInt8
+        getter on_level : UInt8?
+        getter options : UInt8
+        getter remaining_time : UInt16
+        getter on_off_transition_time : UInt16
+        getter on_transition_time : UInt16?
+        getter off_transition_time : UInt16?
+        getter default_move_rate : UInt8?
+        getter start_up_current_level : UInt8?
+        getter current_frequency : UInt16
+        getter min_frequency : UInt16
+        getter max_frequency : UInt16
+        getter data_version : UInt32
+
+        def initialize(
+          @current_level : UInt8,
+          @min_level : UInt8,
+          @max_level : UInt8,
+          @on_level : UInt8?,
+          @options : UInt8,
+          @remaining_time : UInt16,
+          @on_off_transition_time : UInt16,
+          @on_transition_time : UInt16?,
+          @off_transition_time : UInt16?,
+          @default_move_rate : UInt8?,
+          @start_up_current_level : UInt8?,
+          @current_frequency : UInt16,
+          @min_frequency : UInt16,
+          @max_frequency : UInt16,
+          @data_version : UInt32,
+        )
+        end
+      end
+
+      def save_state : String?
+        PersistedState.new(
+          current_level: @current_level,
+          min_level: @min_level,
+          max_level: @max_level,
+          on_level: @on_level,
+          options: @options,
+          remaining_time: @remaining_time,
+          on_off_transition_time: @on_off_transition_time,
+          on_transition_time: @on_transition_time,
+          off_transition_time: @off_transition_time,
+          default_move_rate: @default_move_rate,
+          start_up_current_level: @start_up_current_level,
+          current_frequency: @current_frequency,
+          min_frequency: @min_frequency,
+          max_frequency: @max_frequency,
+          data_version: @data_version
+        ).to_json
+      end
+
+      def restore_state(json : String) : Nil
+        state = PersistedState.from_json(json)
+        @current_level = state.current_level
+        @min_level = state.min_level
+        @max_level = state.max_level
+        @on_level = state.on_level
+        @options = state.options
+        @remaining_time = state.remaining_time
+        @on_off_transition_time = state.on_off_transition_time
+        @on_transition_time = state.on_transition_time
+        @off_transition_time = state.off_transition_time
+        @default_move_rate = state.default_move_rate
+        @start_up_current_level = state.start_up_current_level
+        @current_frequency = state.current_frequency
+        @min_frequency = state.min_frequency
+        @max_frequency = state.max_frequency
+        @data_version = state.data_version
+      rescue ex
+        # Start fresh if restore fails
       end
 
       # Helper methods
