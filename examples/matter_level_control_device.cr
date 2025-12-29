@@ -171,8 +171,12 @@ module MatterLevelControl
     end
 
     private def handle_level_change(old_level : UInt8, new_level : UInt8) : Nil
-      if new_level > 0 && !on_off.on_off?
-        on_off.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
+      # Apple Home treats `currentLevel == minLevel` as OFF for dimmable lights.
+      # Align the OnOff state so controllers don't interpret a "minimum on" level as 100%.
+      if new_level <= level_control.min_level
+        on_off.on = false if on_off.on?
+      elsif on_off.off?
+        on_off.on = true
       end
 
       puts ""
@@ -263,11 +267,11 @@ module MatterLevelControl
 
       case parts[0].downcase
       when "toggle"
-        on_off.invoke_command(Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
+        on_off.toggle
       when "on"
-        on_off.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
+        on_off.on = true
       when "off"
-        on_off.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF, Bytes.new(0))
+        on_off.on = false
       when "level", "brightness"
         set_level_from_command(parts)
       when "status"

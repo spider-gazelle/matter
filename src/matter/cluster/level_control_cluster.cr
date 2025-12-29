@@ -603,20 +603,26 @@ module Matter
         InteractionModel::Status.new(InteractionModel::StatusCode::Success)
       end
 
-      def level=(level : UInt8) : InteractionModel::Status
-        move_to_level(level)
-      end
-
-      # level as a percentage 0.0 - 100.0
-      def level=(level : Float) : InteractionModel::Status
-        range = @max_level - @min_level
-        level = ((level.clamp(0.0, 100.0) / 100.0) * range.to_f).round(:ties_away).to_u8 + @min_level
-        move_to_level(level)
-      end
-
       # Set callback for level changes
       def on_level_changed(&block : UInt8, UInt8 -> Nil)
         @on_level_changed = block
+      end
+
+      # ------------------------------------------------------------------------
+      # Public Interface
+      # ------------------------------------------------------------------------
+
+      def level=(level : UInt8) : UInt8
+        move_to_level(level)
+        level
+      end
+
+      # level as a percentage 0.0 - 100.0
+      def level=(level : Float)
+        range = @max_level - @min_level
+        level = ((level.clamp(0.0, 100.0) / 100.0) * range.to_f).round(:ties_away).to_u8 + @min_level
+        move_to_level(level)
+        level
       end
 
       # ------------------------------------------------------------------------

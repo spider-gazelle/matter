@@ -234,11 +234,11 @@ module MatterSwitch
     private def handle_command(command : String) : Nil
       case command
       when "toggle"
-        switch.invoke_command(Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
+        switch.toggle
       when "on"
-        switch.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
+        switch.on = true
       when "off"
-        switch.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF, Bytes.new(0))
+        switch.on = false
       when "status"
         show_status
       when "reset"

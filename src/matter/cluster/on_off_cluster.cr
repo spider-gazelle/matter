@@ -382,6 +382,28 @@ module Matter
       end
 
       # ------------------------------------------------------------------------
+      # Public Interface
+      # ------------------------------------------------------------------------
+
+      def on? : Bool
+        @on_off
+      end
+
+      def off? : Bool
+        !@on_off
+      end
+
+      def on=(state : Bool) : Bool
+        state ? handle_on : handle_off
+        state
+      end
+
+      def toggle : Bool
+        handle_toggle
+        @on_off
+      end
+
+      # ------------------------------------------------------------------------
       # Persistence support
       # ------------------------------------------------------------------------
 
