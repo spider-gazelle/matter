@@ -348,7 +348,7 @@ module Matter
           if level = @on_level
             level.to_tlv
           else
-            encode_null
+            nil.to_tlv
           end
         when ATTR_REMAINING_TIME
           return unsupported_attribute unless @feature_map.lighting?
@@ -361,28 +361,28 @@ module Matter
           if time = @on_transition_time
             time.to_tlv
           else
-            encode_null
+            nil.to_tlv
           end
         when ATTR_OFF_TRANSITION_TIME
           return unsupported_attribute unless @feature_map.lighting?
           if time = @off_transition_time
             time.to_tlv
           else
-            encode_null
+            nil.to_tlv
           end
         when ATTR_DEFAULT_MOVE_RATE
           return unsupported_attribute unless @feature_map.lighting?
           if rate = @default_move_rate
             rate.to_tlv
           else
-            encode_null
+            nil.to_tlv
           end
         when ATTR_START_UP_CURRENT_LEVEL
           return unsupported_attribute unless @feature_map.lighting?
           if level = @start_up_current_level
             level.to_tlv
           else
-            encode_null
+            nil.to_tlv
           end
         when ATTR_CURRENT_FREQUENCY
           return unsupported_attribute unless @feature_map.frequency?
@@ -591,9 +591,7 @@ module Matter
         old_level = @current_level
 
         # Clamp to valid range
-        clamped_level = [@min_level, [new_level, @max_level].min].max
-
-        @current_level = clamped_level
+        @current_level = new_level.clamp(@min_level, @max_level)
         @remaining_time = 0_u16 # Instant transition for simplified implementation
 
         # Trigger callback if level actually changed
@@ -606,6 +604,13 @@ module Matter
       end
 
       def level=(level : UInt8) : InteractionModel::Status
+        move_to_level(level)
+      end
+
+      # level as a percentage 0.0 - 100.0
+      def level=(level : Float) : InteractionModel::Status
+        range = @max_level - @min_level
+        level = ((level.clamp(0.0, 100.0) / 100.0) * range.to_f).round(:ties_away).to_u8 + @min_level
         move_to_level(level)
       end
 
@@ -705,10 +710,6 @@ module Matter
 
       private def unsupported_command : InteractionModel::Status
         InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand)
-      end
-
-      private def encode_null : Bytes
-        TLV::Any.new(nil, nil).to_slice
       end
     end
   end

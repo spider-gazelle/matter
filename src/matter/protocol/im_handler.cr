@@ -615,6 +615,8 @@ module Matter
             path = InteractionModel::AttributePath.new(endpoint: ep, cluster: cl, attribute: at)
             data = TLV::Any.from_slice(report.value)
 
+            # TODO:: instead of spliting InteractionModel messages and tlv_messages let's remove messages
+            # as we're double encoding the data...
             attr_data = InteractionModel::AttributeDataIB.new(
               path: path,
               data: data,

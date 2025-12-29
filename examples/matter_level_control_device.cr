@@ -241,7 +241,7 @@ module MatterLevelControl
       puts "  toggle           - Toggle the light on/off"
       puts "  on               - Turn the light on"
       puts "  off              - Turn the light off"
-      puts "  level <1-254>    - Set the brightness level"
+      puts "  level <0-100>    - Set the brightness level"
       puts "  status           - Show current status"
       puts "  reset            - Reset to factory defaults"
       puts "  quit             - Exit the application"
@@ -288,22 +288,18 @@ module MatterLevelControl
 
     private def set_level_from_command(parts : Array(String)) : Nil
       if parts.size < 2
-        puts "Usage: level <1-254>"
+        puts "Usage: level <0-100>"
         return
       end
 
-      value = parts[1].to_i?
+      value = parts[1].to_f?
       unless value
         puts "Invalid level: #{parts[1]}"
         return
       end
 
-      min_level = level_control.min_level.to_i
-      max_level = level_control.max_level.to_i
-      clamped = value
-      clamped = min_level if clamped < min_level
-      clamped = max_level if clamped > max_level
-      level_control.level = clamped.to_u8
+      # cluster performs clamping and value checks
+      level_control.level = value
     end
 
     private def show_status : Nil
