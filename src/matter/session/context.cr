@@ -40,6 +40,9 @@ module Matter
       property session_type : SessionType
       property peer_node_id : DataType::NodeId?
       property local_node_id : DataType::NodeId?
+      # All authenticated Subject IDs for the peer (NodeId + any CATs).
+      # Used for AccessControl evaluation (ACL subjects can be Node IDs or CATs).
+      property peer_subject_ids : Array(UInt64) = [] of UInt64
 
       # Encryption keys
       property encryption_key : Bytes # i2r (initiator to responder) or encryption key

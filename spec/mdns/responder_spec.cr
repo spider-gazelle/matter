@@ -6,6 +6,7 @@ require "../../src/matter/mdns/record_builder"
 describe Matter::MDNS::Responder do
   describe "initialization" do
     it "creates a responder with default settings" do
+      require_udp_sockets!
       responder = Matter::MDNS::Responder.new
       responder.port.should eq(5353)
       responder.hostname.should eq("matter-device.local")
@@ -13,6 +14,7 @@ describe Matter::MDNS::Responder do
     end
 
     it "creates a responder with custom settings" do
+      require_udp_sockets!
       ip = Socket::IPAddress.new("192.168.1.100", 0)
       responder = Matter::MDNS::Responder.new(
         port: 5540,
@@ -28,6 +30,7 @@ describe Matter::MDNS::Responder do
 
   describe "commissioning advertisement" do
     it "advertises commissioning service" do
+      require_udp_sockets!
       ip = Socket::IPAddress.new("192.168.1.100", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",
@@ -48,12 +51,6 @@ describe Matter::MDNS::Responder do
     end
 
     it "includes correct TXT records" do
-      ip = Socket::IPAddress.new("192.168.1.100", 0)
-      Matter::MDNS::Responder.new(
-        hostname: "test-device.local",
-        ip_addresses: [ip]
-      )
-
       info = Matter::MDNS::CommissioningInfo.new(
         device_name: "TestDevice",
         vendor_id: 0xFFF1_u16,
@@ -78,6 +75,7 @@ describe Matter::MDNS::Responder do
 
   describe "operational advertisement" do
     it "advertises operational service" do
+      require_udp_sockets!
       ip = Socket::IPAddress.new("192.168.1.100", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",
@@ -171,6 +169,7 @@ describe Matter::MDNS::Responder do
 
   describe "goodbye announcement" do
     it "sends goodbye for commissioning service" do
+      require_udp_sockets!
       ip = Socket::IPAddress.new("192.168.1.100", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",
@@ -185,6 +184,7 @@ describe Matter::MDNS::Responder do
     end
 
     it "sends goodbye for operational service" do
+      require_udp_sockets!
       ip = Socket::IPAddress.new("192.168.1.100", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",
@@ -201,6 +201,7 @@ describe Matter::MDNS::Responder do
 
   describe "lifecycle" do
     it "starts and stops responder" do
+      require_udp_sockets!
       responder = Matter::MDNS::Responder.new
 
       responder.start
@@ -209,6 +210,7 @@ describe Matter::MDNS::Responder do
     end
 
     it "can be closed" do
+      require_udp_sockets!
       responder = Matter::MDNS::Responder.new
       responder.start
       responder.close
@@ -233,6 +235,7 @@ describe Matter::MDNS::Responder do
 
   describe "query response" do
     it "responds to matching queries" do
+      require_udp_sockets!
       ip = Socket::IPAddress.new("192.168.1.100", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",
@@ -267,6 +270,7 @@ describe Matter::MDNS::Responder do
     end
 
     it "ignores non-matching queries" do
+      require_udp_sockets!
       ip = Socket::IPAddress.new("192.168.1.100", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",
@@ -300,6 +304,7 @@ describe Matter::MDNS::Responder do
 
   describe "IPv6 support" do
     it "handles IPv6 addresses" do
+      require_udp_sockets!
       ipv6 = Socket::IPAddress.new("fe80::1", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",
@@ -319,6 +324,7 @@ describe Matter::MDNS::Responder do
     end
 
     it "handles mixed IPv4/IPv6 addresses" do
+      require_udp_sockets!
       ipv4 = Socket::IPAddress.new("192.168.1.100", 0)
       ipv6 = Socket::IPAddress.new("fe80::1", 0)
 
@@ -342,6 +348,7 @@ describe Matter::MDNS::Responder do
 
   describe "receive loop and query processing" do
     it "starts receive loop when started" do
+      require_udp_sockets!
       ip = Socket::IPAddress.new("192.168.1.100", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",
@@ -357,6 +364,7 @@ describe Matter::MDNS::Responder do
     end
 
     it "invokes on_query callback when query received" do
+      require_udp_sockets!
       ip = Socket::IPAddress.new("192.168.1.100", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",
@@ -390,6 +398,7 @@ describe Matter::MDNS::Responder do
     end
 
     it "tracks advertised services for query responses" do
+      require_udp_sockets!
       ip = Socket::IPAddress.new("192.168.1.100", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",
@@ -418,6 +427,7 @@ describe Matter::MDNS::Responder do
     end
 
     it "removes service from tracking on goodbye" do
+      require_udp_sockets!
       ip = Socket::IPAddress.new("192.168.1.100", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",
@@ -452,6 +462,7 @@ describe Matter::MDNS::Responder do
     end
 
     it "handles multiple concurrent services" do
+      require_udp_sockets!
       ip = Socket::IPAddress.new("192.168.1.100", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",

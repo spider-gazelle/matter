@@ -1,10 +1,12 @@
 require "../../crypto/crypto"
+require "../../crypto/certificate"
 require "../../crypto/ecdh"
 require "../../crypto/key"
 require "../context"
 require "openssl_ext"
 require "tlv"
 require "./definitions"
+require "../../datatype/case_authenticated_tag"
 
 module Matter
   module Session
@@ -263,6 +265,9 @@ module Matter
         # Peer's node ID extracted from their NOC certificate in Sigma3
         # This is critical for nonce construction in encrypted messages
         property peer_node_id : UInt64?
+        # All authenticated Subject IDs for the peer (NodeId + any CATs).
+        # Used for ACL evaluation (ACL subjects may be Node IDs or CATs).
+        property peer_subject_ids : Array(UInt64) = [] of UInt64
 
         def initialize(
           @cert_chain : OperationalCertChain,
@@ -541,14 +546,22 @@ module Matter
             Log.debug { "CASE Sigma3 peer ICAC: #{encrypted_data3.responder_icac.try(&.size) || 0} bytes" }
             Log.debug { "CASE Sigma3 signature: #{encrypted_data3.signature.size} bytes" }
 
-            # Extract peer's node ID from their NOC certificate
-            # This is critical for nonce construction in encrypted messages after CASE
+            # Extract peer Subject IDs (NodeId + CATs) from their NOC certificate.
+            # This is required for ACL evaluation: subjects may be Node IDs or CATs.
+            @peer_subject_ids = extract_subject_ids_from_tlv_cert(encrypted_data3.responder_noc)
+
+            # Always set peer_node_id from the NodeId field (not from CATs).
             peer_node = extract_node_id_from_tlv_cert(encrypted_data3.responder_noc)
             if peer_node
               @peer_node_id = peer_node
-              Log.info { "CASE Sigma3: Extracted peer node ID: #{peer_node}" }
+
+              # Ensure NodeId is present and first in the subject list.
+              @peer_subject_ids.delete(peer_node)
+              @peer_subject_ids.unshift(peer_node)
+
+              Log.info { "CASE Sigma3: Extracted peer node ID: 0x#{peer_node.to_s(16)} (subjects=#{@peer_subject_ids.size})" }
             else
-              Log.warn { "CASE Sigma3: Could not extract peer node ID from NOC" }
+              Log.warn { "CASE Sigma3: Could not extract peer node ID from NOC (subjects=#{@peer_subject_ids.size})" }
             end
 
             # Build TBS_Data3 for signature verification
@@ -630,48 +643,99 @@ module Matter
           public_key_any.as_bytes
         end
 
+        # Extract all Subject IDs from a Matter TLV NOC:
+        # - NodeId (tag 17 in Subject DN)
+        # - Zero or more CATs (tag 22 in Subject DN)
+        #
+        # Returned in priority order (NodeId first), de-duplicated.
+        private def extract_subject_ids_from_tlv_cert(cert_tlv : Bytes) : Array(UInt64)
+          subject_ids = [] of UInt64
+
+          if node_id = extract_node_id_from_tlv_cert(cert_tlv)
+            subject_ids << node_id
+          end
+
+          # CATs may be encoded as multiple tag-22 entries in the Subject DN list.
+          # TLV::Serializable currently only exposes a single `noc_cat`, so scan the TLV directly.
+          begin
+            parsed = TLV::Any.from_slice(cert_tlv)
+            if tlv_struct = parsed.value.as?(TLV::Structure)
+              subject_any = tlv_struct.each.find { |(k, _)| k == 6 || k == 6_u8 }.try(&.[1])
+              if subject_any
+                subject_list = [] of TLV::Any
+                case v = subject_any.value
+                when Array(TLV::Any)
+                  subject_list = v
+                when TLV::List
+                  v.each { |elem| subject_list << elem }
+                else
+                  # ignore
+                end
+
+                unless subject_list.empty?
+                  subject_list.each do |elem|
+                    next unless elem.header.ids == 22_u8
+
+                    raw = case v = elem.value
+                          when Int    then v.to_u32
+                          when UInt32 then v
+                          when UInt16 then v.to_u32
+                          when UInt8  then v.to_u32
+                          else             nil
+                          end
+                    next unless raw
+
+                    begin
+                      cat = DataType::CaseAuthenticatedTag.new(raw)
+                      subject_ids << DataType::NodeId.from_case_authenticated_tag(cat).id
+                    rescue ex
+                      Log.trace(exception: ex) { "CASE: Skipping invalid CAT value in peer NOC (raw=0x#{raw.to_s(16)})" }
+                    end
+                  end
+                end
+              end
+            end
+          rescue ex
+            Log.trace(exception: ex) { "CASE: Failed scanning peer NOC for CATs" }
+          end
+
+          subject_ids.uniq!
+          subject_ids
+        end
+
         # Extract node ID from Matter TLV certificate
         # Matter TLV certificate structure:
         # - Tag 6: Subject (contains node_id and fabric_id)
         #   - Tag 17 (0x11): Node ID
         #   - Tag 18 (0x12): Fabric ID
         def extract_node_id_from_tlv_cert(cert_tlv : Bytes) : UInt64?
+          begin
+            cert = Crypto::MatterCertificate.from_slice(cert_tlv)
+            if node_id = cert.node_id
+              return node_id
+            end
+          rescue ex
+            Log.trace(exception: ex) { "CASE: Failed to parse peer NodeId via MatterCertificate" }
+          end
+
           parsed = TLV::Any.from_slice(cert_tlv)
+          subject_any = find_tlv_field(parsed, 6_u8)
+          return nil unless subject_any
 
-          Log.debug { "CASE: Parsed TLV cert type: #{parsed.value.class}" }
+          node_any = find_tlv_field(subject_any, 17_u8)
+          return nil unless node_any
 
-          # First find the subject field (tag 6)
-          subject = find_tlv_field(parsed, 6_u8)
-          if subject.nil?
-            Log.warn { "CASE: Could not find subject field (tag 6) in TLV cert" }
-            if structure = parsed.value.as?(TLV::Structure)
-              Log.debug { "CASE: Available keys in cert: #{structure.keys.map { |k| "#{k.inspect}:#{k.class}" }.join(", ")}" }
-            end
-            return nil
+          case v = node_any.value
+          when UInt64 then v
+          when UInt32 then v.to_u64
+          when UInt16 then v.to_u64
+          when UInt8  then v.to_u64
+          when Int    then v.to_u64
+          else             nil
           end
-
-          Log.debug { "CASE: Found subject field, type: #{subject.value.class}" }
-
-          # Within subject, find the node ID (tag 17 = 0x11)
-          node_id_any = find_tlv_field(subject, 17_u8)
-          if node_id_any.nil?
-            Log.warn { "CASE: Could not find node ID field (tag 17) in subject" }
-            if structure = subject.value.as?(TLV::Structure)
-              Log.debug { "CASE: Available keys in subject: #{structure.keys.map { |k| "#{k.inspect}:#{k.class}" }.join(", ")}" }
-            end
-            return nil
-          end
-
-          Log.debug { "CASE: Found node ID value: #{node_id_any.value.inspect}, type: #{node_id_any.value.class}" }
-
-          # Convert to UInt64
-          case value = node_id_any.value
-          when Int
-            value.to_u64
-          else
-            Log.warn { "Unexpected node ID type in TLV cert: #{value.class}" }
-            nil
-          end
+        rescue ex
+          Log.trace(exception: ex) { "CASE: Failed to parse peer NodeId from NOC TLV" }
+          nil
         end
 
         # Recursively search TLV structure for a field by tag

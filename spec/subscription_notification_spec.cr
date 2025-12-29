@@ -4,6 +4,32 @@ require "../src/matter/cluster/on_off_cluster"
 require "../src/matter/interaction_model/paths"
 require "../src/matter/protocol/message_handler"
 
+# Avoid binding OS UDP sockets in the spec environment.
+class NoSocketTransportForSubscriptionNotificationSpec < Matter::Transport::UDPTransport
+  def self.new_for_spec : self
+    transport = allocate
+    transport.initialize_for_spec
+    transport
+  end
+
+  protected def initialize_for_spec : Nil
+    @port = 0
+    @on_message = nil
+  end
+
+  def start : Nil
+  end
+
+  def stop : Nil
+  end
+
+  def close : Nil
+  end
+
+  def send_raw(data : Bytes | Slice(UInt8), peer_address : Socket::IPAddress) : Nil
+  end
+end
+
 describe "Subscription Notifications" do
   describe Matter::Cluster::Base do
     describe "#on_attribute_changed callback" do
@@ -359,7 +385,7 @@ describe "Subscription Notifications" do
   describe Matter::Protocol::MessageHandler do
     describe "#setup_cluster_notifications" do
       it "wires up on_attribute_changed callback for all clusters" do
-        transport = Matter::Transport::UDPTransport.new(port: 0)
+        transport = NoSocketTransportForSubscriptionNotificationSpec.new_for_spec
         storage = Matter::Storage::MemoryBackend.new
         fabric_table = Matter::FabricTable.new(storage)
 
@@ -383,8 +409,6 @@ describe "Subscription Notifications" do
 
         # Now callback should be set
         on_off.on_attribute_changed.should_not be_nil
-
-        transport.close
       end
     end
   end

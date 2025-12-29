@@ -329,7 +329,7 @@ module Matter
         matching_entries = @acl.select do |entry|
           entry.fabric_index == fabric_index &&
             entry.auth_mode == auth_mode &&
-            entry.subjects.any? { |acl_subject| subject_matches?(acl_subject, subject) }
+            (entry.subjects.empty? || entry.subjects.any? { |acl_subject| subject_matches?(acl_subject, subject) })
         end
 
         # Check if any entry grants sufficient privilege
@@ -339,7 +339,8 @@ module Matter
 
           # Check target matching
           has_target_access = if targets = entry.targets
-                                targets.any? do |target|
+                                # Per spec, an empty targets list is a wildcard (all targets).
+                                targets.empty? || targets.any? do |target|
                                   (!target.cluster || target.cluster == cluster) &&
                                     (!target.endpoint || target.endpoint == endpoint) &&
                                     (!target.device_type || target.device_type == device_type)

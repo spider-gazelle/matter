@@ -2,6 +2,10 @@ require "../spec_helper"
 require "../../src/matter/transport/udp_transport"
 
 describe Matter::Transport::UDPTransport do
+  before_each do
+    require_udp_sockets!
+  end
+
   describe "#initialize" do
     it "creates transport on default port" do
       transport = Matter::Transport::UDPTransport.new

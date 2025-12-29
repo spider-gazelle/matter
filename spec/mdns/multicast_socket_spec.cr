@@ -3,6 +3,10 @@ require "../../src/matter/mdns/multicast_socket"
 
 module Matter::MDNS
   describe MulticastSocket do
+    before_each do
+      require_udp_sockets!
+    end
+
     describe "initialization" do
       it "creates IPv4 socket by default" do
         socket = MulticastSocket.new

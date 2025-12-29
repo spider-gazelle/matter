@@ -6,6 +6,7 @@ require "../../src/matter/mdns/record_builder"
 describe Matter::MDNS::Scanner do
   describe "initialization" do
     it "creates a scanner and joins multicast group" do
+      require_udp_sockets!
       scanner = Matter::MDNS::Scanner.new
       scanner.devices.should be_empty
       scanner.close
@@ -14,6 +15,7 @@ describe Matter::MDNS::Scanner do
 
   describe "device discovery" do
     it "starts and stops scanner" do
+      require_udp_sockets!
       scanner = Matter::MDNS::Scanner.new
       scanner.start
       sleep 50.milliseconds
@@ -22,24 +24,28 @@ describe Matter::MDNS::Scanner do
     end
 
     it "maintains device discovery table" do
+      require_udp_sockets!
       scanner = Matter::MDNS::Scanner.new
       scanner.devices.should be_empty
       scanner.close
     end
 
     it "filters commissioning devices" do
+      require_udp_sockets!
       scanner = Matter::MDNS::Scanner.new
       scanner.commissioning_devices.should be_empty
       scanner.close
     end
 
     it "filters operational devices" do
+      require_udp_sockets!
       scanner = Matter::MDNS::Scanner.new
       scanner.operational_devices.should be_empty
       scanner.close
     end
 
     it "retrieves device by instance name" do
+      require_udp_sockets!
       scanner = Matter::MDNS::Scanner.new
       device = scanner.get_device("nonexistent._matterc._udp.local")
       device.should be_nil
@@ -49,6 +55,7 @@ describe Matter::MDNS::Scanner do
 
   describe "query methods" do
     it "sends commissioning query" do
+      require_udp_sockets!
       scanner = Matter::MDNS::Scanner.new
       # Should not raise
       scanner.query_commissioning
@@ -56,6 +63,7 @@ describe Matter::MDNS::Scanner do
     end
 
     it "sends operational query" do
+      require_udp_sockets!
       scanner = Matter::MDNS::Scanner.new
       # Should not raise
       scanner.query_operational
@@ -167,6 +175,7 @@ describe Matter::MDNS::Scanner do
 
   describe "callbacks" do
     it "supports device discovered callback" do
+      require_udp_sockets!
       scanner = Matter::MDNS::Scanner.new
 
       discovered = false
@@ -179,6 +188,7 @@ describe Matter::MDNS::Scanner do
     end
 
     it "supports device updated callback" do
+      require_udp_sockets!
       scanner = Matter::MDNS::Scanner.new
 
       updated = false
@@ -191,6 +201,7 @@ describe Matter::MDNS::Scanner do
     end
 
     it "supports device removed callback" do
+      require_udp_sockets!
       scanner = Matter::MDNS::Scanner.new
 
       removed = false
@@ -205,6 +216,7 @@ describe Matter::MDNS::Scanner do
 
   describe "service name extraction" do
     it "extracts commissioning instance name" do
+      require_udp_sockets!
       scanner = Matter::MDNS::Scanner.new
 
       # Test with PTR record name
@@ -213,6 +225,7 @@ describe Matter::MDNS::Scanner do
     end
 
     it "extracts operational instance name" do
+      require_udp_sockets!
       scanner = Matter::MDNS::Scanner.new
 
       # Test with PTR record name
@@ -221,6 +234,7 @@ describe Matter::MDNS::Scanner do
     end
 
     it "ignores non-Matter services" do
+      require_udp_sockets!
       scanner = Matter::MDNS::Scanner.new
 
       # Non-Matter services should be filtered out

@@ -772,6 +772,25 @@ module Matter
           raise "Failed to decrypt message"
         end
 
+        # Some controllers (notably iOS) may omit or otherwise vary the peer identity
+        # we can extract during CASE establishment; however encrypted packet headers
+        # may still carry the source NodeId. Populate it so ACL checks have a stable
+        # subject for CASE interactions.
+        if session.case_session?
+          if session.peer_node_id.nil?
+            if source = msg.packet_header.source_node_id
+              session.peer_node_id = source
+              Log.debug { "Populated CASE peer_node_id from packet header: 0x#{source.id.to_s(16)} (session_id=#{session.session_id})" }
+            end
+          end
+
+          if session.peer_subject_ids.empty?
+            if peer = session.peer_node_id
+              session.peer_subject_ids = [peer.id]
+            end
+          end
+        end
+
         Log.trace { "Decrypted payload: #{decrypted.hexstring}" }
 
         # Create a packet with decrypted payload and decode it
@@ -1182,7 +1201,7 @@ module Matter
           @clusters,
           session.fabric_index,
           session.case_session?,
-          session.peer_node_id.try(&.id)
+          session.peer_subject_ids.empty? ? nil : session.peer_subject_ids
         )
 
         Log.debug { "ReadResponse: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
@@ -1272,7 +1291,7 @@ module Matter
           @clusters,
           session.fabric_index,
           session.case_session?,
-          session.peer_node_id.try(&.id)
+          session.peer_subject_ids.empty? ? nil : session.peer_subject_ids
         )
 
         Log.debug { "Initial ReportData: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
@@ -1379,7 +1398,7 @@ module Matter
           session_id: session.session_id,
           is_case_session: session.case_session?,
           fabric_index: session.fabric_index,
-          peer_node_id: session.peer_node_id.try(&.id)
+          peer_subject_ids: session.peer_subject_ids.empty? ? nil : session.peer_subject_ids
         )
 
         Log.debug { "WriteResponse: #{response.write_responses.size} status(es)" }
@@ -1457,7 +1476,7 @@ module Matter
           session.session_id.to_u64,
           session.case_session?,
           session.fabric_index,
-          session.peer_node_id.try(&.id)
+          session.peer_subject_ids.empty? ? nil : session.peer_subject_ids
         )
 
         Log.info { "InvokeResponse: #{response.invoke_responses.size} response(s), #{response.invoke_status.size} status(es)" }
@@ -2860,6 +2879,19 @@ module Matter
             case_session: true,
             fabric_index: fabric.fabric_index
           )
+
+          # Populate the peer Subject IDs (NodeId + CATs) for ACL checks.
+          # iOS commonly installs ACL entries using CATs as subjects.
+          secure_context.peer_subject_ids = responder.peer_subject_ids.dup
+          if secure_context.peer_subject_ids.empty?
+            if peer_node = secure_context.peer_node_id
+              secure_context.peer_subject_ids = [peer_node.id]
+            end
+          end
+          Log.debug do
+            subjects = secure_context.peer_subject_ids.map { |id| "0x#{id.to_s(16)}" }.join(",")
+            "CASE peer subjects: [#{subjects}] (session_id=#{secure_context.session_id} fabric_index=#{secure_context.fabric_index})"
+          end
 
           # Enforce session table size limit before adding new session
           enforce_session_limit

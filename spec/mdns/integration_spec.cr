@@ -6,6 +6,8 @@ require "../../src/matter/mdns/service_type"
 describe "mDNS Integration" do
   describe "commissioning service discovery" do
     it "advertises and discovers commissioning service" do
+      require_udp_sockets!
+
       # Setup scanner
       scanner = Matter::MDNS::Scanner.new
       scanner.start
@@ -49,6 +51,8 @@ describe "mDNS Integration" do
     end
 
     it "advertises and discovers operational service" do
+      require_udp_sockets!
+
       # Setup scanner
       scanner = Matter::MDNS::Scanner.new
       scanner.start
@@ -93,6 +97,8 @@ describe "mDNS Integration" do
 
   describe "query and response" do
     it "scanner queries for commissioning devices" do
+      require_udp_sockets!
+
       scanner = Matter::MDNS::Scanner.new
       scanner.start
 
@@ -105,6 +111,8 @@ describe "mDNS Integration" do
     end
 
     it "scanner queries for operational devices" do
+      require_udp_sockets!
+
       scanner = Matter::MDNS::Scanner.new
       scanner.start
 
@@ -117,6 +125,8 @@ describe "mDNS Integration" do
     end
 
     it "responder responds to queries" do
+      require_udp_sockets!
+
       ip = Socket::IPAddress.new("127.0.0.1", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",
@@ -152,6 +162,8 @@ describe "mDNS Integration" do
 
   describe "goodbye packets" do
     it "scanner handles device removal" do
+      require_udp_sockets!
+
       scanner = Matter::MDNS::Scanner.new
       scanner.start
 
@@ -169,6 +181,8 @@ describe "mDNS Integration" do
     end
 
     it "responder sends goodbye" do
+      require_udp_sockets!
+
       ip = Socket::IPAddress.new("127.0.0.1", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",
@@ -187,6 +201,8 @@ describe "mDNS Integration" do
 
   describe "device updates" do
     it "scanner tracks device updates" do
+      require_udp_sockets!
+
       scanner = Matter::MDNS::Scanner.new
       scanner.start
 
@@ -206,6 +222,8 @@ describe "mDNS Integration" do
 
   describe "multiple services" do
     it "responder advertises both commissioning and operational" do
+      require_udp_sockets!
+
       ip = Socket::IPAddress.new("127.0.0.1", 0)
       responder = Matter::MDNS::Responder.new(
         hostname: "test-device.local",
@@ -239,6 +257,8 @@ describe "mDNS Integration" do
     end
 
     it "scanner discovers both commissioning and operational" do
+      require_udp_sockets!
+
       scanner = Matter::MDNS::Scanner.new
       scanner.start
 
@@ -352,6 +372,8 @@ describe "mDNS Integration" do
 
   describe "concurrent operations" do
     it "handles multiple scanners" do
+      require_udp_sockets!
+
       scanner1 = Matter::MDNS::Scanner.new
       scanner2 = Matter::MDNS::Scanner.new
 
@@ -365,6 +387,8 @@ describe "mDNS Integration" do
     end
 
     it "handles multiple responders" do
+      require_udp_sockets!
+
       ip = Socket::IPAddress.new("127.0.0.1", 0)
 
       responder1 = Matter::MDNS::Responder.new(

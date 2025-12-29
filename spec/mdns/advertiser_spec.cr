@@ -3,6 +3,10 @@ require "../../src/matter/mdns/advertiser"
 
 module Matter::MDNS
   describe Advertiser do
+    before_each do
+      require_udp_sockets!
+    end
+
     describe "initialization" do
       it "creates advertiser with IPv4 by default" do
         advertiser = Advertiser.new

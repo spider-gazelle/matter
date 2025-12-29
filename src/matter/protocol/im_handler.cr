@@ -23,10 +23,10 @@ module Matter
         cluster_id : UInt32,
         is_case_session : Bool,
         fabric_index : UInt8?,
-        peer_node_id : UInt64?,
+        peer_subject_ids : Array(UInt64)?,
       ) : Bool
         return true unless is_case_session
-        return false unless fabric_index && peer_node_id
+        return false unless fabric_index && peer_subject_ids && peer_subject_ids.size > 0
 
         acl = access_control_cluster(clusters)
         return true unless acl
@@ -38,14 +38,16 @@ module Matter
           return true if cluster_id == Cluster::AccessControlCluster::CLUSTER_ID
         end
 
-        acl.check_access(
-          subject: peer_node_id,
-          fabric_index: fabric_index,
-          privilege: required,
-          cluster: cluster_id,
-          endpoint: endpoint_id,
-          auth_mode: Cluster::Definitions::AccessControl::EntryAuthMode::Case
-        )
+        peer_subject_ids.any? do |subject_id|
+          acl.check_access(
+            subject: subject_id,
+            fabric_index: fabric_index,
+            privilege: required,
+            cluster: cluster_id,
+            endpoint: endpoint_id,
+            auth_mode: Cluster::Definitions::AccessControl::EntryAuthMode::Case
+          )
+        end
       end
 
       # IM message types
@@ -87,7 +89,7 @@ module Matter
         clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
         fabric_index : UInt8? = nil,
         is_case_session : Bool = false,
-        peer_node_id : UInt64? = nil,
+        peer_subject_ids : Array(UInt64)? = nil,
       ) : InteractionModel::ReadResponse
         attribute_reports = [] of InteractionModel::AttributeData
         attribute_status = [] of InteractionModel::AttributeStatus
@@ -146,7 +148,7 @@ module Matter
               next unless cluster
 
               required = cluster.attributes.find { |attr| attr.id.id == attribute_id }.try(&.access) || Cluster::Definitions::AccessControl::EntryPrivilege::View
-              unless authorized?(clusters, required, endpoint_id, cluster_id, is_case_session, fabric_index, peer_node_id)
+              unless authorized?(clusters, required, endpoint_id, cluster_id, is_case_session, fabric_index, peer_subject_ids)
                 concrete_path = InteractionModel::AttributePath.new(
                   endpoint: endpoint_id,
                   cluster: cluster_id,
@@ -204,7 +206,7 @@ module Matter
           end
 
           required = cluster.attributes.find { |attr| attr.id.id == attribute_id }.try(&.access) || Cluster::Definitions::AccessControl::EntryPrivilege::View
-          unless authorized?(clusters, required, endpoint_id, cluster_id, is_case_session, fabric_index, peer_node_id)
+          unless authorized?(clusters, required, endpoint_id, cluster_id, is_case_session, fabric_index, peer_subject_ids)
             attribute_status << InteractionModel::AttributeStatus.new(
               path: path,
               status: InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAccess)
@@ -442,7 +444,7 @@ module Matter
         session_id : UInt16? = nil,
         is_case_session : Bool = false,
         fabric_index : UInt8? = nil,
-        peer_node_id : UInt64? = nil,
+        peer_subject_ids : Array(UInt64)? = nil,
       ) : InteractionModel::WriteResponse
         write_responses = [] of InteractionModel::AttributeStatus
 
@@ -484,7 +486,7 @@ module Matter
           end
 
           if metadata = cluster.attributes.find { |attr| attr.id.id == attribute_id }
-            unless authorized?(clusters, metadata.access, endpoint_id, cluster_id, is_case_session, fabric_index, peer_node_id)
+            unless authorized?(clusters, metadata.access, endpoint_id, cluster_id, is_case_session, fabric_index, peer_subject_ids)
               write_responses << InteractionModel::AttributeStatus.new(
                 path: path,
                 status: InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAccess)
@@ -496,7 +498,7 @@ module Matter
           cluster.request_session_id = session_id.try(&.to_u64)
           cluster.request_is_case_session = is_case_session
           cluster.request_fabric_index = fabric_index
-          cluster.request_peer_node_id = peer_node_id
+          cluster.request_peer_node_id = peer_subject_ids.try(&.first?)
 
           # Write attribute to cluster
           status = cluster.write_attribute(attribute_id, request.value)
@@ -911,7 +913,7 @@ module Matter
         session_id : UInt64? = nil,
         is_case_session : Bool = false,
         fabric_index : UInt8? = nil,
-        peer_node_id : UInt64? = nil,
+        peer_subject_ids : Array(UInt64)? = nil,
       ) : InteractionModel::InvokeResponse
         invoke_responses = [] of InteractionModel::CommandResponse
         invoke_status = [] of InteractionModel::CommandStatus
@@ -935,7 +937,7 @@ module Matter
           end
 
           if metadata = cluster.commands.find { |cmd| cmd.id.id == path.command }
-            unless authorized?(clusters, metadata.access, endpoint_id, path.cluster, is_case_session, fabric_index, peer_node_id)
+            unless authorized?(clusters, metadata.access, endpoint_id, path.cluster, is_case_session, fabric_index, peer_subject_ids)
               invoke_status << InteractionModel::CommandStatus.new(
                 path: path,
                 status: InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAccess)
