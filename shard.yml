@@ -15,7 +15,7 @@ dependencies:
     github: spider-gazelle/verhoeff
 
   tlv:
-    github: spider-gazelle/tlv
+    github: Crystal-Matter/tlv
 
   openssl_ext:
     github: spider-gazelle/openssl_ext

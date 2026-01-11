@@ -1,6 +1,6 @@
 # Matter
 
-[![CI](https://github.com/spider-gazelle/matter/actions/workflows/ci.yml/badge.svg)](https://github.com/spider-gazelle/matter/actions/workflows/ci.yml)
+[![CI](https://github.com/Crystal-Matter/matter/actions/workflows/ci.yml/badge.svg)](https://github.com/Crystal-Matter/matter/actions/workflows/ci.yml)
 
 Matter protocol implemented in pure Crystal Lang.
 
@@ -11,12 +11,12 @@ Matter protocol implemented in pure Crystal Lang.
    ```yaml
    dependencies:
      matter:
-       github: spider-gazelle/matter
+       github: Crystal-Matter/matter
    ```
 
 2. Run `shards install`
 
-## Example Device
+## Examples
 
 An example OnOff device is provided in the `./examples` directory.
 
@@ -25,13 +25,34 @@ An example OnOff device is provided in the `./examples` directory.
   * Launch `bin/matter_switch`, grab the chip-tool command line in the output
   * Clear any previous sessions: `chip-tool storage clear-all`
   * Commission using chip-tool
-  * Run: `crystal run examples/device_validation.cr`
 
 Confirmed working with iOS.
 
+### Example project
+
+Control a Windows media center PC, plugged into your TV from your phone
+
+https://github.com/Crystal-Matter/matter_media
+
+## End to end tests
+
+We've used industry tooling for validation, using the official [chip-tool](https://project-chip.github.io/connectedhomeip-doc/development_controllers/chip-tool/chip_tool_guide.html)
+
+```shell
+./examples/run_validation.sh
+```
+
+We have our own implementation of chip-tool for running end-to-end tests too (used in the CI)
+Aiming to be compatible with the official tool
+
+```shell
+crystal build ./examples/chip-tool.cr -o ./bin/chip-tool --error-trace
+./examples/run_validation.sh --chip-tool ./bin/chip-tool
+```
+
 ## Contributing
 
-1. Fork it (<https://github.com/spider-gazelle/matter/fork>)
+1. Fork it (<https://github.com/Crystal-Matter/matter/fork>)
 2. Create your feature branch (`git checkout -b my-new-feature`)
 3. Commit your changes (`git commit -am 'Add some feature'`)
 4. Push to the branch (`git push origin my-new-feature`)
