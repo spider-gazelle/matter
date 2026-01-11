@@ -13,6 +13,7 @@ module MatterLevelControl
 
     @on_off : Matter::Cluster::OnOffCluster? = nil
     @level_control : Matter::Cluster::LevelControlCluster? = nil
+    @fixed_label : Matter::Cluster::FixedLabelCluster? = nil
     @identify : Matter::Cluster::IdentifyCluster? = nil
     @groups : Matter::Cluster::GroupsCluster? = nil
     @scenes_management : Matter::Cluster::ScenesManagementCluster? = nil
@@ -89,6 +90,15 @@ module MatterLevelControl
       on_off.on_state_changed { |new_state| handle_on_off_change(new_state) }
       level_control.on_level_changed { |old_level, new_level| handle_level_change(old_level, new_level) }
 
+      # FixedLabel is optional, but can help controllers show a friendly name for this endpoint.
+      @fixed_label = Matter::Cluster::FixedLabelCluster.new(
+        endpoint,
+        [
+          Matter::Cluster::LabelStruct.new("name", "Example Level"),
+          Matter::Cluster::LabelStruct.new("name", "Example Mute"),
+        ]
+      )
+
       @identify = Matter::Cluster::IdentifyCluster.new(
         endpoint,
         identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLight
@@ -99,6 +109,7 @@ module MatterLevelControl
       [
         on_off,
         level_control,
+        @fixed_label.as(Matter::Cluster::FixedLabelCluster),
         @identify.as(Matter::Cluster::IdentifyCluster),
         @groups.as(Matter::Cluster::GroupsCluster),
         @scenes_management.as(Matter::Cluster::ScenesManagementCluster),

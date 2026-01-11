@@ -19,6 +19,7 @@ module MatterSwitch
     SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
 
     @switch : Matter::Cluster::OnOffCluster? = nil
+    @fixed_label : Matter::Cluster::FixedLabelCluster? = nil
     @identify : Matter::Cluster::IdentifyCluster? = nil
     @groups : Matter::Cluster::GroupsCluster? = nil
     @scenes_management : Matter::Cluster::ScenesManagementCluster? = nil
@@ -82,6 +83,12 @@ module MatterSwitch
       )
       switch.on_state_changed { |new_state| handle_state_change(new_state) }
 
+      # FixedLabel is optional, but can help controllers show a friendly name for this endpoint.
+      @fixed_label = Matter::Cluster::FixedLabelCluster.new(
+        endpoint,
+        [Matter::Cluster::LabelStruct.new("name", "Example Switch")]
+      )
+
       @identify = Matter::Cluster::IdentifyCluster.new(
         endpoint,
         identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLight
@@ -92,6 +99,7 @@ module MatterSwitch
 
       [
         switch,
+        @fixed_label.as(Matter::Cluster::FixedLabelCluster),
         @identify.as(Matter::Cluster::IdentifyCluster),
         @groups.as(Matter::Cluster::GroupsCluster),
         @scenes_management.as(Matter::Cluster::ScenesManagementCluster),

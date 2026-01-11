@@ -469,7 +469,11 @@ end
 if pairing_code && b_storage_ready
   pairing_args = ["pairing", "code", node_id_b.as(String), pairing_code.as(String)]
   if addr = peer_address
-    pairing_args += ["--address", addr]
+    supports_address = ENV["CHIP_TOOL_SUPPORTS_ADDRESS"]?
+    supports_address = "1" if supports_address.nil? && File.basename(chip_tool) == "chip-tool-crystal"
+    if supports_address == "1"
+      pairing_args += ["--address", addr]
+    end
   end
 
   run_check(checks, chip_tool, storage_dir_b, "commissioning.fabric-b.pairing-code", pairing_args) do |cmd_result|

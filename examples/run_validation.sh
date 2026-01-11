@@ -14,11 +14,12 @@ Defaults:
   - Builds `./bin/matter_switch` and `./bin/chip-tool-crystal`
   - Starts the device locally (UDP 5540)
   - Commissions Node 1 using the printed manual pairing code
-  - Runs `examples/device_validation.cr` using `./bin/chip-tool-crystal`
+  - Validates FixedLabel values using the selected `--chip-tool`
+  - Runs `examples/device_validation.cr` using the same `--chip-tool`
 
 Env vars:
   CRYSTAL_CACHE_DIR   Crystal cache directory (default: ./tmp/.crystal_cache)
-  CHIP_TOOL           chip-tool binary for validation (default: ./bin/chip-tool-crystal)
+  CHIP_TOOL           chip-tool binary for validation/commissioning (default: chip-tool)
   MATTER_PEER_ADDRESS Device address (default: 127.0.0.1:5540)
 
 Options:
@@ -33,7 +34,7 @@ EOF
 }
 
 ADDRESS="${MATTER_PEER_ADDRESS:-127.0.0.1:5540}"
-CHIP_TOOL_BIN="${CHIP_TOOL:-./bin/chip-tool-crystal}"
+CHIP_TOOL_BIN="${CHIP_TOOL:-chip-tool}"
 STORAGE_A=""
 SKIP_BUILD=0
 KEEP_DEVICE_STATE=0
@@ -117,13 +118,78 @@ if [[ -z "$MANUAL_CODE" ]]; then
 fi
 
 echo "==> Pairing code: $MANUAL_CODE"
-echo "==> Commissioning with ./bin/chip-tool-crystal (storage: $STORAGE_A, address: $ADDRESS)"
-./bin/chip-tool-crystal pairing code 1 "$MANUAL_CODE" --address "$ADDRESS" --storage-directory "$STORAGE_A"
+
+chip_tool_supports_address=0
+{
+  set +e
+  pairing_help="$("$CHIP_TOOL_BIN" pairing code --help 2>&1)"
+  set -e
+  if echo "$pairing_help" | grep -q -- "--address"; then
+    chip_tool_supports_address=1
+  fi
+}
+
+echo "==> Commissioning with $CHIP_TOOL_BIN (storage: $STORAGE_A)"
+if [[ "$chip_tool_supports_address" -eq 1 ]]; then
+  "$CHIP_TOOL_BIN" pairing code 1 "$MANUAL_CODE" --address "$ADDRESS" --storage-directory "$STORAGE_A"
+else
+  "$CHIP_TOOL_BIN" pairing code 1 "$MANUAL_CODE" --storage-directory "$STORAGE_A" --commissioner-name alpha
+fi
+
+strip_ansi() {
+  # Remove ANSI color codes commonly emitted by chip-tool.
+  sed -r 's/\x1B\[[0-9;]*[A-Za-z]//g'
+}
+
+check_fixed_labels_example_prefix() {
+  local output values bad exit_code
+  echo "==> Reading FixedLabel LabelList with $CHIP_TOOL_BIN"
+  set +e
+  if [[ "$chip_tool_supports_address" -eq 1 ]]; then
+    output="$("$CHIP_TOOL_BIN" fixedlabel read label-list 1 1 --storage-directory "$STORAGE_A" 2>&1)"
+  else
+    output="$("$CHIP_TOOL_BIN" fixedlabel read label-list 1 1 --storage-directory "$STORAGE_A" --commissioner-name alpha 2>&1)"
+  fi
+  exit_code=$?
+  set -e
+
+  if [[ "$exit_code" -ne 0 ]] || echo "$output" | grep -Eq "Run command failure|Error 0x" ; then
+    echo "ERROR: FixedLabel read failed via $CHIP_TOOL_BIN" >&2
+    echo "$output" >&2
+    return 1
+  fi
+
+  # Official `chip-tool` prints either `Value: Example Foo` or `value: "Example Foo"` depending on verbosity/version.
+  # `chip-tool-crystal` prints `value="Example Foo"`.
+  values="$(echo "$output" | strip_ansi | sed -nE \
+    -e 's/.*value=\"([^\"]+)\".*/\1/p' \
+    -e 's/.*[Vv]alue: *\"?([^\"]+)\"?.*/\1/p')"
+  if [[ -z "$values" ]]; then
+    echo "ERROR: FixedLabel output did not contain any label values" >&2
+    echo "$output" >&2
+    return 1
+  fi
+
+  echo "==> FixedLabel values:"
+  bad=0
+  while IFS= read -r v; do
+    [[ -z "$v" ]] && continue
+    echo " - $v"
+    if [[ "$v" != Example* ]]; then
+      echo "ERROR: FixedLabel value does not start with \"Example\": $v" >&2
+      bad=1
+    fi
+  done <<<"$values"
+
+  [[ "$bad" -eq 0 ]]
+}
+
+check_fixed_labels_example_prefix
 
 echo "==> Running device validation (chip-tool: $CHIP_TOOL_BIN)"
 export CHIP_TOOL="$CHIP_TOOL_BIN"
 export MATTER_PEER_ADDRESS="$ADDRESS"
+export CHIP_TOOL_SUPPORTS_ADDRESS="$chip_tool_supports_address"
 crystal run ./examples/device_validation.cr -- --chip-tool "$CHIP_TOOL_BIN" --storage-a "$STORAGE_A"
 
 echo "==> PASS"
-

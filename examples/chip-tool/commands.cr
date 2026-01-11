@@ -4,6 +4,7 @@ require "./commands/pairing"
 require "./commands/onoff"
 require "./commands/basicinformation"
 require "./commands/descriptor"
+require "./commands/fixedlabel"
 require "./commands/administratorcommissioning"
 require "./commands/operationalcredentials"
 require "./commands/accesscontrol"
@@ -17,6 +18,7 @@ module ChipTool
       OnOff.register
       BasicInformation.register
       Descriptor.register
+      FixedLabel.register
       AdministratorCommissioning.register
       OperationalCredentials.register
       AccessControl.register
