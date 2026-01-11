@@ -62,11 +62,15 @@ module ChipTool
             next 1
           end
 
+          bad_label = false
           labels.each do |label|
             next if label.value.starts_with?("Example")
             STDERR.puts "FixedLabel value does not start with \"Example\": #{label.value.inspect}"
-            next 1
+            bad_label = true
+            break
           end
+
+          next 1 if bad_label
 
           puts "OK"
           0

@@ -25,8 +25,10 @@ jobs:
         uses: crystal-lang/install-crystal@v1
       - name: Install Dependencies
         run: shards install --ignore-crystal-version --skip-postinstall --skip-executables
+      - name: Build chip-tool
+        run: crystal build ./examples/chip-tool.cr -o ./bin/chip-tool --error-trace
       - name: Validate
-        run: ./examples/run_validation.sh
+        run: ./examples/run_validation.sh --chip-tool ./bin/chip-tool
   test:
     strategy:
       fail-fast: false

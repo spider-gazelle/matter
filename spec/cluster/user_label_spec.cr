@@ -60,11 +60,10 @@ describe Matter::Cluster::UserLabelCluster do
       Matter::Cluster::LabelStruct.new("a", "b"),
     ])
 
-    json = cluster.save_state
-    json.should_not be_nil
+    json = cluster.save_state.as(String)
 
     restored = Matter::Cluster::UserLabelCluster.new(endpoint_id)
-    restored.restore_state(json.not_nil!)
+    restored.restore_state(json)
     restored.label_list.size.should eq(1)
     restored.label_list[0].label.should eq("a")
     restored.label_list[0].value.should eq("b")
