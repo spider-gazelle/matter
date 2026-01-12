@@ -3,7 +3,6 @@ require "log"
 require "json"
 
 require "tlv"
-require "named_information"
 require "verhoeff"
 
 module Matter

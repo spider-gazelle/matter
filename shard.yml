@@ -5,9 +5,6 @@ authors:
   - Stephen von Takach <steve@place.technology>
 
 dependencies:
-  named_information:
-    github: spider-gazelle/named_information
-
   verhoeff:
     github: spider-gazelle/verhoeff
 
