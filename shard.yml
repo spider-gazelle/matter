@@ -5,20 +5,20 @@ authors:
   - Stephen von Takach <steve@place.technology>
 
 dependencies:
+  spake2_plus:
+    github: Crystal-Matter/spake2_plus
+
   verhoeff:
-    github: spider-gazelle/verhoeff
+    github: Crystal-Matter/verhoeff
 
   tlv:
     github: Crystal-Matter/tlv
 
-  openssl_ext:
-    github: spider-gazelle/openssl_ext
-
-  spake2_plus:
-    github: spider-gazelle/spake2_plus
-
   dns:
     github: spider-gazelle/dns
+
+  openssl_ext:
+    github: spider-gazelle/openssl_ext
 
 development_dependencies:
   timecop:
