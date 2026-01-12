@@ -5,9 +5,6 @@ authors:
   - Stephen von Takach <steve@place.technology>
 
 dependencies:
-  secure-remote-password:
-    github: spider-gazelle/secure-remote-password
-
   named_information:
     github: spider-gazelle/named_information
 
