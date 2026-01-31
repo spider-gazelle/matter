@@ -141,11 +141,11 @@ module Matter
         channel = @broadcast_channel
         return unless channel
 
-        start_time = Time.monotonic
+        start_time = Time.instant
 
         while @broadcasting
           # Check if we've exceeded max broadcast time
-          elapsed = Time.monotonic - start_time
+          elapsed = Time.instant - start_time
           if elapsed >= MAX_BROADCAST_TIME
             Log.debug { "Max broadcast time (#{MAX_BROADCAST_TIME.total_minutes.to_i}m) reached, stopping announcements" }
             break
@@ -173,9 +173,9 @@ module Matter
           interval = {interval * 2, MAX_INTERVAL}.min
         end
 
-        Log.debug { "Broadcast schedule completed: #{announcement_count} announcements in #{(Time.monotonic - start_time).total_minutes.round(1)}m" }
+        Log.debug { "Broadcast schedule completed: #{announcement_count} announcements in #{(Time.instant - start_time).total_minutes.round(1)}m" }
       rescue ex
-        elapsed = start_time ? (Time.monotonic - start_time) : Time::Span.zero
+        elapsed = start_time ? (Time.instant - start_time) : Time::Span.zero
         interval_seconds = interval.try(&.total_seconds.round(3))
         Log.error(exception: ex) do
           "Error in broadcast schedule (broadcasting=#{@broadcasting} announcements=#{announcement_count} elapsed=#{elapsed.total_seconds.round(3)}s interval=#{interval_seconds}s)"

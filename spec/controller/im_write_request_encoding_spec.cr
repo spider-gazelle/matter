@@ -24,11 +24,12 @@ describe "IM write request encoding" do
     parsed = Matter::Protocol::IMHandler.parse_write_request(msg.to_slice)
     parsed.should_not be_nil
 
-    req = parsed.as(Matter::InteractionModel::WriteRequest)
-    req.write_requests.size.should eq 1
+    req = parsed.as(Matter::InteractionModel::WriteRequestMessage)
+    write_requests = req.write_requests || [] of Matter::InteractionModel::AttributeDataIB
+    write_requests.size.should eq 1
 
     cluster = Matter::Cluster::AccessControlCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
-    status = cluster.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL, req.write_requests[0].value)
+    status = cluster.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL, write_requests[0].data.to_slice)
     status.status.should eq Matter::InteractionModel::StatusCode::Success
   end
 end

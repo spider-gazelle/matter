@@ -213,10 +213,10 @@ module Matter
         message_type : UInt8,
         timeout : Time::Span,
       ) : ReceivedMessage?
-        deadline = Time.monotonic + timeout
+        deadline = Time.instant + timeout
 
         loop do
-          remaining = deadline - Time.monotonic
+          remaining = deadline - Time.instant
           return nil if remaining <= 0.seconds
 
           select

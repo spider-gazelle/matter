@@ -86,7 +86,7 @@ module ChipTool
         scanner.start
         scanner.query_operational
 
-        deadline = Time.monotonic + timeout
+        deadline = Time.instant + timeout
         loop do
           if dev = scanner.operational_devices.find { |device| device.fabric_id == fabric.fabric_id && device.node_id == node_id }
             address = dev.addresses.find(&.family.inet?) || dev.addresses.first?
@@ -94,7 +94,7 @@ module ChipTool
               return Socket::IPAddress.new(addr.address, dev.port)
             end
           end
-          break if Time.monotonic >= deadline
+          break if Time.instant >= deadline
           sleep 100.milliseconds
         end
 

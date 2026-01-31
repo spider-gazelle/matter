@@ -2,7 +2,6 @@ require "./spec_helper"
 require "../src/matter/protocol/im_handler"
 require "../src/matter/cluster/general_commissioning_cluster"
 require "../src/matter/cluster/basic_information_cluster"
-require "../src/matter/interaction_model/messages"
 require "../src/matter/interaction_model/tlv_messages"
 
 describe "IMHandler - matter.js Compatibility" do
@@ -16,14 +15,15 @@ describe "IMHandler - matter.js Compatibility" do
       # Parse ReadRequest
       request = Matter::Protocol::IMHandler.parse_read_request(read_request_bytes)
       request.should_not be_nil
-      request = request.as(Matter::InteractionModel::ReadRequest)
+      request = request.as(Matter::InteractionModel::ReadRequestMessage)
 
       # Verify correct attributes were requested (from matter.js logs)
       # Should have 9 attribute requests:
       # 1-5: GeneralCommissioning attributes
       # 6-7: BasicInformation attributes
       # 8-9: Wildcards
-      request.attribute_requests.size.should eq 9
+      attr_requests = request.attribute_requests || [] of Matter::InteractionModel::AttributePath
+      attr_requests.size.should eq 9
 
       # Initialize clusters with values matching matter.js
       clusters = {} of Tuple(UInt16, UInt32) => Matter::Cluster::Base
@@ -53,75 +53,76 @@ describe "IMHandler - matter.js Compatibility" do
 
       # Verify response structure matches matter.js
       # matter.js returned: 7 attribute values
-      response.attribute_reports.size.should eq 7
+      response.size.should eq 7
 
       # Verify each attribute report has the expected structure
-      response.attribute_reports.each do |report|
-        # Each report should have:
-        # - path with endpoint, cluster, attribute
-        # - data_version (matches cluster version)
-        # - value (TLV-encoded bytes)
-        report.path.endpoint.should_not be_nil
-        report.path.cluster.should_not be_nil
-        report.path.attribute.should_not be_nil
-        report.data_version.should_not be_nil
-        report.value.should_not be_nil
-        report.value.size.should be > 0
+      response.each do |report|
+        # Each report should have attribute_data (not status)
+        if attr_data = report.attribute_data
+          # Should have path with endpoint, cluster, attribute
+          attr_data.path.endpoint.should_not be_nil
+          attr_data.path.cluster.should_not be_nil
+          attr_data.path.attribute.should_not be_nil
+          attr_data.data_version.should_not be_nil
+        else
+          fail "Expected attribute_data to not be nil"
+        end
       end
+
+      # Helper to find and verify attribute
+      find_attr = ->(cluster : UInt32, attribute : UInt32) {
+        response.find { |report| report.attribute_data.try { |data| data.path.cluster == cluster && data.path.attribute == attribute } }
+      }
 
       # Check specific attribute values
       # 1. GeneralCommissioning.supportsConcurrentConnection (0x4) = true
-      supports_concurrent = response.attribute_reports.find do |report|
-        report.path.cluster == 0x0030 && report.path.attribute == 0x0004
+      if report = find_attr.call(0x0030_u32, 0x0004_u32)
+        report.attribute_data.try(&.data_version).should eq 0xd34496b8_u32
+      else
+        fail "supportsConcurrentConnection not found"
       end
-      supports_concurrent.should_not be_nil
-      supports_concurrent = supports_concurrent.as(Matter::InteractionModel::AttributeData)
-      supports_concurrent.data_version.should eq 0xd34496b8_u32
 
       # 2. GeneralCommissioning.breadcrumb (0x0) = 0
-      breadcrumb = response.attribute_reports.find do |report|
-        report.path.cluster == 0x0030 && report.path.attribute == 0x0000
+      if report = find_attr.call(0x0030_u32, 0x0000_u32)
+        report.attribute_data.try(&.data_version).should eq 0xd34496b8_u32
+      else
+        fail "breadcrumb not found"
       end
-      breadcrumb.should_not be_nil
-      breadcrumb = breadcrumb.as(Matter::InteractionModel::AttributeData)
-      breadcrumb.data_version.should eq 0xd34496b8_u32
 
       # 3. GeneralCommissioning.basicCommissioningInfo (0x1)
-      basic_commissioning_info = response.attribute_reports.find do |report|
-        report.path.cluster == 0x0030 && report.path.attribute == 0x0001
+      if report = find_attr.call(0x0030_u32, 0x0001_u32)
+        report.attribute_data.try(&.data_version).should eq 0xd34496b8_u32
+      else
+        fail "basicCommissioningInfo not found"
       end
-      basic_commissioning_info.should_not be_nil
-      basic_commissioning_info.as(Matter::InteractionModel::AttributeData).data_version.should eq 0xd34496b8_u32
 
       # 4. GeneralCommissioning.regulatoryConfig (0x2) = 2 (IndoorOutdoor)
-      regulatory_config = response.attribute_reports.find do |report|
-        report.path.cluster == 0x0030 && report.path.attribute == 0x0002
+      if report = find_attr.call(0x0030_u32, 0x0002_u32)
+        report.attribute_data.try(&.data_version).should eq 0xd34496b8_u32
+      else
+        fail "regulatoryConfig not found"
       end
-      regulatory_config.should_not be_nil
-      regulatory_config.as(Matter::InteractionModel::AttributeData).data_version.should eq 0xd34496b8_u32
 
       # 5. GeneralCommissioning.locationCapability (0x3) = 2 (IndoorOutdoor)
-      location_capability = response.attribute_reports.find do |report|
-        report.path.cluster == 0x0030 && report.path.attribute == 0x0003
+      if report = find_attr.call(0x0030_u32, 0x0003_u32)
+        report.attribute_data.try(&.data_version).should eq 0xd34496b8_u32
+      else
+        fail "locationCapability not found"
       end
-      location_capability.should_not be_nil
-      location_capability.as(Matter::InteractionModel::AttributeData).data_version.should eq 0xd34496b8_u32
 
       # 6. BasicInformation.vendorId (0x2) = 65521 (0xFFF1)
-      vendor_id = response.attribute_reports.find do |report|
-        report.path.cluster == 0x0028 && report.path.attribute == 0x0002
+      if report = find_attr.call(0x0028_u32, 0x0002_u32)
+        report.attribute_data.try(&.data_version).should eq 0xe2c160c8_u32
+      else
+        fail "vendorId not found"
       end
-      vendor_id.should_not be_nil
-      vendor_id = vendor_id.as(Matter::InteractionModel::AttributeData)
-      vendor_id.data_version.should eq 0xe2c160c8_u32
 
       # 7. BasicInformation.productId (0x4) = 32768 (0x8000)
-      product_id = response.attribute_reports.find do |report|
-        report.path.cluster == 0x0028 && report.path.attribute == 0x0004
+      if report = find_attr.call(0x0028_u32, 0x0004_u32)
+        report.attribute_data.try(&.data_version).should eq 0xe2c160c8_u32
+      else
+        fail "productId not found"
       end
-      product_id.should_not be_nil
-      product_id = product_id.as(Matter::InteractionModel::AttributeData)
-      product_id.data_version.should eq 0xe2c160c8_u32
     end
 
     it "encodes ReadResponse to TLV matching matter.js structure" do
@@ -153,10 +154,10 @@ describe "IMHandler - matter.js Compatibility" do
 
       # Read attributes
       response = Matter::Protocol::IMHandler.read_attributes(paths, clusters)
-      response.attribute_reports.size.should eq 1
+      response.size.should eq 1
 
       # Encode response as TLV
-      encoded = Matter::Protocol::IMHandler.encode_read_response(response)
+      encoded = Matter::Protocol::IMHandler.encode_report_data(response)
 
       # Verify encoded response is valid TLV
       encoded.size.should be > 0
@@ -183,7 +184,7 @@ describe "IMHandler - matter.js Compatibility" do
 
       request = Matter::Protocol::IMHandler.parse_read_request(read_request_bytes)
       request.should_not be_nil
-      request = request.as(Matter::InteractionModel::ReadRequest)
+      request = request.as(Matter::InteractionModel::ReadRequestMessage)
 
       # Initialize clusters with matter.js values
       clusters = {} of Tuple(UInt16, UInt32) => Matter::Cluster::Base
@@ -204,7 +205,7 @@ describe "IMHandler - matter.js Compatibility" do
 
       # Process request
       response = Matter::Protocol::IMHandler.read_attributes(request.attribute_requests, clusters)
-      encoded = Matter::Protocol::IMHandler.encode_read_response(response)
+      encoded = Matter::Protocol::IMHandler.encode_report_data(response)
 
       # Log the encoded response for debugging
       puts "\n=== Crystal Matter ReadResponse TLV ==="

@@ -4,6 +4,13 @@ require "./status_code"
 
 module Matter
   module InteractionModel
+    # Event priority levels (used by clusters for event metadata)
+    enum EventPriority : UInt8
+      Debug    = 0
+      Info     = 1
+      Critical = 2
+    end
+
     # TLV-serializable IM message structures matching matter.js schemas
 
     # AttributeDataIB - per matter.js TlvAttributeReportData

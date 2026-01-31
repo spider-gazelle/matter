@@ -1,55 +1,49 @@
 require "./spec_helper"
 require "../src/matter/protocol/im_handler"
-require "../src/matter/interaction_model/messages"
 require "../src/matter/interaction_model/paths"
 require "../src/matter/interaction_model/tlv_messages"
 
 # Test ReadResponse encoding with multiple attributes (reproducing chip-tool issue)
 describe "ReadResponse Encoding" do
   it "encodes ReadResponse with multiple valid attributes" do
-    # Create multiple attribute reports like chip-tool would request
-    reports = [] of Matter::InteractionModel::AttributeData
+    # Create multiple attribute reports using TLV types directly
+    reports = [] of Matter::InteractionModel::AttributeReportIB
 
     # Report 1: GeneralCommissioning.Breadcrumb (0x30.0x00)
     path1 = Matter::InteractionModel::AttributePath.new(endpoint: 0_u16, cluster: 0x30_u32, attribute: 0x00_u32)
-    value1 = TLV::Any.new(0_u64, nil).to_slice # Breadcrumb value
-    reports << Matter::InteractionModel::AttributeData.new(path1, 0_u32, value1)
+    data1 = TLV::Any.new(0_u64, nil)
+    attr_data1 = Matter::InteractionModel::AttributeDataIB.new(path1, data1, 0_u32)
+    reports << Matter::InteractionModel::AttributeReportIB.new(attribute_data: attr_data1)
 
     # Report 2: BasicInformation.VendorID (0x28.0x02)
     path2 = Matter::InteractionModel::AttributePath.new(endpoint: 0_u16, cluster: 0x28_u32, attribute: 0x02_u32)
-    value2 = TLV::Any.new(0xFFF1_u16, nil).to_slice
-    reports << Matter::InteractionModel::AttributeData.new(path2, 0_u32, value2)
+    data2 = TLV::Any.new(0xFFF1_u16, nil)
+    attr_data2 = Matter::InteractionModel::AttributeDataIB.new(path2, data2, 0_u32)
+    reports << Matter::InteractionModel::AttributeReportIB.new(attribute_data: attr_data2)
 
-    # Report 3: Empty value (should be skipped with error handling)
-    path3 = Matter::InteractionModel::AttributePath.new(endpoint: 0_u16, cluster: 0x30_u32, attribute: 0x01_u32)
-    reports << Matter::InteractionModel::AttributeData.new(path3, 0_u32, Bytes.new(0))
+    # Encode using encode_report_data
+    encoded = Matter::Protocol::IMHandler.encode_report_data(reports)
 
-    response = Matter::InteractionModel::ReadResponse.new(
-      attribute_reports: reports
-    )
-
-    # Encode using TLV::Serializable
-    encoded = Matter::Protocol::IMHandler.encode_read_response(response)
-
-    # Should succeed despite empty value in report 3
+    # Should succeed
     encoded.size.should be > 0
 
     # Decode to verify structure using TLV::Serializable
     decoded = Matter::InteractionModel::ReportDataMessage.from_slice(encoded)
 
     # Should have attribute reports (tag 1)
-    decoded.attribute_reports.should_not be_nil
+    if attr_reports = decoded.attribute_reports
+      attr_reports.size.should eq 2
+    else
+      fail "Expected attribute_reports to not be nil"
+    end
 
     # Should have interactionModelRevision (tag 0xFF)
     decoded.interaction_model_revision.should eq(12_u8)
   end
 
   it "handles completely empty response" do
-    response = Matter::InteractionModel::ReadResponse.new(
-      attribute_reports: [] of Matter::InteractionModel::AttributeData
-    )
-
-    encoded = Matter::Protocol::IMHandler.encode_read_response(response)
+    # Encode empty array
+    encoded = Matter::Protocol::IMHandler.encode_report_data([] of Matter::InteractionModel::AttributeReportIB)
 
     # Should still encode with just interactionModelRevision
     encoded.size.should be > 0

@@ -42,9 +42,14 @@ describe "IMHandler ACL CAT subjects" do
       is_case_session: true,
       peer_subject_ids: [0x1111_u64] # NodeId only, no CAT
     )
-    denied.attribute_reports.size.should eq(0)
-    denied.attribute_status.size.should eq(1)
-    denied.attribute_status.first.status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAccess)
+    # With new return type, check that we got a status report (error), not data
+    denied.size.should eq(1)
+    denied.first.attribute_data.should be_nil
+    if attr_status = denied.first.attribute_status
+      attr_status.status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAccess.value)
+    else
+      fail "Expected attribute_status to not be nil"
+    end
 
     allowed = Matter::Protocol::IMHandler.read_attributes(
       [path],
@@ -53,7 +58,9 @@ describe "IMHandler ACL CAT subjects" do
       is_case_session: true,
       peer_subject_ids: [0x1111_u64, cat_node_id]
     )
-    allowed.attribute_reports.size.should eq(1)
-    allowed.attribute_status.size.should eq(0)
+    # With new return type, check that we got data, not status
+    allowed.size.should eq(1)
+    allowed.first.attribute_data.should_not be_nil
+    allowed.first.attribute_status.should be_nil
   end
 end

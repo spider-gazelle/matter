@@ -9,9 +9,9 @@ require "../cluster/basic_information_cluster"
 require "../cluster/general_commissioning_cluster"
 require "../cluster/operational_credentials_cluster"
 require "../fabric_table"
-require "../interaction_model/messages"
 require "../interaction_model/paths"
 require "../interaction_model/status_code"
+require "../interaction_model/tlv_messages"
 require "./im_handler"
 require "./persistence"
 require "./session_manager"
@@ -101,9 +101,9 @@ module Matter
 
       private struct CachedMrpResponse
         getter udp_packet : Bytes
-        getter created_at : Time::Span
+        getter created_at : Time::Instant
 
-        def initialize(@udp_packet : Bytes, @created_at : Time::Span = Time.monotonic)
+        def initialize(@udp_packet : Bytes, @created_at : Time::Instant = Time.instant)
         end
       end
 
@@ -300,7 +300,7 @@ module Matter
       # Timed Interaction support (IM TimedRequest message type 0x0A).
       #
       # Keyed by (session_id, exchange_id) to scope to a secure session.
-      @timed_request_deadlines : Hash(Tuple(UInt16, UInt16), Time::Span) = {} of Tuple(UInt16, UInt16) => Time::Span
+      @timed_request_deadlines : Hash(Tuple(UInt16, UInt16), Time::Instant) = {} of Tuple(UInt16, UInt16) => Time::Instant
 
       # Fabric access callback - set by the device implementation
       # This allows the message handler to access fabric data for CASE
@@ -384,7 +384,7 @@ module Matter
         spawn_subscription_cleanup_fiber
       end
 
-      private def prune_mrp_response_cache(now : Time::Span = Time.monotonic) : Nil
+      private def prune_mrp_response_cache(now : Time::Instant = Time.instant) : Nil
         @mrp_response_cache.reject! do |_, entry|
           now - entry.created_at > MRP_DUPLICATE_RESPONSE_TTL
         end
@@ -399,7 +399,7 @@ module Matter
       end
 
       private def resend_cached_mrp_response?(session_id : UInt16, incoming_counter : UInt32, peer : Socket::IPAddress) : Bool
-        now = Time.monotonic
+        now = Time.instant
         if cached = @mrp_response_cache[{session_id, incoming_counter}]?
           if now - cached.created_at <= MRP_DUPLICATE_RESPONSE_TTL
             Log.warn { "MRP duplicate detected: session_id=#{session_id}, message_counter=#{incoming_counter} - resending cached response" }
@@ -560,28 +560,24 @@ module Matter
           value = cluster.read_attribute(attribute_id, subscription.session.fabric_index)
           case value
           when Bytes
-            # Create a single-attribute report
+            # Create a single-attribute report using TLV types directly
             attr_path = InteractionModel::AttributePath.new(
               endpoint: endpoint_id,
               cluster: cluster_id,
               attribute: attribute_id
             )
 
-            attr_data = InteractionModel::AttributeData.new(
+            data = TLV::Any.from_slice(value)
+            attr_data = InteractionModel::AttributeDataIB.new(
               path: attr_path,
-              data_version: cluster.data_version,
-              value: value
+              data: data,
+              data_version: cluster.data_version
             )
 
-            response = InteractionModel::ReadResponse.new(
-              attribute_reports: [attr_data],
-              attribute_status: [] of InteractionModel::AttributeStatus,
-              suppress_response: false,
-              more_chunks: false
-            )
+            attribute_report = InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
 
             # Encode ReportData with subscription ID
-            report_data = IMHandler.encode_report_data(response, subscription.subscription_id)
+            report_data = IMHandler.encode_report_data([attribute_report], subscription.subscription_id)
             Log.trace { "Subscription update ReportData TLV (#{report_data.size} bytes): #{report_data.hexstring}" }
 
             # Send the update
@@ -869,14 +865,14 @@ module Matter
 
       private def record_timed_request(session_id : UInt16, exchange_id : UInt16, timeout_ms : UInt16) : Nil
         # Spec-defined max is UInt16 ms, so this is at most ~65s.
-        deadline = Time.monotonic + timeout_ms.milliseconds
+        deadline = Time.instant + timeout_ms.milliseconds
         @timed_request_deadlines[{session_id, exchange_id}] = deadline
       end
 
       private def consume_timed_request?(session_id : UInt16, exchange_id : UInt16) : Bool
         key = {session_id, exchange_id}
         if deadline = @timed_request_deadlines[key]?
-          if Time.monotonic <= deadline
+          if Time.instant <= deadline
             @timed_request_deadlines.delete(key)
             return true
           end
@@ -1193,10 +1189,11 @@ module Matter
           return
         end
 
-        Log.info { "ReadRequest: #{request.attribute_requests.size} attribute(s) requested" }
+        attribute_requests = request.attribute_requests || [] of InteractionModel::AttributePath
+        Log.info { "ReadRequest: #{attribute_requests.size} attribute(s) requested" }
 
         # Read attributes from clusters (pass fabric_index for fabric-scoped attributes)
-        response = IMHandler.read_attributes(
+        attribute_reports = IMHandler.read_attributes(
           request.attribute_requests,
           @clusters,
           session.fabric_index,
@@ -1204,10 +1201,10 @@ module Matter
           session.peer_subject_ids.empty? ? nil : session.peer_subject_ids
         )
 
-        Log.debug { "ReadResponse: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
+        Log.debug { "ReadResponse: #{attribute_reports.size} report(s)" }
 
         # Encode ReadResponse as TLV with chunking (no subscription_id for regular reads)
-        chunks = IMHandler.encode_chunked_report_data(response, nil)
+        chunks = IMHandler.encode_chunked_report_data(attribute_reports, nil)
         Log.debug { "Chunked ReadResponse into #{chunks.size} chunk(s)" }
 
         # Get first chunk to send
@@ -1269,10 +1266,11 @@ module Matter
           return
         end
 
-        Log.info { "SubscribeRequest: #{request.attribute_requests.size} attribute(s), min=#{request.min_interval_floor}s, max=#{request.max_interval_ceiling}s" }
+        attribute_requests = request.attribute_requests || [] of InteractionModel::AttributePath
+        Log.info { "SubscribeRequest: #{attribute_requests.size} attribute(s), min=#{request.min_interval_floor}s, max=#{request.max_interval_ceiling}s" }
 
         # Log what attributes are being subscribed to
-        request.attribute_requests.each_with_index do |path, idx|
+        attribute_requests.each_with_index do |path, idx|
           endpoint = path.endpoint.try(&.to_s) || "*"
           cluster = path.cluster.try { |cluster_id| "0x#{cluster_id.to_s(16)}" } || "*"
           attribute = path.attribute.try { |attr_id| "0x#{attr_id.to_s(16)}" } || "*"
@@ -1286,7 +1284,7 @@ module Matter
         Log.info { "Created subscription #{subscription_id}" }
 
         # Read attributes from clusters (same as ReadRequest, pass fabric_index for fabric-scoped attributes)
-        response = IMHandler.read_attributes(
+        attribute_reports = IMHandler.read_attributes(
           request.attribute_requests,
           @clusters,
           session.fabric_index,
@@ -1294,10 +1292,10 @@ module Matter
           session.peer_subject_ids.empty? ? nil : session.peer_subject_ids
         )
 
-        Log.debug { "Initial ReportData: #{response.attribute_reports.size} report(s), #{response.attribute_status.size} status(es)" }
+        Log.debug { "Initial ReportData: #{attribute_reports.size} report(s)" }
 
         # Encode ReportData with subscription ID as TLV, chunked to fit MTU
-        chunks = IMHandler.encode_chunked_report_data(response, subscription_id)
+        chunks = IMHandler.encode_chunked_report_data(attribute_reports, subscription_id)
         Log.debug { "Chunked ReportData into #{chunks.size} chunk(s)" }
 
         # Get first chunk to send
@@ -1323,7 +1321,7 @@ module Matter
         max_interval = request.max_interval_ceiling
 
         # Convert attribute requests to AttributePath for subscription tracking
-        attribute_paths = request.attribute_requests.map do |req|
+        attribute_paths = attribute_requests.map do |req|
           InteractionModel::AttributePath.new(
             endpoint: req.endpoint,
             cluster: req.cluster,
@@ -1370,7 +1368,7 @@ module Matter
           return
         end
 
-        if request.timed_request?
+        if request.timed_request
           unless consume_timed_request?(session.session_id, original_msg.payload_header.exchange_id)
             Log.warn do
               "WriteRequest rejected: missing/expired TimedRequest " \
@@ -1389,10 +1387,11 @@ module Matter
           end
         end
 
-        Log.info { "WriteRequest: #{request.write_requests.size} attribute(s) to write" }
+        write_requests = request.write_requests || [] of InteractionModel::AttributeDataIB
+        Log.info { "WriteRequest: #{write_requests.size} attribute(s) to write" }
 
         # Write attributes to clusters
-        response = IMHandler.write_attributes(
+        write_responses = IMHandler.write_attributes(
           request.write_requests,
           @clusters,
           session_id: session.session_id,
@@ -1401,16 +1400,16 @@ module Matter
           peer_subject_ids: session.peer_subject_ids.empty? ? nil : session.peer_subject_ids
         )
 
-        Log.debug { "WriteResponse: #{response.write_responses.size} status(es)" }
+        Log.debug { "WriteResponse: #{write_responses.size} status(es)" }
 
         # Check if response should be suppressed
-        if request.suppress_response? && response.write_responses.all? { |write_status| write_status.status.status == InteractionModel::StatusCode::Success }
+        if request.suppress_response && write_responses.all? { |write_status| write_status.status.status == InteractionModel::StatusCode::Success.value }
           Log.info { "Response suppressed per suppressResponse flag (all writes succeeded)" }
           return
         end
 
         # Encode WriteResponse as TLV
-        response_tlv = IMHandler.encode_write_response(response)
+        response_tlv = IMHandler.encode_write_response(write_responses)
         Log.debug { "Encoded WriteResponse TLV (#{response_tlv.size} bytes): #{response_tlv.hexstring}" }
 
         # Send encrypted IM response
@@ -1448,7 +1447,7 @@ module Matter
           return
         end
 
-        if request.timed_request?
+        if request.timed_request
           unless consume_timed_request?(session.session_id, original_msg.payload_header.exchange_id)
             Log.warn do
               "InvokeRequest rejected: missing/expired TimedRequest " \
@@ -1470,7 +1469,7 @@ module Matter
         Log.info { "InvokeRequest: #{request.invoke_requests.size} command(s) requested" }
 
         # Execute commands on clusters (pass session info for attestation)
-        response = IMHandler.invoke_commands(
+        invoke_responses = IMHandler.invoke_commands(
           request.invoke_requests,
           @clusters,
           session.session_id.to_u64,
@@ -1479,16 +1478,18 @@ module Matter
           session.peer_subject_ids.empty? ? nil : session.peer_subject_ids
         )
 
-        Log.info { "InvokeResponse: #{response.invoke_responses.size} response(s), #{response.invoke_status.size} status(es)" }
+        # Count status-only responses (errors)
+        status_count = invoke_responses.count { |resp| resp.command_status != nil }
+        Log.info { "InvokeResponse: #{invoke_responses.size} response(s), #{status_count} status(es)" }
 
-        # Check if response should be suppressed
-        if request.suppress_response? && response.invoke_status.empty?
+        # Check if response should be suppressed (only if all succeeded)
+        if request.suppress_response && status_count == 0
           Log.info { "Response suppressed per suppressResponse flag" }
           return
         end
 
         # Encode InvokeResponse as TLV
-        response_tlv = IMHandler.encode_invoke_response(response)
+        response_tlv = IMHandler.encode_invoke_response(invoke_responses, suppress_response: request.suppress_response || false)
         Log.debug { "Encoded InvokeResponse TLV (#{response_tlv.size} bytes): #{response_tlv.hexstring}" }
 
         # Send encrypted IM response

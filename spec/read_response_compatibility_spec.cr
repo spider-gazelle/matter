@@ -1,6 +1,5 @@
 require "./spec_helper"
 require "../src/matter/protocol/im_handler"
-require "../src/matter/interaction_model/messages"
 require "../src/matter/interaction_model/paths"
 require "../src/matter/interaction_model/tlv_messages"
 
@@ -14,18 +13,15 @@ describe "ReadResponse matter.js Compatibility" do
       attribute: 0x0002_u32 # VendorID
     )
 
-    # Encode value as TLV using TLV::Any
-    value_bytes = TLV::Any.new(0xFFF1_u16, nil).to_slice
+    # Encode value as TLV::Any
+    data = TLV::Any.new(0xFFF1_u16, nil)
 
-    # Create AttributeData
-    attr_data = Matter::InteractionModel::AttributeData.new(path, 0_u32, value_bytes)
-
-    response = Matter::InteractionModel::ReadResponse.new(
-      attribute_reports: [attr_data]
-    )
+    # Create AttributeDataIB
+    attr_data = Matter::InteractionModel::AttributeDataIB.new(path, data, 0_u32)
+    attribute_report = Matter::InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
 
     # Encode
-    encoded = Matter::Protocol::IMHandler.encode_read_response(response)
+    encoded = Matter::Protocol::IMHandler.encode_report_data([attribute_report])
 
     # Decode and verify structure matches matter.js TlvDataReportForSend
     decoded = Matter::InteractionModel::ReportDataMessage.from_slice(encoded)

@@ -15,13 +15,14 @@ describe Matter::Cluster::AccessControlCluster do
       # Parse the WriteRequest using im_handler
       request = Matter::Protocol::IMHandler.parse_write_request(write_request_bytes)
       request.should_not be_nil
-      write_req = request.as(Matter::InteractionModel::WriteRequest)
+      write_req = request.as(Matter::InteractionModel::WriteRequestMessage)
 
       # Should have 1 write request
-      write_req.write_requests.size.should eq(1)
+      write_requests = write_req.write_requests || [] of Matter::InteractionModel::AttributeDataIB
+      write_requests.size.should eq(1)
 
-      # Extract the value that will be passed to write_attribute
-      acl_value = write_req.write_requests[0].value
+      # Extract the value that will be passed to write_attribute (convert TLV::Any to bytes)
+      acl_value = write_requests[0].data.to_slice
       puts "ACL value size: #{acl_value.size} bytes"
       puts "ACL value hex: #{acl_value.hexstring}"
 

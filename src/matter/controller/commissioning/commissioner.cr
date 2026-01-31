@@ -155,7 +155,7 @@ module Matter
           short_only = (discriminator & 0x00ff_u16) == 0_u16
           short_discriminator = SetupPayload.short_discriminator(discriminator)
 
-          deadline = Time.monotonic + @timeout
+          deadline = Time.instant + @timeout
           loop do
             if dev = scanner.commissioning_devices.find { |device|
                  disc = device.discriminator
@@ -169,7 +169,7 @@ module Matter
               end
             end
 
-            break if Time.monotonic >= deadline
+            break if Time.instant >= deadline
             sleep 100.milliseconds
           end
 
