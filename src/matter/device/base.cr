@@ -547,6 +547,157 @@ module Matter
         @responder.update_commissioning_hostname(normalized)
       end
 
+      # ------------------------------------------------------------------------
+      # Dynamic Endpoint Management (for bridges)
+      # ------------------------------------------------------------------------
+
+      # Adds a new endpoint with the given clusters at runtime.
+      # This is primarily used by bridge devices to add bridged endpoints dynamically.
+      #
+      # The clusters should already be configured with the correct endpoint_id.
+      # A DescriptorCluster will be automatically injected if not provided.
+      #
+      # Returns true if the endpoint was added successfully, false if it already exists.
+      def add_endpoint(
+        endpoint_id : UInt16,
+        device_type : UInt32,
+        clusters : Array(Cluster::Base),
+        device_type_revision : UInt16 = 1_u16,
+      ) : Bool
+        # Don't allow adding endpoint 0 (root node)
+        return false if endpoint_id == 0_u16
+
+        # Check if endpoint already exists
+        existing = @message_handler.clusters.keys.any? { |k| k[0] == endpoint_id }
+        return false if existing
+
+        # Register all provided clusters
+        clusters.each do |cluster|
+          if cluster.endpoint_id.number != endpoint_id
+            raise ArgumentError.new("Cluster endpoint_id (#{cluster.endpoint_id.number}) doesn't match endpoint_id (#{endpoint_id})")
+          end
+          @message_handler.clusters[{endpoint_id, cluster.cluster_id.id}] = cluster
+        end
+
+        # Inject DescriptorCluster if not provided
+        unless @message_handler.clusters.has_key?({endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID})
+          descriptor = Cluster::DescriptorCluster.new(DataType::EndpointNumber.new(endpoint_id))
+          @message_handler.clusters[{endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID}] = descriptor
+        end
+
+        # Populate the descriptor
+        descriptor = @message_handler.clusters[{endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID}]
+          .as(Cluster::DescriptorCluster)
+
+        # Set device type
+        descriptor.device_type_list.clear
+        descriptor.device_type_list << Cluster::DescriptorCluster::DeviceTypeStruct.new(
+          device_type: device_type,
+          revision: device_type_revision
+        )
+
+        # Populate server list
+        cluster_ids = @message_handler.clusters
+          .select { |k, _| k[0] == endpoint_id }
+          .keys
+          .map(&.[1])
+          .uniq!
+          .sort!
+        descriptor.server_list.clear
+        cluster_ids.each { |id| descriptor.server_list << id }
+
+        # Add to root node's PartsList
+        if root_desc = @message_handler.clusters[{0_u16, Cluster::DescriptorCluster::CLUSTER_ID}]?.as?(Cluster::DescriptorCluster)
+          unless root_desc.has_part?(endpoint_id)
+            root_desc.add_part(endpoint_id)
+
+            # Notify subscribers of PartsList change (important for controllers to discover new devices)
+            @message_handler.notify_subscriptions(
+              0_u16,
+              Cluster::DescriptorCluster::CLUSTER_ID,
+              Cluster::DescriptorCluster::ATTR_PARTS_LIST
+            )
+          end
+        end
+
+        # Setup attribute change notifications for the new clusters
+        @message_handler.setup_cluster_notifications
+
+        # Notify subscribers about the new endpoint's Descriptor cluster attributes
+        # This is important for controllers with wildcard subscriptions to learn about the new device
+        @message_handler.notify_subscriptions(
+          endpoint_id,
+          Cluster::DescriptorCluster::CLUSTER_ID,
+          Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST
+        )
+        @message_handler.notify_subscriptions(
+          endpoint_id,
+          Cluster::DescriptorCluster::CLUSTER_ID,
+          Cluster::DescriptorCluster::ATTR_SERVER_LIST
+        )
+        @message_handler.notify_subscriptions(
+          endpoint_id,
+          Cluster::DescriptorCluster::CLUSTER_ID,
+          Cluster::DescriptorCluster::ATTR_PARTS_LIST
+        )
+
+        true
+      end
+
+      # Removes an endpoint and all its clusters at runtime.
+      # This is primarily used by bridge devices to remove bridged endpoints dynamically.
+      #
+      # Returns true if the endpoint was removed, false if it didn't exist.
+      def remove_endpoint(endpoint_id : UInt16) : Bool
+        # Don't allow removing endpoint 0 (root node)
+        return false if endpoint_id == 0_u16
+
+        # Find all clusters on this endpoint
+        cluster_keys = @message_handler.clusters.keys.select { |k| k[0] == endpoint_id }
+        return false if cluster_keys.empty?
+
+        # Remove all clusters from the registry
+        cluster_keys.each do |key|
+          @message_handler.clusters.delete(key)
+        end
+
+        # Remove from root node's PartsList
+        if root_desc = @message_handler.clusters[{0_u16, Cluster::DescriptorCluster::CLUSTER_ID}]?.as?(Cluster::DescriptorCluster)
+          if root_desc.has_part?(endpoint_id)
+            root_desc.parts_list.reject! { |part| part == endpoint_id }
+
+            # Notify subscribers of PartsList change (important for controllers to discover removed devices)
+            @message_handler.notify_subscriptions(
+              0_u16,
+              Cluster::DescriptorCluster::CLUSTER_ID,
+              Cluster::DescriptorCluster::ATTR_PARTS_LIST
+            )
+          end
+        end
+
+        true
+      end
+
+      # Returns all endpoint IDs currently registered (excluding endpoint 0)
+      def endpoint_ids : Array(UInt16)
+        @message_handler.clusters.keys
+          .map(&.[0])
+          .uniq!
+          .reject { |id| id == 0_u16 }
+          .sort!
+      end
+
+      # Returns the next available endpoint ID for dynamic endpoints
+      # Starts from 1 and finds the first unused ID
+      def next_endpoint_id : UInt16
+        existing = endpoint_ids
+        id = 1_u16
+        while existing.includes?(id)
+          id += 1
+        end
+        id
+      end
+
       # Save state for all clusters that need persistence
       protected def save_cluster_states : Nil
         @storage_manager.save_all_cluster_states(@message_handler.clusters.values)

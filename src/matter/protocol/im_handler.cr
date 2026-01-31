@@ -167,13 +167,22 @@ module Matter
                 attr_status = InteractionModel::AttributeStatusIB.new(path: concrete_path, status: status_ib)
                 attribute_reports << InteractionModel::AttributeReportIB.new(attribute_status: attr_status)
               else
-                data = TLV::Any.from_slice(result.as(Bytes))
-                attr_data = InteractionModel::AttributeDataIB.new(
-                  path: concrete_path,
-                  data: data,
-                  data_version: cluster.data_version
-                )
-                attribute_reports << InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
+                bytes = result.as(Bytes)
+                if bytes.empty?
+                  # Empty bytes can't be parsed as TLV - treat as failure
+                  Log.warn { "Empty bytes returned for attribute #{attribute_id} on cluster 0x#{cluster_id.to_s(16)} endpoint #{endpoint_id}" }
+                  status_ib = InteractionModel::StatusIB.new(status: InteractionModel::StatusCode::Failure.value)
+                  attr_status = InteractionModel::AttributeStatusIB.new(path: concrete_path, status: status_ib)
+                  attribute_reports << InteractionModel::AttributeReportIB.new(attribute_status: attr_status)
+                else
+                  data = TLV::Any.from_slice(bytes)
+                  attr_data = InteractionModel::AttributeDataIB.new(
+                    path: concrete_path,
+                    data: data,
+                    data_version: cluster.data_version
+                  )
+                  attribute_reports << InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
+                end
               end
             end
 
@@ -215,13 +224,22 @@ module Matter
             attribute_reports << InteractionModel::AttributeReportIB.new(attribute_status: attr_status)
           else
             # Success - attribute data (parse TLV bytes directly to TLV::Any)
-            data = TLV::Any.from_slice(result.as(Bytes))
-            attr_data = InteractionModel::AttributeDataIB.new(
-              path: path,
-              data: data,
-              data_version: cluster.data_version
-            )
-            attribute_reports << InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
+            bytes = result.as(Bytes)
+            if bytes.empty?
+              # Empty bytes can't be parsed as TLV - treat as failure
+              Log.warn { "Empty bytes returned for attribute #{attribute_id} on cluster 0x#{cluster_id.to_s(16)} endpoint #{endpoint_id}" }
+              status_ib = InteractionModel::StatusIB.new(status: InteractionModel::StatusCode::Failure.value)
+              attr_status = InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
+              attribute_reports << InteractionModel::AttributeReportIB.new(attribute_status: attr_status)
+            else
+              data = TLV::Any.from_slice(bytes)
+              attr_data = InteractionModel::AttributeDataIB.new(
+                path: path,
+                data: data,
+                data_version: cluster.data_version
+              )
+              attribute_reports << InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
+            end
           end
         end
 
