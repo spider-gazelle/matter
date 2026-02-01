@@ -557,12 +557,16 @@ module Matter
       # The clusters should already be configured with the correct endpoint_id.
       # A DescriptorCluster will be automatically injected if not provided.
       #
+      # Set `notify_subscribers` to false when restoring endpoints from storage
+      # to avoid sending spurious subscription updates on startup.
+      #
       # Returns true if the endpoint was added successfully, false if it already exists.
       def add_endpoint(
         endpoint_id : UInt16,
         device_type : UInt32,
         clusters : Array(Cluster::Base),
         device_type_revision : UInt16 = 1_u16,
+        notify_subscribers : Bool = true,
       ) : Bool
         # Don't allow adding endpoint 0 (root node)
         return false if endpoint_id == 0_u16
@@ -606,40 +610,38 @@ module Matter
         descriptor.server_list.clear
         cluster_ids.each { |id| descriptor.server_list << id }
 
+        # Track if we need to notify about root PartsList change
+        root_parts_list_changed = false
+
         # Add to root node's PartsList
         if root_desc = @message_handler.clusters[{0_u16, Cluster::DescriptorCluster::CLUSTER_ID}]?.as?(Cluster::DescriptorCluster)
           unless root_desc.has_part?(endpoint_id)
             root_desc.add_part(endpoint_id)
-
-            # Notify subscribers of PartsList change (important for controllers to discover new devices)
-            @message_handler.notify_subscriptions(
-              0_u16,
-              Cluster::DescriptorCluster::CLUSTER_ID,
-              Cluster::DescriptorCluster::ATTR_PARTS_LIST
-            )
+            root_parts_list_changed = true
           end
         end
 
         # Setup attribute change notifications for the new clusters
         @message_handler.setup_cluster_notifications
 
-        # Notify subscribers about the new endpoint's Descriptor cluster attributes
-        # This is important for controllers with wildcard subscriptions to learn about the new device
-        @message_handler.notify_subscriptions(
-          endpoint_id,
-          Cluster::DescriptorCluster::CLUSTER_ID,
-          Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST
-        )
-        @message_handler.notify_subscriptions(
-          endpoint_id,
-          Cluster::DescriptorCluster::CLUSTER_ID,
-          Cluster::DescriptorCluster::ATTR_SERVER_LIST
-        )
-        @message_handler.notify_subscriptions(
-          endpoint_id,
-          Cluster::DescriptorCluster::CLUSTER_ID,
-          Cluster::DescriptorCluster::ATTR_PARTS_LIST
-        )
+        # Notify subscribers about the new endpoint's Descriptor cluster attributes.
+        # This is important for controllers with wildcard subscriptions to learn about the new device.
+        # We batch ALL notifications into a single ReportData to avoid overwhelming controllers.
+        if notify_subscribers
+          notifications = [] of Tuple(UInt16, UInt32, UInt32)
+
+          # Root node PartsList change (most important - tells controller a new endpoint exists)
+          if root_parts_list_changed
+            notifications << {0_u16, Cluster::DescriptorCluster::CLUSTER_ID, Cluster::DescriptorCluster::ATTR_PARTS_LIST}
+          end
+
+          # New endpoint's descriptor attributes
+          notifications << {endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID, Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST}
+          notifications << {endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID, Cluster::DescriptorCluster::ATTR_SERVER_LIST}
+          notifications << {endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID, Cluster::DescriptorCluster::ATTR_PARTS_LIST}
+
+          @message_handler.notify_subscriptions_batched(notifications)
+        end
 
         true
       end

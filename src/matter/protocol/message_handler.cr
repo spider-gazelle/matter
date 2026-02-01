@@ -539,54 +539,63 @@ module Matter
       # Handle attribute change and send updates to matching subscriptions
       # This is called by clusters when their attributes change
       def notify_subscriptions(endpoint_id : UInt16, cluster_id : UInt32, attribute_id : UInt32)
-        Log.debug { "notify_subscriptions: endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)}, attr=0x#{attribute_id.to_s(16)}, active=#{@active_subscriptions.size}" }
-        return if @active_subscriptions.empty?
+        notify_subscriptions_batched([{endpoint_id, cluster_id, attribute_id}])
+      end
 
-        # Find all subscriptions that match this attribute change
+      # Batch multiple attribute changes into a single subscription update
+      # This is important to avoid overwhelming controllers (especially iOS) with rapid-fire updates.
+      # Each tuple is (endpoint_id, cluster_id, attribute_id).
+      def notify_subscriptions_batched(attributes : Array(Tuple(UInt16, UInt32, UInt32)))
+        Log.debug { "notify_subscriptions_batched: #{attributes.size} attribute(s), active=#{@active_subscriptions.size}" }
+        return if @active_subscriptions.empty? || attributes.empty?
+
+        # For each subscription, collect all matching attribute reports and send as one ReportData
         @active_subscriptions.each do |sub_id, subscription|
-          matches = subscription.matches?(endpoint_id, cluster_id, attribute_id)
-          next unless matches
+          attribute_reports = [] of InteractionModel::AttributeReportIB
 
-          Log.debug { "Sending subscription update: subscription_id=#{sub_id}, peer=#{subscription.peer}" }
+          attributes.each do |(endpoint_id, cluster_id, attribute_id)|
+            matches = subscription.matches?(endpoint_id, cluster_id, attribute_id)
+            next unless matches
 
-          # Read the current attribute value
-          cluster = @clusters[{endpoint_id, cluster_id}]?
-          unless cluster
-            Log.warn { "Subscription update skipped: cluster not found (endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)})" }
-            next
+            # Read the current attribute value
+            cluster = @clusters[{endpoint_id, cluster_id}]?
+            unless cluster
+              Log.warn { "Subscription update skipped: cluster not found (endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)})" }
+              next
+            end
+
+            # Build attribute report for this attribute
+            value = cluster.read_attribute(attribute_id, subscription.session.fabric_index)
+            case value
+            when Bytes
+              attr_path = InteractionModel::AttributePath.new(
+                endpoint: endpoint_id,
+                cluster: cluster_id,
+                attribute: attribute_id
+              )
+
+              data = TLV::Any.from_slice(value)
+              attr_data = InteractionModel::AttributeDataIB.new(
+                path: attr_path,
+                data: data,
+                data_version: cluster.data_version
+              )
+
+              attribute_reports << InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
+            else
+              Log.warn { "Subscription update skipped: read_attribute returned #{value.class} (endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)}, attr=0x#{attribute_id.to_s(16)})" }
+            end
           end
 
-          # Build attribute report for just this attribute
-          value = cluster.read_attribute(attribute_id, subscription.session.fabric_index)
-          case value
-          when Bytes
-            # Create a single-attribute report using TLV types directly
-            attr_path = InteractionModel::AttributePath.new(
-              endpoint: endpoint_id,
-              cluster: cluster_id,
-              attribute: attribute_id
-            )
+          # Send batched update if we have any reports
+          if attribute_reports.size > 0
+            Log.debug { "Sending batched subscription update: subscription_id=#{sub_id}, peer=#{subscription.peer}, reports=#{attribute_reports.size}" }
 
-            data = TLV::Any.from_slice(value)
-            attr_data = InteractionModel::AttributeDataIB.new(
-              path: attr_path,
-              data: data,
-              data_version: cluster.data_version
-            )
-
-            attribute_report = InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
-
-            # Encode ReportData with subscription ID
-            report_data = IMHandler.encode_report_data([attribute_report], subscription.subscription_id)
+            report_data = IMHandler.encode_report_data(attribute_reports, subscription.subscription_id)
             Log.trace { "Subscription update ReportData TLV (#{report_data.size} bytes): #{report_data.hexstring}" }
 
-            # Send the update
             send_subscription_update(subscription, report_data)
-
-            # Update last report time
             subscription.last_report_time = Time.utc
-          else
-            Log.warn { "Subscription update skipped: read_attribute returned #{value.class} (endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)}, attr=0x#{attribute_id.to_s(16)})" }
           end
         end
       end

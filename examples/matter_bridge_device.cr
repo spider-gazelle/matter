@@ -197,10 +197,13 @@ module MatterBridge
     private def restore_bridged_device(config : BridgedDeviceConfig) : BridgedDevice?
       device = BridgedDevice.new(config.endpoint_id, config.name, config.unique_id)
 
+      # Don't send subscription notifications when restoring - the controller
+      # already knows about these devices from before the restart
       success = add_endpoint(
         endpoint_id: config.endpoint_id,
         device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
-        clusters: device.clusters
+        clusters: device.clusters,
+        notify_subscribers: false
       )
 
       unless success
