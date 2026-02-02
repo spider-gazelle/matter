@@ -624,23 +624,15 @@ module Matter
         # Setup attribute change notifications for the new clusters
         @message_handler.setup_cluster_notifications
 
-        # Notify subscribers about the new endpoint's Descriptor cluster attributes.
-        # This is important for controllers with wildcard subscriptions to learn about the new device.
-        # We batch ALL notifications into a single ReportData to avoid overwhelming controllers.
-        if notify_subscribers
-          notifications = [] of Tuple(UInt16, UInt32, UInt32)
-
-          # Root node PartsList change (most important - tells controller a new endpoint exists)
-          if root_parts_list_changed
-            notifications << {0_u16, Cluster::DescriptorCluster::CLUSTER_ID, Cluster::DescriptorCluster::ATTR_PARTS_LIST}
-          end
-
-          # New endpoint's descriptor attributes
-          notifications << {endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID, Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST}
-          notifications << {endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID, Cluster::DescriptorCluster::ATTR_SERVER_LIST}
-          notifications << {endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID, Cluster::DescriptorCluster::ATTR_PARTS_LIST}
-
-          @message_handler.notify_subscriptions_batched(notifications)
+        # Notify subscribers of PartsList change on root node (endpoint 0).
+        # This tells controllers a new endpoint exists - they will read the
+        # new endpoint's attributes on their own (same pattern as remove_endpoint).
+        if notify_subscribers && root_parts_list_changed
+          @message_handler.notify_subscriptions(
+            0_u16,
+            Cluster::DescriptorCluster::CLUSTER_ID,
+            Cluster::DescriptorCluster::ATTR_PARTS_LIST
+          )
         end
 
         true
