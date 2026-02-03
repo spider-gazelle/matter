@@ -70,7 +70,7 @@ describe Matter::Transport::UDPTransport do
         payload: Bytes.new(0)
       )
 
-      peer_address = Socket::IPAddress.new("127.0.0.1", 5540)
+      peer_address = Socket::IPAddress.new("::1", 5540)
 
       # Message counter should start at 0
       initial_counter = transport.message_counter.counter
@@ -85,7 +85,7 @@ describe Matter::Transport::UDPTransport do
 
     it "increments counter for each message sent" do
       transport = Matter::Transport::UDPTransport.new(port: 15544)
-      peer_address = Socket::IPAddress.new("127.0.0.1", 5540)
+      peer_address = Socket::IPAddress.new("::1", 5540)
 
       initial_counter = transport.message_counter.counter
 
@@ -130,7 +130,7 @@ describe Matter::Transport::UDPTransport do
   describe "#send_request" do
     it "creates new exchange and sends message" do
       transport = Matter::Transport::UDPTransport.new(port: 15545)
-      peer_address = Socket::IPAddress.new("127.0.0.1", 5540)
+      peer_address = Socket::IPAddress.new("::1", 5540)
 
       exchange = transport.send_request(
         protocol_id: 0_u16,
@@ -151,7 +151,7 @@ describe Matter::Transport::UDPTransport do
 
     it "increments message counter" do
       transport = Matter::Transport::UDPTransport.new(port: 15546)
-      peer_address = Socket::IPAddress.new("127.0.0.1", 5540)
+      peer_address = Socket::IPAddress.new("::1", 5540)
 
       initial_counter = transport.message_counter.counter
 
@@ -173,7 +173,7 @@ describe Matter::Transport::UDPTransport do
   describe "exchange management" do
     it "creates exchanges for requests" do
       transport = Matter::Transport::UDPTransport.new(port: 15547)
-      peer_address = Socket::IPAddress.new("127.0.0.1", 5540)
+      peer_address = Socket::IPAddress.new("::1", 5540)
 
       initial_count = transport.exchange_manager.active_count
 
@@ -193,7 +193,7 @@ describe Matter::Transport::UDPTransport do
 
     it "stores pending messages for retransmission" do
       transport = Matter::Transport::UDPTransport.new(port: 15548)
-      peer_address = Socket::IPAddress.new("127.0.0.1", 5540)
+      peer_address = Socket::IPAddress.new("::1", 5540)
 
       exchange = transport.send_request(
         protocol_id: 0_u16,
@@ -213,7 +213,7 @@ describe Matter::Transport::UDPTransport do
   describe "#send_raw" do
     it "sends raw bytes" do
       transport = Matter::Transport::UDPTransport.new(port: 15549)
-      peer_address = Socket::IPAddress.new("127.0.0.1", 5540)
+      peer_address = Socket::IPAddress.new("::1", 5540)
 
       data = Bytes[0x01, 0x02, 0x03, 0x04]
 
