@@ -1,6 +1,7 @@
 require "big"
 require "log"
 require "json"
+require "time/instant"
 
 require "tlv"
 require "verhoeff"
