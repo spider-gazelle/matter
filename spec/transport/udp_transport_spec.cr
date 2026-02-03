@@ -19,6 +19,13 @@ describe Matter::Transport::UDPTransport do
       transport.close
     end
 
+    it "supports ephemeral ports" do
+      transport = Matter::Transport::UDPTransport.new(port: 0)
+      transport.port.should_not eq(0)
+      transport.port.should be > 0
+      transport.close
+    end
+
     it "initializes message counter" do
       transport = Matter::Transport::UDPTransport.new(port: 15541)
       transport.message_counter.should_not be_nil
@@ -218,13 +225,12 @@ describe Matter::Transport::UDPTransport do
   end
 
   describe "#close" do
-    it "closes both sockets" do
+    it "closes the socket" do
       transport = Matter::Transport::UDPTransport.new(port: 15550)
 
       transport.close
 
-      transport.socket_ipv4.closed?.should be_true
-      transport.socket_ipv6.closed?.should be_true
+      transport.socket.closed?.should be_true
     end
 
     it "can be called multiple times safely" do
@@ -233,8 +239,7 @@ describe Matter::Transport::UDPTransport do
       transport.close
       transport.close # Should not raise
 
-      transport.socket_ipv4.closed?.should be_true
-      transport.socket_ipv6.closed?.should be_true
+      transport.socket.closed?.should be_true
     end
   end
 end

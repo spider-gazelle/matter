@@ -13,14 +13,15 @@ module Matter
     # - Message deduplication
     # - Automatic retransmission with exponential backoff
     # - Exchange management (request/response correlation)
+    #
+    # Uses a single dual-stack IPv6 socket that accepts both IPv4 and IPv6 connections.
     class UDPTransport
       # Matter default port
       MATTER_PORT = 5540
 
       Log = ::Log.for("matter.transport.udp")
 
-      getter socket_ipv4 : UDPSocket
-      getter socket_ipv6 : UDPSocket
+      getter socket : UDPSocket
       getter port : Int32
       getter message_counter : MessageCounter # Kept for backward compatibility (uses session_id=0)
       getter exchange_manager : ExchangeManager
@@ -38,22 +39,19 @@ module Matter
       property on_message : Proc(Codec::MessageCodec::Message, Socket::IPAddress, Nil)?
 
       @running : Bool
-      @receive_fiber_ipv4 : Fiber?
-      @receive_fiber_ipv6 : Fiber?
+      @receive_fiber : Fiber?
 
-      def initialize(@port : Int32 = MATTER_PORT, @interface_ipv4 : String = "0.0.0.0", @interface_ipv6 : String = "::")
-        # Create separate IPv4 and IPv6 sockets for dual-stack support
-        @socket_ipv4 = UDPSocket.new(Socket::Family::INET)
-        @socket_ipv4.reuse_address = true
-        @socket_ipv4.reuse_port = true
-        @socket_ipv4.bind(@interface_ipv4, @port)
-        @socket_ipv4.read_timeout = 100.milliseconds
+      def initialize(@port : Int32 = MATTER_PORT)
+        # Create dual-stack IPv6 socket (accepts both IPv4 and IPv6)
+        @socket = UDPSocket.new(Socket::Family::INET6)
+        @socket.ipv6_only = false
+        @socket.reuse_address = true
+        @socket.reuse_port = true
+        @socket.bind("::", @port)
+        @socket.read_timeout = 100.milliseconds
 
-        @socket_ipv6 = UDPSocket.new(Socket::Family::INET6)
-        @socket_ipv6.reuse_address = true
-        @socket_ipv6.reuse_port = true
-        @socket_ipv6.bind(@interface_ipv6, @port)
-        @socket_ipv6.read_timeout = 100.milliseconds
+        # Support ephemeral ports: update @port with actual bound port
+        @port = @socket.local_address.port if @port == 0
 
         # Initialize per-session counters hash
         @session_counters = Hash(UInt16, MessageCounter).new
@@ -63,9 +61,8 @@ module Matter
         @unsecured_counters = Hash(UInt64, MessageCounter).new
         @exchange_manager = ExchangeManager.new
         @running = false
-        @receive_fiber_ipv4 = nil
-        @receive_fiber_ipv6 = nil
-        Log.info { "UDP transport bound: ipv4=[#{@interface_ipv4}]:#{@port} ipv6=[#{@interface_ipv6}]:#{@port}" }
+        @receive_fiber = nil
+        Log.info { "UDP transport bound: [::]:#{@port} (dual-stack)" }
       end
 
       # Start receiving messages in background
@@ -73,28 +70,21 @@ module Matter
         return if @running
 
         @running = true
-        @receive_fiber_ipv4 = spawn do
-          receive_loop_ipv4
-        end
-        @receive_fiber_ipv6 = spawn do
-          receive_loop_ipv6
-        end
+        @receive_fiber = spawn { receive_loop }
       end
 
       # Stop receiving messages
       def stop : Nil
         @running = false
-        # Give fibers time to exit on next loop iteration
-        sleep 200.milliseconds if @receive_fiber_ipv4 || @receive_fiber_ipv6
-        @receive_fiber_ipv4 = nil
-        @receive_fiber_ipv6 = nil
+        # Give fiber time to exit on next loop iteration
+        sleep 200.milliseconds if @receive_fiber
+        @receive_fiber = nil
       end
 
       # Close transport and release resources
       def close : Nil
         stop
-        @socket_ipv4.close unless @socket_ipv4.closed?
-        @socket_ipv6.close unless @socket_ipv6.closed?
+        @socket.close unless @socket.closed?
       end
 
       # Send a Matter message
@@ -141,16 +131,12 @@ module Matter
           "type=0x#{message.payload_header.message_type.to_s(16)} msg_id=#{message.packet_header.message_id}"
         end
 
-        # Choose socket based on peer address family
-        socket = peer_address.family.inet6? ? @socket_ipv6 : @socket_ipv4
-        socket.send(data, peer_address)
+        @socket.send(data, peer_address)
       end
 
       # Send raw packet (for testing)
       def send_raw(data : Bytes | Slice(UInt8), peer_address : Socket::IPAddress) : Nil
-        # Choose socket based on peer address family
-        socket = peer_address.family.inet6? ? @socket_ipv6 : @socket_ipv4
-        socket.send(data, peer_address)
+        @socket.send(data, peer_address)
       end
 
       # Create and send a message on a new exchange
@@ -227,8 +213,8 @@ module Matter
         @exchange_manager.cleanup_stale_exchanges
       end
 
-      private def receive_loop_ipv4 : Nil
-        Log.debug { "IPv4 UDP receive loop started (port=#{@port})" }
+      private def receive_loop : Nil
+        Log.debug { "UDP receive loop started (port=#{@port})" }
         buffer = Bytes.new(1280) # Matter MTU
         packet_count = 0
         peer_address : Socket::IPAddress? = nil
@@ -237,11 +223,11 @@ module Matter
 
         while @running
           begin
-            bytes_read, peer_address = @socket_ipv4.receive(buffer)
+            bytes_read, peer_address = @socket.receive(buffer)
             next if bytes_read == 0
 
             packet_count += 1
-            Log.trace { "Received IPv4 UDP packet ##{packet_count}: bytes=#{bytes_read} peer=#{peer_address.address}:#{peer_address.port}" }
+            Log.trace { "Received UDP packet ##{packet_count}: bytes=#{bytes_read} peer=#{peer_address.address}:#{peer_address.port}" }
 
             data = buffer[0, bytes_read]
             handle_received_data(data, peer_address)
@@ -250,41 +236,11 @@ module Matter
           rescue ex : Exception
             # Log error but keep running
             peer = peer_address ? "#{peer_address.address}:#{peer_address.port}" : "unknown"
-            Log.error(exception: ex) { "IPv4 transport receive error (peer=#{peer} bytes=#{bytes_read} data_hex=#{data.try(&.hexstring) || "nil"})" }
+            Log.error(exception: ex) { "Transport receive error (peer=#{peer} bytes=#{bytes_read} data_hex=#{data.try(&.hexstring) || "nil"})" }
           end
         end
 
-        Log.debug { "IPv4 UDP receive loop stopped" }
-      end
-
-      private def receive_loop_ipv6 : Nil
-        Log.debug { "IPv6 UDP receive loop started (port=#{@port})" }
-        buffer = Bytes.new(1280) # Matter MTU
-        packet_count = 0
-        peer_address : Socket::IPAddress? = nil
-        bytes_read = 0
-        data : Bytes? = nil
-
-        while @running
-          begin
-            bytes_read, peer_address = @socket_ipv6.receive(buffer)
-            next if bytes_read == 0
-
-            packet_count += 1
-            Log.trace { "Received IPv6 UDP packet ##{packet_count}: bytes=#{bytes_read} peer=#{peer_address.address}:#{peer_address.port}" }
-
-            data = buffer[0, bytes_read]
-            handle_received_data(data, peer_address)
-          rescue ex : IO::TimeoutError
-            # Normal - just continue
-          rescue ex : Exception
-            # Log error but keep running
-            peer = peer_address ? "#{peer_address.address}:#{peer_address.port}" : "unknown"
-            Log.error(exception: ex) { "IPv6 transport receive error (peer=#{peer} bytes=#{bytes_read} data_hex=#{data.try(&.hexstring) || "nil"})" }
-          end
-        end
-
-        Log.debug { "IPv6 UDP receive loop stopped" }
+        Log.debug { "UDP receive loop stopped" }
       end
 
       private def handle_received_data(data : Bytes, peer_address : Socket::IPAddress) : Nil

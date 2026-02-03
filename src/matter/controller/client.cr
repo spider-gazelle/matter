@@ -30,13 +30,11 @@ module Matter
 
       def initialize(
         port : Int32 = 0,
-        interface_ipv4 : String = "0.0.0.0",
-        interface_ipv6 : String = "::",
         @crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
         unsecured_source_node_id : UInt64? = nil,
         initial_unsecured_message_counter : UInt32? = nil,
       )
-        @transport = Transport::UDPTransport.new(port: port, interface_ipv4: interface_ipv4, interface_ipv6: interface_ipv6)
+        @transport = Transport::UDPTransport.new(port: port)
         @unsecured_source_node_id = unsecured_source_node_id ? DataType::NodeId.new(unsecured_source_node_id) : nil
 
         # Avoid re-using old unsecured message IDs across process restarts: peers may
