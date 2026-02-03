@@ -331,8 +331,8 @@ module Matter
           hardware_version_string: hardware_version_string,
           software_version: software_version,
           software_version_string: software_version_string,
-          serial_number: serial_number || "",
-          unique_id: unique_id || "",
+          serial_number: serial_number || load_or_create_serial_number,
+          unique_id: unique_id || load_or_create_unique_id,
           product_appearance: product_appearance
         )
         @basic_info = basic_info
@@ -536,12 +536,14 @@ module Matter
         ips
       end
 
-      private HOSTNAME_CONTEXT = ["device_identity"] of String
-      private HOSTNAME_KEY     = "commissioning_hostname"
-      private HOSTNAME_RE      = /^[0-9A-F]{16}\\.local$/
+      private IDENTITY_CONTEXT  = ["device_identity"] of String
+      private HOSTNAME_KEY      = "commissioning_hostname"
+      private SERIAL_NUMBER_KEY = "serial_number"
+      private UNIQUE_ID_KEY     = "unique_id"
+      private HOSTNAME_RE       = /^[0-9A-F]{16}\\.local$/
 
       private def load_or_create_commissioning_hostname : String
-        stored = @storage_manager.storage.get(HOSTNAME_CONTEXT, HOSTNAME_KEY)
+        stored = @storage_manager.storage.get(IDENTITY_CONTEXT, HOSTNAME_KEY)
         if stored.is_a?(String)
           hostname = stored.strip
           return hostname if hostname.matches?(HOSTNAME_RE)
@@ -550,10 +552,36 @@ module Matter
 
         token = Random::Secure.rand(UInt64).to_s(16).upcase.rjust(16, '0')
         hostname = "#{token}.local"
-        @storage_manager.storage.set(HOSTNAME_CONTEXT, HOSTNAME_KEY, hostname)
+        @storage_manager.storage.set(IDENTITY_CONTEXT, HOSTNAME_KEY, hostname)
         hostname
       rescue
         "#{Random::Secure.rand(UInt64).to_s(16).upcase.rjust(16, '0')}.local"
+      end
+
+      private def load_or_create_serial_number : String
+        stored = @storage_manager.storage.get(IDENTITY_CONTEXT, SERIAL_NUMBER_KEY)
+        if stored.is_a?(String) && !stored.empty?
+          return stored
+        end
+
+        serial = Random::Secure.hex(8).upcase
+        @storage_manager.storage.set(IDENTITY_CONTEXT, SERIAL_NUMBER_KEY, serial)
+        serial
+      rescue
+        Random::Secure.hex(8).upcase
+      end
+
+      private def load_or_create_unique_id : String
+        stored = @storage_manager.storage.get(IDENTITY_CONTEXT, UNIQUE_ID_KEY)
+        if stored.is_a?(String) && !stored.empty?
+          return stored
+        end
+
+        unique_id = Random::Secure.hex(16)
+        @storage_manager.storage.set(IDENTITY_CONTEXT, UNIQUE_ID_KEY, unique_id)
+        unique_id
+      rescue
+        Random::Secure.hex(16)
       end
 
       # Updates the default commissioning target hostname used for mDNS advertisements.
@@ -564,7 +592,7 @@ module Matter
         raise ArgumentError.new("hostname must be non-empty") if normalized.empty?
 
         @hostname = normalized
-        @storage_manager.storage.set(HOSTNAME_CONTEXT, HOSTNAME_KEY, normalized)
+        @storage_manager.storage.set(IDENTITY_CONTEXT, HOSTNAME_KEY, normalized)
         @responder.update_commissioning_hostname(normalized)
       end
 
