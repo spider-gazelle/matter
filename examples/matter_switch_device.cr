@@ -145,21 +145,18 @@ module MatterSwitch
       end
     end
 
-    protected def main_loop : Nil
+    protected def on_started : Nil
       interactive = !ARGV.includes?("--no-interactive")
       if interactive
-        run_interactive_loop
+        spawn { run_interactive_loop }
       else
         puts "⏸️  Running in non-interactive mode (--no-interactive)"
         puts "   Press Ctrl+C to stop"
         puts ""
-        loop { sleep 1.second }
       end
     end
 
-    def shutdown : Nil
-      puts ""
-      stop
+    protected def on_shutdown : Nil
       puts "✅ Shutdown complete"
     end
 
@@ -235,8 +232,6 @@ module MatterSwitch
         break unless input
         handle_command(input.strip.downcase)
       end
-
-      shutdown
     end
 
     private def handle_command(command : String) : Nil
@@ -253,8 +248,7 @@ module MatterSwitch
         factory_reset
       when "quit", "exit", "q"
         puts "👋 Shutting down..."
-        shutdown
-        exit(0)
+        shutdown!
       when "help", "?"
         show_help
       when ""
@@ -339,8 +333,8 @@ device = MatterSwitch::Device.new
 
 Process.on_terminate do
   puts "\n\n🛑 Received interrupt signal"
-  device.shutdown
-  exit(0)
+  device.shutdown!
 end
 
 device.start
+device.await_shutdown

@@ -41,10 +41,6 @@ class TestBridgeDevice < Matter::Device::Base
   protected def endpoint_device_types : Hash(UInt16, UInt32)
     {} of UInt16 => UInt32
   end
-
-  # Override main_loop to not block
-  protected def main_loop : Nil
-  end
 end
 
 describe "Dynamic Endpoint Management" do

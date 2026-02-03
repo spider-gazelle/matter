@@ -49,6 +49,8 @@ module Matter
       getter message_handler : Protocol::MessageHandler
       getter responder : MDNS::Responder
       getter lifecycle : LifecycleManager
+
+      @shutdown_channel : Channel(Nil) = Channel(Nil).new
       @basic_info : Cluster::BasicInformationCluster? = nil
       @general_commissioning : Cluster::GeneralCommissioningCluster? = nil
       @access_control : Cluster::AccessControlCluster? = nil
@@ -128,14 +130,35 @@ module Matter
       end
 
       # Starts mDNS and UDP transport and syncs advertisements for the current fabric set.
+      # Returns immediately after starting - use `await_shutdown` to block until shutdown.
       def start : Nil
         before_start
         @lifecycle.sync_advertisements
         @fabric_table.empty? ? started_commissioning_mode : started_operational_mode
         @responder.start
         @transport.start
-        after_start
-        main_loop
+        on_started
+      rescue error
+        Log.error(exception: error) { "error during startup" }
+        shutdown!
+      end
+
+      # Blocks until `shutdown!` is called. Optional - use when you need the main
+      # fiber to wait for shutdown (e.g., in a daemon or CLI application).
+      # Multiple fibers can safely wait on this.
+      def await_shutdown : Nil
+        @shutdown_channel.receive?
+      end
+
+      # Signals shutdown, stops all services, and unblocks all `await_shutdown` waiters.
+      # Safe to call from signal handlers or other fibers.
+      def shutdown! : Nil
+        stop
+        on_shutdown
+      rescue error
+        Log.error(exception: error) { "error performing shutdown" }
+      ensure
+        @shutdown_channel.close
       end
 
       def stop : Nil
@@ -241,11 +264,13 @@ module Matter
       protected def before_start : Nil
       end
 
-      protected def after_start : Nil
+      # Called after the device is fully started. Use this to spawn background
+      # fibers (e.g., interactive CLI loop). Non-blocking - returns immediately.
+      protected def on_started : Nil
       end
 
-      # Optional main loop hook. Override to block (e.g., interactive UI loop).
-      protected def main_loop : Nil
+      # Called after `stop` completes during `shutdown!`. Use for final cleanup.
+      protected def on_shutdown : Nil
       end
 
       protected def started_commissioning_mode : Nil
