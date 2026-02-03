@@ -41,7 +41,6 @@ module Matter
     abstract class Base
       getter hostname : String
       getter ip_addresses : Array(Socket::IPAddress)
-      getter port : Int32
 
       getter storage_manager : Storage::Manager
       getter fabric_table : FabricTable
@@ -77,9 +76,13 @@ module Matter
         @administrator_commissioning.as(Cluster::AdministratorCommissioningCluster)
       end
 
+      def port : Int32
+        @transport.port
+      end
+
       def initialize(
         ip_addresses : Array(Socket::IPAddress)? = nil,
-        @port : Int32 = 5540,
+        port : Int32 = 5540,
         hostname : String? = nil,
       )
         @ip_addresses = ip_addresses || default_ip_addresses
@@ -88,7 +91,7 @@ module Matter
         @fabric_table = @storage_manager.fabric_table
         @hostname = hostname || load_or_create_commissioning_hostname
 
-        @transport = Transport::UDPTransport.new(port: @port)
+        @transport = Transport::UDPTransport.new(port: port)
         @message_handler = Protocol::MessageHandler.new(
           transport: @transport,
           setup_pin: setup_pin,
@@ -112,7 +115,7 @@ module Matter
           message_handler: @message_handler,
           operational_credentials: operational_credentials,
           responder: @responder,
-          port: @port,
+          port: @transport.port,
           commissioning_info: -> { commissioning_info },
           operational_info_factory: ->(fabric : Fabric) { operational_info_for(fabric) }
         )
@@ -388,7 +391,7 @@ module Matter
           @responder.stop_commissioning
           info = commissioning_info_for(mode)
           info.discriminator = disc
-          @responder.advertise_commissioning(info, port: @port)
+          @responder.advertise_commissioning(info, port: port)
         end
         administrator_commissioning.on_stop_commissioning_advertising = -> do
           @responder.stop_commissioning
