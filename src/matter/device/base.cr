@@ -153,15 +153,6 @@ module Matter
       # Signals shutdown, stops all services, and unblocks all `await_shutdown` waiters.
       # Safe to call from signal handlers or other fibers.
       def shutdown! : Nil
-        stop
-        on_shutdown
-      rescue error
-        Log.error(exception: error) { "error performing shutdown" }
-      ensure
-        @shutdown_channel.close
-      end
-
-      def stop : Nil
         # Persist all session state before shutdown to ensure message counters
         # and other session data are saved for clean reconnection after restart
         @message_handler.persist_all_sessions
@@ -172,6 +163,11 @@ module Matter
         @storage_manager.stop
         @transport.close
         @responder.stop
+        on_shutdown
+      rescue error
+        Log.error(exception: error) { "error performing shutdown" }
+      ensure
+        @shutdown_channel.close
       end
 
       # ------------------------------------------------------------------------

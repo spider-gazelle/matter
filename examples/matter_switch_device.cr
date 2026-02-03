@@ -290,7 +290,7 @@ module MatterSwitch
       return unless confirmation && confirmation.strip.downcase == "yes"
 
       puts "🔄 Performing factory reset..."
-      stop
+      shutdown!
       File.delete(STORAGE_FILE) if File.exists?(STORAGE_FILE)
       puts "✅ Factory reset complete"
       puts "🔄 Please restart the application"
