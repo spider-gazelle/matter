@@ -293,6 +293,50 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
       cluster.data_version.should eq(initial_version + 1)
     end
 
+    it "notifies attribute change subscribers when temperature changes" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+      cluster = Matter::Cluster::TemperatureMeasurementCluster.new(
+        endpoint_id,
+        measured_value: 2000_i16
+      )
+
+      notified = false
+      notified_endpoint : UInt16 = 0_u16
+      notified_cluster : UInt32 = 0_u32
+      notified_attribute : UInt32 = 0_u32
+
+      cluster.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) {
+        notified = true
+        notified_endpoint = ep
+        notified_cluster = cl
+        notified_attribute = attr
+      }
+
+      cluster.update_temperature(2500_i16)
+
+      notified.should be_true
+      notified_endpoint.should eq(1_u16)
+      notified_cluster.should eq(Matter::Cluster::TemperatureMeasurementCluster::CLUSTER_ID)
+      notified_attribute.should eq(Matter::Cluster::TemperatureMeasurementCluster::ATTR_MEASURED_VALUE)
+    end
+
+    it "does not notify attribute change subscribers when temperature is unchanged" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+      cluster = Matter::Cluster::TemperatureMeasurementCluster.new(
+        endpoint_id,
+        measured_value: 2000_i16
+      )
+
+      notifications = 0
+      cluster.on_attribute_changed = ->(_ep : UInt16, _cl : UInt32, _attr : UInt32) {
+        notifications += 1
+      }
+
+      cluster.update_temperature(2000_i16)
+
+      notifications.should eq(0)
+    end
+
     it "does not increment data version when temperature doesn't change" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::TemperatureMeasurementCluster.new(
