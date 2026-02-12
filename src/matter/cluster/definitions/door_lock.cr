@@ -12,6 +12,9 @@ module Matter
 
           # Lock state is fully unlocked
           Unlocked = 2
+
+          # Lock state is unlatched
+          Unlatched = 3
         end
 
         # The value of the DoorLock lockType attribute
@@ -124,26 +127,30 @@ module Matter
         # All value in the PIN/RFID code shall be ASCII encoded regardless if the PIN/RFID codes are number or characters.
         # For example, code of “1, 2, 3, 4” shall be represented as 0x31, 0x32, 0x33, 0x34.
         enum OperationSource : UInt8
-          Unspecified       = 0
-          Manual            = 1
-          ProprietaryRemote = 2
-          Keypad            = 3
-          Auto              = 4
-          Button            = 5
-          Schedule          = 6
-          Remote            = 7
-          Rfid              = 8
-          Biometric         = 9
+          Unspecified       =  0
+          Manual            =  1
+          ProprietaryRemote =  2
+          Keypad            =  3
+          Auto              =  4
+          Button            =  5
+          Schedule          =  6
+          Remote            =  7
+          Rfid              =  8
+          Biometric         =  9
+          Aliro             = 10
         end
 
         # The Credential Type enum shall indicate the credential type.
         enum CredentialType : UInt8
-          ProgrammingPin = 0
-          Pin            = 1
-          Rfid           = 2
-          Fingerprint    = 3
-          FingerVein     = 4
-          Face           = 5
+          ProgrammingPin               = 0
+          Pin                          = 1
+          Rfid                         = 2
+          Fingerprint                  = 3
+          FingerVein                   = 4
+          Face                         = 5
+          AliroCredentialIssuerKey     = 6
+          AliroEvictableEndpointKey    = 7
+          AliroNonEvictableEndpointKey = 8
         end
 
         # The OperationError enumeration shall indicate the error cause of the Lock/Unlock operation performed.
@@ -294,6 +301,15 @@ module Matter
 
           # Lock user face information was added, cleared, or modified.
           Face = 10
+
+          # Lock Aliro Credential Issuer key was added, cleared, or modified.
+          AliroCredentialIssuerKey = 11
+
+          # Lock Aliro evictable endpoint key was added, cleared, or modified.
+          AliroEvictableEndpointKey = 12
+
+          # Lock Aliro non-evictable endpoint key was added, cleared, or modified.
+          AliroNonEvictableEndpointKey = 13
         end
 
         # Input to the DoorLock lockDoor command
@@ -302,6 +318,9 @@ module Matter
 
           @[TLV::Field(tag: 0)]
           property pin_code : Slice(UInt8)?
+
+          def initialize(@pin_code : Slice(UInt8)? = nil)
+          end
         end
 
         # Input to the DoorLock unlockDoor command
@@ -310,6 +329,9 @@ module Matter
 
           @[TLV::Field(tag: 0)]
           property pin_code : Slice(UInt8)?
+
+          def initialize(@pin_code : Slice(UInt8)? = nil)
+          end
         end
 
         # Input to the DoorLock unlockWithTimeout command
@@ -321,6 +343,20 @@ module Matter
 
           @[TLV::Field(tag: 1)]
           property pin_code : Slice(UInt8)?
+
+          def initialize(@timeout : UInt16, @pin_code : Slice(UInt8)? = nil)
+          end
+        end
+
+        # Input to the DoorLock unboltDoor command
+        struct UnboltDoorRequest
+          include TLV::Serializable
+
+          @[TLV::Field(tag: 0)]
+          property pin_code : Slice(UInt8)?
+
+          def initialize(@pin_code : Slice(UInt8)? = nil)
+          end
         end
 
         struct Credential
@@ -335,6 +371,9 @@ module Matter
           # ProgrammingPIN or does not correspond to a list that can be indexed into.
           @[TLV::Field(tag: 1)]
           property credential_index : UInt16
+
+          def initialize(@credential_type : CredentialType, @credential_index : UInt16)
+          end
         end
 
         # Input to the DoorLock setUser command
@@ -361,6 +400,17 @@ module Matter
 
           @[TLV::Field(tag: 6)]
           property credential_rule : CredentialRule?
+
+          def initialize(
+            @operation_type : DataOperationType,
+            @user_index : UInt16,
+            @user_name : String? = nil,
+            @user_unique_id : UInt32? = nil,
+            @user_status : UserStatus? = nil,
+            @user_type : UserType? = nil,
+            @credential_rule : CredentialRule? = nil,
+          )
+          end
         end
 
         # Input to the DoorLock getUser command
@@ -369,6 +419,9 @@ module Matter
 
           @[TLV::Field(tag: 0)]
           property user_index : UInt16
+
+          def initialize(@user_index : UInt16)
+          end
         end
 
         struct GetUserResponse
@@ -403,6 +456,20 @@ module Matter
 
           @[TLV::Field(tag: 9)]
           property next_user_index : UInt16?
+
+          def initialize(
+            @user_index : UInt16,
+            @user_name : String? = nil,
+            @user_unique_id : UInt32? = nil,
+            @user_status : UserStatus? = nil,
+            @user_type : UserType? = nil,
+            @credential_rule : CredentialRule? = nil,
+            @credentials : Array(Credential)? = nil,
+            @creator_fabric_index : DataType::FabricIndex? = nil,
+            @last_modified_fabric_index : DataType::FabricIndex? = nil,
+            @next_user_index : UInt16? = nil,
+          )
+          end
         end
 
         # Input to the DoorLock clearUser command
@@ -411,6 +478,9 @@ module Matter
 
           @[TLV::Field(tag: 0)]
           property user_index : UInt16
+
+          def initialize(@user_index : UInt16)
+          end
         end
 
         # Input to the DoorLock setCredential command
@@ -434,6 +504,16 @@ module Matter
 
           @[TLV::Field(tag: 5)]
           property user_type : UserType
+
+          def initialize(
+            @operation_type : DataOperationType,
+            @credential : Credential,
+            @credential_data : Slice(UInt8),
+            @user_index : UInt16? = nil,
+            @user_status : UserStatus? = nil,
+            @user_type : UserType = UserType::UnrestrictedUser,
+          )
+          end
         end
 
         struct SetCredentialResponse
@@ -447,6 +527,13 @@ module Matter
 
           @[TLV::Field(tag: 2)]
           property next_credential_index : UInt16?
+
+          def initialize(
+            @status_code : StatusCode,
+            @user_index : UInt16? = nil,
+            @next_credential_index : UInt16? = nil,
+          )
+          end
         end
 
         # Input to the DoorLock getCredentialStatus command
@@ -455,6 +542,9 @@ module Matter
 
           @[TLV::Field(tag: 0)]
           property credential : Credential
+
+          def initialize(@credential : Credential)
+          end
         end
 
         struct GetCredentialStatusResponse
@@ -474,6 +564,15 @@ module Matter
 
           @[TLV::Field(tag: 4)]
           property next_credential_index : UInt16?
+
+          def initialize(
+            @credential_exists : Bool,
+            @user_index : UInt16? = nil,
+            @creator_fabric_index : DataType::FabricIndex? = nil,
+            @last_modified_fabric_index : DataType::FabricIndex? = nil,
+            @next_credential_index : UInt16? = nil,
+          )
+          end
         end
 
         # Input to the DoorLock clearCredential command
@@ -482,6 +581,9 @@ module Matter
 
           @[TLV::Field(tag: 0)]
           property credential : Credential?
+
+          def initialize(@credential : Credential? = nil)
+          end
         end
 
         # Input to the DoorLock setWeekDaySchedule command
@@ -508,6 +610,17 @@ module Matter
 
           @[TLV::Field(tag: 6)]
           property end_minute : UInt8
+
+          def initialize(
+            @week_day_index : UInt8,
+            @user_index : UInt16,
+            @week_day : UInt8,
+            @start_hour : UInt8,
+            @start_minute : UInt8,
+            @end_hour : UInt8,
+            @end_minute : UInt8,
+          )
+          end
         end
 
         # Input to the DoorLock getWeekDaySchedule command
@@ -519,6 +632,9 @@ module Matter
 
           @[TLV::Field(tag: 1)]
           property user_index : UInt16
+
+          def initialize(@week_day_index : UInt8, @user_index : UInt16)
+          end
         end
 
         struct GetWeekDayScheduleResponse
@@ -547,6 +663,18 @@ module Matter
 
           @[TLV::Field(tag: 7)]
           property end_minute : UInt8
+
+          def initialize(
+            @week_day_index : UInt8,
+            @user_index : UInt16,
+            @status_code : StatusCode,
+            @week_day : UInt8,
+            @start_hour : UInt8,
+            @start_minute : UInt8,
+            @end_hour : UInt8,
+            @end_minute : UInt8,
+          )
+          end
         end
 
         # Input to the DoorLock clearWeekDaySchedule command
@@ -558,6 +686,9 @@ module Matter
 
           @[TLV::Field(tag: 1)]
           property user_index : UInt16
+
+          def initialize(@week_day_index : UInt8, @user_index : UInt16)
+          end
         end
 
         # Input to the DoorLock setYearDaySchedule command
@@ -575,6 +706,14 @@ module Matter
 
           @[TLV::Field(tag: 3)]
           property local_end_time : UInt32
+
+          def initialize(
+            @year_day_index : UInt8,
+            @user_index : UInt16,
+            @local_start_time : UInt32,
+            @local_end_time : UInt32,
+          )
+          end
         end
 
         # Input to the DoorLock getYearDaySchedule command
@@ -586,6 +725,9 @@ module Matter
 
           @[TLV::Field(tag: 1)]
           property user_index : UInt16
+
+          def initialize(@year_day_index : UInt8, @user_index : UInt16)
+          end
         end
 
         struct GetYearDayScheduleResponse
@@ -605,6 +747,15 @@ module Matter
 
           @[TLV::Field(tag: 4)]
           property local_end_time : UInt32
+
+          def initialize(
+            @year_day_index : UInt8,
+            @user_index : UInt16,
+            @status_code : StatusCode,
+            @local_start_time : UInt32,
+            @local_end_time : UInt32,
+          )
+          end
         end
 
         # Input to the DoorLock clearYearDaySchedule command
@@ -616,6 +767,9 @@ module Matter
 
           @[TLV::Field(tag: 1)]
           property user_index : UInt16
+
+          def initialize(@year_day_index : UInt8, @user_index : UInt16)
+          end
         end
 
         # Input to the DoorLock setHolidaySchedule command
@@ -633,6 +787,14 @@ module Matter
 
           @[TLV::Field(tag: 3)]
           property operating_mode : OperatingMode
+
+          def initialize(
+            @holiday_index : UInt8,
+            @local_start_time : UInt32,
+            @local_end_time : UInt32,
+            @operating_mode : OperatingMode,
+          )
+          end
         end
 
         struct GetHolidayScheduleRequest
@@ -640,6 +802,9 @@ module Matter
 
           @[TLV::Field(tag: 0)]
           property holiday_index : UInt8
+
+          def initialize(@holiday_index : UInt8)
+          end
         end
 
         struct GetHolidayScheduleResponse
@@ -659,6 +824,15 @@ module Matter
 
           @[TLV::Field(tag: 4)]
           property operating_mode : OperatingMode
+
+          def initialize(
+            @holiday_index : UInt8,
+            @status_code : StatusCode,
+            @local_start_time : UInt32,
+            @local_end_time : UInt32,
+            @operating_mode : OperatingMode,
+          )
+          end
         end
 
         # Input to the DoorLock clearHolidaySchedule command
@@ -667,6 +841,9 @@ module Matter
 
           @[TLV::Field(tag: 0)]
           property holiday_index : UInt8
+
+          def initialize(@holiday_index : UInt8)
+          end
         end
 
         module Events
