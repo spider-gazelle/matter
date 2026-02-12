@@ -264,6 +264,48 @@ describe Matter::Cluster::OccupancySensingCluster do
       cluster.update_occupancy(true) # Different value (occupied)
       cluster.data_version.should eq(initial_version + 1)
     end
+
+    it "notifies attribute subscribers when occupancy changes" do
+      cluster = Matter::Cluster::OccupancySensingCluster.new(
+        endpoint_id,
+        occupancy: 0_u8
+      )
+
+      notified = false
+      notified_endpoint : UInt16 = 0_u16
+      notified_cluster : UInt32 = 0_u32
+      notified_attribute : UInt32 = 0_u32
+
+      cluster.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) {
+        notified = true
+        notified_endpoint = ep
+        notified_cluster = cl
+        notified_attribute = attr
+      }
+
+      cluster.update_occupancy(true)
+
+      notified.should be_true
+      notified_endpoint.should eq(1_u16)
+      notified_cluster.should eq(Matter::Cluster::OccupancySensingCluster::CLUSTER_ID)
+      notified_attribute.should eq(Matter::Cluster::OccupancySensingCluster::ATTR_OCCUPANCY)
+    end
+
+    it "does not notify attribute subscribers when occupancy is unchanged" do
+      cluster = Matter::Cluster::OccupancySensingCluster.new(
+        endpoint_id,
+        occupancy: 0_u8
+      )
+
+      notifications = 0
+      cluster.on_attribute_changed = ->(_ep : UInt16, _cl : UInt32, _attr : UInt32) {
+        notifications += 1
+      }
+
+      cluster.update_occupancy(false)
+
+      notifications.should eq(0)
+    end
   end
 
   describe "practical scenarios" do

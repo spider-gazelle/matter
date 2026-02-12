@@ -286,6 +286,50 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
       cluster.data_version.should eq(initial_version + 1)
     end
 
+    it "notifies attribute subscribers when humidity changes" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+        endpoint_id,
+        measured_value: 5000_u16
+      )
+
+      notified = false
+      notified_endpoint : UInt16 = 0_u16
+      notified_cluster : UInt32 = 0_u32
+      notified_attribute : UInt32 = 0_u32
+
+      cluster.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) {
+        notified = true
+        notified_endpoint = ep
+        notified_cluster = cl
+        notified_attribute = attr
+      }
+
+      cluster.update_humidity(5500_u16)
+
+      notified.should be_true
+      notified_endpoint.should eq(1_u16)
+      notified_cluster.should eq(Matter::Cluster::RelativeHumidityMeasurementCluster::CLUSTER_ID)
+      notified_attribute.should eq(Matter::Cluster::RelativeHumidityMeasurementCluster::ATTR_MEASURED_VALUE)
+    end
+
+    it "does not notify attribute subscribers when humidity is unchanged" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+        endpoint_id,
+        measured_value: 5000_u16
+      )
+
+      notifications = 0
+      cluster.on_attribute_changed = ->(_ep : UInt16, _cl : UInt32, _attr : UInt32) {
+        notifications += 1
+      }
+
+      cluster.update_humidity(5000_u16)
+
+      notifications.should eq(0)
+    end
+
     it "does not increment data version when humidity doesn't change" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(

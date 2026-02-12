@@ -196,8 +196,8 @@ module Matter
 
         # Invoke callback if value changed
         if old_value != value
+          increment_version_and_notify(ATTR_MEASURED_VALUE)
           @on_illuminance_changed.try &.call(old_value, value)
-          increment_version
         end
       end
 

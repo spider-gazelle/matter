@@ -309,6 +309,48 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
       cluster.update_illuminance(6000_u16) # Different value
       cluster.data_version.should eq(initial_version + 1)
     end
+
+    it "notifies attribute subscribers when illuminance changes" do
+      cluster = Matter::Cluster::IlluminanceMeasurementCluster.new(
+        endpoint_id,
+        measured_value: 5000_u16
+      )
+
+      notified = false
+      notified_endpoint : UInt16 = 0_u16
+      notified_cluster : UInt32 = 0_u32
+      notified_attribute : UInt32 = 0_u32
+
+      cluster.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) {
+        notified = true
+        notified_endpoint = ep
+        notified_cluster = cl
+        notified_attribute = attr
+      }
+
+      cluster.update_illuminance(6000_u16)
+
+      notified.should be_true
+      notified_endpoint.should eq(1_u16)
+      notified_cluster.should eq(Matter::Cluster::IlluminanceMeasurementCluster::CLUSTER_ID)
+      notified_attribute.should eq(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MEASURED_VALUE)
+    end
+
+    it "does not notify attribute subscribers when illuminance is unchanged" do
+      cluster = Matter::Cluster::IlluminanceMeasurementCluster.new(
+        endpoint_id,
+        measured_value: 5000_u16
+      )
+
+      notifications = 0
+      cluster.on_attribute_changed = ->(_ep : UInt16, _cl : UInt32, _attr : UInt32) {
+        notifications += 1
+      }
+
+      cluster.update_illuminance(5000_u16)
+
+      notifications.should eq(0)
+    end
   end
 
   describe "illuminance conversion helpers" do

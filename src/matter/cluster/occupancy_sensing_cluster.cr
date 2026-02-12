@@ -412,8 +412,8 @@ module Matter
 
         # Invoke callback if value changed
         if old_value != new_value
+          increment_version_and_notify(ATTR_OCCUPANCY)
           @on_occupancy_changed.try &.call(old_value, new_value)
-          increment_version
         end
       end
 
