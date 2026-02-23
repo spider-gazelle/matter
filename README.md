@@ -28,11 +28,13 @@ An example OnOff device is provided in the `./examples` directory.
 
 Confirmed working with iOS.
 
-### Example project
+### Example projects
 
-Control a Windows media center PC, plugged into your TV from your phone
+These projects show off how custom matter interfaces can be built for almost any device.
 
-https://github.com/Crystal-Matter/matter_media
+* Control a [Home Connect oven](https://github.com/Crystal-Matter/homeconnect-oven-matter) using siri
+* [Control a rangehood](https://github.com/Crystal-Matter/elica-rangehood-matter)
+* Control a [Windows media center PC](https://github.com/Crystal-Matter/matter_media), plugged into your TV, from your phone
 
 ## End to end tests
 
