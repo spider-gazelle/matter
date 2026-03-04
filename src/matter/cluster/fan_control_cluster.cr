@@ -301,46 +301,45 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
         case attribute_id
         when ATTR_FAN_MODE
-          Bytes[@fan_mode.value.to_u8]
+          @fan_mode.value.to_u8.to_tlv
         when ATTR_FAN_MODE_SEQUENCE
-          Bytes[@fan_mode_sequence.value.to_u8]
+          @fan_mode_sequence.value.to_u8.to_tlv
         when ATTR_PERCENT_SETTING
           if setting = @percent_setting
-            Bytes[setting]
+            setting.to_tlv
           else
-            # Null value - return special null encoding
-            Bytes[0_u8]
+            nil.to_tlv
           end
         when ATTR_PERCENT_CURRENT
-          Bytes[@percent_current]
+          @percent_current.to_tlv
         when ATTR_SPEED_MAX
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.multi_speed?
-          Bytes[@speed_max]
+          @speed_max.to_tlv
         when ATTR_SPEED_SETTING
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.multi_speed?
           if setting = @speed_setting
-            Bytes[setting]
+            setting.to_tlv
           else
-            Bytes[0_u8]
+            nil.to_tlv
           end
         when ATTR_SPEED_CURRENT
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.multi_speed?
-          Bytes[@speed_current]
+          @speed_current.to_tlv
         when ATTR_ROCK_SUPPORT
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.rocking?
-          Bytes[@rock_support.value]
+          @rock_support.value.to_tlv
         when ATTR_ROCK_SETTING
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.rocking?
-          Bytes[@rock_setting.value]
+          @rock_setting.value.to_tlv
         when ATTR_WIND_SUPPORT
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wind?
-          Bytes[@wind_support.value]
+          @wind_support.value.to_tlv
         when ATTR_WIND_SETTING
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wind?
-          Bytes[@wind_setting.value]
+          @wind_setting.value.to_tlv
         when ATTR_AIRFLOW_DIRECTION
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.airflow_direction?
-          Bytes[@airflow_direction.value.to_u8]
+          @airflow_direction.value.to_u8.to_tlv
         else
           super
         end

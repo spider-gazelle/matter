@@ -242,13 +242,13 @@ module Matter
           if index = @admin_fabric_index
             index.to_tlv
           else
-            Bytes.new(0) # Null
+            nil.to_tlv
           end
         when ATTR_ADMIN_VENDOR_ID
           if vendor = @admin_vendor_id
             vendor.to_tlv
           else
-            Bytes.new(0) # Null
+            nil.to_tlv
           end
         else
           super

@@ -56,7 +56,7 @@ module Matter::Cluster
 
         value = cluster.read_attribute(AdministratorCommissioningCluster::ATTR_ADMIN_FABRIC_INDEX)
         value.should be_a(Bytes)
-        value.as(Bytes).should eq(Bytes.new(0)) # Null
+        decode_tlv_value(value.as(Bytes)).should be_nil
       end
 
       it "reads AdminVendorId attribute when nil" do
@@ -65,7 +65,7 @@ module Matter::Cluster
 
         value = cluster.read_attribute(AdministratorCommissioningCluster::ATTR_ADMIN_VENDOR_ID)
         value.should be_a(Bytes)
-        value.as(Bytes).should eq(Bytes.new(0)) # Null
+        decode_tlv_value(value.as(Bytes)).should be_nil
       end
 
       it "returns status for unsupported attribute write" do

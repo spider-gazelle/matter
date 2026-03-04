@@ -103,7 +103,7 @@ describe Matter::Cluster::FanControlCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[3]) # High = 3
+      decode_tlv_value(bytes.as(Bytes)).should eq(3_u8) # High = 3
     end
 
     it "reads FanModeSequence" do
@@ -113,7 +113,7 @@ describe Matter::Cluster::FanControlCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE_SEQUENCE)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[1]) # OffLowHigh = 1
+      decode_tlv_value(bytes.as(Bytes)).should eq(1_u8) # OffLowHigh = 1
     end
 
     it "reads PercentSetting" do
@@ -123,7 +123,7 @@ describe Matter::Cluster::FanControlCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[50])
+      decode_tlv_value(bytes.as(Bytes)).should eq(50_u8)
     end
 
     it "reads PercentCurrent" do
@@ -133,7 +133,7 @@ describe Matter::Cluster::FanControlCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_CURRENT)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[75])
+      decode_tlv_value(bytes.as(Bytes)).should eq(75_u8)
     end
 
     it "marks fanMode as writable" do
