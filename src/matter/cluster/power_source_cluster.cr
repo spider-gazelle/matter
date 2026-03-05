@@ -381,18 +381,18 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
         case attribute_id
         when ATTR_STATUS
-          Bytes[@status.value.to_u8]
+          @status.value.to_u8.to_tlv
         when ATTR_ORDER
-          Bytes[@order]
+          @order.to_tlv
         when ATTR_DESCRIPTION
           encode_string(@description)
           # Wired feature attributes
         when ATTR_WIRED_CURRENT_TYPE
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wired?
           if current_type = @wired_current_type
-            Bytes[current_type.value.to_u8]
+            current_type.value.to_u8.to_tlv
           else
-            Bytes[WiredCurrentType::AC.value.to_u8]
+            WiredCurrentType::AC.value.to_u8.to_tlv
           end
         when ATTR_WIRED_ASSESSED_INPUT_VOLTAGE
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wired?
@@ -411,7 +411,7 @@ module Matter
         when ATTR_WIRED_PRESENT
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wired?
           if present = @wired_present
-            Bytes[present ? 1_u8 : 0_u8]
+            present.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -419,21 +419,21 @@ module Matter
         when ATTR_BAT_CHARGE_LEVEL
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.battery?
           if level = @bat_charge_level
-            Bytes[level.value.to_u8]
+            level.value.to_u8.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         when ATTR_BAT_REPLACEMENT_NEEDED
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.battery?
           if needed = @bat_replacement_needed
-            Bytes[needed ? 1_u8 : 0_u8]
+            needed.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         when ATTR_BAT_REPLACEABILITY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.battery?
           if replaceability = @bat_replaceability
-            Bytes[replaceability.value.to_u8]
+            replaceability.value.to_u8.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -447,7 +447,7 @@ module Matter
         when ATTR_BAT_PERCENT_REMAINING
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.battery?
           if percent = @bat_percent_remaining
-            Bytes[percent]
+            percent.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -461,7 +461,7 @@ module Matter
         when ATTR_BAT_PRESENT
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.battery?
           if present = @bat_present
-            Bytes[present ? 1_u8 : 0_u8]
+            present.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -476,7 +476,7 @@ module Matter
         when ATTR_BAT_QUANTITY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.replaceable?
           if quantity = @bat_quantity
-            Bytes[quantity]
+            quantity.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -484,7 +484,7 @@ module Matter
         when ATTR_BAT_CHARGE_STATE
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.rechargeable?
           if state = @bat_charge_state
-            Bytes[state.value.to_u8]
+            state.value.to_u8.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -498,7 +498,7 @@ module Matter
         when ATTR_BAT_FUNCTIONAL_WHILE_CHARGING
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.rechargeable?
           if functional = @bat_functional_while_charging
-            Bytes[functional ? 1_u8 : 0_u8]
+            functional.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -558,10 +558,7 @@ module Matter
       end
 
       private def encode_string(value : String) : Bytes
-        bytes = Bytes.new(1 + value.bytesize)
-        bytes[0] = value.bytesize.to_u8
-        value.to_slice.copy_to(bytes + 1)
-        bytes
+        value.to_tlv
       end
 
       # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).

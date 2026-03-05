@@ -129,11 +129,11 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
         case attribute_id
         when ATTR_HOUR_FORMAT
-          Bytes[@hour_format.value.to_u8]
+          @hour_format.value.to_u8.to_tlv
         when ATTR_ACTIVE_CALENDAR_TYPE
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.calendar_format?
           if active = @active_calendar_type
-            Bytes[active.value.to_u8]
+            active.value.to_u8.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -223,13 +223,7 @@ module Matter
       end
 
       private def encode_array(values : Array(UInt8)) : Bytes
-        # Simple encoding: [count, value1, value2, ...]
-        bytes = Bytes.new(1 + values.size)
-        bytes[0] = values.size.to_u8
-        values.each_with_index do |val, idx|
-          bytes[1 + idx] = val
-        end
-        bytes
+        values.to_tlv
       end
     end
   end

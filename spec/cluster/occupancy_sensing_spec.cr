@@ -93,7 +93,7 @@ describe Matter::Cluster::OccupancySensingCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::OccupancySensingCluster::ATTR_OCCUPANCY)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[0x00])
+      decode_tlv_value(bytes.as(Bytes)).should eq(0_u8)
     end
 
     it "reads Occupancy when occupied" do
@@ -103,21 +103,21 @@ describe Matter::Cluster::OccupancySensingCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::OccupancySensingCluster::ATTR_OCCUPANCY)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[0x01])
+      decode_tlv_value(bytes.as(Bytes)).should eq(1_u8)
     end
 
     it "reads OccupancySensorType" do
       cluster = Matter::Cluster::OccupancySensingCluster.new(endpoint_id)
       bytes = cluster.read_attribute(Matter::Cluster::OccupancySensingCluster::ATTR_OCCUPANCY_SENSOR_TYPE)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[0x00]) # PIR = 0
+      decode_tlv_value(bytes.as(Bytes)).should eq(0_u8) # PIR = 0
     end
 
     it "reads OccupancySensorTypeBitmap" do
       cluster = Matter::Cluster::OccupancySensingCluster.new(endpoint_id)
       bytes = cluster.read_attribute(Matter::Cluster::OccupancySensingCluster::ATTR_OCCUPANCY_SENSOR_TYPE_BITMAP)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[0x01]) # Bit 0 = PIR
+      decode_tlv_value(bytes.as(Bytes)).should eq(0x01_u8) # Bit 0 = PIR
     end
 
     it "reads HoldTime when set" do
@@ -173,14 +173,14 @@ describe Matter::Cluster::OccupancySensingCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::OccupancySensingCluster::ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[3])
+      decode_tlv_value(bytes.as(Bytes)).should eq(3_u8)
     end
 
     it "returns default value for PIRUnoccupiedToOccupiedThreshold when not explicitly set" do
       cluster = Matter::Cluster::OccupancySensingCluster.new(endpoint_id)
       bytes = cluster.read_attribute(Matter::Cluster::OccupancySensingCluster::ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[1]) # Default value is 1
+      decode_tlv_value(bytes.as(Bytes)).should eq(1_u8) # Default value is 1
     end
 
     it "returns unsupported for PIRUnoccupiedToOccupiedThreshold when PIR feature disabled" do

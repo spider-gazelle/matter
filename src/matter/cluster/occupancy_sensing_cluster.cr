@@ -246,11 +246,11 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
         case attribute_id
         when ATTR_OCCUPANCY
-          Bytes[@occupancy]
+          @occupancy.to_tlv
         when ATTR_OCCUPANCY_SENSOR_TYPE
-          Bytes[@occupancy_sensor_type.value.to_u8]
+          @occupancy_sensor_type.value.to_u8.to_tlv
         when ATTR_OCCUPANCY_SENSOR_TYPE_BITMAP
-          Bytes[@occupancy_sensor_type_bitmap]
+          @occupancy_sensor_type_bitmap.to_tlv
         when ATTR_HOLD_TIME
           if hold_time = @hold_time
             hold_time.to_tlv
@@ -275,9 +275,9 @@ module Matter
         when ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.passive_infrared?
           if threshold = @pir_unoccupied_to_occupied_threshold
-            Bytes[threshold]
+            threshold.to_tlv
           else
-            Bytes[1_u8] # Default value
+            1_u8.to_tlv # Default value
           end
           # Ultrasonic feature attributes
         when ATTR_ULTRASONIC_OCCUPIED_TO_UNOCCUPIED_DELAY
@@ -297,9 +297,9 @@ module Matter
         when ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.ultrasonic?
           if threshold = @ultrasonic_unoccupied_to_occupied_threshold
-            Bytes[threshold]
+            threshold.to_tlv
           else
-            Bytes[1_u8]
+            1_u8.to_tlv
           end
           # PhysicalContact feature attributes
         when ATTR_PHYSICAL_CONTACT_OCCUPIED_TO_UNOCCUPIED_DELAY
@@ -319,9 +319,9 @@ module Matter
         when ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.physical_contact?
           if threshold = @physical_contact_unoccupied_to_occupied_threshold
-            Bytes[threshold]
+            threshold.to_tlv
           else
-            Bytes[1_u8]
+            1_u8.to_tlv
           end
         else
           super

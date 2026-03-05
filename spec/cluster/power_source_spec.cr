@@ -183,7 +183,7 @@ describe Matter::Cluster::PowerSourceCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::PowerSourceCluster::ATTR_STATUS)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[2]) # Standby = 2
+      decode_tlv_value(bytes.as(Bytes)).should eq(2_u8) # Standby = 2
     end
 
     it "reads Order" do
@@ -194,7 +194,7 @@ describe Matter::Cluster::PowerSourceCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::PowerSourceCluster::ATTR_ORDER)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[5])
+      decode_tlv_value(bytes.as(Bytes)).should eq(5_u8)
     end
 
     it "reads Description" do
@@ -205,8 +205,7 @@ describe Matter::Cluster::PowerSourceCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::PowerSourceCluster::ATTR_DESCRIPTION)
       bytes.should be_a(Bytes)
-      # String encoding: [length, ...bytes]
-      bytes.as(Bytes)[0].should eq(8) # "DC Power" length
+      decode_tlv_value(bytes.as(Bytes)).should eq("DC Power")
     end
 
     it "reads BatChargeLevel when Battery feature enabled" do
@@ -219,7 +218,7 @@ describe Matter::Cluster::PowerSourceCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::PowerSourceCluster::ATTR_BAT_CHARGE_LEVEL)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[1]) # Warning = 1
+      decode_tlv_value(bytes.as(Bytes)).should eq(1_u8) # Warning = 1
     end
 
     it "reads BatReplacementNeeded" do
@@ -232,7 +231,7 @@ describe Matter::Cluster::PowerSourceCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::PowerSourceCluster::ATTR_BAT_REPLACEMENT_NEEDED)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[1]) # true = 1
+      decode_tlv_value(bytes.as(Bytes)).should eq(true)
     end
 
     it "reads BatReplaceability" do
@@ -245,7 +244,7 @@ describe Matter::Cluster::PowerSourceCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::PowerSourceCluster::ATTR_BAT_REPLACEABILITY)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[3]) # FactoryReplaceable = 3
+      decode_tlv_value(bytes.as(Bytes)).should eq(3_u8) # FactoryReplaceable = 3
     end
 
     it "reads BatReplacementDescription when Replaceable feature enabled" do
@@ -260,7 +259,7 @@ describe Matter::Cluster::PowerSourceCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::PowerSourceCluster::ATTR_BAT_REPLACEMENT_DESCRIPTION)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes)[0].should eq(5) # "2x AA" length
+      decode_tlv_value(bytes.as(Bytes)).should eq("2x AA")
     end
 
     it "reads BatQuantity" do
@@ -275,7 +274,7 @@ describe Matter::Cluster::PowerSourceCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::PowerSourceCluster::ATTR_BAT_QUANTITY)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[2])
+      decode_tlv_value(bytes.as(Bytes)).should eq(2_u8)
     end
 
     it "returns unsupported for Battery attributes when feature not enabled" do

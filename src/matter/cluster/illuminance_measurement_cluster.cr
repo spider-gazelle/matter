@@ -166,7 +166,7 @@ module Matter
           end
         when ATTR_LIGHT_SENSOR_TYPE
           if sensor_type = @light_sensor_type
-            Bytes[sensor_type.value.to_u8]
+            sensor_type.value.to_u8.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end

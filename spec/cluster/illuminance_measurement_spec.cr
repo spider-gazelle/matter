@@ -195,7 +195,7 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_LIGHT_SENSOR_TYPE)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[1]) # CMOS = 1
+      decode_tlv_value(bytes.as(Bytes)).should eq(1_u8) # CMOS = 1
     end
 
     it "returns unsupported for LightSensorType when not set" do

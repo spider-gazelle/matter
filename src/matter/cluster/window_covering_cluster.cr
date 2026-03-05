@@ -409,19 +409,19 @@ module Matter
           if val = @current_position_lift_percentage
             val.to_tlv
           else
-            Bytes.new(0) # Null
+            nil.to_tlv
           end
         when ATTR_CURRENT_POSITION_LIFT_PERCENT100THS
           if val = @current_position_lift_percent100ths
             val.to_tlv
           else
-            Bytes.new(0) # Null
+            nil.to_tlv
           end
         when ATTR_TARGET_POSITION_LIFT_PERCENT100THS
           if val = @target_position_lift_percent100ths
             val.to_tlv
           else
-            Bytes.new(0) # Null
+            nil.to_tlv
           end
         when ATTR_NUMBER_OF_ACTUATIONS_LIFT
           (@number_of_actuations_lift || 0_u16).to_tlv
@@ -429,7 +429,7 @@ module Matter
           if val = @safety_status
             val.to_tlv
           else
-            Bytes.new(0) # Null
+            nil.to_tlv
           end
         when CLUSTER_REVISION
           5_u16.to_tlv

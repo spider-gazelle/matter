@@ -160,7 +160,7 @@ module Matter
 
               cluster.request_fabric_index = fabric_index
               cluster.request_is_case_session = !fabric_index.nil?
-              result = cluster.read_attribute(attribute_id, fabric_index)
+              result = safe_read_attribute(cluster, attribute_id, fabric_index, concrete_path, endpoint_id, cluster_id)
               attribute_reports << build_attribute_report(concrete_path, result, cluster_id, endpoint_id, cluster.data_version)
             end
 
@@ -193,11 +193,28 @@ module Matter
           # Read attribute from cluster
           cluster.request_fabric_index = fabric_index
           cluster.request_is_case_session = !fabric_index.nil?
-          result = cluster.read_attribute(attribute_id, fabric_index)
+          result = safe_read_attribute(cluster, attribute_id, fabric_index, path, endpoint_id, cluster_id)
           attribute_reports << build_attribute_report(path, result, cluster_id, endpoint_id, cluster.data_version)
         end
 
         attribute_reports
+      end
+
+      private def self.safe_read_attribute(
+        cluster : Cluster::Base,
+        attribute_id : UInt32,
+        fabric_index : UInt8?,
+        path : InteractionModel::AttributePath,
+        endpoint_id : UInt16,
+        cluster_id : UInt32,
+      ) : InteractionModel::Status | Bytes
+        cluster.read_attribute(attribute_id, fabric_index)
+      rescue ex
+        Log.error(exception: ex) do
+          "Failed reading attribute from cluster: endpoint=#{endpoint_id} cluster=0x#{cluster_id.to_s(16)} " \
+          "attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}"
+        end
+        InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
       end
 
       private def self.build_attribute_report(

@@ -85,6 +85,40 @@ private class BrokenTlvCluster < Matter::Cluster::Base
   end
 end
 
+private class RaisingReadCluster < Matter::Cluster::Base
+  CLUSTER_ID = 0x1235_u32
+  ATTR_RAISE = 0x0000_u32
+
+  def initialize(endpoint_id : Matter::DataType::EndpointNumber)
+    super(endpoint_id, Matter::DataType::ClusterId.new(CLUSTER_ID))
+  end
+
+  def name : String
+    "RaisingReadCluster"
+  end
+
+  def attributes : Array(Matter::Cluster::AttributeMetadata)
+    [
+      Matter::Cluster::AttributeMetadata.new(
+        id: Matter::DataType::AttributeId.new(ATTR_RAISE),
+        name: "RaisesOnRead",
+        type: :uint8,
+      ),
+    ]
+  end
+
+  def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Matter::InteractionModel::Status | Bytes
+    case attribute_id
+    when ATTR_RAISE
+      # Simulate a cluster implementation that raises while decoding stored TLV.
+      TLV::Any.from_slice(Bytes[0x24_u8])
+      1_u8.to_tlv
+    else
+      super(attribute_id, fabric_index)
+    end
+  end
+end
+
 describe "SubscribeRequestMessage with wildcard paths" do
   # This test validates parsing of SubscribeRequest from iOS/iPhone which uses
   # Boolean `true` to indicate wildcard for path fields (like event_id)
@@ -378,6 +412,36 @@ describe "SubscribeRequestMessage with wildcard paths" do
       )
       broken_status.should_not be_nil
       broken_status.as(Matter::InteractionModel::AttributeStatusIB).status.status.should eq(
+        Matter::InteractionModel::StatusCode::Failure.value
+      )
+    end
+
+    it "handles exceptions raised inside cluster read_attribute during wildcard subscribe" do
+      payload = "152900240100250258023603171818360417290418182807360815370024010024023e1824010018153700240100240228182401001815370024010024021f182401071815370024010024021d1824010018153700240100240231182401001815370024010124021d18240100181537002401002402301824010018153700240100240237182401001815370024010224021d18240100181537002401022402061824011a1815370024010024023318240100181537002401022402401824010018153700240101240240182401001815370024010024023f182401001815370024010024023c182401001815370024010125020202182401001815370024010124020318240100181537002401022402031824010018153700240101240206182401041815370024010024022a1824010018153700240100240246182401001815370024010024023218240100181824ff0c18".hexbytes
+
+      request = Matter::Protocol::IMHandler.parse_subscribe_request(payload)
+      request.should_not be_nil
+      subscribe_request = request.as(Matter::InteractionModel::SubscribeRequestMessage)
+
+      endpoint1 = Matter::DataType::EndpointNumber.new(1_u16)
+      raising_cluster = RaisingReadCluster.new(endpoint1)
+      clusters = {
+        {1_u16, RaisingReadCluster::CLUSTER_ID} => raising_cluster.as(Matter::Cluster::Base),
+      }
+
+      reports = Matter::Protocol::IMHandler.read_attributes(
+        subscribe_request.attribute_requests,
+        clusters
+      )
+
+      raised_status = find_attribute_status(
+        reports,
+        1_u16,
+        RaisingReadCluster::CLUSTER_ID,
+        RaisingReadCluster::ATTR_RAISE
+      )
+      raised_status.should_not be_nil
+      raised_status.as(Matter::InteractionModel::AttributeStatusIB).status.status.should eq(
         Matter::InteractionModel::StatusCode::Failure.value
       )
     end

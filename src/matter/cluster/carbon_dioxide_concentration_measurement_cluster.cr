@@ -241,7 +241,7 @@ module Matter
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
         case attribute_id
         when ATTR_MEASUREMENT_MEDIUM
-          Bytes[@measurement_medium.value.to_u8]
+          @measurement_medium.value.to_u8.to_tlv
         when ATTR_MEASURED_VALUE
           if value = @measured_value
             encode_float(value)
@@ -268,13 +268,13 @@ module Matter
           end
         when ATTR_MEASUREMENT_UNIT
           if unit = @measurement_unit
-            Bytes[unit.value.to_u8]
+            unit.value.to_u8.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
         when ATTR_LEVEL_VALUE
           if value = @level_value
-            Bytes[value.value.to_u8]
+            value.value.to_u8.to_tlv
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
           end
@@ -411,7 +411,7 @@ module Matter
 
       # encode_float uses TLV encoding for attribute responses
       private def encode_float(value : Float32) : Bytes
-        TLV::Any.new(value, nil).to_slice
+        value.to_tlv
       end
     end
   end

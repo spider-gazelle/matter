@@ -97,7 +97,7 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::TimeFormatLocalizationCluster::ATTR_HOUR_FORMAT)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[0]) # Hr12 = 0
+      decode_tlv_value(bytes.as(Bytes)).should eq(0_u8) # Hr12 = 0
     end
 
     it "reads ActiveCalendarType when set" do
@@ -111,7 +111,7 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::TimeFormatLocalizationCluster::ATTR_ACTIVE_CALENDAR_TYPE)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes).should eq(Bytes[2]) # Coptic = 2
+      decode_tlv_value(bytes.as(Bytes)).should eq(2_u8) # Coptic = 2
     end
 
     it "returns unsupported for ActiveCalendarType when not set" do
@@ -135,11 +135,8 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::TimeFormatLocalizationCluster::ATTR_SUPPORTED_CALENDAR_TYPES)
       bytes.should be_a(Bytes)
-      # Array format: [count, value1, value2, value3]
-      bytes.as(Bytes)[0].should eq(3) # Count
-      bytes.as(Bytes)[1].should eq(0) # Buddhist
-      bytes.as(Bytes)[2].should eq(1) # Chinese
-      bytes.as(Bytes)[3].should eq(2) # Coptic
+      values = parse_tlv_array(bytes.as(Bytes)).map(&.as_u8)
+      values.should eq([0_u8, 1_u8, 2_u8]) # Buddhist, Chinese, Coptic
     end
 
     it "marks HourFormat as writable" do

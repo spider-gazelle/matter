@@ -202,7 +202,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
 
       bytes = sensor.read_attribute(Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_MEASUREMENT_MEDIUM)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes)[0].should eq(1) # Water = 1
+      decode_tlv_value(bytes.as(Bytes)).should eq(1_u8) # Water = 1
     end
 
     it "reads measured value" do
@@ -230,7 +230,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
 
       bytes = sensor.read_attribute(Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_LEVEL_VALUE)
       bytes.should be_a(Bytes)
-      bytes.as(Bytes)[0].should eq(4) # Critical = 4
+      decode_tlv_value(bytes.as(Bytes)).should eq(4_u8) # Critical = 4
     end
 
     it "returns unsupported for NumericMeasurement attributes when feature disabled" do
