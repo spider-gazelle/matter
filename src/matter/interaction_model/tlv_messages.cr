@@ -243,8 +243,8 @@ module Matter
       @[TLV::Field(tag: 5, optional: true)]
       property event_filters : Array(TLV::Any)?
 
-      # Tag 6: DataVersionFilters (optional)
-      @[TLV::Field(tag: 6, optional: true)]
+      # Tag 8: DataVersionFilters (optional)
+      @[TLV::Field(tag: 8, optional: true)]
       property data_version_filters : Array(TLV::Any)?
 
       # Tag 7: IsFabricFiltered

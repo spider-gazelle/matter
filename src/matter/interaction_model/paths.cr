@@ -12,6 +12,12 @@ module Matter
     struct AttributePath
       include TLV::Serializable
 
+      @[TLV::Field(tag: 0, optional: true)]
+      property enable_tag_compression : Bool?
+
+      @[TLV::Field(tag: 1, optional: true, fixed_size: true)]
+      property node_raw : UInt64 | Nil
+
       # Internal storage accepts Bool for wildcard indicator from iOS
       @[TLV::Field(tag: 2, fixed_size: true)]
       property endpoint_raw : UInt16 | Bool | Nil
@@ -25,16 +31,34 @@ module Matter
       @[TLV::Field(tag: 5, fixed_size: true)]
       property list_index_raw : UInt16 | Bool | Nil
 
+      @[TLV::Field(tag: 6, optional: true, fixed_size: true)]
+      property wildcard_path_flags_raw : UInt32 | Nil
+
       def initialize(
         endpoint : UInt16? = nil,
         cluster : UInt32? = nil,
         attribute : UInt32? = nil,
         list_index : UInt16? = nil,
+        *,
+        enable_tag_compression : Bool? = nil,
+        node : UInt64? = nil,
+        wildcard_path_flags : UInt32? = nil,
       )
+        @enable_tag_compression = enable_tag_compression
+        @node_raw = node
         @endpoint_raw = endpoint
         @cluster_raw = cluster
         @attribute_raw = attribute
         @list_index_raw = list_index
+        @wildcard_path_flags_raw = wildcard_path_flags
+      end
+
+      def node : UInt64?
+        @node_raw
+      end
+
+      def wildcard_path_flags : UInt32?
+        @wildcard_path_flags_raw
       end
 
       # Getters that convert Bool (wildcard) to nil
@@ -63,6 +87,10 @@ module Matter
         @endpoint_raw = value
       end
 
+      def node=(value : UInt64?)
+        @node_raw = value
+      end
+
       def cluster=(value : UInt32?)
         @cluster_raw = value
       end
@@ -73,6 +101,10 @@ module Matter
 
       def list_index=(value : UInt16?)
         @list_index_raw = value
+      end
+
+      def wildcard_path_flags=(value : UInt32?)
+        @wildcard_path_flags_raw = value
       end
 
       # Wildcard path matches all endpoints/clusters/attributes
@@ -133,40 +165,50 @@ module Matter
     end
 
     # Event path identifying a specific event
-    # Supports both list-form [endpoint, cluster, event, is_urgent] and structure-form
+    # Supports both list-form and structure-form
     # Note: fixed_size: true ensures proper type widths for iOS compatibility
     #
     # Matter spec allows Boolean `true` as a wildcard indicator for path fields.
-    # iOS/Apple controllers send `true` instead of omitting fields for wildcards.
+    # Some controllers may send `true` instead of omitting fields for wildcards.
     @[TLV::ListFormat]
     struct EventPath
       include TLV::Serializable
 
+      @[TLV::Field(tag: 0, fixed_size: true)]
+      property node_raw : UInt64 | Bool | Nil
+
       # Internal storage accepts Bool for wildcard indicator from iOS
-      @[TLV::Field(tag: 2, fixed_size: true)]
+      @[TLV::Field(tag: 1, fixed_size: true)]
       property endpoint_raw : UInt16 | Bool | Nil
 
-      @[TLV::Field(tag: 3, fixed_size: true)]
+      @[TLV::Field(tag: 2, fixed_size: true)]
       property cluster_raw : UInt32 | Bool | Nil
 
-      @[TLV::Field(tag: 4, fixed_size: true)]
+      @[TLV::Field(tag: 3, fixed_size: true)]
       property event_raw : UInt32 | Bool | Nil
 
-      @[TLV::Field(tag: 5)]
+      @[TLV::Field(tag: 4)]
       property? is_urgent : Bool = false
 
       def initialize(
+        node : UInt64? = nil,
         endpoint : UInt16? = nil,
         cluster : UInt32? = nil,
         event : UInt32? = nil,
         @is_urgent : Bool = false,
       )
+        @node_raw = node
         @endpoint_raw = endpoint
         @cluster_raw = cluster
         @event_raw = event
       end
 
       # Getters that convert Bool (wildcard) to nil
+      def node : UInt64?
+        value = @node_raw
+        value.is_a?(UInt64) ? value : nil
+      end
+
       def endpoint : UInt16?
         value = @endpoint_raw
         value.is_a?(UInt16) ? value : nil
@@ -183,6 +225,10 @@ module Matter
       end
 
       # Setters for API compatibility
+      def node=(value : UInt64?)
+        @node_raw = value
+      end
+
       def endpoint=(value : UInt16?)
         @endpoint_raw = value
       end
@@ -202,6 +248,7 @@ module Matter
 
       def to_s : String
         parts = [] of String
+        parts << "N:#{node || "*"}"
         parts << "E:#{endpoint || "*"}"
         parts << "C:0x#{(cluster || 0).to_s(16)}" if cluster
         parts << "Evt:0x#{(event || 0).to_s(16)}" if event
@@ -210,7 +257,8 @@ module Matter
       end
 
       def ==(other : EventPath) : Bool
-        endpoint == other.endpoint &&
+        node == other.node &&
+          endpoint == other.endpoint &&
           cluster == other.cluster &&
           event == other.event &&
           is_urgent? == other.is_urgent?
