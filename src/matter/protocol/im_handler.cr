@@ -15,6 +15,62 @@ module Matter
         clusters[{0_u16, Cluster::AccessControlCluster::CLUSTER_ID}]?.as?(Cluster::AccessControlCluster)
       end
 
+      # Extract raw value bytes from a TLV::Any, stripping the TLV header.
+      # Clusters expect raw value bytes (e.g. 1 byte for UInt8), not TLV-encoded data.
+      private def self.tlv_value_bytes(tlv : TLV::Any) : Bytes
+        case val = tlv.value
+        when UInt8
+          Bytes[val]
+        when UInt16
+          io = IO::Memory.new(2)
+          io.write_bytes(val, IO::ByteFormat::LittleEndian)
+          io.to_slice
+        when UInt32
+          io = IO::Memory.new(4)
+          io.write_bytes(val, IO::ByteFormat::LittleEndian)
+          io.to_slice
+        when UInt64
+          io = IO::Memory.new(8)
+          io.write_bytes(val, IO::ByteFormat::LittleEndian)
+          io.to_slice
+        when Int8
+          Bytes[val.unsafe_as(UInt8)]
+        when Int16
+          io = IO::Memory.new(2)
+          io.write_bytes(val, IO::ByteFormat::LittleEndian)
+          io.to_slice
+        when Int32
+          io = IO::Memory.new(4)
+          io.write_bytes(val, IO::ByteFormat::LittleEndian)
+          io.to_slice
+        when Int64
+          io = IO::Memory.new(8)
+          io.write_bytes(val, IO::ByteFormat::LittleEndian)
+          io.to_slice
+        when Bool
+          Bytes[val ? 1_u8 : 0_u8]
+        when Float32
+          io = IO::Memory.new(4)
+          io.write_bytes(val, IO::ByteFormat::LittleEndian)
+          io.to_slice
+        when Float64
+          io = IO::Memory.new(8)
+          io.write_bytes(val, IO::ByteFormat::LittleEndian)
+          io.to_slice
+        when String
+          val.to_slice
+        when Bytes
+          val
+        when Nil
+          # TLV Null — return a single byte with the TLV null type marker
+          # so clusters can detect null vs empty
+          Bytes[0x14]
+        else
+          # For complex types (arrays, lists, structures), fall back to TLV encoding
+          tlv.to_slice
+        end
+      end
+
       private def self.authorized?(
         clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
         required : Cluster::Definitions::AccessControl::EntryPrivilege,
@@ -331,8 +387,8 @@ module Matter
           cluster.request_fabric_index = fabric_index
           cluster.request_peer_node_id = peer_subject_ids.try(&.first?)
 
-          # Write attribute to cluster (convert TLV::Any data to bytes)
-          value_bytes = request.data.to_slice
+          # Write attribute to cluster (extract raw value bytes from TLV)
+          value_bytes = tlv_value_bytes(request.data)
           status = cluster.write_attribute(attribute_id, value_bytes)
 
           status_ib = InteractionModel::StatusIB.new(status: status.status.value)
