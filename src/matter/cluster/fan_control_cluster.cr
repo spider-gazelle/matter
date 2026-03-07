@@ -128,6 +128,9 @@ module Matter
       # AirflowDirection feature attribute
       property airflow_direction : AirflowDirectionEnum
 
+      # Step command configuration
+      property step_percent : UInt8
+
       def initialize(endpoint_id : DataType::EndpointNumber,
                      @feature_map : Feature = Feature::None,
                      @fan_mode : FanMode = FanMode::Off,
@@ -145,7 +148,9 @@ module Matter
                      @wind_support : WindSupport = WindSupport::None,
                      @wind_setting : WindSupport = WindSupport::None,
                      # AirflowDirection feature
-                     @airflow_direction : AirflowDirectionEnum = AirflowDirectionEnum::Forward)
+                     @airflow_direction : AirflowDirectionEnum = AirflowDirectionEnum::Forward,
+                     # Step command step size (percent per step)
+                     @step_percent : UInt8 = 25_u8)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
         # Validate percent values (0-100)
@@ -507,6 +512,8 @@ module Matter
         # Optional lowest_off parameter (defaults to true)
         lowest_off = data.size <= 2 || data[2] != 0
 
+        old_percent = @percent_setting
+        old_mode = @fan_mode
         current = @percent_current
 
         case direction
@@ -520,8 +527,8 @@ module Matter
               end
             end
           else
-            # Step size is implementation-defined, use 10% increments
-            new_percent = Math.min(current + 10_u8, 100_u8)
+            # Step size is implementation-defined
+            new_percent = Math.min(current.to_u16 + @step_percent, 100_u16).to_u8
             @percent_current = new_percent
             @percent_setting = new_percent
             if @fan_mode == FanMode::Off
@@ -529,7 +536,7 @@ module Matter
             end
           end
         when StepDirection::Decrease
-          if current == 0_u8 || (lowest_off && current <= 10_u8)
+          if current == 0_u8 || (lowest_off && current <= @step_percent)
             if wrap
               @percent_current = 100_u8
               @percent_setting = 100_u8
@@ -542,7 +549,7 @@ module Matter
               @fan_mode = FanMode::Off
             end
           else
-            new_percent = current > 10_u8 ? current - 10_u8 : (lowest_off ? 0_u8 : 1_u8)
+            new_percent = current > @step_percent ? current - @step_percent : (lowest_off ? 0_u8 : 1_u8)
             @percent_current = new_percent
             @percent_setting = new_percent
             if new_percent == 0_u8
@@ -556,6 +563,14 @@ module Matter
           new_speed = (@percent_current.to_f / 100.0 * @speed_max).round.to_u8
           @speed_setting = new_speed
           @speed_current = new_speed
+        end
+
+        # Fire callbacks if values changed
+        if @percent_setting != old_percent
+          @on_percent_changed.try &.call(old_percent, @percent_setting || 0_u8)
+        end
+        if @fan_mode != old_mode
+          @on_fan_mode_changed.try &.call(old_mode, @fan_mode)
         end
 
         increment_version
