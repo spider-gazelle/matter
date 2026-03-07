@@ -86,14 +86,17 @@ describe Matter::Cluster::FanControlCluster do
   end
 
   describe "attributes" do
-    it "has required attributes" do
+    it "has required attributes including speed" do
       cluster = Matter::Cluster::FanControlCluster.new(endpoint_id)
       attrs = cluster.attributes
-      attrs.size.should eq(4)
+      attrs.size.should eq(7)
       attrs.map(&.name).should contain("fanMode")
       attrs.map(&.name).should contain("fanModeSequence")
       attrs.map(&.name).should contain("percentSetting")
       attrs.map(&.name).should contain("percentCurrent")
+      attrs.map(&.name).should contain("speedMax")
+      attrs.map(&.name).should contain("speedSetting")
+      attrs.map(&.name).should contain("speedCurrent")
     end
 
     it "reads FanMode" do
@@ -426,6 +429,67 @@ describe Matter::Cluster::FanControlCluster do
         Bytes[5] # Auto
       )
       fan.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Auto)
+    end
+
+    it "syncs speed and percent when writing percent" do
+      fan = Matter::Cluster::FanControlCluster.new(
+        endpoint_id,
+        speed_max: 4_u8
+      )
+
+      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[50])
+      fan.percent_setting.should eq(50_u8)
+      fan.speed_setting.should eq(2_u8)
+      fan.speed_current.should eq(2_u8)
+
+      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[100])
+      fan.speed_setting.should eq(4_u8)
+    end
+
+    it "syncs percent and speed when writing speed" do
+      fan = Matter::Cluster::FanControlCluster.new(
+        endpoint_id,
+        speed_max: 4_u8
+      )
+
+      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_SPEED_SETTING, Bytes[3])
+      fan.speed_setting.should eq(3_u8)
+      fan.percent_setting.should eq(75_u8)
+      fan.percent_current.should eq(75_u8)
+
+      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_SPEED_SETTING, Bytes[0])
+      fan.percent_setting.should eq(0_u8)
+      fan.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Off)
+    end
+
+    it "fires percent callback when speed is written" do
+      fan = Matter::Cluster::FanControlCluster.new(
+        endpoint_id,
+        speed_max: 4_u8
+      )
+
+      received_percent = nil.as(UInt8?)
+      fan.on_percent_changed do |_old, new_val|
+        received_percent = new_val
+      end
+
+      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_SPEED_SETTING, Bytes[2])
+      received_percent.should eq(50_u8)
+    end
+
+    it "fires speed callback when percent is written" do
+      fan = Matter::Cluster::FanControlCluster.new(
+        endpoint_id,
+        speed_max: 4_u8
+      )
+
+      received_speed = nil.as(UInt8?)
+      fan.on_speed_changed do |_old, new_val|
+        received_speed = new_val
+      end
+
+      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[75])
+      received_speed.should eq(3_u8)
     end
 
     it "models percent-based speed control" do

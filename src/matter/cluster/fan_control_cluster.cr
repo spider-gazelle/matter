@@ -151,6 +151,9 @@ module Matter
                      @airflow_direction : AirflowDirectionEnum = AirflowDirectionEnum::Forward,
                      # Step command step size (percent per step)
                      @step_percent : UInt8 = 25_u8)
+        # MultiSpeed is always enabled — percent and speed stay in sync transparently
+        @feature_map |= Feature::MultiSpeed
+
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
         # Validate percent values (0-100)
@@ -160,13 +163,11 @@ module Matter
         raise ArgumentError.new("percent_current must be between 0 and 100") if @percent_current > 100_u8
 
         # Validate speed values
-        if @feature_map.multi_speed?
-          raise ArgumentError.new("speed_max must be at least 1") if @speed_max < 1_u8
-          if setting = @speed_setting
-            raise ArgumentError.new("speed_setting must be <= speed_max") if setting > @speed_max
-          end
-          raise ArgumentError.new("speed_current must be <= speed_max") if @speed_current > @speed_max
+        raise ArgumentError.new("speed_max must be at least 1") if @speed_max < 1_u8
+        if setting = @speed_setting
+          raise ArgumentError.new("speed_setting must be <= speed_max") if setting > @speed_max
         end
+        raise ArgumentError.new("speed_current must be <= speed_max") if @speed_current > @speed_max
 
         # Validate fan mode is supported by the sequence
         validate_fan_mode(@fan_mode, @fan_mode_sequence)
@@ -318,17 +319,14 @@ module Matter
         when ATTR_PERCENT_CURRENT
           @percent_current.to_tlv
         when ATTR_SPEED_MAX
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.multi_speed?
           @speed_max.to_tlv
         when ATTR_SPEED_SETTING
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.multi_speed?
           if setting = @speed_setting
             setting.to_tlv
           else
             nil.to_tlv
           end
         when ATTR_SPEED_CURRENT
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.multi_speed?
           @speed_current.to_tlv
         when ATTR_ROCK_SUPPORT
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.rocking?
@@ -368,15 +366,13 @@ module Matter
           old_mode = @fan_mode
           @fan_mode = new_mode
 
-          # When fan mode changes to Off, set percent to 0
+          # When fan mode changes to Off, set percent and speed to 0
           if new_mode == FanMode::Off
             old_percent = @percent_setting
             @percent_setting = 0_u8
             @percent_current = 0_u8
-            if @feature_map.multi_speed?
-              @speed_setting = 0_u8
-              @speed_current = 0_u8
-            end
+            @speed_setting = 0_u8
+            @speed_current = 0_u8
             # Fire percent callback if percent changed
             if old_percent != 0_u8
               @on_percent_changed.try &.call(old_percent, 0_u8)
@@ -394,16 +390,15 @@ module Matter
           return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if new_percent > 100_u8
 
           old_percent = @percent_setting
+          old_speed = @speed_setting
           @percent_setting = new_percent
 
           # When percent is set to 0, turn fan off
           if new_percent == 0_u8
             @fan_mode = FanMode::Off
             @percent_current = 0_u8
-            if @feature_map.multi_speed?
-              @speed_setting = 0_u8
-              @speed_current = 0_u8
-            end
+            @speed_setting = 0_u8
+            @speed_current = 0_u8
           else
             # When setting non-zero percent, ensure fan is not off
             if @fan_mode == FanMode::Off
@@ -411,31 +406,32 @@ module Matter
             end
             @percent_current = new_percent
 
-            # Update speed if MultiSpeed is enabled
-            if @feature_map.multi_speed?
-              new_speed = (new_percent.to_f / 100.0 * @speed_max).round.to_u8
-              @speed_setting = new_speed
-              @speed_current = new_speed
-            end
+            # Sync speed from percent
+            new_speed = percent_to_speed(new_percent)
+            @speed_setting = new_speed
+            @speed_current = new_speed
           end
 
           @on_percent_changed.try &.call(old_percent, new_percent)
+          if @speed_setting != old_speed
+            @on_speed_changed.try &.call(old_speed, @speed_setting || 0_u8)
+          end
           increment_version
 
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_SPEED_SETTING
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.multi_speed?
           return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
 
           new_speed = value[0]
           return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if new_speed > @speed_max
 
           old_speed = @speed_setting
+          old_percent = @percent_setting
           @speed_setting = new_speed
           @speed_current = new_speed
 
-          # Update percent based on speed
-          new_percent = (new_speed.to_f / @speed_max * 100).round.to_u8
+          # Sync percent from speed
+          new_percent = speed_to_percent(new_speed)
           @percent_setting = new_percent
           @percent_current = new_percent
 
@@ -446,6 +442,9 @@ module Matter
           end
 
           @on_speed_changed.try &.call(old_speed, new_speed)
+          if @percent_setting != old_percent
+            @on_percent_changed.try &.call(old_percent, new_percent)
+          end
           increment_version
 
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
@@ -558,12 +557,10 @@ module Matter
           end
         end
 
-        # Update speed if MultiSpeed is enabled
-        if @feature_map.multi_speed?
-          new_speed = (@percent_current.to_f / 100.0 * @speed_max).round.to_u8
-          @speed_setting = new_speed
-          @speed_current = new_speed
-        end
+        # Sync speed from percent
+        new_speed = percent_to_speed(@percent_current)
+        @speed_setting = new_speed
+        @speed_current = new_speed
 
         # Fire callbacks if values changed
         if @percent_setting != old_percent
@@ -641,6 +638,16 @@ module Matter
         else
           false
         end
+      end
+
+      # Convert percent (0-100) to speed (0-speed_max)
+      private def percent_to_speed(percent : UInt8) : UInt8
+        (percent.to_f / 100.0 * @speed_max).round.to_u8
+      end
+
+      # Convert speed (0-speed_max) to percent (0-100)
+      private def speed_to_percent(speed : UInt8) : UInt8
+        (speed.to_f / @speed_max * 100).round.to_u8
       end
 
       # Get default "on" mode for a given sequence
