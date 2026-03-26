@@ -380,7 +380,7 @@ module Matter
           end
 
           @on_fan_mode_changed.try &.call(old_mode, new_mode)
-          increment_version
+          increment_version_and_notify(ATTR_FAN_MODE)
 
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_PERCENT_SETTING
@@ -416,7 +416,7 @@ module Matter
           if @speed_setting != old_speed
             @on_speed_changed.try &.call(old_speed, @speed_setting || 0_u8)
           end
-          increment_version
+          increment_version_and_notify(ATTR_PERCENT_SETTING)
 
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_SPEED_SETTING
@@ -445,7 +445,7 @@ module Matter
           if @percent_setting != old_percent
             @on_percent_changed.try &.call(old_percent, new_percent)
           end
-          increment_version
+          increment_version_and_notify(ATTR_SPEED_SETTING)
 
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_ROCK_SETTING
@@ -458,7 +458,7 @@ module Matter
           return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if invalid_bits != 0
 
           @rock_setting = RockSupport.from_value(new_setting)
-          increment_version
+          increment_version_and_notify(ATTR_ROCK_SETTING)
 
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_WIND_SETTING
@@ -471,7 +471,7 @@ module Matter
           return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if invalid_bits != 0
 
           @wind_setting = WindSupport.from_value(new_setting)
-          increment_version
+          increment_version_and_notify(ATTR_WIND_SETTING)
 
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_AIRFLOW_DIRECTION
@@ -482,7 +482,7 @@ module Matter
           return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if direction_value > 1_u8
 
           @airflow_direction = AirflowDirectionEnum.from_value(direction_value.to_i)
-          increment_version
+          increment_version_and_notify(ATTR_AIRFLOW_DIRECTION)
 
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         else
@@ -498,6 +498,10 @@ module Matter
         else
           super
         end
+      end
+
+      protected def encode_feature_map_global : Bytes
+        @feature_map.value.to_tlv
       end
 
       private def handle_step_command(data : Bytes) : InteractionModel::Status
@@ -570,7 +574,7 @@ module Matter
           @on_fan_mode_changed.try &.call(old_mode, @fan_mode)
         end
 
-        increment_version
+        increment_version_and_notify(ATTR_PERCENT_SETTING)
         InteractionModel::Status.new(InteractionModel::StatusCode::Success)
       end
 
@@ -582,7 +586,7 @@ module Matter
         @percent_current = percent
 
         if old_value != percent
-          increment_version
+          increment_version_and_notify(ATTR_PERCENT_CURRENT)
         end
       end
 

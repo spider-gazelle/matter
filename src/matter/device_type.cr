@@ -233,6 +233,24 @@ module Matter
         ],
         optional_server_clusters: [
           0x0204_u32, # Thermostat User Interface Configuration
+          0x0402_u32, # Temperature Measurement
+        ]
+      )
+    end
+
+    def self.fan : DeviceType
+      new(
+        DataType::DeviceTypeId.new(FAN),
+        "Fan",
+        3_u16,
+        required_server_clusters: [
+          0x001D_u32, # Descriptor
+          0x0003_u32, # Identify
+          0x0004_u32, # Groups
+          0x0202_u32, # Fan Control
+        ],
+        optional_server_clusters: [
+          0x0006_u32, # On/Off
         ]
       )
     end
