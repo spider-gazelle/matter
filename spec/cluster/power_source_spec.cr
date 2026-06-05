@@ -304,6 +304,56 @@ describe Matter::Cluster::PowerSourceCluster do
   end
 
   describe "update methods" do
+    it "updates battery percent remaining and increments the data version" do
+      cluster = Matter::Cluster::PowerSourceCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
+        bat_percent_remaining: 200_u8,
+        bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
+        bat_replacement_needed: false,
+        bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable
+      )
+
+      initial_version = cluster.data_version
+      cluster.update_bat_percent_remaining(124_u8)
+      cluster.bat_percent_remaining.should eq(124_u8)
+      cluster.data_version.should eq(initial_version + 1)
+
+      # unchanged value does not bump the version
+      cluster.update_bat_percent_remaining(124_u8)
+      cluster.data_version.should eq(initial_version + 1)
+
+      # nil marks the level unknown
+      cluster.update_bat_percent_remaining(nil)
+      cluster.bat_percent_remaining.should be_nil
+      cluster.data_version.should eq(initial_version + 2)
+    end
+
+    it "validates the half-percent range when updating percent remaining" do
+      cluster = Matter::Cluster::PowerSourceCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
+        bat_percent_remaining: 100_u8,
+        bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
+        bat_replacement_needed: false,
+        bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable
+      )
+
+      expect_raises(ArgumentError, /200/) do
+        cluster.update_bat_percent_remaining(201_u8)
+      end
+    end
+
+    it "ignores percent remaining updates when the Battery feature is disabled" do
+      cluster = Matter::Cluster::PowerSourceCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::None
+      )
+
+      cluster.update_bat_percent_remaining(124_u8)
+      cluster.bat_percent_remaining.should be_nil
+    end
+
     it "updates battery charge level" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,

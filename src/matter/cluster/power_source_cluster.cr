@@ -507,6 +507,21 @@ module Matter
         end
       end
 
+      # Update the remaining battery percentage (0-200 half-percent units,
+      # nil = unknown) and report the change to subscribed controllers.
+      def update_bat_percent_remaining(value : UInt8?)
+        return unless @feature_map.battery?
+
+        if percent = value
+          raise ArgumentError.new("bat_percent_remaining must be <= 200") if percent > 200_u8
+        end
+
+        old_value = @bat_percent_remaining
+        @bat_percent_remaining = value
+
+        increment_version_and_notify(ATTR_BAT_PERCENT_REMAINING) if old_value != value
+      end
+
       # Update battery charge level
       def update_bat_charge_level(level : BatChargeLevel)
         return unless @feature_map.battery?
