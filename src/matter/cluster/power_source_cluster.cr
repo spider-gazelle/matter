@@ -378,6 +378,12 @@ module Matter
         [] of CommandMetadata # No commands for power source cluster
       end
 
+      # Report the cluster's features — controllers decide whether a node is
+      # battery powered from this (FeatureMap BAT bit + an Active status).
+      protected def encode_feature_map_global : Bytes
+        @feature_map.value.to_tlv
+      end
+
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
         case attribute_id
         when ATTR_STATUS

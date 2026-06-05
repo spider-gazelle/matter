@@ -175,6 +175,31 @@ describe Matter::Cluster::PowerSourceCluster do
       attrs.map(&.name).should contain("batQuantity")
     end
 
+    it "reads the global FeatureMap with the configured features" do
+      cluster = Matter::Cluster::PowerSourceCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::Battery,
+        bat_charge_level: Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok,
+        bat_replacement_needed: false,
+        bat_replaceability: Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable
+      )
+      bytes = cluster.read_attribute(0xFFFC_u32)
+      bytes.should be_a(Bytes)
+      # BAT feature bit — controllers use this (with an Active status) to
+      # decide the node is battery powered.
+      decode_tlv_value(bytes.as(Bytes)).should eq(2_u32)
+    end
+
+    it "reads a FeatureMap of zero when no features are enabled" do
+      cluster = Matter::Cluster::PowerSourceCluster.new(
+        endpoint_id,
+        feature_map: Matter::Cluster::PowerSourceCluster::Feature::None
+      )
+      bytes = cluster.read_attribute(0xFFFC_u32)
+      bytes.should be_a(Bytes)
+      decode_tlv_value(bytes.as(Bytes)).should eq(0_u32)
+    end
+
     it "reads Status" do
       cluster = Matter::Cluster::PowerSourceCluster.new(
         endpoint_id,

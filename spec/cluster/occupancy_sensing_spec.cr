@@ -86,6 +86,14 @@ describe Matter::Cluster::OccupancySensingCluster do
       attrs.map(&.name).should contain("holdTime")
     end
 
+    it "reads the global FeatureMap with the configured sensing features" do
+      cluster = Matter::Cluster::OccupancySensingCluster.new(endpoint_id)
+      bytes = cluster.read_attribute(0xFFFC_u32)
+      bytes.should be_a(Bytes)
+      # PIR feature bit (the default modality)
+      decode_tlv_value(bytes.as(Bytes)).should eq(2_u32)
+    end
+
     it "reads Occupancy when unoccupied" do
       cluster = Matter::Cluster::OccupancySensingCluster.new(
         endpoint_id,

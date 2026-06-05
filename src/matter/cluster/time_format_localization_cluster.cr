@@ -126,6 +126,11 @@ module Matter
         [] of CommandMetadata # No commands for localization cluster
       end
 
+      # Report the cluster's features to controllers.
+      protected def encode_feature_map_global : Bytes
+        @feature_map.value.to_tlv
+      end
+
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
         case attribute_id
         when ATTR_HOUR_FORMAT
