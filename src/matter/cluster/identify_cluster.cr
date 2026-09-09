@@ -120,21 +120,11 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_IDENTIFY_TIME
-          begin
-            parsed = TLV::Any.from_slice(value)
-            new_time = case v = parsed.value
-                       when Int
-                         v.to_u16
-                       else
-                         return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
-                       end
-            @identify_time = new_time
-            increment_version
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
-          rescue ex
-            Log.error(exception: ex) { "IdentifyTime write error (bytes=#{value.hexstring})" }
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
-          end
+          new_time = decode_u16(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless new_time
+          @identify_time = new_time
+          increment_version
+          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         else
           super
         end

@@ -310,9 +310,8 @@ module Matter
         case attribute_id
         when ATTR_OCCUPIED_COOLING_SETPOINT
           return unsupported_attribute_status unless @feature_map.cooling?
-          return invalid_data_type unless value.size >= 2
-
-          new_setpoint = IO::ByteFormat::LittleEndian.decode(Int16, value)
+          new_setpoint = decode_i16(value)
+          return invalid_data_type unless new_setpoint
           return constraint_error unless new_setpoint >= @min_cool_setpoint_limit && new_setpoint <= @max_cool_setpoint_limit
 
           old_setpoint = @occupied_cooling_setpoint
@@ -322,9 +321,8 @@ module Matter
           success
         when ATTR_OCCUPIED_HEATING_SETPOINT
           return unsupported_attribute_status unless @feature_map.heating?
-          return invalid_data_type unless value.size >= 2
-
-          new_setpoint = IO::ByteFormat::LittleEndian.decode(Int16, value)
+          new_setpoint = decode_i16(value)
+          return invalid_data_type unless new_setpoint
           return constraint_error unless new_setpoint >= @min_heat_setpoint_limit && new_setpoint <= @max_heat_setpoint_limit
 
           old_setpoint = @occupied_heating_setpoint
@@ -333,8 +331,8 @@ module Matter
           increment_version_and_notify(ATTR_OCCUPIED_HEATING_SETPOINT)
           success
         when ATTR_SYSTEM_MODE
-          return invalid_data_type unless value.size >= 1
-          mode_value = value[0]
+          mode_value = decode_u8(value)
+          return invalid_data_type unless mode_value
 
           begin
             new_mode = SystemMode.from_value(mode_value)
@@ -353,10 +351,11 @@ module Matter
           increment_version_and_notify(ATTR_SYSTEM_MODE)
           success
         when ATTR_CONTROL_SEQUENCE_OF_OPERATION
-          return invalid_data_type unless value.size >= 1
+          seq_value = decode_u8(value)
+          return invalid_data_type unless seq_value
 
           begin
-            new_seq = ControlSequenceOfOperation.from_value(value[0])
+            new_seq = ControlSequenceOfOperation.from_value(seq_value)
           rescue
             return constraint_error
           end
@@ -366,9 +365,8 @@ module Matter
           success
         when ATTR_MIN_HEAT_SETPOINT_LIMIT
           return unsupported_attribute_status unless @feature_map.heating?
-          return invalid_data_type unless value.size >= 2
-
-          new_limit = IO::ByteFormat::LittleEndian.decode(Int16, value)
+          new_limit = decode_i16(value)
+          return invalid_data_type unless new_limit
           return constraint_error unless new_limit >= @abs_min_heat_setpoint_limit && new_limit <= @max_heat_setpoint_limit
 
           @min_heat_setpoint_limit = new_limit
@@ -376,9 +374,8 @@ module Matter
           success
         when ATTR_MAX_HEAT_SETPOINT_LIMIT
           return unsupported_attribute_status unless @feature_map.heating?
-          return invalid_data_type unless value.size >= 2
-
-          new_limit = IO::ByteFormat::LittleEndian.decode(Int16, value)
+          new_limit = decode_i16(value)
+          return invalid_data_type unless new_limit
           return constraint_error unless new_limit >= @min_heat_setpoint_limit && new_limit <= @abs_max_heat_setpoint_limit
 
           @max_heat_setpoint_limit = new_limit
@@ -386,9 +383,8 @@ module Matter
           success
         when ATTR_MIN_COOL_SETPOINT_LIMIT
           return unsupported_attribute_status unless @feature_map.cooling?
-          return invalid_data_type unless value.size >= 2
-
-          new_limit = IO::ByteFormat::LittleEndian.decode(Int16, value)
+          new_limit = decode_i16(value)
+          return invalid_data_type unless new_limit
           return constraint_error unless new_limit >= @abs_min_cool_setpoint_limit && new_limit <= @max_cool_setpoint_limit
 
           @min_cool_setpoint_limit = new_limit
@@ -396,9 +392,8 @@ module Matter
           success
         when ATTR_MAX_COOL_SETPOINT_LIMIT
           return unsupported_attribute_status unless @feature_map.cooling?
-          return invalid_data_type unless value.size >= 2
-
-          new_limit = IO::ByteFormat::LittleEndian.decode(Int16, value)
+          new_limit = decode_i16(value)
+          return invalid_data_type unless new_limit
           return constraint_error unless new_limit >= @min_cool_setpoint_limit && new_limit <= @abs_max_cool_setpoint_limit
 
           @max_cool_setpoint_limit = new_limit
@@ -406,9 +401,10 @@ module Matter
           success
         when ATTR_MIN_SETPOINT_DEAD_BAND
           return unsupported_attribute_status unless @feature_map.automode?
-          return invalid_data_type unless value.size >= 1
+          dead_band = decode_i8(value)
+          return invalid_data_type unless dead_band
 
-          @min_setpoint_dead_band = value[0].to_i8
+          @min_setpoint_dead_band = dead_band
           increment_version_and_notify(ATTR_MIN_SETPOINT_DEAD_BAND)
           success
         else

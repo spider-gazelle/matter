@@ -97,7 +97,7 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint, node_label: "Original")
 
-      new_label = TLV::Any.new("New Label", nil).to_slice
+      new_label = "New Label".to_slice
       status = cluster.write_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_NODE_LABEL, new_label)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
@@ -108,7 +108,7 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint)
 
-      long_label = TLV::Any.new("A" * 33, nil).to_slice
+      long_label = ("A" * 33).to_slice
       status = cluster.write_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_NODE_LABEL, long_label)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
@@ -118,7 +118,7 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint, reachable: true)
 
-      value = TLV::Any.new(false, nil).to_slice
+      value = Bytes[0]
       status = cluster.write_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_REACHABLE, value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedWrite)
@@ -198,7 +198,7 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       )
 
       # Modify state
-      new_label = TLV::Any.new("Modified Label", nil).to_slice
+      new_label = "Modified Label".to_slice
       cluster1.write_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_NODE_LABEL, new_label)
       cluster1.reachable = false
 

@@ -302,8 +302,8 @@ describe Matter::Endpoint do
       identify = Matter::Cluster::IdentifyCluster.new(endpoint_id)
       endpoint.add_cluster(identify)
 
-      # Encode as TLV uint16
-      value = TLV::Any.new(10_u16, nil).to_slice
+      # Raw uint16 value bytes as delivered by the IM layer (minimal TLV width)
+      value = Bytes[10]
 
       status = endpoint.write_attribute(0x0003_u32, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME, value)
       status.should be_a(Matter::InteractionModel::Status)
@@ -505,8 +505,8 @@ describe Matter::MatterNode do
       endpoint.add_cluster(identify)
       node.add_endpoint(endpoint)
 
-      # Encode as TLV uint16
-      value = TLV::Any.new(15_u16, nil).to_slice
+      # Raw uint16 value bytes as delivered by the IM layer (minimal TLV width)
+      value = Bytes[15]
 
       status = node.write_attribute(1_u16, 0x0003_u32, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME, value)
       status.success?.should be_true

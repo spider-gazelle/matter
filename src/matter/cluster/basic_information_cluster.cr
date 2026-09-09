@@ -424,8 +424,7 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_NODE_LABEL
-          parsed = TLV::Any.from_slice(value)
-          str = parsed.value.as?(String)
+          str = decode_string(value)
           return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless str
 
           # Validate max length (32 chars per Matter spec)
@@ -437,8 +436,7 @@ module Matter
           increment_version_and_notify(ATTR_NODE_LABEL)
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_LOCATION
-          parsed = TLV::Any.from_slice(value)
-          str = parsed.value.as?(String)
+          str = decode_string(value)
           return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless str
 
           # Validate ISO 3166-1 alpha-2 format (must be exactly 2 characters)
@@ -455,8 +453,7 @@ module Matter
           increment_version_and_notify(ATTR_LOCATION)
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_LOCAL_CONFIG_DISABLED
-          parsed = TLV::Any.from_slice(value)
-          bool = parsed.value.as?(Bool)
+          bool = decode_bool(value)
           return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if bool.nil?
 
           @local_config_disabled = bool

@@ -443,12 +443,12 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_MODE
-          if value.size > 0
-            @mode = Mode.from_value(value[0])
+          if mode = decode_u8(value)
+            @mode = Mode.from_value(mode)
             increment_version
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
           end
         else
           super

@@ -405,16 +405,15 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_OPTIONS
-          if value.size >= 1
-            @options = value[0]
+          if options = decode_u8(value)
+            @options = options
             increment_version_and_notify(ATTR_OPTIONS)
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
             InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
           end
         when ATTR_ON_LEVEL
-          if value.size >= 1
-            new_level = value[0]
+          if new_level = decode_u8(value)
             if new_level >= @min_level && new_level <= @max_level
               @on_level = new_level
               increment_version_and_notify(ATTR_ON_LEVEL)
@@ -427,8 +426,8 @@ module Matter
           end
         when ATTR_ON_OFF_TRANSITION_TIME
           return unsupported_attribute unless @feature_map.lighting?
-          if value.size >= 2
-            @on_off_transition_time = IO::ByteFormat::LittleEndian.decode(UInt16, value)
+          if time = decode_u16(value)
+            @on_off_transition_time = time
             increment_version_and_notify(ATTR_ON_OFF_TRANSITION_TIME)
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
@@ -436,8 +435,8 @@ module Matter
           end
         when ATTR_ON_TRANSITION_TIME
           return unsupported_attribute unless @feature_map.lighting?
-          if value.size >= 2
-            @on_transition_time = IO::ByteFormat::LittleEndian.decode(UInt16, value)
+          if time = decode_u16(value)
+            @on_transition_time = time
             increment_version_and_notify(ATTR_ON_TRANSITION_TIME)
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
@@ -445,8 +444,8 @@ module Matter
           end
         when ATTR_OFF_TRANSITION_TIME
           return unsupported_attribute unless @feature_map.lighting?
-          if value.size >= 2
-            @off_transition_time = IO::ByteFormat::LittleEndian.decode(UInt16, value)
+          if time = decode_u16(value)
+            @off_transition_time = time
             increment_version_and_notify(ATTR_OFF_TRANSITION_TIME)
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
@@ -454,8 +453,8 @@ module Matter
           end
         when ATTR_DEFAULT_MOVE_RATE
           return unsupported_attribute unless @feature_map.lighting?
-          if value.size >= 1
-            @default_move_rate = value[0]
+          if rate = decode_u8(value)
+            @default_move_rate = rate
             increment_version_and_notify(ATTR_DEFAULT_MOVE_RATE)
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
@@ -463,8 +462,8 @@ module Matter
           end
         when ATTR_START_UP_CURRENT_LEVEL
           return unsupported_attribute unless @feature_map.lighting?
-          if value.size >= 1
-            @start_up_current_level = value[0]
+          if level = decode_u8(value)
+            @start_up_current_level = level
             increment_version_and_notify(ATTR_START_UP_CURRENT_LEVEL)
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else

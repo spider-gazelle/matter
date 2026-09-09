@@ -544,89 +544,89 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_LANGUAGE
-          text = TLV::Any.from_slice(value).as_s?
+          text = decode_string(value)
           return invalid_data unless text
           @language = text
           increment_version_and_notify(ATTR_LANGUAGE)
           success
         when ATTR_LED_SETTINGS
-          led = TLV::Any.from_slice(value).as_u8?
+          led = decode_u8(value)
           return invalid_data unless led
           @led_settings = LedSettings.from_value(led)
           increment_version_and_notify(ATTR_LED_SETTINGS)
           success
         when ATTR_AUTO_RELOCK_TIME
-          secs = TLV::Any.from_slice(value).as_u32?
+          secs = decode_u32(value)
           return invalid_data unless secs
           @auto_relock_time = secs
           increment_version_and_notify(ATTR_AUTO_RELOCK_TIME)
           success
         when ATTR_SOUND_VOLUME
-          sound = TLV::Any.from_slice(value).as_u8?
+          sound = decode_u8(value)
           return invalid_data unless sound
           @sound_volume = SoundVolume.from_value(sound)
           increment_version_and_notify(ATTR_SOUND_VOLUME)
           success
         when ATTR_OPERATING_MODE
-          mode = TLV::Any.from_slice(value).as_u8?
+          mode = decode_u8(value)
           return invalid_data unless mode
           @operating_mode = Def::OperatingMode.from_value(mode)
           increment_version_and_notify(ATTR_OPERATING_MODE)
           success
         when ATTR_ENABLE_LOCAL_PROGRAMMING
-          enabled = TLV::Any.from_slice(value).as_bool?
+          enabled = decode_bool(value)
           return invalid_data if enabled.nil?
           @enable_local_programming = enabled
           increment_version_and_notify(ATTR_ENABLE_LOCAL_PROGRAMMING)
           success
         when ATTR_ENABLE_ONE_TOUCH_LOCKING
-          enabled = TLV::Any.from_slice(value).as_bool?
+          enabled = decode_bool(value)
           return invalid_data if enabled.nil?
           @enable_one_touch_locking = enabled
           increment_version_and_notify(ATTR_ENABLE_ONE_TOUCH_LOCKING)
           success
         when ATTR_ENABLE_INSIDE_STATUS_LED
-          enabled = TLV::Any.from_slice(value).as_bool?
+          enabled = decode_bool(value)
           return invalid_data if enabled.nil?
           @enable_inside_status_led = enabled
           increment_version_and_notify(ATTR_ENABLE_INSIDE_STATUS_LED)
           success
         when ATTR_ENABLE_PRIVACY_MODE_BUTTON
-          enabled = TLV::Any.from_slice(value).as_bool?
+          enabled = decode_bool(value)
           return invalid_data if enabled.nil?
           @enable_privacy_mode_button = enabled
           increment_version_and_notify(ATTR_ENABLE_PRIVACY_MODE_BUTTON)
           success
         when ATTR_LOCAL_PROGRAMMING_FEATURES
-          features = TLV::Any.from_slice(value).as_u8?
+          features = decode_u8(value)
           return invalid_data unless features
           @local_programming_features = features
           increment_version_and_notify(ATTR_LOCAL_PROGRAMMING_FEATURES)
           success
         when ATTR_DOOR_OPEN_EVENTS
           return unsupported unless @feature_map.door_position_sensor?
-          counter = TLV::Any.from_slice(value).as_u32?
+          counter = decode_u32(value)
           return invalid_data unless counter
           @door_open_events = counter
           increment_version_and_notify(ATTR_DOOR_OPEN_EVENTS)
           success
         when ATTR_DOOR_CLOSED_EVENTS
           return unsupported unless @feature_map.door_position_sensor?
-          counter = TLV::Any.from_slice(value).as_u32?
+          counter = decode_u32(value)
           return invalid_data unless counter
           @door_closed_events = counter
           increment_version_and_notify(ATTR_DOOR_CLOSED_EVENTS)
           success
         when ATTR_OPEN_PERIOD
           return unsupported unless @feature_map.door_position_sensor?
-          period = TLV::Any.from_slice(value).as_u16?
+          period = decode_u16(value)
           return invalid_data unless period
           @open_period = period
           increment_version_and_notify(ATTR_OPEN_PERIOD)
           success
         when ATTR_WRONG_CODE_ENTRY_LIMIT
           return unsupported unless @feature_map.pin_credential? || @feature_map.rfid_credential?
-          limit = TLV::Any.from_slice(value).as_u8?
+          limit = decode_u8(value)
           return invalid_data unless limit
           return constraint_error if limit < 1_u8
           @wrong_code_entry_limit = limit
@@ -634,7 +634,7 @@ module Matter
           success
         when ATTR_USER_CODE_TEMPORARY_DISABLE_TIME
           return unsupported unless @feature_map.pin_credential? || @feature_map.rfid_credential?
-          secs = TLV::Any.from_slice(value).as_u8?
+          secs = decode_u8(value)
           return invalid_data unless secs
           return constraint_error if secs < 1_u8
           @user_code_temporary_disable_time = secs
@@ -643,21 +643,21 @@ module Matter
         when ATTR_SEND_PIN_OVER_THE_AIR
           return unsupported unless @feature_map.pin_credential?
           return unsupported if @feature_map.user?
-          enabled = TLV::Any.from_slice(value).as_bool?
+          enabled = decode_bool(value)
           return invalid_data if enabled.nil?
           @send_pin_over_the_air = enabled
           increment_version_and_notify(ATTR_SEND_PIN_OVER_THE_AIR)
           success
         when ATTR_REQUIRE_PIN_FOR_REMOTE_OPERATION
           return unsupported unless @feature_map.pin_credential? && @feature_map.credential_over_the_air_access?
-          enabled = TLV::Any.from_slice(value).as_bool?
+          enabled = decode_bool(value)
           return invalid_data if enabled.nil?
           @require_pin_for_remote_operation = enabled
           increment_version_and_notify(ATTR_REQUIRE_PIN_FOR_REMOTE_OPERATION)
           success
         when ATTR_EXPIRING_USER_TIMEOUT
           return unsupported unless @feature_map.user?
-          timeout = TLV::Any.from_slice(value).as_u16?
+          timeout = decode_u16(value)
           return invalid_data unless timeout
           return constraint_error if timeout < 1_u16
           @expiring_user_timeout = timeout

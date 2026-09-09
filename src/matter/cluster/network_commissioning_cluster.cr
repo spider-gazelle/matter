@@ -531,12 +531,13 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_INTERFACE_ENABLED
-          if value.size > 0
-            @interface_enabled = (value[0] != 0)
+          enabled = decode_bool(value)
+          if enabled.nil?
+            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+          else
+            @interface_enabled = enabled
             increment_version
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
-          else
-            InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
           end
         else
           super

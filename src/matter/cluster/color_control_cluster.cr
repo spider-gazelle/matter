@@ -449,8 +449,8 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_OPTIONS
-          if value.size >= 1
-            @options = value[0]
+          if options = decode_u8(value)
+            @options = options
             increment_version
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
@@ -458,8 +458,8 @@ module Matter
           end
         when ATTR_START_UP_COLOR_TEMPERATURE
           return unsupported_attribute unless @feature_map.color_temperature?
-          if value.size >= 2
-            @start_up_color_temperature_mireds = IO::ByteFormat::LittleEndian.decode(UInt16, value)
+          if mireds = decode_u16(value)
+            @start_up_color_temperature_mireds = mireds
             increment_version
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else

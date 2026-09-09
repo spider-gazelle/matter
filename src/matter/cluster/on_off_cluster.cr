@@ -279,21 +279,27 @@ module Matter
         case attribute_id
         when ATTR_ON_TIME
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless feature_map.lighting?
-          @on_time = IO::ByteFormat::LittleEndian.decode(UInt16, value)
+          on_time = decode_u16(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless on_time
+          @on_time = on_time
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_OFF_WAIT_TIME
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless feature_map.lighting?
-          @off_wait_time = IO::ByteFormat::LittleEndian.decode(UInt16, value)
+          off_wait_time = decode_u16(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless off_wait_time
+          @off_wait_time = off_wait_time
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_START_UP_ON_OFF
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless feature_map.lighting?
-          # Could be null or enum value
-          if value.size > 0 && value[0] != 0x14 # Not TLV null
-            @start_up_on_off = StartUpOnOff.from_value(value[0])
-          else
+          # Nullable enum
+          if tlv_null?(value)
             @start_up_on_off = nil
+          else
+            start_up = decode_u8(value)
+            return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless start_up
+            @start_up_on_off = StartUpOnOff.from_value(start_up)
           end
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)

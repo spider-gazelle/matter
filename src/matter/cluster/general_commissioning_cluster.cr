@@ -323,13 +323,12 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_BREADCRUMB
-          if value.size >= 8
-            io = IO::Memory.new(value)
-            @breadcrumb = io.read_bytes(UInt64, IO::ByteFormat::LittleEndian)
+          if breadcrumb = decode_uint(value)
+            @breadcrumb = breadcrumb
             increment_version
             InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
           end
         else
           super

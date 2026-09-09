@@ -351,9 +351,9 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_FAN_MODE
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
+          mode_value = decode_u8(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless mode_value
 
-          mode_value = value[0]
           return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if mode_value > 6_u8
 
           new_mode = FanMode.from_value(mode_value)
@@ -384,9 +384,9 @@ module Matter
 
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_PERCENT_SETTING
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
+          new_percent = decode_u8(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless new_percent
 
-          new_percent = value[0]
           return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if new_percent > 100_u8
 
           old_percent = @percent_setting
@@ -420,9 +420,9 @@ module Matter
 
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_SPEED_SETTING
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
+          new_speed = decode_u8(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless new_speed
 
-          new_speed = value[0]
           return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if new_speed > @speed_max
 
           old_speed = @speed_setting
@@ -450,9 +450,9 @@ module Matter
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_ROCK_SETTING
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.rocking?
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
+          new_setting = decode_u8(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless new_setting
 
-          new_setting = value[0]
           # Validate against rock_support
           invalid_bits = new_setting & ~@rock_support.value
           return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if invalid_bits != 0
@@ -463,9 +463,9 @@ module Matter
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_WIND_SETTING
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wind?
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
+          new_setting = decode_u8(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless new_setting
 
-          new_setting = value[0]
           # Validate against wind_support
           invalid_bits = new_setting & ~@wind_support.value
           return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if invalid_bits != 0
@@ -476,9 +476,9 @@ module Matter
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_AIRFLOW_DIRECTION
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.airflow_direction?
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
+          direction_value = decode_u8(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless direction_value
 
-          direction_value = value[0]
           return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if direction_value > 1_u8
 
           @airflow_direction = AirflowDirectionEnum.from_value(direction_value.to_i)

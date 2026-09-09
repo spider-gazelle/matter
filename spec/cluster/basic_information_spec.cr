@@ -204,14 +204,14 @@ describe Matter::Cluster::BasicInformationCluster do
     end
   end
 
-  describe "TLV attribute decoding - write_attribute" do
+  describe "raw attribute value decoding - write_attribute" do
     it "writes NODE_LABEL with TLV decoding" do
       cluster = Matter::Cluster::BasicInformationCluster.new(
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
       # Encode new label as TLV
-      tlv_value = TLV::Any.new("My Device", nil).to_slice
+      tlv_value = "My Device".to_slice
 
       initial_version = cluster.data_version
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL, tlv_value)
@@ -228,7 +228,7 @@ describe Matter::Cluster::BasicInformationCluster do
       )
 
       long_label = "a" * 33
-      tlv_value = TLV::Any.new(long_label, nil).to_slice
+      tlv_value = long_label.to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL, tlv_value)
 
@@ -240,7 +240,7 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      tlv_value = TLV::Any.new("US", nil).to_slice
+      tlv_value = "US".to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
@@ -253,7 +253,7 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      tlv_value = TLV::Any.new("gb", nil).to_slice
+      tlv_value = "gb".to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
@@ -266,7 +266,7 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      tlv_value = TLV::Any.new("XX", nil).to_slice
+      tlv_value = "XX".to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
@@ -279,7 +279,7 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      tlv_value = TLV::Any.new("USA", nil).to_slice
+      tlv_value = "USA".to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
@@ -291,7 +291,7 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      tlv_value = TLV::Any.new("U1", nil).to_slice
+      tlv_value = "U1".to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
@@ -304,7 +304,7 @@ describe Matter::Cluster::BasicInformationCluster do
         local_config_disabled: false
       )
 
-      tlv_value = TLV::Any.new(true, nil).to_slice
+      tlv_value = Bytes[1]
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCAL_CONFIG_DISABLED, tlv_value)
 
@@ -317,7 +317,7 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      tlv_value = TLV::Any.new("New Vendor", nil).to_slice
+      tlv_value = "New Vendor".to_slice
 
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME, tlv_value)
 

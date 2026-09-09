@@ -2,8 +2,12 @@ require "../spec_helper"
 require "../../src/matter/cluster/identify_cluster"
 
 # Helper to encode a uint16 as TLV for attribute writes
-def encode_tlv_uint16(value : UInt16) : Bytes
-  TLV::Any.new(value, nil).to_slice
+# Attribute values reach write_attribute as raw little-endian bytes (the IM layer
+# strips the TLV framing), in whatever width the sender's TLV encoder chose.
+def encode_raw_uint16(value : UInt16) : Bytes
+  bytes = Bytes.new(2)
+  IO::ByteFormat::LittleEndian.encode(value, bytes)
+  bytes
 end
 
 # Helper to encode Identify command (tag 0 = IdentifyTime)
@@ -90,10 +94,10 @@ describe Matter::Cluster::IdentifyCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::IdentifyCluster.new(endpoint_id)
 
-      # Encode 60 seconds as TLV uint16
+      # Encode 60 seconds as raw uint16
       status = cluster.write_attribute(
         Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME,
-        encode_tlv_uint16(60_u16)
+        encode_raw_uint16(60_u16)
       )
 
       status.success?.should be_true
@@ -106,7 +110,7 @@ describe Matter::Cluster::IdentifyCluster do
 
       status = cluster.write_attribute(
         Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TYPE,
-        encode_tlv_uint16(2_u16)
+        encode_raw_uint16(2_u16)
       )
 
       status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedWrite)
@@ -381,7 +385,7 @@ describe Matter::Cluster::IdentifyCluster do
 
       cluster.write_attribute(
         Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME,
-        encode_tlv_uint16(45_u16)
+        encode_raw_uint16(45_u16)
       )
 
       cluster.data_version.should eq(initial_version + 1)

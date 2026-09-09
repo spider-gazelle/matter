@@ -205,6 +205,84 @@ module Matter
         InteractionModel::Status.new(InteractionModel::StatusCode::Success)
       end
 
+      # ------------------------------------------------------------------------
+      # Raw attribute value decoding
+      # ------------------------------------------------------------------------
+      #
+      # The protocol layer (IMHandler.tlv_value_bytes) hands write_attribute the
+      # RAW value bytes of the TLV element, not its TLV encoding: integers arrive
+      # little-endian in whatever width the sender's TLV encoder chose (1, 2, 4 or
+      # 8 bytes regardless of the attribute's declared type), booleans as a single
+      # byte, strings as UTF-8 and TLV null as Bytes[0x14]. Lists and structures
+      # are still delivered TLV-encoded. These helpers decode the scalar forms and
+      # return nil when the bytes cannot represent the requested type.
+
+      # True when the raw value is a TLV null element
+      protected def tlv_null?(value : Bytes) : Bool
+        value.size == 1 && value[0] == 0x14_u8
+      end
+
+      protected def decode_uint(value : Bytes) : UInt64?
+        case value.size
+        when 1 then value[0].to_u64
+        when 2 then IO::ByteFormat::LittleEndian.decode(UInt16, value).to_u64
+        when 4 then IO::ByteFormat::LittleEndian.decode(UInt32, value).to_u64
+        when 8 then IO::ByteFormat::LittleEndian.decode(UInt64, value)
+        end
+      end
+
+      protected def decode_int(value : Bytes) : Int64?
+        case value.size
+        when 1 then IO::ByteFormat::LittleEndian.decode(Int8, value).to_i64
+        when 2 then IO::ByteFormat::LittleEndian.decode(Int16, value).to_i64
+        when 4 then IO::ByteFormat::LittleEndian.decode(Int32, value).to_i64
+        when 8 then IO::ByteFormat::LittleEndian.decode(Int64, value)
+        end
+      end
+
+      protected def decode_u8(value : Bytes) : UInt8?
+        if (int = decode_uint(value)) && int <= UInt8::MAX
+          int.to_u8
+        end
+      end
+
+      protected def decode_u16(value : Bytes) : UInt16?
+        if (int = decode_uint(value)) && int <= UInt16::MAX
+          int.to_u16
+        end
+      end
+
+      protected def decode_u32(value : Bytes) : UInt32?
+        if (int = decode_uint(value)) && int <= UInt32::MAX
+          int.to_u32
+        end
+      end
+
+      protected def decode_i8(value : Bytes) : Int8?
+        if (int = decode_int(value)) && Int8::MIN <= int <= Int8::MAX
+          int.to_i8
+        end
+      end
+
+      protected def decode_i16(value : Bytes) : Int16?
+        if (int = decode_int(value)) && Int16::MIN <= int <= Int16::MAX
+          int.to_i16
+        end
+      end
+
+      protected def decode_bool(value : Bytes) : Bool?
+        return unless value.size == 1
+        case value[0]
+        when 0 then false
+        when 1 then true
+        end
+      end
+
+      protected def decode_string(value : Bytes) : String?
+        str = String.new(value)
+        str if str.valid_encoding?
+      end
+
       # Invoke a command
       def invoke_command(command_id : UInt32, fields : Bytes = Bytes.new(0), session_id : UInt64? = nil, is_case_session : Bool = false, fabric_index : UInt8? = nil) : InteractionModel::Status | CommandResponse
         metadata = commands.find { |cmd| cmd.id.id == command_id }

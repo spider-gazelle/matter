@@ -336,27 +336,30 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_HOLD_TIME
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 2
-          @hold_time = IO::ByteFormat::LittleEndian.decode(UInt16, value)
+          delay = decode_u16(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless delay
+          @hold_time = delay
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
           # PIR feature attributes
         when ATTR_PIR_OCCUPIED_TO_UNOCCUPIED_DELAY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.passive_infrared?
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 2
-          @pir_occupied_to_unoccupied_delay = IO::ByteFormat::LittleEndian.decode(UInt16, value)
+          delay = decode_u16(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless delay
+          @pir_occupied_to_unoccupied_delay = delay
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_DELAY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.passive_infrared?
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 2
-          @pir_unoccupied_to_occupied_delay = IO::ByteFormat::LittleEndian.decode(UInt16, value)
+          delay = decode_u16(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless delay
+          @pir_unoccupied_to_occupied_delay = delay
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.passive_infrared?
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
-          threshold = value[0]
+          threshold = decode_u8(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless threshold
           return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if threshold < 1_u8 || threshold > 254_u8
           @pir_unoccupied_to_occupied_threshold = threshold
           increment_version
@@ -364,20 +367,22 @@ module Matter
           # Ultrasonic feature attributes
         when ATTR_ULTRASONIC_OCCUPIED_TO_UNOCCUPIED_DELAY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.ultrasonic?
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 2
-          @ultrasonic_occupied_to_unoccupied_delay = IO::ByteFormat::LittleEndian.decode(UInt16, value)
+          delay = decode_u16(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless delay
+          @ultrasonic_occupied_to_unoccupied_delay = delay
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_DELAY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.ultrasonic?
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 2
-          @ultrasonic_unoccupied_to_occupied_delay = IO::ByteFormat::LittleEndian.decode(UInt16, value)
+          delay = decode_u16(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless delay
+          @ultrasonic_unoccupied_to_occupied_delay = delay
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.ultrasonic?
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
-          threshold = value[0]
+          threshold = decode_u8(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless threshold
           return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if threshold < 1_u8 || threshold > 254_u8
           @ultrasonic_unoccupied_to_occupied_threshold = threshold
           increment_version
@@ -385,20 +390,22 @@ module Matter
           # PhysicalContact feature attributes
         when ATTR_PHYSICAL_CONTACT_OCCUPIED_TO_UNOCCUPIED_DELAY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.physical_contact?
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 2
-          @physical_contact_occupied_to_unoccupied_delay = IO::ByteFormat::LittleEndian.decode(UInt16, value)
+          delay = decode_u16(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless delay
+          @physical_contact_occupied_to_unoccupied_delay = delay
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_DELAY
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.physical_contact?
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 2
-          @physical_contact_unoccupied_to_occupied_delay = IO::ByteFormat::LittleEndian.decode(UInt16, value)
+          delay = decode_u16(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless delay
+          @physical_contact_unoccupied_to_occupied_delay = delay
           increment_version
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.physical_contact?
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
-          threshold = value[0]
+          threshold = decode_u8(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless threshold
           return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if threshold < 1_u8 || threshold > 254_u8
           @physical_contact_unoccupied_to_occupied_threshold = threshold
           increment_version

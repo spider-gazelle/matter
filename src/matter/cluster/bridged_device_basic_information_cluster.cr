@@ -423,8 +423,7 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_NODE_LABEL
-          parsed = TLV::Any.from_slice(value)
-          str = parsed.value.as?(String)
+          str = decode_string(value)
           return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless str
 
           # Validate max length (32 chars per Matter spec)

@@ -157,9 +157,8 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_HOUR_FORMAT
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
-
-          hour_value = value[0]
+          hour_value = decode_u8(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless hour_value
 
           # Validate hour format value
           unless hour_value.in?(0_u8, 1_u8, 255_u8)
@@ -176,9 +175,8 @@ module Matter
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
         when ATTR_ACTIVE_CALENDAR_TYPE
           return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.calendar_format?
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if value.size != 1
-
-          calendar_value = value[0]
+          calendar_value = decode_u8(value)
+          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless calendar_value
 
           # Validate calendar type value
           valid_values = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 255]
