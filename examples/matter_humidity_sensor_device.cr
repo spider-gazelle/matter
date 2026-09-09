@@ -97,6 +97,22 @@ module MatterHumiditySensor
       ] of Matter::Cluster::Base
     end
 
+    protected def started_commissioning_mode : Nil
+      manual_code = Matter::SetupPayload.generate_manual_code(discriminator, setup_pin)
+      puts "Starting in Commissioning Mode"
+      puts "  Discriminator: #{discriminator}"
+      puts "  Setup PIN: #{setup_pin}"
+      puts ""
+      puts "To pair this device:"
+      puts "  chip-tool pairing code 1 #{manual_code}"
+      puts ""
+    end
+
+    protected def started_operational_mode : Nil
+      puts "Starting in Operational Mode (already commissioned)"
+      puts ""
+    end
+
     protected def on_started : Nil
       @running = true
       puts "Sampling humidity every #{UPDATE_INTERVAL_SECONDS}s"

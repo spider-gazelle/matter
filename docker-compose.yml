@@ -1,0 +1,118 @@
+# End-to-end test environment: every example device runs in its own container
+# and the `tests` service (official chip-tool + crystal) commissions and drives
+# them over the compose network. Use `./test` to run everything.
+#
+# chip-tool is IPv6-only, so the network has an IPv6 (ULA) subnet and devices
+# advertise their fd00:6d61:7474::/64 address over mDNS.
+name: matter-e2e
+
+x-device: &device
+  build:
+    context: .
+    dockerfile: e2e/Dockerfile
+    target: device
+  image: matter-e2e-device
+  volumes:
+    - e2e-logs:/e2e/logs
+  networks:
+    - matter
+  # Healthy once the device has printed its pairing code (see device-entrypoint.sh).
+  healthcheck:
+    test: ["CMD-SHELL", "grep -q 'chip-tool pairing code 1' /e2e/logs/$${E2E_DEVICE}.log"]
+    interval: 2s
+    timeout: 2s
+    retries: 30
+    start_period: 5s
+
+services:
+  switch:
+    <<: *device
+    environment:
+      E2E_DEVICE: matter_switch
+
+  level-control:
+    <<: *device
+    environment:
+      E2E_DEVICE: matter_level_control
+
+  door-lock:
+    <<: *device
+    environment:
+      E2E_DEVICE: matter_door_lock
+
+  temperature-sensor:
+    <<: *device
+    environment:
+      E2E_DEVICE: matter_temperature_sensor
+
+  humidity-sensor:
+    <<: *device
+    environment:
+      E2E_DEVICE: matter_humidity_sensor
+
+  contact-sensor:
+    <<: *device
+    environment:
+      E2E_DEVICE: matter_contact_sensor
+
+  motion-sensor:
+    <<: *device
+    environment:
+      E2E_DEVICE: matter_motion_sensor
+
+  ambient-light-sensor:
+    <<: *device
+    environment:
+      E2E_DEVICE: matter_ambient_light_sensor
+
+  air-conditioner:
+    <<: *device
+    environment:
+      E2E_DEVICE: matter_air_conditioner
+
+  bridge:
+    <<: *device
+    environment:
+      E2E_DEVICE: matter_bridge
+
+  tests:
+    build:
+      context: .
+      dockerfile: e2e/Dockerfile
+      target: tests
+    image: matter-e2e-tests
+    depends_on:
+      switch: { condition: service_healthy }
+      level-control: { condition: service_healthy }
+      door-lock: { condition: service_healthy }
+      temperature-sensor: { condition: service_healthy }
+      humidity-sensor: { condition: service_healthy }
+      contact-sensor: { condition: service_healthy }
+      motion-sensor: { condition: service_healthy }
+      ambient-light-sensor: { condition: service_healthy }
+      air-conditioner: { condition: service_healthy }
+      bridge: { condition: service_healthy }
+    environment:
+      E2E_RUN_UNIT: ${E2E_RUN_UNIT:-1}
+      E2E_RUN_E2E: ${E2E_RUN_E2E:-1}
+      E2E_SPEC_ARGS: ${E2E_SPEC_ARGS:-}
+      # "code" commissions via mDNS discovery (`chip-tool pairing code`),
+      # "address" via `chip-tool pairing already-discovered` using the device's IPv6 address.
+      E2E_PAIRING: ${E2E_PAIRING:-code}
+      E2E_LOG_DIR: /e2e/logs
+    volumes:
+      - e2e-logs:/e2e/logs
+      - crystal-cache:/root/.cache/crystal
+    networks:
+      - matter
+
+networks:
+  matter:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd00:6d61:7474::/64
+
+volumes:
+  e2e-logs:
+  crystal-cache:

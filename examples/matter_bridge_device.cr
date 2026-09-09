@@ -284,7 +284,7 @@ module MatterBridge
         puts ""
       else
         # No stored devices - create random initial devices
-        initial_count = rand(3)
+        initial_count = rand(1..2)
         puts "Creating #{initial_count} initial bridged device(s)..."
         initial_count.times do
           add_bridged_device

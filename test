@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+#
+# Runs the full test suite (crystal unit specs + chip-tool end-to-end specs)
+# inside docker compose, then tears the environment down.
+#
+# Works with bash 3.2+ (macOS) and any Linux with docker compose v2
+# (or the legacy docker-compose v1 binary).
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT_DIR"
+
+usage() {
+  cat <<'USAGE'
+Usage: ./test [options] [-- <crystal spec args>]
+
+Builds the e2e docker images, starts every example device plus a test runner
+(crystal + official chip-tool) with docker compose, runs the unit specs and the
+end-to-end specs, prints PASS/FAIL and exits 0 on success / 1 on failure.
+
+Options:
+  --unit-only        Only run the standard crystal specs (spec/)
+  --e2e-only         Only run the end-to-end specs (e2e/spec/)
+  --no-build         Don't rebuild the docker images
+  --keep             Leave the compose environment running after the tests
+  --clean            Also remove volumes (crystal cache) when tearing down
+  --verbose          Stream every container's output (default: test runner only)
+  -h, --help         Show this help
+
+Anything after `--` is passed to `crystal spec` for the e2e run, e.g.
+  ./test --e2e-only -- e2e/spec/switch_spec.cr
+  ./test -- -e "toggles"
+
+Logs from every container are written to tmp/e2e/logs/ after each run.
+USAGE
+}
+
+RUN_UNIT=1
+RUN_E2E=1
+BUILD=1
+KEEP=0
+CLEAN=0
+VERBOSE=0
+SPEC_ARGS=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --unit-only) RUN_E2E=0; shift ;;
+    --e2e-only) RUN_UNIT=0; shift ;;
+    --no-build) BUILD=0; shift ;;
+    --keep) KEEP=1; shift ;;
+    --clean) CLEAN=1; shift ;;
+    --verbose) VERBOSE=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    --) shift; SPEC_ARGS="$*"; break ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+# ---------------------------------------------------------------------------
+# docker compose detection (v2 plugin preferred, v1 binary as a fallback)
+# ---------------------------------------------------------------------------
+if ! command -v docker >/dev/null 2>&1; then
+  echo "ERROR: docker is not installed or not on PATH" >&2
+  exit 2
+fi
+
+if docker compose version >/dev/null 2>&1; then
+  compose() { docker compose "$@"; }
+elif command -v docker-compose >/dev/null 2>&1; then
+  compose() { docker-compose "$@"; }
+else
+  echo "ERROR: neither 'docker compose' nor 'docker-compose' is available" >&2
+  exit 2
+fi
+
+if ! docker info >/dev/null 2>&1; then
+  echo "ERROR: the docker daemon is not running or not reachable" >&2
+  exit 2
+fi
+
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-matter-e2e}"
+export E2E_RUN_UNIT="$RUN_UNIT"
+export E2E_RUN_E2E="$RUN_E2E"
+export E2E_SPEC_ARGS="$SPEC_ARGS"
+
+LOG_DIR="$ROOT_DIR/tmp/e2e/logs"
+mkdir -p "$LOG_DIR"
+RUN_LOG="$LOG_DIR/compose-$(date +%Y%m%d-%H%M%S).log"
+
+RESULT=1
+teardown() {
+  # Always capture logs first: the device output (pairing codes, protocol
+  # debug logging) is the most useful thing to have when a test fails.
+  compose logs --no-color --timestamps >"$RUN_LOG" 2>&1 || true
+
+  if [[ "$KEEP" -eq 1 ]]; then
+    echo "==> Leaving compose environment running (project: $COMPOSE_PROJECT_NAME)"
+    echo "    Tear down with: docker compose -p $COMPOSE_PROJECT_NAME down"
+  else
+    echo "==> Tearing down compose environment"
+    if [[ "$CLEAN" -eq 1 ]]; then
+      compose down --remove-orphans --volumes >/dev/null 2>&1 || true
+    else
+      compose down --remove-orphans >/dev/null 2>&1 || true
+    fi
+  fi
+
+  echo "==> Container logs saved to: ${RUN_LOG#"$ROOT_DIR"/}"
+  if [[ "$RESULT" -eq 0 ]]; then
+    echo "==> PASS"
+  else
+    echo "==> FAIL (exit code $RESULT)"
+  fi
+  exit "$RESULT"
+}
+trap teardown EXIT
+trap 'RESULT=130; exit 130' INT TERM
+
+# Make sure nothing is left over from a previous (possibly --keep) run so every
+# device starts un-commissioned.
+compose down --remove-orphans >/dev/null 2>&1 || true
+
+UP_ARGS=(--exit-code-from tests --abort-on-container-exit)
+if [[ "$BUILD" -eq 1 ]]; then
+  echo "==> Building images"
+  compose build
+fi
+# Only stream the test runner's output unless --verbose (legacy docker-compose v1
+# has no --attach, in which case everything is streamed).
+if [[ "$VERBOSE" -eq 0 ]] && compose up --help 2>&1 | grep -q -- '--attach '; then
+  UP_ARGS+=(--attach tests)
+fi
+
+echo "==> Starting devices and running tests"
+set +e
+compose up --no-build "${UP_ARGS[@]}"
+RESULT=$?
+set -e

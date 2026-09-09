@@ -1,0 +1,10 @@
+.git
+lib
+bin
+tmp
+.shards
+*.dwarf
+*.json
+!shard.lock
+chip-tool-storage
+docs

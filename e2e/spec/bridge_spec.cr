@@ -1,0 +1,42 @@
+require "./e2e_helper"
+
+# examples/matter_bridge_device.cr - Bridge exposing 1..2 bridged On/Off lights
+describe "matter_bridge example" do
+  device = E2E::Device["matter_bridge"]
+
+  bridged_endpoints = -> {
+    expect_success(device.read("descriptor", "parts-list", 0)).int_list("PartsList").map(&.to_i)
+  }
+
+  it "commissions with chip-tool" do
+    device.commission!
+  end
+
+  it "exposes at least one bridged endpoint" do
+    endpoints = bridged_endpoints.call
+    endpoints.should_not be_empty
+    endpoints.each do |endpoint|
+      expect_success(device.read("descriptor", "device-type-list", endpoint)).ints("DeviceType").should contain(0x0100_i64)
+    end
+  end
+
+  it "reports bridged device basic information" do
+    endpoint = bridged_endpoints.call.first
+    read_value(device, "bridgeddevicebasicinformation", "node-label", "NodeLabel", endpoint).should match(/^Bridged Light \d+$/)
+    read_bool(device, "bridgeddevicebasicinformation", "reachable", "Reachable", endpoint).should be_true
+  end
+
+  it "toggles every bridged light" do
+    bridged_endpoints.call.each do |endpoint|
+      before = read_bool(device, "onoff", "on-off", "OnOff", endpoint)
+      expect_success(device.invoke("onoff", "toggle", endpoint: endpoint))
+      read_bool(device, "onoff", "on-off", "OnOff", endpoint).should eq !before
+    end
+  end
+
+  it "writes a bridged device node label" do
+    endpoint = bridged_endpoints.call.first
+    expect_success(device.write("bridgeddevicebasicinformation", "node-label", "Porch Light", endpoint))
+    read_value(device, "bridgeddevicebasicinformation", "node-label", "NodeLabel", endpoint).should eq "Porch Light"
+  end
+end
