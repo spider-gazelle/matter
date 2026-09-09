@@ -7,6 +7,8 @@ When working on example code, make sure it compiles and validate using the offic
 Examples must commission successfully and chip-tool must be able to read and write relevant cluster attributes.
 Make sure to `chip-tool storage clear-all` before testing new builds of any example.
 
+Clone https://github.com/matter-js/matter.js and use it as a reference.
+
 ## 1. Plan Node Default
 - Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
 - If something goes sideways, STOP and re-plan immediately, don’t keep pushing
