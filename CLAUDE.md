@@ -3,9 +3,8 @@
 This is a crystal lang matter protocol library. Use `crystal tool format` and `./bin/ameba` to format and lint code.
 Run specs using `crystal spec -v --error-trace` make sure to run specs using a subagent. You can also run individual spec files or use `focus: true` to isolate the spec you're working on.
 
-When working on example code, make sure it compiles and validate using the offical `chip-tool`.
+When working on example code, make sure it compiles and validate using the offical `chip-tool` via e2e tests.
 Examples must commission successfully and chip-tool must be able to read and write relevant cluster attributes.
-Make sure to `chip-tool storage clear-all` before testing new builds of any example.
 
 Clone https://github.com/matter-js/matter.js and use it as a reference.
 
