@@ -327,4 +327,12 @@ describe Matter::Storage::MemoryBackend do
       storage.contexts([] of String).should eq(["alpha", "beta"])
     end
   end
+
+  describe "smoke" do
+    it "stores and retrieves a string under a context" do
+      storage = Matter::Storage::MemoryBackend.new
+      storage.set(["one"], "two", "three")
+      storage.get(["one"], "two").should eq "three"
+    end
+  end
 end

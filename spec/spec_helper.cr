@@ -28,6 +28,10 @@ def parse_tlv_array(bytes : Bytes)
   parsed.value.as(Array(TLV::Any))
 end
 
+# Log level for the suite. Defaults to :warn to keep output quiet; set
+# MATTER_SPEC_LOG=trace (or debug, info, ...) to see protocol tracing:
+#   MATTER_SPEC_LOG=trace crystal spec
 Spec.before_suite do
-  ::Log.setup("*", :trace)
+  level = ::Log::Severity.parse(ENV["MATTER_SPEC_LOG"]? || "warn")
+  ::Log.setup("*", level)
 end
