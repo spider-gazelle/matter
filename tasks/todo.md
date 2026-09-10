@@ -57,7 +57,7 @@ Rule (user, applies to all phases): no magic numbers; named constants/enums, enu
 - [x] Step D: silent rescues log; corrupt storage file renamed not wiped; CASE test-compat fallback removed;
       hot-path log levels; `Network.local_ip_addresses`
 - [x] Step E: log sources mirror paths; namespace `Log` fallbacks; examples read `MATTER_LOG`
-- [ ] `./test` green at the end
+- [x] `./test` green at the end (2140 unit + 61 e2e, device validation 20/20)
 
 ## Phase 3: Storage
 - [ ] `Storage::Backend` interface (collections, documents, transactions, schema_version)
@@ -129,3 +129,28 @@ Rule (user, applies to all phases): no magic numbers; named constants/enums, enu
 | unit examples | 2133 | 2034 (duplicates removed, ~60 added) |
 | e2e examples | 61 | 61 |
 | ameba findings | 250 | 0 |
+
+### Phase 2 (2026-09-10)
+- `Matter::Error` hierarchy (`error.cr`): Codec, Crypto/Authentication, Certificate, Storage, Session,
+  Protocol/Timeout, Commissioning, Transport, Cluster(status). No bare-string raises remain in `src/`.
+- Exceptions are mapped to IM statuses at the cluster boundary (`invoke_command`, `write_attribute`,
+  `IMHandler.safe_invoke_command`); a hostile payload can no longer make the device drop the exchange.
+  Cluster-specific status codes now reach the wire (`StatusIB.cluster_status`).
+- Wire-reachable raises became statuses: network commissioning OutOfRange, group key management
+  ResourceExhausted/NotFound/ConstraintError, admin commissioning ConstraintError/Busy/PAKE codes.
+- Silent rescues log with context; a corrupt storage file is renamed `.corrupt-<ts>` instead of wiped;
+  identity loads log storage failures; the CASE Sigma3 "test compatibility" fallback is gone (handshake
+  fails closed on decrypt/signature failure); hot-path logs are debug without payload dumps.
+- `Status` factories (`Status.success`, `.unsupported_attribute`, `.cluster_failure(code)`), 338 literal
+  constructions rewritten, four local shorthand sets deleted; `to_s(io)` on statuses and paths (were dead);
+  protocol constants (IM revision/tag, codec shifts/masks/offsets, TLV null marker); `Matter::Hex`.
+- Datatype wrappers are value structs from one `define_id` macro (equality, hash, TLV, `to_s`); `brand`
+  gone; `FabricId`/`VendorId`/`SubjectId` deleted; NodeId/CAT/FabricIndex constants.
+- Log sources mirror the file tree with namespace fallbacks; `spec/log_sources_spec.cr` fails on drift;
+  `MATTER_LOG` for examples; `Matter::Network.local_ip_addresses` replaces ten copies in the examples.
+
+| Metric | after Phase 1 | after Phase 2 |
+|---|---|---|
+| `src/` lines / files | 40,897 / 139 | 41,275 / 140 |
+| unit examples | 2034 | 2140 |
+| bare-string raises in src | 66 | 0 |
