@@ -401,7 +401,7 @@ module Matter
         end
         increment_version
         InteractionModel::Status.success
-      rescue ex
+      rescue ex : TLV::DeserializationError | TypeCastError | ArgumentError
         Log.warn(exception: ex) { "Invalid access control list" }
         InteractionModel::Status.constraint_error
       end

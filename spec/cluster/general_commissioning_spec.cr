@@ -38,10 +38,8 @@ module Matter::Cluster
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = GeneralCommissioningCluster.new(endpoint_id)
 
-        value = cluster.read_attribute(GeneralCommissioningCluster::ATTR_BREADCRUMB)
-        value.should be_a(TLV::Any)
         # UInt64 value 0 is TLV-encoded as 2 bytes (tag + value)
-        value.as(TLV::Any).to_slice.size.should eq(2)
+        read_tlv(cluster, GeneralCommissioningCluster::ATTR_BREADCRUMB).to_slice.size.should eq(2)
       end
 
       it "writes Breadcrumb attribute" do
@@ -88,9 +86,7 @@ module Matter::Cluster
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = GeneralCommissioningCluster.new(endpoint_id)
 
-        value = cluster.read_attribute(GeneralCommissioningCluster::ATTR_SUPPORTS_CONCURRENT_CONNECTION)
-        value.should be_a(TLV::Any)
-        value.as(TLV::Any).value.should be_true
+        read(cluster, GeneralCommissioningCluster::ATTR_SUPPORTS_CONCURRENT_CONNECTION).should be_true
       end
 
       it "returns status for unsupported attribute write" do

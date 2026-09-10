@@ -132,18 +132,3 @@ describe Matter::Session::SecureMessage do
     restored.check_peer_message_counter(101_u32).accept?.should be_true
   end
 end
-
-describe Matter::Transport::MessageCounter do
-  it "recognizes a duplicate zero counter" do
-    counter = Matter::Transport::MessageCounter.new
-    counter.check(0_u32).accept?.should be_true
-    counter.check(0_u32).duplicate?.should be_true
-  end
-
-  it "checks without committing before authentication" do
-    counter = Matter::Transport::MessageCounter.new
-    counter.peek(100_u32).accept?.should be_true
-    counter.peek(1_u32).accept?.should be_true
-    counter.max_received.should be_nil
-  end
-end

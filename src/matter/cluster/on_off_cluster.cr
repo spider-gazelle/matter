@@ -462,7 +462,7 @@ module Matter
         ScenesManagementCluster::ExtensionFieldSet.new(
           cluster_id: CLUSTER_ID,
           attribute_list: [
-            {ATTR_ON_OFF, @on_off.to_tlv},
+            {ATTR_ON_OFF, TLV::Any.new(@on_off)},
           ]
         )
       end
@@ -477,18 +477,13 @@ module Matter
         field_set.attribute_value_list.each do |attribute_id, value|
           next unless attribute_id == ATTR_ON_OFF
 
-          begin
-            parsed = TLV::Any.from_slice(value).value
-            case parsed
-            when Bool
-              set_on_off(parsed)
-              return true
-            when UInt8
-              set_on_off(parsed == SCENE_BOOLEAN_TRUE)
-              return true
-            end
-          rescue ex
-            Log.debug(exception: ex) { "OnOff: ignoring malformed scene extension field (bytes=#{value.hexstring})" }
+          case parsed = value.value
+          when Bool
+            set_on_off(parsed)
+            return true
+          when UInt8
+            set_on_off(parsed == SCENE_BOOLEAN_TRUE)
+            return true
           end
         end
 

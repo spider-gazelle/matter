@@ -370,7 +370,7 @@ module Matter
           mode_value = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless mode_value
 
-          return InteractionModel::Status.constraint_error if mode_value > 6_u8
+          return InteractionModel::Status.constraint_error if mode_value > FanMode::Smart.value
 
           new_mode = FanMode.from_value(mode_value)
 

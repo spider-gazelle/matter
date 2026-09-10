@@ -16,7 +16,7 @@ describe Matter::Cluster::OnOffCluster do
 
     on_field_set = Matter::Cluster::ScenesManagementCluster::ExtensionFieldSet.new(
       cluster_id: Matter::Cluster::OnOffCluster::CLUSTER_ID,
-      attribute_list: [{Matter::Cluster::OnOffCluster::ATTR_ON_OFF, true.to_tlv}]
+      attribute_list: [{Matter::Cluster::OnOffCluster::ATTR_ON_OFF, TLV::Any.new(true)}]
     )
 
     applied = cluster.apply_scene_extension_field_set(on_field_set)

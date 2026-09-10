@@ -41,7 +41,7 @@ module Matter
         @current_group = 0_u16,
         @scene_valid = false,
         @remaining_capacity = 16_u8,
-        @fabric_index = 1_u8,
+        @fabric_index = ScenesManagementCluster::DEFAULT_FABRIC_INDEX,
       )
       end
     end
@@ -123,14 +123,9 @@ module Matter
         TLV::Any.new(value)
       end
 
-      # Create from raw TLV bytes, converting to the appropriate value field
-      def self.from_tlv_bytes(attribute_id : UInt32, tlv_bytes : Bytes) : AttributeValuePairTlv
-        return new(attribute_id) if tlv_bytes.empty?
-
-        tlv_value = TLV::Any.from_slice(tlv_bytes)
-        value = tlv_value.value
-
-        case value
+      # Create from a decoded attribute value, selecting the matching value field
+      def self.from_attribute_value(attribute_id : UInt32, tlv_value : TLV::Any) : AttributeValuePairTlv
+        case value = tlv_value.value
         when Bool
           # Boolean maps to valueUnsigned8
           new(attribute_id, value_unsigned8: value ? 1_u8 : 0_u8)
@@ -416,6 +411,11 @@ module Matter
       CMD_GET_SCENE_MEMBERSHIP_RESPONSE = 0x06_u32
       CMD_COPY_SCENE_RESPONSE           = 0x40_u32
 
+      # Scenes are fabric-scoped, but the command handlers do not yet take the
+      # accessing fabric from the session, so scene tables and SceneInfo
+      # default to the first commissioned fabric.
+      DEFAULT_FABRIC_INDEX = 1_u8
+
       # SceneInfo structure for fabric-scoped scene info
       struct SceneInfo
         include Storage::Record
@@ -433,18 +433,18 @@ module Matter
           @current_group = 0_u16,
           @scene_valid = false,
           @remaining_capacity = 16_u8,
-          @fabric_index = 1_u8,
+          @fabric_index = DEFAULT_FABRIC_INDEX,
         )
         end
       end
 
-      # Extension field set for scene data: the attribute values (raw TLV
-      # bytes) a sceneable cluster captured, keyed by attribute id.
+      # Extension field set for scene data: the attribute values a sceneable
+      # cluster captured, keyed by attribute id.
       struct ExtensionFieldSet
         property cluster_id : UInt32
-        property attribute_value_list : Array(Tuple(UInt32, Bytes))
+        property attribute_value_list : Array(Tuple(UInt32, TLV::Any))
 
-        def initialize(@cluster_id, attribute_list : Array(Tuple(UInt32, Bytes)) = [] of Tuple(UInt32, Bytes))
+        def initialize(@cluster_id, attribute_list : Array(Tuple(UInt32, TLV::Any)) = [] of Tuple(UInt32, TLV::Any))
           @attribute_value_list = attribute_list
         end
       end
@@ -463,7 +463,7 @@ module Matter
         end
       end
 
-      # One attribute value of a persisted extension field set.
+      # One attribute value of a persisted extension field set (TLV bytes).
       struct PersistedAttributeValue
         include Storage::Record
 
@@ -485,11 +485,11 @@ module Matter
         end
 
         def self.from_field_set(field_set : ExtensionFieldSet) : PersistedExtensionFieldSet
-          new(field_set.cluster_id, field_set.attribute_value_list.map { |id, value| PersistedAttributeValue.new(id, value) })
+          new(field_set.cluster_id, field_set.attribute_value_list.map { |id, value| PersistedAttributeValue.new(id, value.to_slice) })
         end
 
         def to_field_set : ExtensionFieldSet
-          ExtensionFieldSet.new(@cluster_id, @attributes.map { |attribute| {attribute.attribute_id, attribute.value} })
+          ExtensionFieldSet.new(@cluster_id, @attributes.map { |attribute| {attribute.attribute_id, TLV::Any.from_slice(attribute.value)} })
         end
       end
 
@@ -653,7 +653,7 @@ module Matter
         when ATTR_SCENE_TABLE_SIZE
           tlv(@scene_table_size)
         when ATTR_FABRIC_SCENE_INFO
-          fabric_scene_info_tlv(fabric_index || 1_u8)
+          fabric_scene_info_tlv(fabric_index || DEFAULT_FABRIC_INDEX)
         when GLOBAL_FEATURE_MAP
           tlv(@feature_map.value)
         else
@@ -711,7 +711,7 @@ module Matter
       private def handle_add_scene(fields : TLV::Any?) : TLV::Any
         req = decode(fields, AddSceneRequest)
 
-        fabric_index = 1_u8
+        fabric_index = DEFAULT_FABRIC_INDEX
         key = {fabric_index, req.group_id, req.scene_id}
 
         # Check capacity
@@ -722,7 +722,7 @@ module Matter
 
         extension_fields = (req.extension_field_sets || [] of TLV::Any).map do |value|
           field_set = ExtensionFieldSetTlv.from_tlv(value)
-          attributes = field_set.attribute_value_list.map { |pair| {pair.attribute_id, pair.attribute_value.to_slice} }
+          attributes = field_set.attribute_value_list.map { |pair| {pair.attribute_id, pair.attribute_value} }
           ExtensionFieldSet.new(field_set.cluster_id, attributes)
         end
         @scenes[key] = SceneData.new(req.transition_time, req.scene_name || "", extension_fields)
@@ -738,7 +738,7 @@ module Matter
       private def handle_view_scene(fields : TLV::Any?) : TLV::Any
         req = decode(fields, ViewSceneRequest)
 
-        fabric_index = 1_u8
+        fabric_index = DEFAULT_FABRIC_INDEX
         key = {fabric_index, req.group_id, req.scene_id}
 
         if scene = @scenes[key]?
@@ -755,7 +755,7 @@ module Matter
       private def handle_remove_scene(fields : TLV::Any?) : TLV::Any
         req = decode(fields, RemoveSceneRequest)
 
-        fabric_index = 1_u8
+        fabric_index = DEFAULT_FABRIC_INDEX
         key = {fabric_index, req.group_id, req.scene_id}
 
         if @scenes.delete(key)
@@ -773,7 +773,7 @@ module Matter
       private def handle_remove_all_scenes(fields : TLV::Any?) : TLV::Any
         req = decode(fields, RemoveAllScenesRequest)
 
-        fabric_index = 1_u8
+        fabric_index = DEFAULT_FABRIC_INDEX
         @scenes.reject! { |k, _| k[0] == fabric_index && k[1] == req.group_id }
         update_fabric_scene_info(fabric_index)
 
@@ -787,7 +787,7 @@ module Matter
       private def handle_store_scene(fields : TLV::Any?) : TLV::Any
         req = decode(fields, StoreSceneRequest)
 
-        fabric_index = 1_u8
+        fabric_index = DEFAULT_FABRIC_INDEX
         key = {fabric_index, req.group_id, req.scene_id}
 
         # Check capacity
@@ -818,7 +818,7 @@ module Matter
       private def handle_recall_scene(fields : TLV::Any?) : InteractionModel::Status
         req = decode(fields, RecallSceneRequest)
 
-        fabric_index = 1_u8
+        fabric_index = DEFAULT_FABRIC_INDEX
         key = {fabric_index, req.group_id, req.scene_id}
 
         scene_data = @scenes[key]?
@@ -852,7 +852,7 @@ module Matter
       private def handle_get_scene_membership(fields : TLV::Any?) : TLV::Any
         req = decode(fields, GetSceneMembershipRequest)
 
-        fabric_index = 1_u8
+        fabric_index = DEFAULT_FABRIC_INDEX
         scene_list = [] of UInt8
         @scenes.each do |key, _|
           if key[0] == fabric_index && key[1] == req.group_id
@@ -873,7 +873,7 @@ module Matter
       private def handle_copy_scene(fields : TLV::Any?) : TLV::Any
         req = decode(fields, CopySceneRequest)
 
-        fabric_index = 1_u8
+        fabric_index = DEFAULT_FABRIC_INDEX
         copy_all = (req.mode & 0x01) != 0
 
         if copy_all
@@ -921,8 +921,7 @@ module Matter
           # Convert extension field sets to TLV structs
           ext_fields = scene.extension_field_sets.map do |efs|
             attr_pairs = efs.attribute_value_list.map do |attr_id, attr_value|
-              # Convert raw TLV bytes to the appropriate value field type
-              AttributeValuePairTlv.from_tlv_bytes(attr_id, attr_value)
+              AttributeValuePairTlv.from_attribute_value(attr_id, attr_value)
             end
             ExtensionFieldSetTlv.new(efs.cluster_id, attr_pairs)
           end
@@ -966,15 +965,15 @@ module Matter
 
       # Public API
 
-      def scene_count(fabric_index : UInt8 = 1_u8) : Int32
+      def scene_count(fabric_index : UInt8 = DEFAULT_FABRIC_INDEX) : Int32
         @scenes.count { |k, _| k[0] == fabric_index }
       end
 
-      def has_scene?(group_id : UInt16, scene_id : UInt8, fabric_index : UInt8 = 1_u8) : Bool
+      def has_scene?(group_id : UInt16, scene_id : UInt8, fabric_index : UInt8 = DEFAULT_FABRIC_INDEX) : Bool
         @scenes.has_key?({fabric_index, group_id, scene_id})
       end
 
-      def invalidate_current_scene(fabric_index : UInt8 = 1_u8)
+      def invalidate_current_scene(fabric_index : UInt8 = DEFAULT_FABRIC_INDEX)
         if info = @fabric_scene_info[fabric_index]?
           info.scene_valid = false
           @fabric_scene_info[fabric_index] = info

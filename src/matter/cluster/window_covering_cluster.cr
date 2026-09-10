@@ -491,7 +491,7 @@ module Matter
       private def handle_down_or_close
         # Move to fully closed position (100%)
         if @feature_map.includes?(Feature::PositionAwareLift)
-          @target_position_lift_percent100ths = 10000_u16 # 100.00%
+          @target_position_lift_percent100ths = MAX_POSITION_PERCENT100THS # 100.00%
         end
         @operational_status = OperationalStatus::GlobalLiftMoving
         increment_version

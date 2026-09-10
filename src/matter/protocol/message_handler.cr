@@ -46,8 +46,6 @@ module Matter
       MRP_DUPLICATE_RESPONSE_TTL         = 10.seconds
       MRP_DUPLICATE_RESPONSE_MAX_ENTRIES = 512
 
-      MSG_REPORT_DATA = 0x05_u8
-
       # Secure Channel Message Types
       MSG_STANDALONE_ACK       = 0x10_u8
       MSG_PBKDF_PARAM_REQUEST  = 0x20_u8
@@ -638,7 +636,7 @@ module Matter
         payload_header = Codec::MessageCodec::PayloadHeader.new(
           exchange_id: new_exchange_id,
           protocol_id: PROTOCOL_INTERACTION_MODEL,
-          message_type: MSG_REPORT_DATA,
+          message_type: InteractionModel::MessageType::ReportData.value,
           initiator_message: true,
           requires_acknowledge: true
         )

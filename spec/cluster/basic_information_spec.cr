@@ -71,12 +71,7 @@ describe Matter::Cluster::BasicInformationCluster do
         data_model_revision: 17_u16
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_DATA_MODEL_REVISION)
-      result.should be_a(TLV::Any)
-
-      # Parse TLV
-      parsed = result.as(TLV::Any)
-      parsed.value.should eq(17)
+      read(cluster, Matter::Cluster::BasicInformationCluster::ATTR_DATA_MODEL_REVISION).should eq(17)
     end
 
     it "reads VENDOR_NAME with TLV encoding" do
@@ -85,11 +80,7 @@ describe Matter::Cluster::BasicInformationCluster do
         vendor_name: "Test Vendor"
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME)
-      result.should be_a(TLV::Any)
-
-      parsed = result.as(TLV::Any)
-      parsed.value.should eq("Test Vendor")
+      read(cluster, Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME).should eq("Test Vendor")
     end
 
     it "reads VENDOR_ID with TLV encoding" do
@@ -98,11 +89,7 @@ describe Matter::Cluster::BasicInformationCluster do
         vendor_id: 0xFFF1_u16
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_ID)
-      result.should be_a(TLV::Any)
-
-      parsed = result.as(TLV::Any)
-      parsed.value.should eq(0xFFF1)
+      read(cluster, Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_ID).should eq(0xFFF1)
     end
 
     it "reads SOFTWARE_VERSION with TLV encoding" do
@@ -111,11 +98,7 @@ describe Matter::Cluster::BasicInformationCluster do
         software_version: 0x01020304_u32
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_SOFTWARE_VERSION)
-      result.should be_a(TLV::Any)
-
-      parsed = result.as(TLV::Any)
-      parsed.value.should eq(0x01020304)
+      read(cluster, Matter::Cluster::BasicInformationCluster::ATTR_SOFTWARE_VERSION).should eq(0x01020304)
     end
 
     it "reads LOCAL_CONFIG_DISABLED with TLV encoding" do
@@ -124,11 +107,7 @@ describe Matter::Cluster::BasicInformationCluster do
         local_config_disabled: true
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCAL_CONFIG_DISABLED)
-      result.should be_a(TLV::Any)
-
-      parsed = result.as(TLV::Any)
-      parsed.value.should be_true
+      read(cluster, Matter::Cluster::BasicInformationCluster::ATTR_LOCAL_CONFIG_DISABLED).should be_true
     end
 
     it "reads CAPABILITY_MINIMA with TLV struct encoding" do
@@ -142,11 +121,8 @@ describe Matter::Cluster::BasicInformationCluster do
         capability_minima: capability
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_CAPABILITY_MINIMA)
-      result.should be_a(TLV::Any)
-
       # Parse TLV structure using TLV::Serializable
-      parsed = Matter::Cluster::BasicInformationCluster::CapabilityMinimaStruct.from_tlv(result.as(TLV::Any))
+      parsed = Matter::Cluster::BasicInformationCluster::CapabilityMinimaStruct.from_tlv(read_tlv(cluster, Matter::Cluster::BasicInformationCluster::ATTR_CAPABILITY_MINIMA))
       parsed.case_sessions_per_fabric.should eq(5)
       parsed.subscriptions_per_fabric.should eq(10)
     end
@@ -162,11 +138,8 @@ describe Matter::Cluster::BasicInformationCluster do
         product_appearance: appearance
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE)
-      result.should be_a(TLV::Any)
-
       # Parse TLV structure using TLV::Serializable
-      parsed = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.from_tlv(result.as(TLV::Any))
+      parsed = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.from_tlv(read_tlv(cluster, Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE))
       parsed.finish.should eq(Matter::Cluster::BasicInformationCluster::ProductFinish::Matte)
       parsed.primary_color.should eq(Matter::Cluster::BasicInformationCluster::Color::Blue)
     end
@@ -182,11 +155,8 @@ describe Matter::Cluster::BasicInformationCluster do
         product_appearance: appearance
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE)
-      result.should be_a(TLV::Any)
-
       # Parse TLV structure using TLV::Serializable
-      parsed = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.from_tlv(result.as(TLV::Any))
+      parsed = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.from_tlv(read_tlv(cluster, Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE))
       parsed.finish.should eq(Matter::Cluster::BasicInformationCluster::ProductFinish::Polished)
       parsed.primary_color.should be_nil
     end
@@ -197,10 +167,7 @@ describe Matter::Cluster::BasicInformationCluster do
         product_appearance: nil
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE)
-      result.should be_a(Matter::InteractionModel::Status)
-      status = result.as(Matter::InteractionModel::Status)
-      status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 
@@ -390,9 +357,7 @@ describe Matter::Cluster::BasicInformationCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::BasicInformationCluster.new(endpoint_id)
 
-      result = cluster.read_attribute(0x9999_u32)
-      result.should be_a(Matter::InteractionModel::Status)
-      result.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 

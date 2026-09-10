@@ -423,13 +423,8 @@ describe "Dynamic Endpoint Management" do
       root_descriptor = device.message_handler.clusters[{0_u16, Matter::Cluster::DescriptorCluster::CLUSTER_ID}]
         .as(Matter::Cluster::DescriptorCluster)
 
-      result = root_descriptor.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-      result.should be_a(TLV::Any)
-
       # Parse the TLV response - endpoint IDs may be encoded as UInt8 or UInt16
-      tlv_data = result.as(TLV::Any)
-      parts_array = tlv_data.value.as(Array(TLV::Any))
-      parts = parts_array.map do |part|
+      parts = read_tlv(root_descriptor, Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST).as_list.map do |part|
         case v = part.value
         when UInt8  then v.to_u16
         when UInt16 then v
@@ -463,10 +458,7 @@ describe "Dynamic Endpoint Management" do
       root_descriptor = device.message_handler.clusters[{0_u16, Matter::Cluster::DescriptorCluster::CLUSTER_ID}]
         .as(Matter::Cluster::DescriptorCluster)
 
-      result = root_descriptor.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-      tlv_data = result.as(TLV::Any)
-      parts_array = tlv_data.value.as(Array(TLV::Any))
-      parts = parts_array.map do |part|
+      parts = read_tlv(root_descriptor, Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST).as_list.map do |part|
         case v = part.value
         when UInt8  then v.to_u16
         when UInt16 then v

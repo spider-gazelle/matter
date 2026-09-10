@@ -188,13 +188,8 @@ describe Matter::Cluster::OnOffCluster do
         feature_map: Matter::Cluster::OnOffCluster::Feature::None
       )
 
-      result = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_GLOBAL_SCENE_CONTROL)
-      result.should be_a(Matter::InteractionModel::Status)
-      result.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
-
-      result = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_TIME)
-      result.should be_a(Matter::InteractionModel::Status)
-      result.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, Matter::Cluster::OnOffCluster::ATTR_GLOBAL_SCENE_CONTROL).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, Matter::Cluster::OnOffCluster::ATTR_ON_TIME).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
 
     it "can read Lighting attrs with feature enabled" do

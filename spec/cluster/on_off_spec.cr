@@ -40,18 +40,14 @@ describe Matter::Cluster::OnOffCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: false)
 
-      result = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).value.should be_false
+      read(cluster, Matter::Cluster::OnOffCluster::ATTR_ON_OFF).should be_false
     end
 
     it "reads OnOff attribute when on" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: true)
 
-      result = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).value.should be_true
+      read(cluster, Matter::Cluster::OnOffCluster::ATTR_ON_OFF).should be_true
     end
 
     it "rejects writing to read-only OnOff attribute" do
@@ -118,8 +114,7 @@ describe Matter::Cluster::OnOffCluster do
 
         invoke(cluster, Matter::Cluster::OnOffCluster::CMD_OFF, Bytes.new(0))
 
-        attr_value = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
-        attr_value.as(TLV::Any).value.should be_false
+        read(cluster, Matter::Cluster::OnOffCluster::ATTR_ON_OFF).should be_false
       end
     end
 
@@ -152,8 +147,7 @@ describe Matter::Cluster::OnOffCluster do
 
         invoke(cluster, Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
 
-        attr_value = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
-        attr_value.as(TLV::Any).value.should be_true
+        read(cluster, Matter::Cluster::OnOffCluster::ATTR_ON_OFF).should be_true
       end
     end
 
@@ -380,9 +374,7 @@ describe Matter::Cluster::OnOffCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::OnOffCluster.new(endpoint_id)
 
-      result = cluster.read_attribute(0x9999_u32)
-      result.should be_a(Matter::InteractionModel::Status)
-      result.as(Matter::InteractionModel::Status).status.should eq(
+      read_status(cluster, 0x9999_u32).status.should eq(
         Matter::InteractionModel::StatusCode::UnsupportedAttribute
       )
     end

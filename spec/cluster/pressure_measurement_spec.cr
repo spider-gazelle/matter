@@ -92,16 +92,12 @@ describe Matter::Cluster::PressureMeasurementCluster do
         endpoint_id,
         measured_value: 1013_i16
       )
-      bytes = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(1013)
+      read(cluster, Matter::Cluster::PressureMeasurementCluster::ATTR_MEASURED_VALUE).should eq(1013)
     end
 
     it "reads MeasuredValue as null when not set" do
       cluster = Matter::Cluster::PressureMeasurementCluster.new(endpoint_id)
-      bytes = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should be_nil
+      read(cluster, Matter::Cluster::PressureMeasurementCluster::ATTR_MEASURED_VALUE).should be_nil
     end
 
     it "reads MinMeasuredValue when set" do
@@ -109,16 +105,12 @@ describe Matter::Cluster::PressureMeasurementCluster do
         endpoint_id,
         min_measured_value: 800_i16
       )
-      bytes = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_MIN_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(800)
+      read(cluster, Matter::Cluster::PressureMeasurementCluster::ATTR_MIN_MEASURED_VALUE).should eq(800)
     end
 
     it "reads MinMeasuredValue as null when not set" do
       cluster = Matter::Cluster::PressureMeasurementCluster.new(endpoint_id)
-      bytes = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_MIN_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should be_nil
+      read(cluster, Matter::Cluster::PressureMeasurementCluster::ATTR_MIN_MEASURED_VALUE).should be_nil
     end
 
     it "reads MaxMeasuredValue when set" do
@@ -126,16 +118,12 @@ describe Matter::Cluster::PressureMeasurementCluster do
         endpoint_id,
         max_measured_value: 1200_i16
       )
-      bytes = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_MAX_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(1200)
+      read(cluster, Matter::Cluster::PressureMeasurementCluster::ATTR_MAX_MEASURED_VALUE).should eq(1200)
     end
 
     it "reads MaxMeasuredValue as null when not set" do
       cluster = Matter::Cluster::PressureMeasurementCluster.new(endpoint_id)
-      bytes = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_MAX_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should be_nil
+      read(cluster, Matter::Cluster::PressureMeasurementCluster::ATTR_MAX_MEASURED_VALUE).should be_nil
     end
 
     it "reads Tolerance when set" do
@@ -143,17 +131,12 @@ describe Matter::Cluster::PressureMeasurementCluster do
         endpoint_id,
         tolerance: 10_u16
       )
-      bytes = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_TOLERANCE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(10)
+      read(cluster, Matter::Cluster::PressureMeasurementCluster::ATTR_TOLERANCE).should eq(10)
     end
 
     it "returns unsupported for Tolerance when not set" do
       cluster = Matter::Cluster::PressureMeasurementCluster.new(endpoint_id)
-      result = cluster.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_TOLERANCE)
-      result.should be_a(Matter::InteractionModel::Status)
-      status = result.as(Matter::InteractionModel::Status)
-      status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, Matter::Cluster::PressureMeasurementCluster::ATTR_TOLERANCE).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 
@@ -391,9 +374,7 @@ describe Matter::Cluster::PressureMeasurementCluster do
       sensor.measured_value.should be_nil
 
       # Read attribute returns null
-      bytes = sensor.read_attribute(Matter::Cluster::PressureMeasurementCluster::ATTR_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should be_nil
+      read(sensor, Matter::Cluster::PressureMeasurementCluster::ATTR_MEASURED_VALUE).should be_nil
     end
 
     it "works with different pressure units" do
@@ -417,10 +398,7 @@ describe Matter::Cluster::PressureMeasurementCluster do
   describe "error handling" do
     it "returns error for unsupported attributes" do
       cluster = Matter::Cluster::PressureMeasurementCluster.new(endpoint_id)
-      result = cluster.read_attribute(0x9999_u32)
-      result.should be_a(Matter::InteractionModel::Status)
-      status = result.as(Matter::InteractionModel::Status)
-      status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 end

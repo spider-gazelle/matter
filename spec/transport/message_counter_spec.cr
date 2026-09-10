@@ -117,6 +117,70 @@ describe Matter::Transport::MessageCounter do
     end
   end
 
+  describe "#check" do
+    it "recognizes a duplicate zero counter" do
+      counter = Matter::Transport::MessageCounter.new
+      counter.check(0_u32).accept?.should be_true
+      counter.check(0_u32).duplicate?.should be_true
+    end
+  end
+
+  describe "#peek" do
+    it "checks without committing before authentication" do
+      counter = Matter::Transport::MessageCounter.new
+      counter.peek(100_u32).accept?.should be_true
+      counter.peek(1_u32).accept?.should be_true
+      counter.max_received.should be_nil
+    end
+
+    it "does not advance the window" do
+      counter = Matter::Transport::MessageCounter.new
+      counter.check(10_u32).accept?.should be_true
+
+      counter.peek(11_u32).accept?.should be_true
+      counter.peek(11_u32).accept?.should be_true # still unseen, so not a duplicate
+      counter.max_received.should eq(10_u32)
+
+      counter.check(11_u32).accept?.should be_true
+      counter.check(11_u32).duplicate?.should be_true
+      counter.max_received.should eq(11_u32)
+    end
+  end
+
+  describe "#restore_received" do
+    it "installs a floor so the restored counter and older ones are stale" do
+      counter = Matter::Transport::MessageCounter.new
+      counter.restore_received(100_u32)
+
+      counter.max_received.should eq(100_u32)
+      counter.check(99_u32).stale?.should be_true
+      counter.check(100_u32).stale?.should be_true
+      counter.check(101_u32).accept?.should be_true
+      counter.check(101_u32).duplicate?.should be_true
+    end
+  end
+
+  describe "#maximum" do
+    it "raises at exhaustion when rollover is disabled" do
+      counter = Matter::Transport::MessageCounter.new(0_u32, rollover: false)
+      counter.maximum = 2_u32
+
+      counter.next.should eq(1_u32)
+      counter.next.should eq(2_u32)
+      expect_raises(Matter::SessionError, /renegotiated/) { counter.next }
+      counter.counter.should eq(2_u32)
+    end
+
+    it "wraps to zero at the maximum when rollover is enabled" do
+      counter = Matter::Transport::MessageCounter.new(0_u32)
+      counter.maximum = 2_u32
+
+      counter.next.should eq(1_u32)
+      counter.next.should eq(2_u32)
+      counter.next.should eq(0_u32)
+    end
+  end
+
   describe "#mark_received" do
     it "marks message as received" do
       counter = Matter::Transport::MessageCounter.new

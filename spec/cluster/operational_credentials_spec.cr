@@ -218,9 +218,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = build_op_creds_cluster(endpoint_id)
 
-      value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_NOCS)
-      value.should be_a(TLV::Any)
-      value.as(TLV::Any).as_list.should be_empty
+      read_tlv(cluster, Matter::Cluster::OperationalCredentialsCluster::ATTR_NOCS).as_list.should be_empty
     end
 
     it "reads Fabrics attribute" do
@@ -235,18 +233,14 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = build_op_creds_cluster(endpoint_id)
 
-      value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_SUPPORTED_FABRICS)
-      value.should be_a(TLV::Any)
-      value.as(TLV::Any).value.should eq(16_u8)
+      read(cluster, Matter::Cluster::OperationalCredentialsCluster::ATTR_SUPPORTED_FABRICS).should eq(16_u8)
     end
 
     it "reads CommissionedFabrics attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = build_op_creds_cluster(endpoint_id)
 
-      value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_COMMISSIONED_FABRICS)
-      value.should be_a(TLV::Any)
-      value.as(TLV::Any).value.should eq(0_u8)
+      read(cluster, Matter::Cluster::OperationalCredentialsCluster::ATTR_COMMISSIONED_FABRICS).should eq(0_u8)
     end
 
     it "reads TrustedRootCertificates attribute" do
@@ -261,9 +255,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = build_op_creds_cluster(endpoint_id)
 
-      value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_CURRENT_FABRIC_INDEX)
-      value.should be_a(TLV::Any)
-      value.as(TLV::Any).value.should eq(0_u8)
+      read(cluster, Matter::Cluster::OperationalCredentialsCluster::ATTR_CURRENT_FABRIC_INDEX).should eq(0_u8)
     end
 
     it "returns status for unsupported attribute write" do
@@ -1258,10 +1250,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # NOW TEST THE ACTUAL ISSUE: Read the Fabrics attribute
         # This is what the iPhone does after commissioning
-        fabrics_value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_FABRICS)
-        fabrics_value.should be_a(TLV::Any)
-
-        fabrics_value.as(TLV::Any).as_list.size.should eq(1)
+        read_tlv(cluster, Matter::Cluster::OperationalCredentialsCluster::ATTR_FABRICS).as_list.size.should eq(1)
       end
     end
 

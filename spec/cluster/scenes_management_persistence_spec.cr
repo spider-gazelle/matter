@@ -48,7 +48,7 @@ describe Matter::Cluster::ScenesManagementCluster do
     it "stores extension field set attribute values as bytes" do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::ScenesManagementCluster.new(endpoint)
-      field_set = Matter::Cluster::ScenesManagementCluster::ExtensionFieldSet.new(6_u32, [{0_u32, Bytes[0x01]}])
+      field_set = Matter::Cluster::ScenesManagementCluster::ExtensionFieldSet.new(6_u32, [{0_u32, TLV::Any.new(1_u8)}])
       add_scene_direct(cluster, fabric_index: 1_u8, group_id: 1_u16, scene_id: 1_u8, extension_field_sets: [field_set])
 
       document = cluster.save_state.as(Matter::Storage::Document)
@@ -56,7 +56,7 @@ describe Matter::Cluster::ScenesManagementCluster do
       scene["extension_field_sets"].should eq([
         Matter::Storage::Document{
           "cluster_id" => 6_i64,
-          "attributes" => [Matter::Storage::Document{"attribute_id" => 0_i64, "value" => Bytes[0x01]}] of Matter::Storage::Type,
+          "attributes" => [Matter::Storage::Document{"attribute_id" => 0_i64, "value" => TLV::Any.new(1_u8).to_slice}] of Matter::Storage::Type,
         },
       ] of Matter::Storage::Type)
     end
@@ -66,7 +66,7 @@ describe Matter::Cluster::ScenesManagementCluster do
     it "restores scenes, field sets and fabric scene info" do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster1 = Matter::Cluster::ScenesManagementCluster.new(endpoint)
-      field_set = Matter::Cluster::ScenesManagementCluster::ExtensionFieldSet.new(6_u32, [{0_u32, Bytes[0x01]}])
+      field_set = Matter::Cluster::ScenesManagementCluster::ExtensionFieldSet.new(6_u32, [{0_u32, TLV::Any.new(1_u8)}])
       add_scene_direct(cluster1, fabric_index: 1_u8, group_id: 1_u16, scene_id: 1_u8, scene_name: "Test Scene", extension_field_sets: [field_set])
       add_scene_direct(cluster1, fabric_index: 1_u8, group_id: 1_u16, scene_id: 2_u8, scene_name: "Another Scene")
       cluster1.fabric_scene_info[1_u8] = Matter::Cluster::ScenesManagementCluster::SceneInfo.new(scene_count: 2_u8, fabric_index: 1_u8)
@@ -85,7 +85,7 @@ describe Matter::Cluster::ScenesManagementCluster do
       restored.scene_name.should eq("Test Scene")
       restored.extension_field_sets.size.should eq(1)
       restored.extension_field_sets[0].cluster_id.should eq(6_u32)
-      restored.extension_field_sets[0].attribute_value_list.should eq([{0_u32, Bytes[0x01]}])
+      restored.extension_field_sets[0].attribute_value_list.map { |id, value| {id, value.value} }.should eq([{0_u32, 1_u8}])
       cluster2.fabric_scene_info[1_u8].scene_count.should eq(2_u8)
       cluster2.data_version.should eq(10_u32)
     end

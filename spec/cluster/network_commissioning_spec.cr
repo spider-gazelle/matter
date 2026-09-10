@@ -80,11 +80,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
         Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi
       )
 
-      value = cluster.read_attribute(Matter::Cluster::NetworkCommissioningCluster::ATTR_MAX_NETWORKS)
-      value.should be_a(TLV::Any)
-      # Decode TLV to get actual value
-      decoded = value.as(TLV::Any).value
-      decoded.should eq(1_u8)
+      read(cluster, Matter::Cluster::NetworkCommissioningCluster::ATTR_MAX_NETWORKS).should eq(1_u8)
     end
 
     it "reads ScanMaxTimeSeconds attribute" do
@@ -94,11 +90,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
         Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi
       )
 
-      value = cluster.read_attribute(Matter::Cluster::NetworkCommissioningCluster::ATTR_SCAN_MAX_TIME_SECONDS)
-      value.should be_a(TLV::Any)
-      # Decode TLV to get actual value
-      decoded = value.as(TLV::Any).value
-      decoded.should eq(30_u8)
+      read(cluster, Matter::Cluster::NetworkCommissioningCluster::ATTR_SCAN_MAX_TIME_SECONDS).should eq(30_u8)
     end
 
     it "reads ConnectMaxTimeSeconds attribute" do
@@ -108,11 +100,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
         Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi
       )
 
-      value = cluster.read_attribute(Matter::Cluster::NetworkCommissioningCluster::ATTR_CONNECT_MAX_TIME_SECONDS)
-      value.should be_a(TLV::Any)
-      # Decode TLV to get actual value
-      decoded = value.as(TLV::Any).value
-      decoded.should eq(60_u8)
+      read(cluster, Matter::Cluster::NetworkCommissioningCluster::ATTR_CONNECT_MAX_TIME_SECONDS).should eq(60_u8)
     end
 
     it "reads InterfaceEnabled attribute" do
@@ -122,11 +110,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
         Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi
       )
 
-      value = cluster.read_attribute(Matter::Cluster::NetworkCommissioningCluster::ATTR_INTERFACE_ENABLED)
-      value.should be_a(TLV::Any)
-      # Decode TLV to get actual value (true = boolean)
-      decoded = value.as(TLV::Any).value
-      decoded.should be_true
+      read(cluster, Matter::Cluster::NetworkCommissioningCluster::ATTR_INTERFACE_ENABLED).should be_true
     end
 
     it "writes InterfaceEnabled attribute" do
@@ -152,11 +136,8 @@ describe Matter::Cluster::NetworkCommissioningCluster do
         Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi
       )
 
-      value = cluster.read_attribute(Matter::Cluster::NetworkCommissioningCluster::ATTR_LAST_NETWORKING_STATUS)
-      value.should be_a(TLV::Any)
-      # TLV null encoding - parse and check it's a null type
-      tlv = value.as(TLV::Any)
-      tlv.as_nil.should be_nil
+      # TLV null encoding - check it's a null type
+      read_tlv(cluster, Matter::Cluster::NetworkCommissioningCluster::ATTR_LAST_NETWORKING_STATUS).as_nil.should be_nil
     end
 
     it "returns status for unsupported attribute write" do

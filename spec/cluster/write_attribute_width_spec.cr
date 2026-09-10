@@ -333,6 +333,17 @@ describe "TLV attribute type preservation" do
     expect_success(write(thermostat, Matter::Cluster::ThermostatCluster::ATTR_OCCUPIED_HEATING_SETPOINT, 2100_u16))
     thermostat.occupied_heating_setpoint.should eq(2100_i16)
   end
+
+  # Documents the intentional strictness of `narrow_u8?`: an unsigned attribute
+  # only accepts unsigned TLV encodings, so a positive value sent as a signed
+  # integer is still the wrong data type even though it would fit.
+  it "rejects a signed encoding of a positive value for an unsigned attribute" do
+    fan = Matter::Cluster::FanControlCluster.new(endpoint(1))
+    original = fan.percent_setting
+
+    expect_status(write(fan, Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, 100_i8), Matter::InteractionModel::StatusCode::InvalidDataType)
+    fan.percent_setting.should eq(original)
+  end
 end
 
 describe "UTF-8 attribute writes" do

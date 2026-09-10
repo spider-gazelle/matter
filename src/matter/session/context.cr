@@ -103,14 +103,6 @@ module Matter
         @peer_counter.restore_received(value)
       end
 
-      def max_message_counter : UInt32
-        @local_counter.maximum
-      end
-
-      def max_message_counter=(value : UInt32)
-        @local_counter.maximum = value
-      end
-
       def next_message_counter : UInt32
         @local_counter.next
       end

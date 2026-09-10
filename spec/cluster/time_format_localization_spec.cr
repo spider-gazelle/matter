@@ -95,9 +95,7 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
         endpoint_id,
         hour_format: Matter::Cluster::TimeFormatLocalizationCluster::HourFormat::Hr12
       )
-      bytes = cluster.read_attribute(Matter::Cluster::TimeFormatLocalizationCluster::ATTR_HOUR_FORMAT)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(0_u8) # Hr12 = 0
+      read(cluster, Matter::Cluster::TimeFormatLocalizationCluster::ATTR_HOUR_FORMAT).should eq(0_u8) # Hr12 = 0
     end
 
     it "reads ActiveCalendarType when set" do
@@ -109,17 +107,12 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
           Matter::Cluster::TimeFormatLocalizationCluster::CalendarType::Coptic,
         ]
       )
-      bytes = cluster.read_attribute(Matter::Cluster::TimeFormatLocalizationCluster::ATTR_ACTIVE_CALENDAR_TYPE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(2_u8) # Coptic = 2
+      read(cluster, Matter::Cluster::TimeFormatLocalizationCluster::ATTR_ACTIVE_CALENDAR_TYPE).should eq(2_u8) # Coptic = 2
     end
 
     it "returns unsupported for ActiveCalendarType when not set" do
       cluster = Matter::Cluster::TimeFormatLocalizationCluster.new(endpoint_id)
-      result = cluster.read_attribute(Matter::Cluster::TimeFormatLocalizationCluster::ATTR_ACTIVE_CALENDAR_TYPE)
-      result.should be_a(Matter::InteractionModel::Status)
-      status = result.as(Matter::InteractionModel::Status)
-      status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, Matter::Cluster::TimeFormatLocalizationCluster::ATTR_ACTIVE_CALENDAR_TYPE).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
 
     it "reads SupportedCalendarTypes when set" do
@@ -133,9 +126,7 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
           Matter::Cluster::TimeFormatLocalizationCluster::CalendarType::Coptic,
         ]
       )
-      bytes = cluster.read_attribute(Matter::Cluster::TimeFormatLocalizationCluster::ATTR_SUPPORTED_CALENDAR_TYPES)
-      bytes.should be_a(TLV::Any)
-      values = bytes.as(TLV::Any).as_list.map(&.as_u8)
+      values = read_tlv(cluster, Matter::Cluster::TimeFormatLocalizationCluster::ATTR_SUPPORTED_CALENDAR_TYPES).as_list.map(&.as_u8)
       values.should eq([0_u8, 1_u8, 2_u8]) # Buddhist, Chinese, Coptic
     end
 
@@ -445,10 +436,7 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
   describe "error handling" do
     it "returns error for unsupported attribute reads" do
       cluster = Matter::Cluster::TimeFormatLocalizationCluster.new(endpoint_id)
-      result = cluster.read_attribute(0x9999_u32)
-      result.should be_a(Matter::InteractionModel::Status)
-      status = result.as(Matter::InteractionModel::Status)
-      status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 end

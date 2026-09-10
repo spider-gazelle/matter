@@ -14,12 +14,10 @@ describe Matter::Cluster::DescriptorCluster do
       )
 
       # Read the attribute
-      result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-      result.should be_a(TLV::Any)
-      bytes = result.as(TLV::Any).to_slice
+      encoded = read_tlv(cluster, Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST).to_slice
 
       # Parse the TLV
-      tlv = TLV.parse(bytes)
+      tlv = TLV.parse(encoded)
 
       # The element type should be Array (0x16), not List (0x17)
       # Array = ElementType::Array
@@ -32,11 +30,9 @@ describe Matter::Cluster::DescriptorCluster do
       cluster = Matter::Cluster::DescriptorCluster.new(endpoint)
 
       # ServerList should already have CLUSTER_ID from initialize
-      result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-      result.should be_a(TLV::Any)
-      bytes = result.as(TLV::Any).to_slice
+      encoded = read_tlv(cluster, Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST).to_slice
 
-      tlv = TLV.parse(bytes)
+      tlv = TLV.parse(encoded)
       tlv.header.element_type.should eq(TLV::ElementType::Array)
     end
 
@@ -45,11 +41,9 @@ describe Matter::Cluster::DescriptorCluster do
       cluster = Matter::Cluster::DescriptorCluster.new(endpoint)
       cluster.add_part(1_u16)
 
-      result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-      result.should be_a(TLV::Any)
-      bytes = result.as(TLV::Any).to_slice
+      encoded = read_tlv(cluster, Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST).to_slice
 
-      tlv = TLV.parse(bytes)
+      tlv = TLV.parse(encoded)
       tlv.header.element_type.should eq(TLV::ElementType::Array)
     end
 
@@ -57,11 +51,9 @@ describe Matter::Cluster::DescriptorCluster do
       endpoint = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::DescriptorCluster.new(endpoint)
 
-      result = cluster.read_attribute(Matter::Cluster::Base::GLOBAL_ATTRIBUTE_LIST)
-      result.should be_a(TLV::Any)
-      bytes = result.as(TLV::Any).to_slice
+      encoded = read_tlv(cluster, Matter::Cluster::Base::GLOBAL_ATTRIBUTE_LIST).to_slice
 
-      tlv = TLV.parse(bytes)
+      tlv = TLV.parse(encoded)
       tlv.header.element_type.should eq(TLV::ElementType::Array)
     end
 
@@ -74,10 +66,9 @@ describe Matter::Cluster::DescriptorCluster do
         revision: 1_u16
       )
 
-      result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-      bytes = result.as(TLV::Any).to_slice
+      encoded = read_tlv(cluster, Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST).to_slice
 
-      tlv = TLV.parse(bytes)
+      tlv = TLV.parse(encoded)
       tlv.header.element_type.should eq(TLV::ElementType::Array)
 
       # Array should have one element

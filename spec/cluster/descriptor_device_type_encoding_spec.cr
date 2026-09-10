@@ -14,10 +14,7 @@ describe "DeviceType encoding for HomeKit compatibility" do
       )
 
       # Read the device_type_list attribute (0x0000)
-      result = descriptor.read_attribute(0x0000_u32)
-      result.should be_a(TLV::Any)
-
-      bytes = result.as(TLV::Any).to_slice
+      encoded = read_tlv(descriptor, 0x0000_u32).to_slice
 
       # Decode the TLV to verify structure
       # Should be an array containing one struct with device_type=0x0100 and revision=2
@@ -25,7 +22,7 @@ describe "DeviceType encoding for HomeKit compatibility" do
 
       # Verify the bytes contain the device type 0x0100 (256) as uint32 per Matter spec
       # Format: 26 (uint32) 00 (context tag 0) 00010000 (value 256 LE)
-      bytes.hexstring.should contain("260000010000") # uint32 context-tag-0 value-256-LE
+      encoded.hexstring.should contain("260000010000") # uint32 context-tag-0 value-256-LE
     end
 
     it "encodes Root Node device type correctly" do
@@ -38,14 +35,11 @@ describe "DeviceType encoding for HomeKit compatibility" do
         revision: 1_u16
       )
 
-      result = descriptor.read_attribute(0x0000_u32)
-      result.should be_a(TLV::Any)
-
-      bytes = result.as(TLV::Any).to_slice
+      encoded = read_tlv(descriptor, 0x0000_u32).to_slice
 
       # Device type is always uint32 per Matter spec
       # Format: 26 (uint32) 00 (context tag 0) 16000000 (value 22 LE as uint32)
-      bytes.hexstring.should contain("260016000000") # uint32 context-tag-0 value-22-LE
+      encoded.hexstring.should contain("260016000000") # uint32 context-tag-0 value-22-LE
     end
 
     it "encodes server_list correctly for On/Off Light" do
@@ -59,11 +53,8 @@ describe "DeviceType encoding for HomeKit compatibility" do
       descriptor.server_list << 0x0006_u32 # OnOff
 
       # Read the server_list attribute (0x0001)
-      result = descriptor.read_attribute(0x0001_u32)
-      result.should be_a(TLV::Any)
-
       # Cluster ids use the compact TLV width: 04 (anonymous uint8) + value
-      hex = result.as(TLV::Any).to_slice.hexstring
+      hex = read_tlv(descriptor, 0x0001_u32).to_slice.hexstring
       hex.should start_with("16") # array
       hex.should contain("0403")  # Identify
       hex.should contain("0404")  # Groups
@@ -83,11 +74,8 @@ describe "DeviceType encoding for HomeKit compatibility" do
       )
 
       # FeatureMap attribute ID is 0xFFFC (65532)
-      result = on_off.read_attribute(0xFFFC_u32)
-      result.should be_a(TLV::Any)
-
       # Compact TLV: 04 (anonymous uint8) + LIGHTING bit set
-      result.as(TLV::Any).to_slice.hexstring.should eq("0401")
+      read_tlv(on_off, 0xFFFC_u32).to_slice.hexstring.should eq("0401")
     end
 
     it "encodes OnOff cluster without LIGHTING feature" do
@@ -98,11 +86,8 @@ describe "DeviceType encoding for HomeKit compatibility" do
         feature_map: Matter::Cluster::OnOffCluster::Feature::None
       )
 
-      result = on_off.read_attribute(0xFFFC_u32)
-      result.should be_a(TLV::Any)
-
       # Compact TLV: 04 (anonymous uint8) + no bits set
-      result.as(TLV::Any).to_slice.hexstring.should eq("0400")
+      read_tlv(on_off, 0xFFFC_u32).to_slice.hexstring.should eq("0400")
     end
   end
 
@@ -111,18 +96,14 @@ describe "DeviceType encoding for HomeKit compatibility" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       on_off = Matter::Cluster::OnOffCluster.new(endpoint_id)
 
-      result = on_off.read_attribute(Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).as_u16.should eq(Matter::Cluster::OnOffCluster::CLUSTER_REVISION)
+      read_tlv(on_off, Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION).as_u16.should eq(Matter::Cluster::OnOffCluster::CLUSTER_REVISION)
     end
 
     it "encodes Descriptor cluster revision" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       descriptor = Matter::Cluster::DescriptorCluster.new(endpoint_id)
 
-      result = descriptor.read_attribute(Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).as_u16.should eq(Matter::Cluster::DescriptorCluster::CLUSTER_REVISION)
+      read_tlv(descriptor, Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION).as_u16.should eq(Matter::Cluster::DescriptorCluster::CLUSTER_REVISION)
     end
   end
 end

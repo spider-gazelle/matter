@@ -41,54 +41,35 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint, reachable: true)
 
-      result = cluster.read_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_REACHABLE)
-      result.should be_a(TLV::Any)
-
-      # Decode the TLV
-      decoded = result.as(TLV::Any)
-      decoded.value.should be_true
+      read(cluster, Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_REACHABLE).should be_true
     end
 
     it "reads NodeLabel attribute" do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint, node_label: "My Device")
 
-      result = cluster.read_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_NODE_LABEL)
-      result.should be_a(TLV::Any)
-
-      decoded = result.as(TLV::Any)
-      decoded.value.should eq("My Device")
+      read(cluster, Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_NODE_LABEL).should eq("My Device")
     end
 
     it "reads VendorName when present" do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint, vendor_name: "Acme Corp")
 
-      result = cluster.read_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_VENDOR_NAME)
-      result.should be_a(TLV::Any)
-
-      decoded = result.as(TLV::Any)
-      decoded.value.should eq("Acme Corp")
+      read(cluster, Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_VENDOR_NAME).should eq("Acme Corp")
     end
 
     it "returns UnsupportedAttribute for VendorName when not present" do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint)
 
-      result = cluster.read_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_VENDOR_NAME)
-      result.should be_a(Matter::InteractionModel::Status)
-      result.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_VENDOR_NAME).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
 
     it "reads UniqueID when present" do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint, unique_id: "abc-123")
 
-      result = cluster.read_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_UNIQUE_ID)
-      result.should be_a(TLV::Any)
-
-      decoded = result.as(TLV::Any)
-      decoded.value.should eq("abc-123")
+      read(cluster, Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_UNIQUE_ID).should eq("abc-123")
     end
   end
 

@@ -243,11 +243,8 @@ describe "Cluster Composition" do
                      Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareTilt
       )
 
-      result = cluster.read_attribute(Matter::Cluster::Base::GLOBAL_FEATURE_MAP)
-      result.should be_a(TLV::Any)
-
       # Tilt (0x02) | PositionAwareTilt (0x10) = 0x12
-      result.as(TLV::Any).value.should eq(0x12)
+      read(cluster, Matter::Cluster::Base::GLOBAL_FEATURE_MAP).should eq(0x12)
     end
   end
 

@@ -104,9 +104,7 @@ describe Matter::Cluster::FanControlCluster do
         endpoint_id,
         fan_mode: Matter::Cluster::FanControlCluster::FanMode::High
       )
-      bytes = cluster.read_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(3_u8) # High = 3
+      read(cluster, Matter::Cluster::FanControlCluster::ATTR_FAN_MODE).should eq(3_u8) # High = 3
     end
 
     it "reads FanModeSequence" do
@@ -114,9 +112,7 @@ describe Matter::Cluster::FanControlCluster do
         endpoint_id,
         fan_mode_sequence: Matter::Cluster::FanControlCluster::FanModeSequence::OffLowHigh
       )
-      bytes = cluster.read_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE_SEQUENCE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(1_u8) # OffLowHigh = 1
+      read(cluster, Matter::Cluster::FanControlCluster::ATTR_FAN_MODE_SEQUENCE).should eq(1_u8) # OffLowHigh = 1
     end
 
     it "reads PercentSetting" do
@@ -124,9 +120,7 @@ describe Matter::Cluster::FanControlCluster do
         endpoint_id,
         percent_setting: 50_u8
       )
-      bytes = cluster.read_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(50_u8)
+      read(cluster, Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING).should eq(50_u8)
     end
 
     it "reads PercentCurrent" do
@@ -134,9 +128,7 @@ describe Matter::Cluster::FanControlCluster do
         endpoint_id,
         percent_current: 75_u8
       )
-      bytes = cluster.read_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_CURRENT)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(75_u8)
+      read(cluster, Matter::Cluster::FanControlCluster::ATTR_PERCENT_CURRENT).should eq(75_u8)
     end
 
     it "marks fanMode as writable" do
@@ -558,10 +550,7 @@ describe Matter::Cluster::FanControlCluster do
   describe "error handling" do
     it "returns error for unsupported attribute reads" do
       cluster = Matter::Cluster::FanControlCluster.new(endpoint_id)
-      result = cluster.read_attribute(0x9999_u32)
-      result.should be_a(Matter::InteractionModel::Status)
-      status = result.as(Matter::InteractionModel::Status)
-      status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 end

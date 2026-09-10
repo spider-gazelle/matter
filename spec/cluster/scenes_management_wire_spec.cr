@@ -30,7 +30,7 @@ describe Matter::Cluster::ScenesManagementCluster do
     restored.apply_extension_field_sets = ->(fields : Array(Matter::Cluster::ScenesManagementCluster::ExtensionFieldSet)) { applied.concat(fields); nil }
     expect_success(invoke(restored, Matter::Cluster::ScenesManagementCluster::CMD_RECALL_SCENE,
       Matter::Cluster::RecallSceneRequest.new(group_id: 1_u16, scene_id: 2_u8)))
-    applied.first.attribute_value_list.map { |_, value| TLV::Any.from_slice(value).value }.should eq([127_u8, 32768_u16, -500_i16])
+    applied.first.attribute_value_list.map { |_, value| value.value }.should eq([127_u8, 32768_u16, -500_i16])
   end
 end
 

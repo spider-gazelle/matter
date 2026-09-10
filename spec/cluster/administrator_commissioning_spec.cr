@@ -45,27 +45,21 @@ module Matter::Cluster
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = AdministratorCommissioningCluster.new(endpoint_id)
 
-        value = cluster.read_attribute(AdministratorCommissioningCluster::ATTR_WINDOW_STATUS)
-        value.should be_a(TLV::Any)
-        value.as(TLV::Any).value.should eq(0_u8) # WindowNotOpen
+        read(cluster, AdministratorCommissioningCluster::ATTR_WINDOW_STATUS).should eq(0_u8) # WindowNotOpen
       end
 
       it "reads AdminFabricIndex attribute when nil" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = AdministratorCommissioningCluster.new(endpoint_id)
 
-        value = cluster.read_attribute(AdministratorCommissioningCluster::ATTR_ADMIN_FABRIC_INDEX)
-        value.should be_a(TLV::Any)
-        value.as(TLV::Any).value.should be_nil
+        read(cluster, AdministratorCommissioningCluster::ATTR_ADMIN_FABRIC_INDEX).should be_nil
       end
 
       it "reads AdminVendorId attribute when nil" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = AdministratorCommissioningCluster.new(endpoint_id)
 
-        value = cluster.read_attribute(AdministratorCommissioningCluster::ATTR_ADMIN_VENDOR_ID)
-        value.should be_a(TLV::Any)
-        value.as(TLV::Any).value.should be_nil
+        read(cluster, AdministratorCommissioningCluster::ATTR_ADMIN_VENDOR_ID).should be_nil
       end
 
       it "returns status for unsupported attribute write" do

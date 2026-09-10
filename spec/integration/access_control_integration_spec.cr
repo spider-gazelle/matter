@@ -365,9 +365,7 @@ describe "Access Control Integration" do
       acl_cluster.acl << initial_acl
 
       # Admin reads ACL list
-      encoded_acl = acl_cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL)
-      encoded_acl.should be_a(TLV::Any)
-      encoded_acl.as(TLV::Any).to_slice.size.should be > 0
+      read_tlv(acl_cluster, Matter::Cluster::AccessControlCluster::ATTR_ACL).to_slice.size.should be > 0
 
       # Admin adds a new user with Operate privilege
       new_user_subject = 0xBBBB_u64
@@ -387,11 +385,11 @@ describe "Access Control Integration" do
       # Encode the new ACL list
       acl_cluster.acl.clear
       new_acl_list.each { |entry| acl_cluster.acl << entry }
-      encoded_new_acl = acl_cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL)
+      encoded_new_acl = read_tlv(acl_cluster, Matter::Cluster::AccessControlCluster::ATTR_ACL)
 
       # Write the updated ACL list
       acl_cluster.acl.clear
-      status = write(acl_cluster, Matter::Cluster::AccessControlCluster::ATTR_ACL, encoded_new_acl.as(TLV::Any))
+      status = write(acl_cluster, Matter::Cluster::AccessControlCluster::ATTR_ACL, encoded_new_acl)
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
 
       # Verify both users now have access
@@ -447,7 +445,7 @@ describe "Access Control Integration" do
       )
 
       # Encode
-      encoded = cluster1.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL).as(TLV::Any)
+      encoded = read_tlv(cluster1, Matter::Cluster::AccessControlCluster::ATTR_ACL)
 
       # Decode into new cluster
       cluster2 = Matter::Cluster::AccessControlCluster.new(endpoint_id)

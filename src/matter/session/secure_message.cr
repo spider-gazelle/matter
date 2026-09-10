@@ -40,7 +40,7 @@ module Matter
         )
         packet = Codec::MessageCodec::Base.encode_payload(Codec::MessageCodec::Message.new(header, payload_header, payload))
         aad = Codec::MessageCodec::Base.encode_packet_header(header)
-        node_id = session.case_session? ? (session.local_node_id.try(&.id) || source_node_id.try(&.id) || DataType::NodeId::UNSPECIFIED) : DataType::NodeId::UNSPECIFIED
+        node_id = nonce_node_id(session, session.local_node_id, source_node_id)
         nonce = build_nonce(node_id, counter, aad[Codec::MessageCodec::SECURITY_FLAGS_OFFSET])
         Log.trace { "Encoding secure message: session_id=#{session.peer_session_id}, counter=#{counter}, nonce_node_id=0x#{node_id.to_s(16)}, aad_bytes=#{aad.size}" }
         encrypted = crypto.encrypt(session.encryption_key, packet.payload, nonce, aad)
@@ -59,13 +59,22 @@ module Matter
         crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
       ) : Codec::MessageCodec::Message
         aad = packet.header_bytes || raise Matter::CodecError.new("Secure message decode: received header bytes required for authentication")
-        node_id = session.case_session? ? (session.peer_node_id.try(&.id) || packet.header.source_node_id.try(&.id) || DataType::NodeId::UNSPECIFIED) : DataType::NodeId::UNSPECIFIED
+        node_id = nonce_node_id(session, session.peer_node_id, packet.header.source_node_id)
         nonce = build_nonce(node_id, packet.header.message_id, aad[Codec::MessageCodec::SECURITY_FLAGS_OFFSET])
         Log.trace { "Decoding secure message: session_id=#{session.session_id}, counter=#{packet.header.message_id}, nonce_node_id=0x#{node_id.to_s(16)}, aad_bytes=#{aad.size}" }
         plaintext = crypto.decrypt(session.decryption_key, packet.payload, nonce, aad)
         message = Codec::MessageCodec::Base.decode_payload(Codec::MessageCodec::Packet.new(packet.header, plaintext, aad))
         session.accept_peer_message_counter(packet.header.message_id)
         message
+      end
+
+      # The node id mixed into the AEAD nonce. CASE sessions use the session's
+      # node id, falling back to the one carried in the message header, then
+      # UNSPECIFIED; PASE sessions always use UNSPECIFIED.
+      private def nonce_node_id(session : SecureContext, session_node_id : DataType::NodeId?, header_node_id : DataType::NodeId?) : UInt64
+        return DataType::NodeId::UNSPECIFIED unless session.case_session?
+
+        session_node_id.try(&.id) || header_node_id.try(&.id) || DataType::NodeId::UNSPECIFIED
       end
     end
   end

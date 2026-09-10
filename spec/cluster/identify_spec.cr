@@ -64,9 +64,7 @@ describe Matter::Cluster::IdentifyCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::IdentifyCluster.new(endpoint_id)
 
-      result = cluster.read_attribute(Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).value.should eq(0_u16)
+      read(cluster, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME).should eq(0_u16)
     end
 
     it "reads IdentifyType attribute" do
@@ -76,9 +74,7 @@ describe Matter::Cluster::IdentifyCluster do
         identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::AudibleBeep
       )
 
-      result = cluster.read_attribute(Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TYPE)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).value.should eq(Matter::Cluster::IdentifyCluster::IdentifyType::AudibleBeep.value)
+      read(cluster, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TYPE).should eq(Matter::Cluster::IdentifyCluster::IdentifyType::AudibleBeep.value)
     end
 
     it "writes IdentifyTime attribute" do
@@ -338,11 +334,7 @@ describe Matter::Cluster::IdentifyCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::IdentifyCluster.new(endpoint_id)
 
-      result = cluster.read_attribute(0x9999_u32)
-      result.should be_a(Matter::InteractionModel::Status)
-      result.as(Matter::InteractionModel::Status).status.should eq(
-        Matter::InteractionModel::StatusCode::UnsupportedAttribute
-      )
+      read_status(cluster, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
 
     it "returns error for unsupported command" do

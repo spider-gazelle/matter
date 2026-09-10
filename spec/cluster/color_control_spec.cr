@@ -219,7 +219,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       # StepColorTemperature(mode=Up, step_size=50, ...)
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_COLOR_TEMPERATURE, Matter::Cluster::Definitions::ColorControl::StepColorTemperatureRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Up, step_size: 50_u16, transition_time: (0).to_u16, color_emperature_minimum_mireds: (0).to_u16, color_emperature_maximum_mireds: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_COLOR_TEMPERATURE, Matter::Cluster::Definitions::ColorControl::StepColorTemperatureRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Up, step_size: 50_u16, transition_time: (0).to_u16, color_temperature_minimum_mireds: (0).to_u16, color_temperature_maximum_mireds: (0).to_u16))
 
       cluster.color_temperature_mireds.should eq(350_u16)
     end
@@ -230,7 +230,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       # StepColorTemperature(mode=Down, step_size=50, ...)
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_COLOR_TEMPERATURE, Matter::Cluster::Definitions::ColorControl::StepColorTemperatureRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Down, step_size: 50_u16, transition_time: (0).to_u16, color_emperature_minimum_mireds: (0).to_u16, color_emperature_maximum_mireds: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_COLOR_TEMPERATURE, Matter::Cluster::Definitions::ColorControl::StepColorTemperatureRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Down, step_size: 50_u16, transition_time: (0).to_u16, color_temperature_minimum_mireds: (0).to_u16, color_temperature_maximum_mireds: (0).to_u16))
 
       cluster.color_temperature_mireds.should eq(250_u16)
     end

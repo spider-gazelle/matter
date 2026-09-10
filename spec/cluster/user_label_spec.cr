@@ -40,9 +40,7 @@ describe Matter::Cluster::UserLabelCluster do
     cluster.label_list[0].label.should eq("room")
     cluster.label_list[0].value.should eq("living")
 
-    read_back = cluster.read_attribute(Matter::Cluster::UserLabelCluster::ATTR_LABEL_LIST)
-    read_back.should be_a(TLV::Any)
-    list = read_back.as(TLV::Any).as_list
+    list = read_tlv(cluster, Matter::Cluster::UserLabelCluster::ATTR_LABEL_LIST).as_list
     list.size.should eq(2)
   end
 

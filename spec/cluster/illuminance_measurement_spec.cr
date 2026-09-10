@@ -114,16 +114,12 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
         endpoint_id,
         measured_value: 5000_u16
       )
-      bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(5000)
+      read(cluster, Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MEASURED_VALUE).should eq(5000)
     end
 
     it "reads MeasuredValue as null when not set" do
       cluster = Matter::Cluster::IlluminanceMeasurementCluster.new(endpoint_id)
-      bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should be_nil
+      read(cluster, Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MEASURED_VALUE).should be_nil
     end
 
     it "reads MeasuredValue as 0 (too low to measure)" do
@@ -131,9 +127,7 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
         endpoint_id,
         measured_value: 0_u16
       )
-      bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(0)
+      read(cluster, Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MEASURED_VALUE).should eq(0)
     end
 
     it "reads MinMeasuredValue when set" do
@@ -141,16 +135,12 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
         endpoint_id,
         min_measured_value: 1_u16
       )
-      bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MIN_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(1)
+      read(cluster, Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MIN_MEASURED_VALUE).should eq(1)
     end
 
     it "reads MinMeasuredValue as null when not set" do
       cluster = Matter::Cluster::IlluminanceMeasurementCluster.new(endpoint_id)
-      bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MIN_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should be_nil
+      read(cluster, Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MIN_MEASURED_VALUE).should be_nil
     end
 
     it "reads MaxMeasuredValue when set" do
@@ -158,16 +148,12 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
         endpoint_id,
         max_measured_value: 10000_u16
       )
-      bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MAX_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(10000)
+      read(cluster, Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MAX_MEASURED_VALUE).should eq(10000)
     end
 
     it "reads MaxMeasuredValue as null when not set" do
       cluster = Matter::Cluster::IlluminanceMeasurementCluster.new(endpoint_id)
-      bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MAX_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should be_nil
+      read(cluster, Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MAX_MEASURED_VALUE).should be_nil
     end
 
     it "reads Tolerance when set" do
@@ -175,17 +161,12 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
         endpoint_id,
         tolerance: 100_u16
       )
-      bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_TOLERANCE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(100)
+      read(cluster, Matter::Cluster::IlluminanceMeasurementCluster::ATTR_TOLERANCE).should eq(100)
     end
 
     it "returns unsupported for Tolerance when not set" do
       cluster = Matter::Cluster::IlluminanceMeasurementCluster.new(endpoint_id)
-      result = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_TOLERANCE)
-      result.should be_a(Matter::InteractionModel::Status)
-      status = result.as(Matter::InteractionModel::Status)
-      status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, Matter::Cluster::IlluminanceMeasurementCluster::ATTR_TOLERANCE).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
 
     it "reads LightSensorType when set" do
@@ -193,17 +174,12 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
         endpoint_id,
         light_sensor_type: Matter::Cluster::IlluminanceMeasurementCluster::LightSensorType::CMOS
       )
-      bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_LIGHT_SENSOR_TYPE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(1_u8) # CMOS = 1
+      read(cluster, Matter::Cluster::IlluminanceMeasurementCluster::ATTR_LIGHT_SENSOR_TYPE).should eq(1_u8) # CMOS = 1
     end
 
     it "returns unsupported for LightSensorType when not set" do
       cluster = Matter::Cluster::IlluminanceMeasurementCluster.new(endpoint_id)
-      result = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_LIGHT_SENSOR_TYPE)
-      result.should be_a(Matter::InteractionModel::Status)
-      status = result.as(Matter::InteractionModel::Status)
-      status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, Matter::Cluster::IlluminanceMeasurementCluster::ATTR_LIGHT_SENSOR_TYPE).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 
@@ -496,9 +472,7 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
       sensor.measured_value.should be_nil
 
       # Read attribute returns null
-      bytes = sensor.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should be_nil
+      read(sensor, Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MEASURED_VALUE).should be_nil
     end
 
     it "works with different sensor types" do
@@ -521,10 +495,7 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
   describe "error handling" do
     it "returns error for unsupported attributes" do
       cluster = Matter::Cluster::IlluminanceMeasurementCluster.new(endpoint_id)
-      result = cluster.read_attribute(0x9999_u32)
-      result.should be_a(Matter::InteractionModel::Status)
-      status = result.as(Matter::InteractionModel::Status)
-      status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 end

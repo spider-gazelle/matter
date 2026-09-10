@@ -370,7 +370,7 @@ module Matter
           attribute_reports: attribute_reports.empty? ? nil : attribute_reports,
           more_chunked_messages: more_chunked_messages ? true : nil,
           suppress_response: suppress_response,
-          interaction_model_revision: 12_u8
+          interaction_model_revision: InteractionModel::INTERACTION_MODEL_REVISION
         )
 
         report_msg.to_slice
@@ -461,7 +461,7 @@ module Matter
         msg = InteractionModel::SubscribeResponseMessage.new(
           subscription_id: subscription_id,
           max_interval: max_interval,
-          interaction_model_revision: 12_u8
+          interaction_model_revision: InteractionModel::INTERACTION_MODEL_REVISION
         )
         msg.to_slice
       end
@@ -470,7 +470,7 @@ module Matter
       def self.encode_write_response(write_responses : Array(InteractionModel::AttributeStatusIB)) : Bytes
         msg = InteractionModel::WriteResponseMessage.new(
           write_responses: write_responses,
-          interaction_model_revision: 12_u8
+          interaction_model_revision: InteractionModel::INTERACTION_MODEL_REVISION
         )
         msg.to_slice
       end
@@ -565,7 +565,7 @@ module Matter
           suppress_response: suppress_response,
           invoke_responses: invoke_responses,
           more_chunked_messages: nil,
-          interaction_model_revision: 12_u8
+          interaction_model_revision: InteractionModel::INTERACTION_MODEL_REVISION
         )
         msg.to_slice
       end

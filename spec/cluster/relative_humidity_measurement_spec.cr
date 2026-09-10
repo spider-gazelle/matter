@@ -124,18 +124,14 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
         measured_value: 4500_u16 # 45.00%
       )
 
-      result = cluster.read_attribute(0x0000_u32)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).value.should eq(4500)
+      read(cluster, 0x0000_u32).should eq(4500)
     end
 
     it "reads MeasuredValue as null when not set" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(endpoint_id)
 
-      result = cluster.read_attribute(0x0000_u32)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).value.should be_nil
+      read(cluster, 0x0000_u32).should be_nil
     end
 
     it "reads MinMeasuredValue attribute" do
@@ -145,9 +141,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
         min_measured_value: 2000_u16
       )
 
-      result = cluster.read_attribute(0x0001_u32)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).value.should eq(2000)
+      read(cluster, 0x0001_u32).should eq(2000)
     end
 
     it "reads MaxMeasuredValue attribute" do
@@ -157,9 +151,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
         max_measured_value: 9500_u16
       )
 
-      result = cluster.read_attribute(0x0002_u32)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).value.should eq(9500)
+      read(cluster, 0x0002_u32).should eq(9500)
     end
 
     it "reads Tolerance attribute when set" do
@@ -169,19 +161,14 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
         tolerance: 150_u16
       )
 
-      result = cluster.read_attribute(0x0003_u32)
-      result.should be_a(TLV::Any)
-      value = result.as(TLV::Any).value
-      value.should eq(150_u16)
+      read(cluster, 0x0003_u32).should eq(150_u16)
     end
 
     it "returns unsupported for Tolerance when not set" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(endpoint_id)
 
-      result = cluster.read_attribute(0x0003_u32)
-      result.should be_a(Matter::InteractionModel::Status)
-      result.as(Matter::InteractionModel::Status).status.should eq(
+      read_status(cluster, 0x0003_u32).status.should eq(
         Matter::InteractionModel::StatusCode::UnsupportedAttribute
       )
     end
@@ -486,9 +473,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(endpoint_id)
 
-      result = cluster.read_attribute(0x9999_u32)
-      result.should be_a(Matter::InteractionModel::Status)
-      result.as(Matter::InteractionModel::Status).status.should eq(
+      read_status(cluster, 0x9999_u32).status.should eq(
         Matter::InteractionModel::StatusCode::UnsupportedAttribute
       )
     end

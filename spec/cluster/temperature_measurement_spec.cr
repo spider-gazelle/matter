@@ -124,20 +124,14 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
         measured_value: 2000_i16 # 20.00°C
       )
 
-      result = cluster.read_attribute(0x0000_u32)
-      result.should be_a(TLV::Any)
-
-      value = result.as(TLV::Any).value
-      value.should eq(2000)
+      read(cluster, 0x0000_u32).should eq(2000)
     end
 
     it "reads MeasuredValue as null when not set" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::TemperatureMeasurementCluster.new(endpoint_id)
 
-      result = cluster.read_attribute(0x0000_u32)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).value.should be_nil
+      read(cluster, 0x0000_u32).should be_nil
     end
 
     it "reads MinMeasuredValue attribute" do
@@ -147,11 +141,7 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
         min_measured_value: -2000_i16
       )
 
-      result = cluster.read_attribute(0x0001_u32)
-      result.should be_a(TLV::Any)
-
-      value = result.as(TLV::Any).value
-      value.should eq(-2000)
+      read(cluster, 0x0001_u32).should eq(-2000)
     end
 
     it "reads MaxMeasuredValue attribute" do
@@ -161,11 +151,7 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
         max_measured_value: 12500_i16
       )
 
-      result = cluster.read_attribute(0x0002_u32)
-      result.should be_a(TLV::Any)
-
-      value = result.as(TLV::Any).value
-      value.should eq(12500)
+      read(cluster, 0x0002_u32).should eq(12500)
     end
 
     it "reads Tolerance attribute when set" do
@@ -175,20 +161,14 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
         tolerance: 100_u16
       )
 
-      result = cluster.read_attribute(0x0003_u32)
-      result.should be_a(TLV::Any)
-
-      value = result.as(TLV::Any).value
-      value.should eq(100)
+      read(cluster, 0x0003_u32).should eq(100)
     end
 
     it "returns unsupported for Tolerance when not set" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::TemperatureMeasurementCluster.new(endpoint_id)
 
-      result = cluster.read_attribute(0x0003_u32)
-      result.should be_a(Matter::InteractionModel::Status)
-      result.as(Matter::InteractionModel::Status).status.should eq(
+      read_status(cluster, 0x0003_u32).status.should eq(
         Matter::InteractionModel::StatusCode::UnsupportedAttribute
       )
     end
@@ -466,9 +446,7 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::TemperatureMeasurementCluster.new(endpoint_id)
 
-      result = cluster.read_attribute(0x9999_u32)
-      result.should be_a(Matter::InteractionModel::Status)
-      result.as(Matter::InteractionModel::Status).status.should eq(
+      read_status(cluster, 0x9999_u32).status.should eq(
         Matter::InteractionModel::StatusCode::UnsupportedAttribute
       )
     end

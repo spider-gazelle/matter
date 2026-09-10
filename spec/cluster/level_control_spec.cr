@@ -61,36 +61,28 @@ describe Matter::Cluster::LevelControlCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, current_level: 100_u8)
 
-      result = cluster.read_attribute(Matter::Cluster::LevelControlCluster::ATTR_CURRENT_LEVEL)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).value.should eq(100_u8)
+      read(cluster, Matter::Cluster::LevelControlCluster::ATTR_CURRENT_LEVEL).should eq(100_u8)
     end
 
     it "reads MinLevel attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, min_level: 5_u8)
 
-      result = cluster.read_attribute(Matter::Cluster::LevelControlCluster::ATTR_MIN_LEVEL)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).value.should eq(5_u8)
+      read(cluster, Matter::Cluster::LevelControlCluster::ATTR_MIN_LEVEL).should eq(5_u8)
     end
 
     it "reads MaxLevel attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, max_level: 200_u8)
 
-      result = cluster.read_attribute(Matter::Cluster::LevelControlCluster::ATTR_MAX_LEVEL)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).value.should eq(200_u8)
+      read(cluster, Matter::Cluster::LevelControlCluster::ATTR_MAX_LEVEL).should eq(200_u8)
     end
 
     it "reads RemainingTime attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id)
 
-      result = cluster.read_attribute(Matter::Cluster::LevelControlCluster::ATTR_REMAINING_TIME)
-      result.should be_a(TLV::Any)
-      result.as(TLV::Any).value.should eq(0_u16)
+      read(cluster, Matter::Cluster::LevelControlCluster::ATTR_REMAINING_TIME).should eq(0_u16)
     end
   end
 
@@ -479,9 +471,7 @@ describe Matter::Cluster::LevelControlCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id)
 
-      result = cluster.read_attribute(0x9999_u32)
-      result.should be_a(Matter::InteractionModel::Status)
-      result.as(Matter::InteractionModel::Status).status.should eq(
+      read_status(cluster, 0x9999_u32).status.should eq(
         Matter::InteractionModel::StatusCode::UnsupportedAttribute
       )
     end

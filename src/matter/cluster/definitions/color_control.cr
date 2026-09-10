@@ -357,7 +357,7 @@ module Matter
           # ColorTemperatureMinimumMireds field is set to 0, ColorTempPhysicalMinMireds shall be used as the lower bound
           # for the ColorTemperatureMireds attribute.
           @[TLV::Field(tag: 2)]
-          property color_emperature_minimum_mireds : UInt16
+          property color_temperature_minimum_mireds : UInt16
 
           # The ColorTemperatureMaximumMireds field specifies an upper bound on the ColorTemperatureMireds attribute (≡
           # a lower bound on the color temperature in kelvins) for the current move operation
@@ -369,7 +369,7 @@ module Matter
           # ColorTemperatureMaximumMireds field is set to 0, ColorTempPhysicalMaxMireds shall be used as the upper bound
           # for the ColorTemperatureMireds attribute.
           @[TLV::Field(tag: 3)]
-          property color_emperature_maximum_mireds : UInt16
+          property color_temperature_maximum_mireds : UInt16
 
           @[TLV::Field(tag: 4)]
           property mask : UInt8 = 0_u8
@@ -377,7 +377,7 @@ module Matter
           @[TLV::Field(tag: 5)]
           property override : UInt8 = 0_u8
 
-          def initialize(@move_mode : MoveMode, @rate : UInt16, @color_emperature_minimum_mireds : UInt16, @color_emperature_maximum_mireds : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          def initialize(@move_mode : MoveMode, @rate : UInt16, @color_temperature_minimum_mireds : UInt16, @color_temperature_maximum_mireds : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
           end
         end
 
@@ -408,7 +408,7 @@ module Matter
           # ColorTemperatureMinimumMireds field is set to 0, ColorTempPhysicalMinMireds shall be used as the lower bound
           # for the ColorTemperatureMireds attribute.
           @[TLV::Field(tag: 3)]
-          property color_emperature_minimum_mireds : UInt16
+          property color_temperature_minimum_mireds : UInt16
 
           # The ColorTemperatureMaximumMireds field specifies an upper bound on the ColorTemperatureMireds attribute (≡
           # a lower bound on the color temperature in kelvins) for the current step operation
@@ -420,7 +420,7 @@ module Matter
           # ColorTemperatureMaximum Mireds field is set to 0, ColorTempPhysicalMaxMireds shall be used as the upper
           # bound for the ColorTemperatureMireds attribute.
           @[TLV::Field(tag: 4)]
-          property color_emperature_maximum_mireds : UInt16
+          property color_temperature_maximum_mireds : UInt16
 
           @[TLV::Field(tag: 5)]
           property mask : UInt8 = 0_u8
@@ -428,7 +428,7 @@ module Matter
           @[TLV::Field(tag: 6)]
           property override : UInt8 = 0_u8
 
-          def initialize(@step_mode : StepMode, @step_size : UInt16, @transition_time : UInt16, @color_emperature_minimum_mireds : UInt16, @color_emperature_maximum_mireds : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          def initialize(@step_mode : StepMode, @step_size : UInt16, @transition_time : UInt16, @color_temperature_minimum_mireds : UInt16, @color_temperature_maximum_mireds : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
           end
         end
 

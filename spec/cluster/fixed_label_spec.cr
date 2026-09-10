@@ -36,10 +36,7 @@ describe Matter::Cluster::FixedLabelCluster do
     ]
     cluster = Matter::Cluster::FixedLabelCluster.new(endpoint_id, labels)
 
-    result = cluster.read_attribute(Matter::Cluster::FixedLabelCluster::ATTR_LABEL_LIST)
-    result.should be_a(TLV::Any)
-
-    list = result.as(TLV::Any).as_list
+    list = read_tlv(cluster, Matter::Cluster::FixedLabelCluster::ATTR_LABEL_LIST).as_list
     list.size.should eq(1)
 
     entry = Matter::Cluster::LabelStruct.from_tlv(list[0])

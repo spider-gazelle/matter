@@ -200,9 +200,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::LevelValue::Low
       )
 
-      bytes = sensor.read_attribute(Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_MEASUREMENT_MEDIUM)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(1_u8) # Water = 1
+      read(sensor, Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_MEASUREMENT_MEDIUM).should eq(1_u8) # Water = 1
     end
 
     it "reads measured value" do
@@ -214,12 +212,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
         measurement_unit: Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::MeasurementUnit::Ppm
       )
 
-      bytes = sensor.read_attribute(Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_MEASURED_VALUE)
-      bytes.should be_a(TLV::Any)
-
-      # Decode TLV-encoded float value
-      value = bytes.as(TLV::Any).value
-      value.should eq(450.0_f32)
+      read(sensor, Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_MEASURED_VALUE).should eq(450.0_f32)
     end
 
     it "reads level value" do
@@ -228,9 +221,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::LevelValue::Critical
       )
 
-      bytes = sensor.read_attribute(Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_LEVEL_VALUE)
-      bytes.should be_a(TLV::Any)
-      bytes.as(TLV::Any).value.should eq(4_u8) # Critical = 4
+      read(sensor, Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_LEVEL_VALUE).should eq(4_u8) # Critical = 4
     end
 
     it "returns unsupported for NumericMeasurement attributes when feature disabled" do
@@ -239,9 +230,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::LevelValue::Low
       )
 
-      status = sensor.read_attribute(Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_MEASURED_VALUE)
-      status.should be_a(Matter::InteractionModel::Status)
-      status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(sensor, Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_MEASURED_VALUE).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
 
     it "returns unsupported for LevelIndication attributes when feature disabled" do
@@ -253,9 +242,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
         measurement_unit: Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::MeasurementUnit::Ppm
       )
 
-      status = sensor.read_attribute(Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_LEVEL_VALUE)
-      status.should be_a(Matter::InteractionModel::Status)
-      status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(sensor, Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_LEVEL_VALUE).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 
@@ -491,9 +478,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::LevelValue::Low
       )
 
-      status = sensor.read_attribute(0x9999_u32)
-      status.should be_a(Matter::InteractionModel::Status)
-      status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(sensor, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 end
