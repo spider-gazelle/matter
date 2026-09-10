@@ -104,7 +104,7 @@ end
 class FailingIdentityBackend < Matter::Storage::MemoryBackend
   IDENTITY_CONTEXT = ["device_identity"] of String
 
-  def get(contexts : Array(String), key : String) : Matter::Storage::Type
+  def get(contexts : Array(String), key : String) : Matter::Storage::LegacyType
     raise Matter::StorageError.new("identity store unavailable") if contexts == IDENTITY_CONTEXT
     super
   end

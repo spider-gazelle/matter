@@ -178,7 +178,7 @@ describe Matter::Storage::MemoryBackend do
     it "stores and retrieves arrays" do
       storage = Matter::Storage::MemoryBackend.new
 
-      list = [1, 2, 3] of Matter::Storage::Type
+      list = [1, 2, 3] of Matter::Storage::LegacyType
       storage.set(["context"], "list", list)
       storage.get(["context"], "list").should eq(list)
     end
@@ -186,7 +186,7 @@ describe Matter::Storage::MemoryBackend do
     it "stores and retrieves hashes" do
       storage = Matter::Storage::MemoryBackend.new
 
-      data = {"name" => "test", "value" => 123} of String => Matter::Storage::Type
+      data = {"name" => "test", "value" => 123} of String => Matter::Storage::LegacyType
       storage.set(["context"], "config", data)
       storage.get(["context"], "config").should eq(data)
     end

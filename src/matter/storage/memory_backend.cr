@@ -4,7 +4,7 @@ require "./type"
 module Matter
   module Storage
     class MemoryBackend < Base
-      getter store : Hash(String, Type) = {} of String => Type
+      getter store : Hash(String, LegacyType) = {} of String => LegacyType
       getter? initialized : Bool = true
 
       def start : Nil
@@ -15,28 +15,28 @@ module Matter
         @initialized = false
       end
 
-      def get(contexts : Array(String), key : String) : Type
+      def get(contexts : Array(String), key : String) : LegacyType
         raise Matter::StorageError.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
 
         if context = store[context_key]?
-          return context.as(Hash(String, Type))[key]?
+          return context.as(Hash(String, LegacyType))[key]?
         end
 
         nil
       end
 
-      def set(contexts : Array(String), key : String, value : Type) : Nil
+      def set(contexts : Array(String), key : String, value : LegacyType) : Nil
         raise Matter::StorageError.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
 
         unless store.has_key?(context_key)
-          store[context_key] = {} of String => Type
+          store[context_key] = {} of String => LegacyType
         end
 
-        store[context_key].as(Hash(String, Type)).[key] = value
+        store[context_key].as(Hash(String, LegacyType)).[key] = value
       end
 
       def delete(contexts : Array(String), key : String) : Nil
@@ -46,7 +46,7 @@ module Matter
 
         if context = store[context_key]?
           context
-            .as(Hash(String, Type))
+            .as(Hash(String, LegacyType))
             .delete(key)
         end
       end
@@ -56,7 +56,7 @@ module Matter
 
         if context = store[context_key]?
           return context
-            .as(Hash(String, Type))
+            .as(Hash(String, LegacyType))
             .keys
             .sort!
         end
@@ -65,14 +65,14 @@ module Matter
       end
 
       # Get all key-value pairs in a context
-      def values(contexts : Array(String)) : Hash(String, Type)
+      def values(contexts : Array(String)) : Hash(String, LegacyType)
         context_key = create_context_key(contexts)
 
         if context = store[context_key]?
-          return context.as(Hash(String, Type)).dup
+          return context.as(Hash(String, LegacyType)).dup
         end
 
-        {} of String => Type
+        {} of String => LegacyType
       end
 
       # Get list of immediate subcontext names

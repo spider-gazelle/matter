@@ -1,3 +1,5 @@
+require "./interaction_model/status_code"
+
 module Matter
   # Base class for every error the library raises on its own behalf.
   #

@@ -26,7 +26,7 @@ module Matter
       getter path : String
       getter? initialized : Bool = false
 
-      @store : Hash(String, Hash(String, Type)) = {} of String => Hash(String, Type)
+      @store : Hash(String, Hash(String, LegacyType)) = {} of String => Hash(String, LegacyType)
 
       def initialize(@path : String = "matter_storage.json")
       end
@@ -41,18 +41,18 @@ module Matter
         @initialized = false
       end
 
-      def get(contexts : Array(String), key : String) : Type
+      def get(contexts : Array(String), key : String) : LegacyType
         raise Matter::StorageError.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
         @store[context_key]?.try(&.[key]?)
       end
 
-      def set(contexts : Array(String), key : String, value : Type) : Nil
+      def set(contexts : Array(String), key : String, value : LegacyType) : Nil
         raise Matter::StorageError.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
-        @store[context_key] ||= {} of String => Type
+        @store[context_key] ||= {} of String => LegacyType
         @store[context_key][key] = value
         flush
       end
@@ -74,9 +74,9 @@ module Matter
       end
 
       # Get all key-value pairs in a context
-      def values(contexts : Array(String)) : Hash(String, Type)
+      def values(contexts : Array(String)) : Hash(String, LegacyType)
         context_key = create_context_key(contexts)
-        @store[context_key]?.try(&.dup) || ({} of String => Type)
+        @store[context_key]?.try(&.dup) || ({} of String => LegacyType)
       end
 
       # Get list of immediate subcontext names
@@ -144,7 +144,7 @@ module Matter
           ctx_hash_any = ctx_any.as_h?
           next unless ctx_hash_any
 
-          ctx_hash = {} of String => Type
+          ctx_hash = {} of String => LegacyType
           ctx_hash_any.each do |key, value_any|
             ctx_hash[key] = type_from_json(value_any)
           end
@@ -187,7 +187,7 @@ module Matter
         File.rename(tmp_path, @path)
       end
 
-      private def type_from_json(any : JSON::Any) : Type
+      private def type_from_json(any : JSON::Any) : LegacyType
         case raw = any.raw
         when Nil
           nil
@@ -200,7 +200,7 @@ module Matter
         when String
           raw
         when Array
-          arr = [] of Type
+          arr = [] of LegacyType
           raw.each do |v|
             arr << type_from_json(v)
           end
@@ -227,8 +227,8 @@ module Matter
         end
       end
 
-      private def decode_hash(raw : Hash(String, JSON::Any)) : Type
-        h = {} of String => Type
+      private def decode_hash(raw : Hash(String, JSON::Any)) : LegacyType
+        h = {} of String => LegacyType
         raw.each do |k, v|
           next if k == TYPE_FIELD || k == VALUE_FIELD
           h[k] = type_from_json(v)
@@ -236,7 +236,7 @@ module Matter
         h
       end
 
-      private def write_type(json : JSON::Builder, value : Type) : Nil
+      private def write_type(json : JSON::Builder, value : LegacyType) : Nil
         case value
         when Nil
           json.null
@@ -281,13 +281,13 @@ module Matter
             json.field(TYPE_FIELD, "bytes")
             json.field(VALUE_FIELD, Base64.strict_encode(value))
           end
-        when Array(Type)
+        when Array(LegacyType)
           json.array do
             value.each do |v|
               write_type(json, v)
             end
           end
-        when Hash(String, Type)
+        when Hash(String, LegacyType)
           json.object do
             value.each do |k, v|
               json.field(k) { write_type(json, v) }
