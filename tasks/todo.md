@@ -81,6 +81,12 @@ Detailed implementation and verification plan: [phase4-plan.md](phase4-plan.md).
 - [x] Fix groups/scenes/color_control/window_covering raw binary handling
 - [x] `DERCodec` keep-or-delete decision
 - [x] `./test`
+- [ ] Review follow-up commit 1: fixes (enum mismatch → InvalidCommand, UDP guard on replay spec, decode
+      refuses missing header bytes, LevelControl null writes, Groups constraint errors, secure message trace
+      logs, MRP stale doc comment)
+- [ ] Review follow-up commit 2: nits (MessageType enum, read_attribute spec sweep, nonce helper, dead
+      counter accessors, Scenes TLV::Any field sets, literal → constant, replace_acl rescue narrowing,
+      colour typo, counter specs moved, signed→unsigned width assertion)
 
 ## Phase 5: Cluster DSL
 - [ ] Macros on `Cluster::Base` (cluster/feature/attribute/command/event, persist)
