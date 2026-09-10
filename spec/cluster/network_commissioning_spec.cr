@@ -402,6 +402,26 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::Success)
     end
 
+    it "answers OutOfRange when a request field violates its length constraint" do
+      backend = Matter::Network::TestBackend.new
+      cluster = Matter::Cluster::NetworkCommissioningCluster.new(
+        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        network_type: Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi,
+        backend: backend
+      )
+      request_bytes = Matter::Cluster::Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest.new(
+        ssid: Bytes.new(33, 0x41_u8),
+        credentials: "password".to_slice
+      ).to_slice
+
+      result = cluster.invoke_command(Matter::Cluster::NetworkCommissioningCluster::CMD_ADD_OR_UPDATE_WIFI_NETWORK, request_bytes)
+
+      response = Matter::Cluster::Definitions::NetworkCommissioning::NetworkConfigurationResponse.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+      response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::OutOfRange)
+      response.debug_text.should eq("ssid must be max 32 bytes")
+      cluster.networks.should be_empty
+    end
+
     it "handles ConnectNetwork TLV command" do
       backend = Matter::Network::TestBackend.new
       cluster = Matter::Cluster::NetworkCommissioningCluster.new(

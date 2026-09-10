@@ -34,7 +34,7 @@ module Matter
       # @param nonce 13-byte nonce
       # @param aad Additional authenticated data (optional)
       # @return Plaintext
-      # @raise Exception if authentication fails
+      # @raise Matter::AuthenticationError if authentication fails
       abstract def decrypt(key : Bytes, data : Bytes, nonce : Bytes, aad : Bytes? = nil) : Bytes
 
       # Generate cryptographically secure random bytes
@@ -81,7 +81,7 @@ module Matter
       # @param data Data that was signed
       # @param signature Signature to verify
       # @param dsa_encoding Signature encoding format
-      # @raise Exception if verification fails
+      # @raise Matter::AuthenticationError if verification fails
       abstract def verify_ecdsa(public_key : Key, data : Bytes, signature : Bytes, dsa_encoding : String = "ieee-p1363") : Nil
 
       # Generate an EC P-256 key pair
@@ -244,7 +244,7 @@ module Matter
 
         # Verify using EC signature verification
         unless pkey.ec_verify(digest, der_signature)
-          raise OpenSSL::Error.new("ECDSA signature verification failed")
+          raise Matter::AuthenticationError.new("ECDSA signature verification failed")
         end
       end
 
@@ -261,7 +261,7 @@ module Matter
         # Build EC private key in SEC1 DER format from raw private key bytes
         # SEC1 format: SEQUENCE { version, privateKey, [0] curve, [1] publicKey }
         priv_bytes = key.private_key
-        pub_bytes = key.public_bits || raise ArgumentError.new("Public key required for ECDSA")
+        pub_bytes = key.public_bits || raise Matter::CryptoError.new("Public key required for ECDSA")
 
         # Build SEC1 DER-encoded private key
         der = build_ec_private_key_der(priv_bytes, pub_bytes)

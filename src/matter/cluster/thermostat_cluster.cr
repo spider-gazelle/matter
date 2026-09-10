@@ -306,7 +306,7 @@ module Matter
         end
       end
 
-      def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_OCCUPIED_COOLING_SETPOINT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
@@ -336,7 +336,8 @@ module Matter
 
           begin
             new_mode = SystemMode.from_value(mode_value)
-          rescue
+          rescue ex
+            Log.debug(exception: ex) { "Thermostat: SystemMode #{mode_value} out of range" }
             return InteractionModel::Status.constraint_error
           end
 
@@ -356,7 +357,8 @@ module Matter
 
           begin
             new_seq = ControlSequenceOfOperation.from_value(seq_value)
-          rescue
+          rescue ex
+            Log.debug(exception: ex) { "Thermostat: ControlSequenceOfOperation #{seq_value} out of range" }
             return InteractionModel::Status.constraint_error
           end
 

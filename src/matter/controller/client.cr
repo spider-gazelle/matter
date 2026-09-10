@@ -103,7 +103,7 @@ module Matter
         acknowledged_message_id : UInt32? = nil,
       ) : Nil
         exchange = @transport.exchange_manager.get_exchange(exchange_id)
-        raise ArgumentError.new("unknown exchange_id=#{exchange_id}") unless exchange
+        raise Matter::ProtocolError.new("unknown exchange_id=#{exchange_id}") unless exchange
 
         security_flags = 0_u8
         security_flags |= Codec::MessageCodec::SessionType::Unicast.value

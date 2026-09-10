@@ -320,7 +320,7 @@ module Matter
         end
       end
 
-      def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_BREADCRUMB
           if breadcrumb = decode_uint(value)

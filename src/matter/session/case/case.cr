@@ -75,7 +75,7 @@ module Matter
           peer_session_id : UInt16,
         ) : {encrypted_cert: Bytes, signature: Bytes}
           ephemeral_key = @ephemeral_key
-          raise "Ephemeral key not generated" if ephemeral_key.nil?
+          raise Matter::ProtocolError.new("Ephemeral key not generated") if ephemeral_key.nil?
 
           # Store peer ephemeral key for later key derivation
           @peer_ephemeral_key = peer_ephemeral_public_key
@@ -105,23 +105,23 @@ module Matter
             13
           )
 
-          begin
-            # Decrypt the certificate
-            decrypted_cert_der = @crypto.decrypt(encryption_key, peer_encrypted_cert, nonce_material)
-            @peer_cert = decrypted_cert_der
+          # Decrypt the certificate; a MIC failure means the peer does not hold
+          # the shared secret and the handshake must fail.
+          decrypted_cert_der = begin
+            @crypto.decrypt(encryption_key, peer_encrypted_cert, nonce_material)
+          rescue ex : Matter::CryptoError
+            raise Matter::AuthenticationError.new("CASE: Sigma2 certificate decryption failed", cause: ex)
+          end
+          @peer_cert = decrypted_cert_der
 
-            # Parse the DER-encoded certificate to verify it's valid
-            begin
-              OpenSSL::X509::Certificate.from_der(decrypted_cert_der)
-              Log.debug { "Successfully parsed peer certificate in Sigma2" }
-              # Note: Full certificate chain validation should be done after the handshake
-              # by calling validate_certificate_chain(trusted_roots) with appropriate trusted roots
-            rescue e
-              Log.warn(exception: e) { "Failed to parse peer certificate" }
-            end
-          rescue
-            # If decryption fails, store encrypted cert for now (backward compatibility with tests)
-            @peer_cert = peer_encrypted_cert
+          # Parse the DER-encoded certificate to verify it's valid
+          begin
+            OpenSSL::X509::Certificate.from_der(decrypted_cert_der)
+            Log.debug { "Successfully parsed peer certificate in Sigma2" }
+            # Note: Full certificate chain validation should be done after the handshake
+            # by calling validate_certificate_chain(trusted_roots) with appropriate trusted roots
+          rescue e
+            Log.warn(exception: e) { "Failed to parse peer certificate" }
           end
 
           # Sign the handshake transcript
@@ -140,34 +140,26 @@ module Matter
           {encrypted_cert: encrypted_cert, signature: signature}
         end
 
-        # Verify Sigma3 confirmation
-        def verify_sigma3(signature : Bytes, transcript : Bytes? = nil) : Bool
+        # Verify the Sigma3 signature over `transcript` with the peer's
+        # certificate. Raises `Matter::AuthenticationError` when the certificate
+        # cannot be parsed or the signature does not verify.
+        def verify_sigma3(signature : Bytes, transcript : Bytes) : Nil
           peer_cert = @peer_cert
-          raise "Peer certificate not received" if peer_cert.nil?
+          raise Matter::ProtocolError.new("Peer certificate not received") if peer_cert.nil?
 
-          # If we have a transcript, verify the signature
-          if transcript
-            begin
-              # Parse the peer's certificate from DER
-              cert_obj = OpenSSL::X509::Certificate.from_der(peer_cert)
-
-              # Verify the signature using the peer's certificate public key
-              result = OpenSSL::X509::SignatureVerifier.verify_signature(
-                transcript,
-                signature,
-                cert_obj,
-                :SHA256
-              )
-
-              return result
-            rescue ex
-              # If parsing or verification fails, fall back to accepting (for test compatibility)
-              Log.warn(exception: ex) { "Certificate verification failed" }
-            end
+          cert_obj = begin
+            OpenSSL::X509::Certificate.from_der(peer_cert)
+          rescue ex : OpenSSL::Error
+            raise Matter::AuthenticationError.new("CASE: peer certificate cannot be parsed", cause: ex)
           end
 
-          # For backward compatibility with tests, return true
-          true
+          verified = OpenSSL::X509::SignatureVerifier.verify_signature(
+            transcript,
+            signature,
+            cert_obj,
+            :SHA256
+          )
+          raise Matter::AuthenticationError.new("CASE: Sigma3 signature verification failed") unless verified
         end
 
         # Validate peer certificate chain against trusted roots
@@ -215,7 +207,7 @@ module Matter
         # Derive session keys after successful CASE
         def derive_session_keys : {encryption: Bytes, decryption: Bytes}
           shared_secret = @shared_secret
-          raise "Shared secret not computed" if shared_secret.nil?
+          raise Matter::ProtocolError.new("Shared secret not computed") if shared_secret.nil?
 
           # Derive session keys from shared secret using HKDF
           # Matter Spec: SessionKeys = HKDF(shared_secret, salt, "SessionKeys", 32)
@@ -501,11 +493,11 @@ module Matter
           sigma1_bytes = @sigma1_bytes
           sigma2_bytes = @sigma2_bytes
 
-          raise "Ephemeral key not generated" if ephemeral_key.nil?
-          raise "Shared secret not computed" if shared_secret.nil?
-          raise "Sigma1 bytes not available" if sigma1_bytes.nil?
-          raise "Sigma2 bytes not available" if sigma2_bytes.nil?
-          raise "Transcript hash not available" if @transcript_hash.nil?
+          raise Matter::ProtocolError.new("Ephemeral key not generated") if ephemeral_key.nil?
+          raise Matter::ProtocolError.new("Shared secret not computed") if shared_secret.nil?
+          raise Matter::ProtocolError.new("Sigma1 bytes not available") if sigma1_bytes.nil?
+          raise Matter::ProtocolError.new("Sigma2 bytes not available") if sigma2_bytes.nil?
+          raise Matter::ProtocolError.new("Transcript hash not available") if @transcript_hash.nil?
 
           # Get the combined hash from progressive hashing context (like chip-tool's GetDigest)
           # At this point, transcript_hash contains: Sigma1 + Sigma2
@@ -638,7 +630,7 @@ module Matter
           # Matter TLV certificates have tag 9 for the EC public key
           public_key_any = find_tlv_field(parsed, 9_u8)
 
-          raise "Could not find public key field (tag 9) in TLV certificate" if public_key_any.nil?
+          raise Matter::CertificateError.new("Could not find public key field (tag 9) in TLV certificate") if public_key_any.nil?
 
           public_key_any.as_bytes
         end
@@ -771,9 +763,9 @@ module Matter
           sigma1_bytes = @sigma1_bytes
           sigma2_bytes = @sigma2_bytes
 
-          raise "Shared secret not computed" if shared_secret.nil?
-          raise "Sigma1 bytes not available" if sigma1_bytes.nil?
-          raise "Sigma2 bytes not available" if sigma2_bytes.nil?
+          raise Matter::ProtocolError.new("Shared secret not computed") if shared_secret.nil?
+          raise Matter::ProtocolError.new("Sigma1 bytes not available") if sigma1_bytes.nil?
+          raise Matter::ProtocolError.new("Sigma2 bytes not available") if sigma2_bytes.nil?
 
           # Compute SHA256 of (sigma1_bytes || sigma2_bytes || sigma3_bytes) for session salt
           combined_hash = @crypto.compute_sha256(sigma1_bytes + sigma2_bytes + sigma3_bytes)
@@ -857,14 +849,13 @@ module Matter
 
         # 4. Responder processes Sigma3 and verifies
         unless responder.process_sigma3(sigma3[:encrypted_cert], sigma3[:signature])
-          raise "CASE Sigma3 verification failed"
+          raise Matter::AuthenticationError.new("CASE Sigma3 verification failed")
         end
 
         # 5. Initiator verifies Sigma3 response
-        # (In full protocol, responder also sends a signature)
-        # unless initiator.verify_sigma3(responder_signature)
-        #   raise "CASE responder verification failed"
-        # end
+        # (In full protocol, responder also sends a signature and
+        # `initiator.verify_sigma3(responder_signature, transcript)` raises
+        # `Matter::AuthenticationError` when it does not verify)
 
         # 6. Derive session keys
         sigma3_bytes = crypto.random_bytes(100) # Mock sigma3_bytes for transcript

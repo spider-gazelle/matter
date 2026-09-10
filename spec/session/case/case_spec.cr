@@ -1,6 +1,22 @@
 require "../../spec_helper"
 require "../../../src/matter/session/case/case"
+require "../../../src/matter/certificate/attestation_certificate_manager"
 require "tlv"
+
+# Encrypt `cert` the way a CASE responder does for Sigma2: with the
+# Sigma2 key and nonce derived from the ECDH secret of the responder's key
+# and the initiator's ephemeral public key.
+private def encrypt_sigma2_cert(
+  crypto : Matter::Crypto::StandardCrypto,
+  peer_key : Matter::Crypto::Key,
+  initiator_ephemeral_public_key : Bytes,
+  cert : Bytes,
+) : Bytes
+  shared = Matter::Crypto::ECDH.compute_shared_secret(peer_key.private_key, initiator_ephemeral_public_key)
+  key = crypto.create_hkdf_key(shared, Bytes.new(0), "Sigma2EncryptionKey".to_slice, 16)
+  nonce = crypto.create_hkdf_key(shared, Bytes.new(0), "Sigma2Nonce".to_slice, 13)
+  crypto.encrypt(key, cert, nonce)
+end
 
 describe Matter::Session::Case do
   describe "extract_node_id_from_tlv_cert" do
@@ -226,13 +242,14 @@ describe Matter::Session::Case do
       )
 
       # Generate Sigma1 first
-      initiator.generate_sigma1
+      sigma1 = initiator.generate_sigma1
 
       # Simulate peer response
       peer_key = crypto.create_key_pair
       peer_ephemeral = peer_key.public_key
       peer_random = crypto.random_bytes(32)
-      peer_encrypted_cert = crypto.random_bytes(116) # 100 + 16 for MIC
+      peer_cert = Bytes.new(100, 0x42_u8)
+      peer_encrypted_cert = encrypt_sigma2_cert(crypto, peer_key, sigma1[:ephemeral_public_key], peer_cert)
       peer_session_id = crypto.random_uint16
 
       sigma3 = initiator.process_sigma2(
@@ -242,10 +259,72 @@ describe Matter::Session::Case do
         peer_session_id
       )
 
+      initiator.peer_cert.should eq(peer_cert)
       sigma3[:encrypted_cert].should be_a(Bytes)
       sigma3[:encrypted_cert].size.should eq(116) # 100 + 16 for MIC
       sigma3[:signature].should be_a(Bytes)
       sigma3[:signature].size.should eq(64) # ECDSA P-256 signature
+    end
+
+    it "fails the handshake when the Sigma2 certificate does not decrypt" do
+      crypto = Matter::Crypto::StandardCrypto.new
+      initiator = Matter::Session::Case::CaseInitiator.new(
+        operational_cert: Bytes.new(100),
+        operational_key: crypto.create_key_pair,
+        fabric_id: 0x1111_u64,
+        node_id: 0x2222_u64,
+        crypto: crypto
+      )
+      initiator.generate_sigma1
+
+      peer_key = crypto.create_key_pair
+      forged_cert = crypto.random_bytes(116) # 100 + 16 for MIC, not encrypted with the shared secret
+
+      error = expect_raises(Matter::AuthenticationError, /Sigma2 certificate decryption failed/) do
+        initiator.process_sigma2(peer_key.public_key, crypto.random_bytes(32), forged_cert, crypto.random_uint16)
+      end
+      error.cause.should be_a(Matter::AuthenticationError)
+      initiator.peer_cert.should be_nil
+    end
+
+    it "verifies a Sigma3 signature with the peer certificate" do
+      crypto = Matter::Crypto::StandardCrypto.new
+      initiator = Matter::Session::Case::CaseInitiator.new(
+        operational_cert: Bytes.new(100),
+        operational_key: crypto.create_key_pair,
+        fabric_id: 0x1111_u64,
+        node_id: 0x2222_u64,
+        crypto: crypto
+      )
+      manager = Matter::Certificate::AttestationCertificateManager.new(0xFFF1_u16)
+      peer_cert_der, peer_key = manager.get_dac_cert(0x8000_u16)
+      initiator.peer_cert = peer_cert_der
+      transcript = crypto.random_bytes(64)
+
+      signature = crypto.sign_ecdsa(peer_key, transcript, "der")
+      initiator.verify_sigma3(signature, transcript)
+
+      other_key = crypto.create_key_pair
+      forged = crypto.sign_ecdsa(other_key, transcript, "der")
+      expect_raises(Matter::AuthenticationError, /Sigma3 signature verification failed/) do
+        initiator.verify_sigma3(forged, transcript)
+      end
+    end
+
+    it "rejects Sigma3 when the peer certificate cannot be parsed" do
+      crypto = Matter::Crypto::StandardCrypto.new
+      initiator = Matter::Session::Case::CaseInitiator.new(
+        operational_cert: Bytes.new(100),
+        operational_key: crypto.create_key_pair,
+        fabric_id: 0x1111_u64,
+        node_id: 0x2222_u64,
+        crypto: crypto
+      )
+      initiator.peer_cert = Bytes.new(100, 0x42_u8)
+
+      expect_raises(Matter::AuthenticationError, /peer certificate cannot be parsed/) do
+        initiator.verify_sigma3(crypto.random_bytes(64), crypto.random_bytes(64))
+      end
     end
 
     it "derives session keys" do
@@ -262,13 +341,13 @@ describe Matter::Session::Case do
       )
 
       # Must go through protocol flow to compute shared secret
-      initiator.generate_sigma1
+      sigma1 = initiator.generate_sigma1
 
       # Simulate peer response
       peer_key = crypto.create_key_pair
       peer_ephemeral = peer_key.public_key
       peer_random = crypto.random_bytes(32)
-      peer_encrypted_cert = crypto.random_bytes(116)
+      peer_encrypted_cert = encrypt_sigma2_cert(crypto, peer_key, sigma1[:ephemeral_public_key], Bytes.new(100))
       peer_session_id = crypto.random_uint16
 
       initiator.process_sigma2(peer_ephemeral, peer_random, peer_encrypted_cert, peer_session_id)

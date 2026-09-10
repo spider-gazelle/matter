@@ -236,12 +236,13 @@ module Matter::Cluster
         )
 
         # Third key set should fail
-        expect_raises(ArgumentError, /Cannot exceed max_group_keys_per_fabric/) do
+        error = expect_raises(Matter::ClusterError, /Cannot exceed max_group_keys_per_fabric/) do
           cluster.handle_key_set_write(
             GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 3_u16)),
             fabric_index
           )
         end
+        error.status.should eq(Matter::InteractionModel::StatusCode::ResourceExhausted)
       end
 
       it "allows updating without counting against limit" do
@@ -406,12 +407,13 @@ module Matter::Cluster
         )
 
         # Attempt to remove it (should fail)
-        expect_raises(ArgumentError, /Cannot remove key set 0/) do
+        error = expect_raises(Matter::ClusterError, /Cannot remove key set 0/) do
           cluster.handle_key_set_remove(
             GroupKeyManagementCluster::KeySetRemoveRequest.new(0_u16),
             fabric_index
           )
         end
+        error.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
 
         # IPK should still exist
         response = cluster.handle_key_set_read_all_indices(fabric_index)
@@ -421,12 +423,13 @@ module Matter::Cluster
       it "raises error for non-existent key set" do
         cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
 
-        expect_raises(ArgumentError, /Key set 99 not found/) do
+        error = expect_raises(Matter::ClusterError, /Key set 99 not found/) do
           cluster.handle_key_set_remove(
             GroupKeyManagementCluster::KeySetRemoveRequest.new(99_u16),
             fabric_index: 1
           )
         end
+        error.status.should eq(Matter::InteractionModel::StatusCode::NotFound)
       end
 
       it "cascades to group key map entries" do
@@ -600,17 +603,19 @@ module Matter::Cluster
           fabric_index
         )
 
-        expect_raises(ArgumentError, /Group ID 0 is invalid/) do
+        error = expect_raises(Matter::ClusterError, /Group ID 0 is invalid/) do
           cluster.add_group_key_map(0_u16, 1_u16, fabric_index)
         end
+        error.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
       end
 
       it "rejects non-existent key set" do
         cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
 
-        expect_raises(ArgumentError, /Key set 99 does not exist/) do
+        error = expect_raises(Matter::ClusterError, /Key set 99 does not exist/) do
           cluster.add_group_key_map(100_u16, 99_u16, fabric_index: 1)
         end
+        error.status.should eq(Matter::InteractionModel::StatusCode::NotFound)
       end
 
       it "enforces max_groups_per_fabric limit" do
@@ -628,9 +633,10 @@ module Matter::Cluster
         cluster.add_group_key_map(200_u16, 1_u16, fabric_index)
 
         # Third group should fail
-        expect_raises(ArgumentError, /Cannot exceed max_groups_per_fabric/) do
+        error = expect_raises(Matter::ClusterError, /Cannot exceed max_groups_per_fabric/) do
           cluster.add_group_key_map(300_u16, 1_u16, fabric_index)
         end
+        error.status.should eq(Matter::InteractionModel::StatusCode::ResourceExhausted)
       end
 
       it "removes group key map entry" do
@@ -719,9 +725,10 @@ module Matter::Cluster
         cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
-        expect_raises(ArgumentError, /has no key map entry/) do
+        error = expect_raises(Matter::ClusterError, /has no key map entry/) do
           cluster.add_group(100_u16, endpoint_id: 1_u16, group_name: nil, fabric_index: fabric_index)
         end
+        error.status.should eq(Matter::InteractionModel::StatusCode::NotFound)
       end
 
       it "enforces max_groups_per_fabric limit" do
@@ -741,9 +748,10 @@ module Matter::Cluster
         end
 
         # Third group should fail when adding key map
-        expect_raises(ArgumentError, /Cannot exceed max_groups_per_fabric/) do
+        error = expect_raises(Matter::ClusterError, /Cannot exceed max_groups_per_fabric/) do
           cluster.add_group_key_map(300_u16, 1_u16, fabric_index)
         end
+        error.status.should eq(Matter::InteractionModel::StatusCode::ResourceExhausted)
       end
 
       it "removes endpoint from group" do

@@ -114,7 +114,7 @@ module Matter::Crypto::AES
       # Verify MIC matches
       4.times do |i|
         if @input_mic[i] != @computed_mic[i]
-          raise Exception.new("Message authentication failed due to invalid signature")
+          raise Matter::AuthenticationError.new("Message authentication failed due to invalid signature")
         end
       end
 

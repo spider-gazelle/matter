@@ -96,7 +96,7 @@ module Matter
         @running = false
 
         # Ensure at least one socket was created successfully
-        raise "Failed to create any mDNS socket" if @socket_ipv4.nil? && @socket_ipv6.nil?
+        raise Matter::TransportError.new("Failed to create any mDNS socket") if @socket_ipv4.nil? && @socket_ipv6.nil?
         @advertised_services = Hash(String, AdvertisedService).new
         @announcement_bursts = Hash(String, Channel(Nil)).new
       end
@@ -533,7 +533,7 @@ module Matter
             bytes_sent = sock4.send(data, MDNS_IPV4)
             Log.trace { "Sent #{bytes_sent} bytes to IPv4 multicast 224.0.0.251:5353" }
           rescue ex
-            Log.error { "Error sending IPv4 multicast (#{ex.message})" }
+            Log.error(exception: ex) { "Error sending IPv4 multicast" }
           end
         end
 
@@ -543,7 +543,7 @@ module Matter
             bytes_sent = sock6.send(data, MDNS_IPV6)
             Log.trace { "Sent #{bytes_sent} bytes to IPv6 multicast ff02::fb:5353" }
           rescue ex
-            Log.error { "Error sending IPv6 multicast (#{ex.message})" }
+            Log.error(exception: ex) { "Error sending IPv6 multicast" }
           end
         end
       end
@@ -572,7 +572,7 @@ module Matter
           rescue IO::TimeoutError
             # Normal - continue
           rescue ex : Exception
-            Log.error(exception: ex) { "Error receiving IPv4 mDNS packet (data_hex=#{data.try(&.hexstring) || "nil"})" } if @running
+            Log.debug(exception: ex) { "Error receiving IPv4 mDNS packet (bytes=#{data.try(&.size) || 0})" } if @running
           end
         end
       end
@@ -601,7 +601,7 @@ module Matter
           rescue IO::TimeoutError
             # Normal - continue
           rescue ex : Exception
-            Log.error(exception: ex) { "Error receiving IPv6 mDNS packet (data_hex=#{data.try(&.hexstring) || "nil"})" } if @running
+            Log.debug(exception: ex) { "Error receiving IPv6 mDNS packet (bytes=#{data.try(&.size) || 0})" } if @running
           end
         end
       end

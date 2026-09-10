@@ -23,7 +23,7 @@ module Matter
       # Create NodeId from bytes (big-endian)
       def self.from_be_bytes(slice : Bytes) : NodeId
         if slice.size < BYTE_SIZE
-          raise ArgumentError.new("NodeId slice must be at least #{BYTE_SIZE} bytes")
+          raise Matter::CodecError.new("NodeId slice must be at least #{BYTE_SIZE} bytes")
         end
         new(IO::ByteFormat::BigEndian.decode(UInt64, slice))
       end

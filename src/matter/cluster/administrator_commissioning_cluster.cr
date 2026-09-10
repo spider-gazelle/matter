@@ -244,7 +244,7 @@ module Matter
         end
       end
 
-      def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         # All attributes are read-only
         super
       end
@@ -415,12 +415,12 @@ module Matter
         begin
           open_commissioning_window(request, fabric_index, vendor_id)
           InteractionModel::Status.success
-        rescue BusyError
-          InteractionModel::Status.busy
-        rescue PAKEParameterError
-          InteractionModel::Status.failure
-        rescue
-          InteractionModel::Status.failure
+        rescue ex : Matter::ClusterError
+          Log.warn(exception: ex) { "OpenCommissioningWindow rejected" }
+          ex.to_status
+        rescue ex : ArgumentError
+          Log.warn(exception: ex) { "OpenCommissioningWindow rejected" }
+          InteractionModel::Status.constraint_error
         end
       rescue ex
         Log.error(exception: ex) { "OpenCommissioningWindow: failed to parse request (bytes=#{fields.hexstring})" }
@@ -438,10 +438,12 @@ module Matter
         begin
           open_basic_commissioning_window(request, fabric_index, vendor_id)
           InteractionModel::Status.success
-        rescue BusyError
-          InteractionModel::Status.busy
-        rescue
-          InteractionModel::Status.busy
+        rescue ex : Matter::ClusterError
+          Log.warn(exception: ex) { "OpenBasicCommissioningWindow rejected" }
+          ex.to_status
+        rescue ex : ArgumentError
+          Log.warn(exception: ex) { "OpenBasicCommissioningWindow rejected" }
+          InteractionModel::Status.constraint_error
         end
       rescue ex
         Log.error(exception: ex) { "OpenBasicCommissioningWindow: failed to parse request (bytes=#{fields.hexstring})" }
@@ -453,10 +455,9 @@ module Matter
 
         revoke_commissioning
         InteractionModel::Status.success
-      rescue WindowNotOpenError
-        InteractionModel::Status.failure
-      rescue
-        InteractionModel::Status.failure
+      rescue ex : Matter::ClusterError
+        Log.warn(exception: ex) { "RevokeCommissioning rejected" }
+        ex.to_status
       end
 
       # ========================================================================
@@ -708,7 +709,10 @@ module Matter
         if channel = @commissioning_timeout_channel
           # Only send if we're not the timeout fiber
           if Fiber.current != @commissioning_timeout_fiber
-            channel.send(nil) rescue nil
+            begin
+              channel.send(nil)
+            rescue Channel::ClosedError
+            end
           end
           @commissioning_timeout_channel = nil
         end
@@ -719,21 +723,26 @@ module Matter
       # Exception Classes
       # ========================================================================
 
-      class BusyError < Exception
-        def cluster_code : UInt8
-          StatusCode::Busy.value
+      # A window is already open: answered with the IM `Busy` status.
+      class BusyError < Matter::ClusterError
+        def initialize(message : String? = nil, cause : Exception? = nil)
+          super(message, InteractionModel::StatusCode::Busy, nil, cause)
         end
       end
 
-      class PAKEParameterError < Exception
-        def cluster_code : UInt8
-          StatusCode::PAKEParameterError.value
+      # PAKE parameters failed validation: `Failure` with the cluster-specific
+      # `PAKEParameterError` status code.
+      class PAKEParameterError < Matter::ClusterError
+        def initialize(message : String? = nil, cause : Exception? = nil)
+          super(message, InteractionModel::StatusCode::Failure, StatusCode::PAKEParameterError.value, cause)
         end
       end
 
-      class WindowNotOpenError < Exception
-        def cluster_code : UInt8
-          StatusCode::WindowNotOpen.value
+      # No window to revoke: `Failure` with the cluster-specific
+      # `WindowNotOpen` status code.
+      class WindowNotOpenError < Matter::ClusterError
+        def initialize(message : String? = nil, cause : Exception? = nil)
+          super(message, InteractionModel::StatusCode::Failure, StatusCode::WindowNotOpen.value, cause)
         end
       end
     end

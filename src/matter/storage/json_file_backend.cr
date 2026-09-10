@@ -14,9 +14,14 @@ module Matter
     # This is intended as a low-friction default for devices/examples and as the
     # foundation for future DB-backed implementations.
     class JsonFileBackend < Base
+      Log = ::Log.for("matter.storage.json_file_backend")
+
       # Root JSON keys used to preserve non-JSON-native types
       TYPE_FIELD  = "__type__"
       VALUE_FIELD = "value"
+
+      # Suffix timestamp for a corrupt file that is moved aside on load.
+      TIMESTAMP_FORMAT = "%Y%m%dT%H%M%S"
 
       getter path : String
       getter? initialized : Bool = false
@@ -37,14 +42,14 @@ module Matter
       end
 
       def get(contexts : Array(String), key : String) : Type
-        raise Exception.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
+        raise Matter::StorageError.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
         @store[context_key]?.try(&.[key]?)
       end
 
       def set(contexts : Array(String), key : String, value : Type) : Nil
-        raise Exception.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
+        raise Matter::StorageError.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
         @store[context_key] ||= {} of String => Type
@@ -53,7 +58,7 @@ module Matter
       end
 
       def delete(contexts : Array(String), key : String) : Nil
-        raise Exception.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
+        raise Matter::StorageError.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
         if ctx = @store[context_key]?
@@ -146,8 +151,12 @@ module Matter
 
           @store[context_key] = ctx_hash
         end
-      rescue
-        # If storage is corrupted, start empty (device can re-commission/recreate).
+      rescue ex
+        # Keep the corrupt file for inspection and start empty (the device can
+        # re-commission / recreate its state).
+        corrupt_path = "#{@path}.corrupt-#{Time.utc.to_s(TIMESTAMP_FORMAT)}"
+        Log.error(exception: ex) { "Storage file is corrupt; moving it to #{corrupt_path} and starting empty" }
+        File.rename(@path, corrupt_path)
         @store.clear
       end
 

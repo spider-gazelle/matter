@@ -32,7 +32,7 @@ module ChipTool
 
           store = Matter::Controller::StateStore.new(ctx.storage_directory)
           state = store.load
-          fabric = state.fabric || raise "No controller fabric found; run `pairing code ...` first"
+          fabric = state.fabric || raise Matter::CommissioningError.new("No controller fabric found; run `pairing code ...` first")
 
           peer = resolve_peer(state, fabric, node_id, ctx.timeout)
           state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
@@ -53,7 +53,7 @@ module ChipTool
               attribute_id: attribute_id
             )
 
-            endpoints = extract_report_u16_list(report, cluster_id, attribute_id) || raise "ReportData missing #{attribute} list"
+            endpoints = extract_report_u16_list(report, cluster_id, attribute_id) || raise Matter::ProtocolError.new("ReportData missing #{attribute} list")
             puts "PartsList: #{endpoints.size} entries"
             endpoints.each_with_index do |endpoint, idx|
               puts "  [#{idx}]: #{endpoint}"
@@ -101,7 +101,7 @@ module ChipTool
           sleep 100.milliseconds
         end
 
-        raise "Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})"
+        raise Matter::TransportError.new("Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})")
       ensure
         scanner.try(&.close)
       end

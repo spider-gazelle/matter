@@ -286,8 +286,8 @@ module Matter
         state = PersistedState.from_json(json)
         @groups = state.groups
         @data_version = state.data_version
-      rescue
-        # Start fresh if restore fails
+      rescue ex
+        Log.warn(exception: ex) { "Groups restore_state failed; starting fresh" }
       end
 
       # Public API

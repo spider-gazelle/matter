@@ -78,7 +78,7 @@ describe Matter::DataType::NodeId do
     end
 
     it "rejects short slices" do
-      expect_raises(ArgumentError, "NodeId slice must be at least 8 bytes") do
+      expect_raises(Matter::CodecError, "NodeId slice must be at least 8 bytes") do
         Matter::DataType::NodeId.from_be_bytes(Bytes[1, 2, 3])
       end
     end

@@ -43,7 +43,7 @@ module Matter
         end
       end
 
-      def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_LABEL_LIST
           begin
@@ -52,7 +52,8 @@ module Matter
             @attribute_values[ATTR_LABEL_LIST] = @label_list.to_tlv
             increment_version_and_notify(ATTR_LABEL_LIST)
             InteractionModel::Status.success
-          rescue
+          rescue ex
+            Log.warn(exception: ex) { "UserLabel: rejected LabelList write (bytes=#{value.hexstring})" }
             InteractionModel::Status.invalid_data_type
           end
         else
@@ -67,7 +68,8 @@ module Matter
       def restore_state(json : String) : Nil
         @label_list = Array(LabelStruct).from_json(json)
         @attribute_values[ATTR_LABEL_LIST] = @label_list.to_tlv
-      rescue
+      rescue ex
+        Log.warn(exception: ex) { "UserLabel restore_state failed; starting fresh" }
       end
     end
   end

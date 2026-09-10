@@ -516,7 +516,7 @@ module Matter
 
       # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
 
-      def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_INTERFACE_ENABLED
           enabled = decode_bool(value)
@@ -907,15 +907,37 @@ module Matter
       # TLV-level command handlers that parse bytes and encode responses
       # These bridge protocol-level TLV encoding with high-level struct handlers
 
+      # Wire status answered when a request field violates its length constraint.
+      OUT_OF_RANGE_STATUS = Definitions::NetworkCommissioning::StatusCode.new(NetworkCommissioningStatus::OutOfRange.value)
+
+      # A request DTO rejected a field (oversized ssid / credentials / dataset /
+      # network_id): answer `OutOfRange` with the validation message instead of
+      # failing the whole command.
+      private def out_of_range_config_response(command : String, ex : ArgumentError) : Bytes
+        Log.warn(exception: ex) { "#{command} rejected" }
+        Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
+          status_code: OUT_OF_RANGE_STATUS,
+          debug_text: ex.message
+        ).to_slice
+      end
+
       private def handle_scan_networks_tlv(fields : Bytes) : Bytes
         # Parse TLV request
         tlv_req = Definitions::NetworkCommissioning::ScanAvailableNetworksRequest.from_slice(fields)
 
         # Convert to simple struct
-        req = ScanNetworksRequest.new(
-          ssid: tlv_req.ssid,
-          breadcrumb: tlv_req.breadcrumb
-        )
+        req = begin
+          ScanNetworksRequest.new(
+            ssid: tlv_req.ssid,
+            breadcrumb: tlv_req.breadcrumb
+          )
+        rescue ex : ArgumentError
+          Log.warn(exception: ex) { "ScanNetworks rejected" }
+          return Definitions::NetworkCommissioning::ScanNetworksResponse.new(
+            status_code: OUT_OF_RANGE_STATUS,
+            debug_text: ex.message
+          ).to_slice
+        end
 
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
         response = handle_scan_networks(req, failsafe_armed: true)
@@ -966,11 +988,15 @@ module Matter
         tlv_req = Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest.from_slice(fields)
 
         # Convert to simple struct
-        req = AddOrUpdateWiFiNetworkRequest.new(
-          ssid: tlv_req.ssid,
-          credentials: tlv_req.credentials,
-          breadcrumb: tlv_req.breadcrumb
-        )
+        req = begin
+          AddOrUpdateWiFiNetworkRequest.new(
+            ssid: tlv_req.ssid,
+            credentials: tlv_req.credentials,
+            breadcrumb: tlv_req.breadcrumb
+          )
+        rescue ex : ArgumentError
+          return out_of_range_config_response("AddOrUpdateWiFiNetwork", ex)
+        end
 
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
         response = handle_add_or_update_wifi_network(req, failsafe_armed: true)
@@ -988,10 +1014,14 @@ module Matter
         tlv_req = Definitions::NetworkCommissioning::AddOrUpdateThreadNetworkRequest.from_slice(fields)
 
         # Convert to simple struct
-        req = AddOrUpdateThreadNetworkRequest.new(
-          operational_dataset: tlv_req.operational_dataset,
-          breadcrumb: tlv_req.breadcrumb
-        )
+        req = begin
+          AddOrUpdateThreadNetworkRequest.new(
+            operational_dataset: tlv_req.operational_dataset,
+            breadcrumb: tlv_req.breadcrumb
+          )
+        rescue ex : ArgumentError
+          return out_of_range_config_response("AddOrUpdateThreadNetwork", ex)
+        end
 
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
         response = handle_add_or_update_thread_network(req, failsafe_armed: true)
@@ -1009,10 +1039,14 @@ module Matter
         tlv_req = Definitions::NetworkCommissioning::RemoveNetworkRequest.from_slice(fields)
 
         # Convert to simple struct
-        req = RemoveNetworkRequest.new(
-          network_id: tlv_req.network_id,
-          breadcrumb: tlv_req.breadcrumb
-        )
+        req = begin
+          RemoveNetworkRequest.new(
+            network_id: tlv_req.network_id,
+            breadcrumb: tlv_req.breadcrumb
+          )
+        rescue ex : ArgumentError
+          return out_of_range_config_response("RemoveNetwork", ex)
+        end
 
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
         response = handle_remove_network(req, failsafe_armed: true)
@@ -1030,10 +1064,18 @@ module Matter
         tlv_req = Definitions::NetworkCommissioning::ConnectNetworkRequest.from_slice(fields)
 
         # Convert to simple struct
-        req = ConnectNetworkRequest.new(
-          network_id: tlv_req.network_id,
-          breadcrumb: tlv_req.breadcrumb
-        )
+        req = begin
+          ConnectNetworkRequest.new(
+            network_id: tlv_req.network_id,
+            breadcrumb: tlv_req.breadcrumb
+          )
+        rescue ex : ArgumentError
+          Log.warn(exception: ex) { "ConnectNetwork rejected" }
+          return Definitions::NetworkCommissioning::ConnectNetworkResponse.new(
+            status_code: OUT_OF_RANGE_STATUS,
+            debug_text: ex.message
+          ).to_slice
+        end
 
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
         response = handle_connect_network(req, failsafe_armed: true)
@@ -1051,11 +1093,15 @@ module Matter
         tlv_req = Definitions::NetworkCommissioning::ReorderNetworkRequest.from_slice(fields)
 
         # Convert to simple struct
-        req = ReorderNetworkRequest.new(
-          network_id: tlv_req.network_id,
-          network_index: tlv_req.network_index,
-          breadcrumb: tlv_req.breadcrumb
-        )
+        req = begin
+          ReorderNetworkRequest.new(
+            network_id: tlv_req.network_id,
+            network_index: tlv_req.network_index,
+            breadcrumb: tlv_req.breadcrumb
+          )
+        rescue ex : ArgumentError
+          return out_of_range_config_response("ReorderNetwork", ex)
+        end
 
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
         response = handle_reorder_network(req, failsafe_armed: true)

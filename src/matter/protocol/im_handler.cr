@@ -272,6 +272,25 @@ module Matter
         InteractionModel::Status.failure
       end
 
+      # `Cluster::Base#invoke_command` already maps handler exceptions to a
+      # status; this guards the protocol layer against a cluster that overrides
+      # `invoke_command` itself and lets an exception escape.
+      private def self.safe_invoke_command(
+        cluster : Cluster::Base,
+        path : InteractionModel::CommandPath,
+        fields : Bytes,
+        session_id : UInt64?,
+        is_case_session : Bool,
+        fabric_index : UInt8?,
+      ) : InteractionModel::Status | Cluster::CommandResponse
+        cluster.invoke_command(path.command, fields, session_id, is_case_session, fabric_index)
+      rescue ex
+        Log.error(exception: ex) do
+          "Failed invoking command on cluster: #{path}"
+        end
+        InteractionModel::Status.failure
+      end
+
       private def self.build_attribute_report(
         path : InteractionModel::AttributePath,
         result : InteractionModel::Status | Bytes,
@@ -280,7 +299,7 @@ module Matter
         data_version : UInt32,
       ) : InteractionModel::AttributeReportIB
         if result.is_a?(InteractionModel::Status)
-          status_ib = InteractionModel::StatusIB.new(status: result.status.value)
+          status_ib = InteractionModel::StatusIB.new(status: result.status.value, cluster_status: result.cluster_status)
           attr_status = InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
           return InteractionModel::AttributeReportIB.new(attribute_status: attr_status)
         end
@@ -389,7 +408,7 @@ module Matter
           value_bytes = tlv_value_bytes(request.data)
           status = cluster.write_attribute(attribute_id, value_bytes)
 
-          status_ib = InteractionModel::StatusIB.new(status: status.status.value)
+          status_ib = InteractionModel::StatusIB.new(status: status.status.value, cluster_status: status.cluster_status)
           write_responses << InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
         end
 
@@ -593,11 +612,11 @@ module Matter
                          end
 
           # Invoke command on cluster (pass session info for authentication)
-          result = cluster.invoke_command(path.command, fields_bytes, session_id, is_case_session, fabric_index)
+          result = safe_invoke_command(cluster, path, fields_bytes, session_id, is_case_session, fabric_index)
 
           if result.is_a?(InteractionModel::Status)
             # Error status
-            status_ib = InteractionModel::StatusIB.new(status: result.status.value)
+            status_ib = InteractionModel::StatusIB.new(status: result.status.value, cluster_status: result.cluster_status)
             cmd_status = InteractionModel::CommandStatusIB.new(command_path: path, status: status_ib)
             invoke_responses << InteractionModel::InvokeResponseIB.new(command_status: cmd_status)
           elsif result.is_a?(Cluster::CommandResponse)

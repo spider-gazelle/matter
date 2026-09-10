@@ -93,7 +93,7 @@ module Matter
         @local_message_counter += 1
 
         if @local_message_counter > @max_message_counter
-          raise "Message counter overflow - session must be renegotiated"
+          raise Matter::SessionError.new("Message counter overflow - session must be renegotiated")
         end
 
         counter

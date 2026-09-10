@@ -398,7 +398,7 @@ module Matter
         end
       end
 
-      def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_OPTIONS
           if options = decode_u8(value)
@@ -700,8 +700,8 @@ module Matter
         @min_frequency = state.min_frequency
         @max_frequency = state.max_frequency
         @data_version = state.data_version
-      rescue
-        # Start fresh if restore fails
+      rescue ex
+        Log.warn(exception: ex) { "LevelControl restore_state failed; starting fresh" }
       end
     end
   end

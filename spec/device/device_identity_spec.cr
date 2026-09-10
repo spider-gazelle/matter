@@ -100,7 +100,27 @@ class TestDeviceWithCustomIdentity < Matter::Device::Base
   end
 end
 
+# Storage backend whose identity reads fail, as a corrupt store would.
+class FailingIdentityBackend < Matter::Storage::MemoryBackend
+  IDENTITY_CONTEXT = ["device_identity"] of String
+
+  def get(contexts : Array(String), key : String) : Matter::Storage::Type
+    raise Matter::StorageError.new("identity store unavailable") if contexts == IDENTITY_CONTEXT
+    super
+  end
+end
+
 describe "Device Identity" do
+  describe "with a failing storage backend" do
+    it "still generates every identity value" do
+      device = TestDeviceWithDefaults.new(FailingIdentityBackend.new)
+
+      device.basic_info.serial_number.should match(/^[0-9A-F]{16}$/)
+      device.basic_info.unique_id.size.should eq(32)
+      device.hostname.should match(/^[0-9A-F]{16}\.local$/)
+    end
+  end
+
   describe "serial_number" do
     it "auto-generates serial number when not provided" do
       device = TestDeviceWithDefaults.new

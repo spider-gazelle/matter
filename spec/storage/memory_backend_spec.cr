@@ -129,7 +129,7 @@ describe Matter::Storage::MemoryBackend do
     it "throws error when context is empty on set" do
       storage = Matter::Storage::MemoryBackend.new
 
-      expect_raises(Exception, "Context and key must not be empty!") do
+      expect_raises(Matter::StorageError, "Context and key must not be empty!") do
         storage.set([] of String, "key", "value")
       end
     end
@@ -137,7 +137,7 @@ describe Matter::Storage::MemoryBackend do
     it "throws error when context has empty string on set" do
       storage = Matter::Storage::MemoryBackend.new
 
-      expect_raises(Exception, "Context must not be an empty string.") do
+      expect_raises(Matter::StorageError, "Context must not be an empty string.") do
         storage.set([""], "key", "value")
       end
     end
@@ -145,7 +145,7 @@ describe Matter::Storage::MemoryBackend do
     it "throws error when key is empty on set" do
       storage = Matter::Storage::MemoryBackend.new
 
-      expect_raises(Exception, "Context and key must not be empty!") do
+      expect_raises(Matter::StorageError, "Context and key must not be empty!") do
         storage.set(["context"], "", "value")
       end
     end
@@ -153,7 +153,7 @@ describe Matter::Storage::MemoryBackend do
     it "throws error when context has empty string in subcontext on get" do
       storage = Matter::Storage::MemoryBackend.new
 
-      expect_raises(Exception, "Context must not be an empty string.") do
+      expect_raises(Matter::StorageError, "Context must not be an empty string.") do
         storage.get(["ok", ""], "key")
       end
     end
@@ -161,7 +161,7 @@ describe Matter::Storage::MemoryBackend do
     it "throws error when key is empty on get" do
       storage = Matter::Storage::MemoryBackend.new
 
-      expect_raises(Exception, "Context and key must not be empty!") do
+      expect_raises(Matter::StorageError, "Context and key must not be empty!") do
         storage.get(["context", "subcontext"], "")
       end
     end
@@ -302,11 +302,11 @@ describe Matter::Storage::MemoryBackend do
     it "raises ArgumentError for keys and values on the root context" do
       storage = Matter::Storage::MemoryBackend.new
 
-      expect_raises(ArgumentError, "Context must not be empty!") do
+      expect_raises(Matter::StorageError, "Context must not be empty!") do
         storage.keys([] of String)
       end
 
-      expect_raises(ArgumentError, "Context must not be empty!") do
+      expect_raises(Matter::StorageError, "Context must not be empty!") do
         storage.values([] of String)
       end
     end
@@ -314,7 +314,7 @@ describe Matter::Storage::MemoryBackend do
     it "raises ArgumentError for empty context segments" do
       storage = Matter::Storage::MemoryBackend.new
 
-      expect_raises(ArgumentError, "Context must not be an empty string.") do
+      expect_raises(Matter::StorageError, "Context must not be an empty string.") do
         storage.keys(["ok", ""])
       end
     end

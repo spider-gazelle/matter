@@ -35,7 +35,7 @@ module ChipTool
 
           store = Matter::Controller::StateStore.new(ctx.storage_directory)
           state = store.load
-          fabric = state.fabric || raise "No controller fabric found; run `pairing code ...` first"
+          fabric = state.fabric || raise Matter::CommissioningError.new("No controller fabric found; run `pairing code ...` first")
 
           peer = resolve_peer(state, fabric, node_id, ctx.timeout)
           state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
@@ -56,7 +56,7 @@ module ChipTool
               attribute_id: attribute_id
             )
 
-            entries = extract_entries(report, cluster_id, attribute_id) || raise "ReportData missing ACL"
+            entries = extract_entries(report, cluster_id, attribute_id) || raise Matter::ProtocolError.new("ReportData missing ACL")
             puts "ACL: #{entries.size} entries"
             entries.each_with_index do |e, idx|
               puts "  [#{idx}]:"
@@ -112,7 +112,7 @@ module ChipTool
 
           store = Matter::Controller::StateStore.new(ctx.storage_directory)
           state = store.load
-          fabric = state.fabric || raise "No controller fabric found; run `pairing code ...` first"
+          fabric = state.fabric || raise Matter::CommissioningError.new("No controller fabric found; run `pairing code ...` first")
 
           peer = resolve_peer(state, fabric, node_id, ctx.timeout)
           state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
@@ -187,7 +187,7 @@ module ChipTool
           sleep 100.milliseconds
         end
 
-        raise "Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})"
+        raise Matter::TransportError.new("Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})")
       ensure
         scanner.try(&.close)
       end

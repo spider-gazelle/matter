@@ -24,13 +24,13 @@ module Matter
         save(state) if dirty && File.exists?(@path)
         state
       rescue ex
-        raise "Failed to load controller state (path=#{@path}): #{ex.message}"
+        raise Matter::StorageError.new("Failed to load controller state (path=#{@path}): #{ex.message}", cause: ex)
       end
 
       def save(state : State) : Nil
         File.write(@path, state.to_pretty_json)
       rescue ex
-        raise "Failed to save controller state (path=#{@path}): #{ex.message}"
+        raise Matter::StorageError.new("Failed to save controller state (path=#{@path}): #{ex.message}", cause: ex)
       end
 
       private def normalize(state : State) : {State, Bool}

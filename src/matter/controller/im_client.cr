@@ -49,7 +49,7 @@ module Matter
         )
 
         response = @client.wait_for(exchange_id, Client::PROTOCOL_INTERACTION_MODEL, MSG_REPORT_DATA, @timeout)
-        raise "IM: timeout waiting for ReportData (exchange=#{exchange_id})" unless response
+        raise Matter::TimeoutError.new("IM: timeout waiting for ReportData (exchange=#{exchange_id})") unless response
 
         InteractionModel::ReportDataMessage.from_slice(response.message.payload.to_slice)
       end
@@ -112,7 +112,7 @@ module Matter
         )
 
         response = @client.wait_for(exchange_id, Client::PROTOCOL_INTERACTION_MODEL, MSG_WRITE_RESPONSE, @timeout)
-        raise "IM: timeout waiting for WriteResponse (exchange=#{exchange_id})" unless response
+        raise Matter::TimeoutError.new("IM: timeout waiting for WriteResponse (exchange=#{exchange_id})") unless response
 
         InteractionModel::WriteResponseMessage.from_slice(response.message.payload.to_slice)
       end
@@ -151,7 +151,7 @@ module Matter
         )
 
         response = @client.wait_for(exchange_id, Client::PROTOCOL_INTERACTION_MODEL, MSG_INVOKE_RESPONSE, @timeout)
-        raise "IM: timeout waiting for InvokeResponse (exchange=#{exchange_id})" unless response
+        raise Matter::TimeoutError.new("IM: timeout waiting for InvokeResponse (exchange=#{exchange_id})") unless response
 
         InteractionModel::InvokeResponseMessage.from_slice(response.message.payload.to_slice)
       end

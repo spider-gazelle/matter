@@ -421,7 +421,7 @@ module Matter
         end
       end
 
-      def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_NODE_LABEL
           str = decode_string(value)
@@ -500,8 +500,8 @@ module Matter
         @location = state.location
         @local_config_disabled = state.local_config_disabled?
         @data_version = state.data_version
-      rescue
-        # Start fresh if restore fails
+      rescue ex
+        Log.warn(exception: ex) { "BasicInformation restore_state failed; starting fresh" }
       end
 
       # Helper: Trigger StartUp event (call when node boots)

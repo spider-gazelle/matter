@@ -28,6 +28,10 @@ module ChipTool
         puts Help.render(error: "unknown command: #{set_name} #{command_name}")
         2
       end
+    rescue ex : Matter::Error
+      # Expected operational failures: the message is the diagnosis.
+      STDERR.puts "chip-tool: error: #{ex.message}"
+      1
     rescue ex
       STDERR.puts "chip-tool: error: #{ex.message}"
       ex.backtrace?.try { |backtrace| STDERR.puts backtrace.join('\n') }

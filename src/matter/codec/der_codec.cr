@@ -71,7 +71,7 @@ module Matter
           when .nil?
             Slice(UInt8).new(1, 0)
           else
-            raise Exception.new("An unsupported type was passed to the encoder")
+            raise Matter::CodecError.new("An unsupported type was passed to the encoder")
           end
         end
 

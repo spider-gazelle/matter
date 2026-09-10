@@ -745,11 +745,11 @@ module Matter
           end
         end
       rescue ex
-        Log.error(exception: ex) do
+        Log.debug(exception: ex) do
           "Error handling message: peer=#{peer.address}:#{peer.port} session_id=#{msg.packet_header.session_id} " \
           "msg_id=#{msg.packet_header.message_id} protocol=0x#{msg.payload_header.protocol_id.to_s(16)} " \
           "type=0x#{msg.payload_header.message_type.to_s(16)} exchange=#{msg.payload_header.exchange_id} " \
-          "payload_hex=#{msg.payload.hexstring}"
+          "payload_bytes=#{msg.payload.size}"
         end
       end
 
@@ -774,7 +774,7 @@ module Matter
         )
 
         unless decrypted
-          raise "Failed to decrypt message"
+          raise Matter::SessionError.new("Failed to decrypt message")
         end
 
         # Some controllers (notably iOS) may omit or otherwise vary the peer identity

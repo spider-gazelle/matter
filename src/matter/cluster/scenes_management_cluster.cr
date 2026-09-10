@@ -651,7 +651,8 @@ module Matter
         update_fabric_scene_info(fabric_index)
 
         encode_status_response(InteractionModel::StatusCode::Success, req.group_id, req.scene_id)
-      rescue
+      rescue ex
+        Log.warn(exception: ex) { "AddScene: failed to parse request (bytes=#{fields.hexstring})" }
         encode_status_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
       end
 
@@ -667,7 +668,8 @@ module Matter
         else
           encode_view_scene_response(InteractionModel::StatusCode::NotFound, req.group_id, req.scene_id, nil)
         end
-      rescue
+      rescue ex
+        Log.warn(exception: ex) { "ViewScene: failed to parse request (bytes=#{fields.hexstring})" }
         encode_view_scene_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8, nil)
       end
 
@@ -684,7 +686,8 @@ module Matter
         else
           encode_status_response(InteractionModel::StatusCode::NotFound, req.group_id, req.scene_id)
         end
-      rescue
+      rescue ex
+        Log.warn(exception: ex) { "RemoveScene: failed to parse request (bytes=#{fields.hexstring})" }
         encode_status_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
       end
 
@@ -697,7 +700,8 @@ module Matter
         update_fabric_scene_info(fabric_index)
 
         encode_remove_all_response(InteractionModel::StatusCode::Success, req.group_id)
-      rescue
+      rescue ex
+        Log.warn(exception: ex) { "RemoveAllScenes: failed to parse request (bytes=#{fields.hexstring})" }
         encode_remove_all_response(InteractionModel::StatusCode::InvalidCommand, 0_u16)
       end
 
@@ -782,7 +786,8 @@ module Matter
         remaining = (@scene_table_size - fabric_scenes).clamp(0, 253).to_u8
 
         encode_membership_response(InteractionModel::StatusCode::Success, remaining, req.group_id, scene_list)
-      rescue
+      rescue ex
+        Log.warn(exception: ex) { "GetSceneMembership: failed to parse request (bytes=#{fields.hexstring})" }
         encode_membership_response(InteractionModel::StatusCode::InvalidCommand, nil, 0_u16, nil)
       end
 
@@ -812,7 +817,8 @@ module Matter
 
         update_fabric_scene_info(fabric_index)
         encode_copy_response(InteractionModel::StatusCode::Success, req.group_identifier_from, req.scene_identifier_from)
-      rescue
+      rescue ex
+        Log.warn(exception: ex) { "CopyScene: failed to parse request (bytes=#{fields.hexstring})" }
         encode_copy_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
       end
 

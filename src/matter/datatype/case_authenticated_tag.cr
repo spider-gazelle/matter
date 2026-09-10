@@ -29,7 +29,7 @@ module Matter
       # Create from bytes (big-endian)
       def initialize(slice : Bytes)
         if slice.size < BYTE_SIZE
-          raise ArgumentError.new("CaseAuthenticatedTag slice must be at least #{BYTE_SIZE} bytes")
+          raise Matter::CodecError.new("CaseAuthenticatedTag slice must be at least #{BYTE_SIZE} bytes")
         end
         @value = IO::ByteFormat::BigEndian.decode(UInt32, slice)
         validate!

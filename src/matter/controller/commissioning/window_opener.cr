@@ -52,7 +52,7 @@ module Matter
           # The command uses a status-only InvokeResponse.
           if status = resp.invoke_responses.first?.try(&.command_status).try(&.status)
             unless status.status == InteractionModel::StatusCode::Success.value
-              raise "OpenCommissioningWindow failed (status=#{status.status})"
+              raise Matter::CommissioningError.new("OpenCommissioningWindow failed (status=#{status.status})")
             end
           end
 
