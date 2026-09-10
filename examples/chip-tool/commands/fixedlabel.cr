@@ -84,7 +84,7 @@ module ChipTool
         cluster_id : UInt32,
         attribute_id : UInt32,
       ) : Array(Matter::Cluster::LabelStruct)
-        store = Matter::Controller::StateStore.new(ctx.storage_directory)
+        store = ctx.state_store
         state = store.load
         fabric = state.fabric || raise Matter::CommissioningError.new("No controller fabric found; run `pairing code ...` first")
 

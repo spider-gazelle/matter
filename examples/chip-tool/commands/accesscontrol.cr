@@ -33,7 +33,7 @@ module ChipTool
           node_id = parse_u64(node_id_str) || raise ArgumentError.new("invalid node-id: #{node_id_str}")
           endpoint_id = endpoint_str.to_u16
 
-          store = Matter::Controller::StateStore.new(ctx.storage_directory)
+          store = ctx.state_store
           state = store.load
           fabric = state.fabric || raise Matter::CommissioningError.new("No controller fabric found; run `pairing code ...` first")
 
@@ -110,7 +110,7 @@ module ChipTool
           entries = Matter::Controller::Clusters::AccessControl.parse_acl_json(json)
           tlv = Matter::Controller::Clusters::AccessControl.encode_acl_tlv(entries)
 
-          store = Matter::Controller::StateStore.new(ctx.storage_directory)
+          store = ctx.state_store
           state = store.load
           fabric = state.fabric || raise Matter::CommissioningError.new("No controller fabric found; run `pairing code ...` first")
 

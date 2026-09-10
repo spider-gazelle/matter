@@ -201,11 +201,11 @@ module Matter
           info = FabricInfo.new(
             fabric_id: fabric_id,
             controller_node_id: controller_node_id,
-            ipk_value_hex: ipk.hexstring,
-            root_cert_hex: root_cert.hexstring,
-            root_public_key_hex: root_public_key.hexstring,
-            controller_noc_hex: controller_noc.hexstring,
-            controller_private_key_hex: controller_key.private_key.hexstring
+            ipk_value: ipk,
+            root_cert: root_cert,
+            root_public_key: root_public_key,
+            controller_noc: controller_noc,
+            controller_private_key: controller_key.private_key
           )
           info
         end

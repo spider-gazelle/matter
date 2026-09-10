@@ -38,7 +38,7 @@ module ChipTool
 
           node_id = parse_u64(node_id_str) || raise ArgumentError.new("invalid node-id: #{node_id_str}")
 
-          store = Matter::Controller::StateStore.new(ctx.storage_directory)
+          store = ctx.state_store
           state = store.load
           controller = Matter::Controller::Client.new(
             unsecured_source_node_id: state.commissioner_node_id,
@@ -79,7 +79,7 @@ module ChipTool
           iterations = iteration_str.to_u32
           discriminator = discriminator_str.to_u16
 
-          store = Matter::Controller::StateStore.new(ctx.storage_directory)
+          store = ctx.state_store
           state = store.load
           fabric = state.fabric || raise Matter::CommissioningError.new("No controller fabric found; run `pairing code ...` first")
 

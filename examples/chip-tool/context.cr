@@ -1,13 +1,29 @@
 require "file_utils"
 
 module ChipTool
-  record Context, storage_directory : String, timeout : Time::Span do
-    DEFAULT_TIMEOUT = 10.seconds
+  # Command-line context: where the controller keeps its state and how long to
+  # wait for devices. The controller state lives in one YAML store,
+  # `<storage_directory>/controller.yml`, shared by every command.
+  class Context
+    DEFAULT_TIMEOUT       = 10.seconds
+    DEFAULT_STORAGE_DIR   = "chip-tool-storage"
+    STORAGE_DIR_ENV       = "MATTER_CHIP_TOOL_STORAGE"
+    CONTROLLER_STATE_FILE = "controller.yml"
+
+    getter storage_directory : String
+    getter timeout : Time::Span
+    getter state_store : Matter::Controller::StateStore
+
+    def initialize(@storage_directory : String, @timeout : Time::Span = DEFAULT_TIMEOUT)
+      FileUtils.mkdir_p(@storage_directory)
+      backend = Matter::Storage::YamlFile.new(File.join(@storage_directory, CONTROLLER_STATE_FILE))
+      @state_store = Matter::Controller::StateStore.new(backend)
+    end
 
     def self.parse(argv : Array(String)) : {Context, Array(String)}
       args = argv.dup
 
-      storage_dir = ENV["MATTER_CHIP_TOOL_STORAGE"]? || File.join(Dir.current, "chip-tool-storage")
+      storage_dir = ENV[STORAGE_DIR_ENV]? || File.join(Dir.current, DEFAULT_STORAGE_DIR)
       timeout = DEFAULT_TIMEOUT
 
       i = 0
@@ -30,8 +46,6 @@ module ChipTool
         end
         i += 1
       end
-
-      FileUtils.mkdir_p(storage_dir)
 
       {new(storage_dir, timeout), args}
     end
