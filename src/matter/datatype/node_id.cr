@@ -4,8 +4,12 @@ require "tlv"
 module Matter
   module DataType
     class NodeId
-      OPERATIONAL_MINIMUM = BigInt.new("0000000000000001", base: 16)
-      OPERATIONAL_MAXIMUM = BigInt.new("FFFFFFEFFFFFFFFF", base: 16)
+      # Operational Node ID range (Matter 1.4 § 2.5.5.1)
+      OPERATIONAL_MINIMUM = 0x0000_0000_0000_0001_u64
+      OPERATIONAL_MAXIMUM = 0xFFFF_FFEF_FFFF_FFFF_u64
+
+      # Group Node ID prefix: 0xFFFFFFFFFFFF followed by the 16-bit group id
+      GROUP_NODE_ID_PREFIX = 0xFFFF_FFFF_FFFF_0000_u64
 
       # CAT NodeId prefix: 0xFFFFFFFD followed by 32-bit CAT value
       CAT_PREFIX = 0xFFFFFFFD00000000_u64
@@ -51,23 +55,15 @@ module Matter
         CaseAuthenticatedTag.new((id & 0xFFFFFFFF).to_u32)
       end
 
-      def random_operational_node_id : NodeId
-        loop do
-          random_id = BigInt.new(Random::Secure.hex(8), base: 16)
-
-          if random_id >= OPERATIONAL_MINIMUM || random_id <= OPERATIONAL_MAXIMUM
-            return NodeId.new(random_id.to_u64)
-          end
-        end
+      # Generate a random NodeId within the operational range
+      def self.random_operational : NodeId
+        NodeId.new(Random::Secure.rand(OPERATIONAL_MINIMUM..OPERATIONAL_MAXIMUM))
       end
 
-      def get_group_node_id(group_id : UInt16)
-        io = IO::Memory.new
-        byte_format = IO::ByteFormat::LittleEndian
-
-        byte_format.encode(group_id, io)
-
-        NodeId.new(BigInt.new("FFFFFFFFFFFF" + io.rewind.to_slice.hexstring, base: 16).to_u64)
+      # Create the Group NodeId for a group id
+      # Format: 0xFFFFFFFFFFFF + 16-bit group id
+      def self.group(group_id : UInt16) : NodeId
+        NodeId.new(GROUP_NODE_ID_PREFIX | group_id.to_u64)
       end
 
       def hexstring : String

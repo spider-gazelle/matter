@@ -24,29 +24,41 @@ describe Matter::DataType::NodeId do
     end
   end
 
-  describe "group node id" do
+  describe ".group" do
     it "creates a NodeId from a group ID" do
-      node_id = Matter::DataType::NodeId.new(0_u64)
-      group_node = node_id.get_group_node_id(0x1234_u16)
-      # Group NodeIds have the format FFFFFFFFFFFF + group_id (little-endian)
-      group_node.id.should be > 0
+      group_node = Matter::DataType::NodeId.group(0x1234_u16)
+      # Group NodeIds have the format 0xFFFFFFFFFFFF + 16-bit group id
+      group_node.id.should eq(0xFFFF_FFFF_FFFF_1234_u64)
+    end
+
+    it "uses the group node id prefix" do
+      Matter::DataType::NodeId.group(0_u16).id.should eq(Matter::DataType::NodeId::GROUP_NODE_ID_PREFIX)
+      Matter::DataType::NodeId.group(UInt16::MAX).id.should eq(0xFFFF_FFFF_FFFF_FFFF_u64)
     end
   end
 
-  describe "random operational node id" do
-    it "generates a random operational NodeId" do
-      node_id = Matter::DataType::NodeId.new(0_u64)
-      random_node = node_id.random_operational_node_id
+  describe ".random_operational" do
+    sample_size = 1000
 
-      # Operational NodeIds must be within the valid range
-      random_node.id.should be >= 1
-      random_node.id.should be <= Matter::DataType::NodeId::OPERATIONAL_MAXIMUM.to_u64
+    it "generates NodeIds within the operational range" do
+      sample_size.times do
+        random_node = Matter::DataType::NodeId.random_operational
+
+        random_node.id.should_not eq(0_u64)
+        random_node.id.should be >= Matter::DataType::NodeId::OPERATIONAL_MINIMUM
+        random_node.id.should be <= Matter::DataType::NodeId::OPERATIONAL_MAXIMUM
+      end
+    end
+
+    it "does not repeat ids" do
+      ids = Array.new(sample_size) { Matter::DataType::NodeId.random_operational.id }
+      ids.uniq.size.should eq(sample_size)
     end
   end
 
   describe "constants" do
     it "has correct OPERATIONAL_MINIMUM" do
-      Matter::DataType::NodeId::OPERATIONAL_MINIMUM.should eq(BigInt.new(1))
+      Matter::DataType::NodeId::OPERATIONAL_MINIMUM.should eq(1_u64)
     end
 
     it "has correct OPERATIONAL_MAXIMUM" do

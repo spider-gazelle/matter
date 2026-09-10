@@ -52,8 +52,6 @@ module Matter
       end
 
       def keys(contexts : Array(String)) : Array(String)
-        raise Exception.new("Context must not be empty!") if contexts.size == 0
-
         context_key = create_context_key(contexts)
 
         if context = store[context_key]?
@@ -68,12 +66,10 @@ module Matter
 
       # Get all key-value pairs in a context
       def values(contexts : Array(String)) : Hash(String, Type)
-        raise Exception.new("Context must not be empty!") if contexts.size == 0
-
         context_key = create_context_key(contexts)
 
         if context = store[context_key]?
-          return context.as(Hash(String, Type))
+          return context.as(Hash(String, Type)).dup
         end
 
         {} of String => Type
@@ -132,16 +128,6 @@ module Matter
         end
 
         keys_to_delete.each { |key| store.delete(key) }
-      end
-
-      private def create_context_key(contexts : Array(String)) : String
-        key = contexts.join(".")
-
-        if key.size == 0 || key.includes?("..") || key.starts_with?(".") || key.ends_with?(".")
-          raise Exception.new("Context must not be an empty string.")
-        end
-
-        key
       end
     end
   end

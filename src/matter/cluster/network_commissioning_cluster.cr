@@ -66,11 +66,6 @@ module Matter
         Ipv6Failed             = 10 # IPv6 address generation failed
         IpBindFailed           = 11 # WiFi-IP interface binding failed
         UnknownError           = 12 # Unknown internal error
-
-        # Aliases for backward compatibility
-        NetworkIDNotFound = NetworkIdNotFound
-        IPv6Failed        = Ipv6Failed
-        IPBindFailed      = IpBindFailed
       end
 
       # WiFiSecurityType
@@ -833,9 +828,6 @@ module Matter
         end
 
         # Use backend to connect to network
-        success = true
-        error_value = nil
-
         if backend = @backend
           success, error_value = backend.connect_network(cmd.network_id)
           unless success

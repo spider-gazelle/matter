@@ -8,6 +8,18 @@ module Matter
   module Protocol
     # Persistence hooks for `Protocol::MessageHandler` state (CASE sessions and subscriptions).
     module Persistence
+      # JSON keys whose string values are secrets and must never reach the logs.
+      REDACTED_KEYS = %w[encryption_key decryption_key attestation_challenge]
+
+      REDACTED_VALUE = "<redacted>"
+
+      # Replace the string values of `REDACTED_KEYS` in a JSON document with a placeholder.
+      def self.redact(json : String) : String
+        REDACTED_KEYS.reduce(json) do |redacted, key|
+          redacted.gsub(/"#{key}"\s*:\s*"[^"]*"/, %("#{key}":"#{REDACTED_VALUE}"))
+        end
+      end
+
       abstract class Base
         abstract def restore(handler : MessageHandler) : Nil
         abstract def session_established(handler : MessageHandler, session : Session::SecureContext) : Nil
@@ -129,7 +141,7 @@ module Matter
           Log.info { "Restored #{restored} CASE session(s)" } if restored > 0
         rescue ex
           raw = @storage.get(SESSION_CONTEXT, SESSION_KEY)
-          raw_value = raw.is_a?(String) ? redact_protocol_state(raw) : raw.inspect
+          raw_value = raw.is_a?(String) ? Persistence.redact(raw) : raw.inspect
           Log.error(exception: ex) { "Failed restoring sessions (stored=#{raw_value})" }
         end
 
@@ -158,13 +170,6 @@ module Matter
           raw = @storage.get(SESSION_CONTEXT, SUBSCRIPTIONS_KEY)
           raw_value = raw.is_a?(String) ? raw : raw.inspect
           Log.error(exception: ex) { "Failed restoring subscriptions (stored=#{raw_value})" }
-        end
-
-        private def redact_protocol_state(raw : String) : String
-          raw
-            .gsub(/\"encryption_key\"\\s*:\\s*\"[^\"]*\"/, "\"encryption_key\":\"<redacted>\"")
-            .gsub(/\"decryption_key\"\\s*:\\s*\"[^\"]*\"/, "\"decryption_key\":\"<redacted>\"")
-            .gsub(/\"attestation_challenge\"\\s*:\\s*\"[^\"]*\"/, "\"attestation_challenge\":\"<redacted>\"")
         end
 
         private def load_case_sessions : Hash(String, Hash(String, String | UInt64 | UInt32 | UInt16 | UInt8 | Int64 | Bool))

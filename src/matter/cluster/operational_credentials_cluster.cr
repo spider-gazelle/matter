@@ -59,10 +59,6 @@ module Matter
         FabricConflict        =  9 # Fabric with same ID already exists
         LabelConflict         = 10 # Label already in use by another fabric
         InvalidFabricIndex    = 11 # Specified fabric index doesn't exist
-
-        # Aliases for backward compatibility
-        OK         = Ok
-        InvalidNOC = InvalidNoc
       end
 
       # Attributes
@@ -266,8 +262,9 @@ module Matter
         end
       end
 
-      # Failsafe context state for tracking CSR and root cert operations
-      class FailsafeContext
+      # Credentials received while the failsafe is armed (CSR, root cert, NOC) that are
+      # only committed once commissioning completes
+      class PendingCredentials
         property csr_session_id : UInt64?
         property? is_for_update_noc : Bool
         property? root_cert_set : Bool
@@ -299,7 +296,7 @@ module Matter
 
       # Instance variables
       @fabric_table : FabricTable
-      @failsafe_context : FailsafeContext
+      @pending_credentials : PendingCredentials
       @dac : Bytes?                                                           # Device Attestation Certificate
       @pai : Bytes?                                                           # Product Attestation Intermediate
       @attestation_key : Crypto::Key?                                         # Device Attestation private key
@@ -361,7 +358,7 @@ module Matter
       )
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
-        @failsafe_context = FailsafeContext.new
+        @pending_credentials = PendingCredentials.new
         @dac = nil
         @pai = nil
         # Generate a default attestation key for testing
@@ -685,7 +682,7 @@ module Matter
         end
 
         # Check if NOC already added/updated in current failsafe
-        if @failsafe_context.noc_added_or_updated?
+        if @pending_credentials.noc_added_or_updated?
           # CSRRequest response payload cannot encode an error; failures must be
           # returned as a StatusIB in the InvokeResponse.
           return InteractionModel::Status.new(
@@ -708,7 +705,7 @@ module Matter
         # NOTE: @session_id should be set by protocol layer, defaults to 0 for testing
         session_id = @session_id || 0_u64
         is_for_update = request.is_for_update_noc || false
-        @failsafe_context.set_csr(session_id, is_for_update)
+        @pending_credentials.set_csr(session_id, is_for_update)
 
         # Encode response as TLV
         response = OpCredDefs::CsrResponse.new(csr_elements, csr_signature)
@@ -726,19 +723,19 @@ module Matter
         end
 
         # Cannot call AddNOC twice in same failsafe
-        if @failsafe_context.noc_added_or_updated?
+        if @pending_credentials.noc_added_or_updated?
           return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "AddNOC/UpdateNOC already called in this failsafe")
         end
 
         # Must have CSR from this session
         # NOTE: @session_id should be set by protocol layer, defaults to 0 for testing
         session_id = @session_id || 0_u64
-        unless @failsafe_context.csr_exists?(session_id)
+        unless @pending_credentials.csr_exists?(session_id)
           return encode_noc_response(NodeOperationalCertStatus::MissingCsr, nil, "CSR not found for this session")
         end
 
         # Must have root certificate set
-        unless @failsafe_context.root_cert_set?
+        unless @pending_credentials.root_cert_set?
           return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Root certificate not set")
         end
 
@@ -806,7 +803,7 @@ module Matter
         end
 
         # Mark NOC operation completed
-        @failsafe_context.noc_added_or_updated = true
+        @pending_credentials.noc_added_or_updated = true
 
         # Create default ACL entry for case_admin_subject
         # Matter spec requires creating an ACL entry that grants Administer privilege
@@ -863,19 +860,19 @@ module Matter
         session_fabric_index = @session_fabric_index || request.fabric_index || 0_u8
 
         # Cannot call UpdateNOC after AddNOC in same failsafe
-        if @failsafe_context.noc_added_or_updated?
+        if @pending_credentials.noc_added_or_updated?
           return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "AddNOC/UpdateNOC already called in this failsafe")
         end
 
         # Must have CSR from this session with is_for_update_noc=true
         # NOTE: @session_id should be set by protocol layer, defaults to 0 for testing
         session_id = @session_id || 0_u64
-        unless @failsafe_context.csr_exists?(session_id) && @failsafe_context.is_for_update_noc?
+        unless @pending_credentials.csr_exists?(session_id) && @pending_credentials.is_for_update_noc?
           return encode_noc_response(NodeOperationalCertStatus::MissingCsr, nil, "CSR for update not found")
         end
 
         # Root certificate cannot be set for updates
-        if @failsafe_context.root_cert_set?
+        if @pending_credentials.root_cert_set?
           return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Cannot set root certificate for NOC update")
         end
 
@@ -907,7 +904,7 @@ module Matter
         @fabric_table.update_fabric(fabric)
 
         # Mark NOC operation completed
-        @failsafe_context.noc_added_or_updated = true
+        @pending_credentials.noc_added_or_updated = true
 
         encode_noc_response(NodeOperationalCertStatus::Ok, fabric.fabric_index)
       end
@@ -1051,13 +1048,13 @@ module Matter
         end
 
         # Cannot set root cert twice in same failsafe
-        if @failsafe_context.root_cert_set?
+        if @pending_credentials.root_cert_set?
           Log.warn { "AddTrustedRootCertificate failed: Root cert already set" }
           return Bytes.new(0)
         end
 
         # Cannot set root cert after AddNOC/UpdateNOC
-        if @failsafe_context.noc_added_or_updated?
+        if @pending_credentials.noc_added_or_updated?
           Log.warn { "AddTrustedRootCertificate failed: NOC already added/updated" }
           return Bytes.new(0)
         end
@@ -1071,7 +1068,7 @@ module Matter
 
         # Store root certificate
         @trusted_root_certs << request.root_certificate
-        @failsafe_context.root_cert_set = true
+        @pending_credentials.root_cert_set = true
         Log.info { "AddTrustedRootCertificate succeeded, root_cert_set=true" }
         increment_version
 
@@ -1083,13 +1080,13 @@ module Matter
 
       # Failsafe timer expired - reset context
       def on_failsafe_expired
-        @failsafe_context.reset
+        @pending_credentials.reset
         @pending_noc_key = nil
       end
 
       # Failsafe timer disarmed successfully - commit changes
       def on_failsafe_success
-        @failsafe_context.reset
+        @pending_credentials.reset
         @pending_noc_key = nil
       end
 
@@ -1099,7 +1096,7 @@ module Matter
       # doesn't interfere with the new session.
       def on_failsafe_armed
         Log.info { "Resetting failsafe context for new commissioning session" }
-        @failsafe_context.reset
+        @pending_credentials.reset
         @pending_noc_key = nil
       end
 
@@ -1162,7 +1159,7 @@ module Matter
         end
 
         # Cannot call CSR after AddNOC/UpdateNOC in same failsafe
-        if @failsafe_context.noc_added_or_updated?
+        if @pending_credentials.noc_added_or_updated?
           return nil
         end
 
@@ -1177,7 +1174,7 @@ module Matter
         csr_signature = sign_attestation(csr_elements)
 
         # Store CSR context in failsafe
-        @failsafe_context.set_csr(session_id, cmd.is_for_update_noc || false)
+        @pending_credentials.set_csr(session_id, cmd.is_for_update_noc || false)
 
         CSRResponse.new(
           nocsr_elements: csr_elements,
@@ -1195,7 +1192,7 @@ module Matter
         return nil unless failsafe_armed
 
         # Cannot set root cert twice in same failsafe
-        if @failsafe_context.root_cert_set?
+        if @pending_credentials.root_cert_set?
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::InvalidNoc,
             debug_text: "Root certificate already set in this failsafe context"
@@ -1203,7 +1200,7 @@ module Matter
         end
 
         # Cannot set root cert after AddNOC/UpdateNOC
-        if @failsafe_context.noc_added_or_updated?
+        if @pending_credentials.noc_added_or_updated?
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::InvalidNoc,
             debug_text: "Cannot set root certificate after AddNOC/UpdateNOC"
@@ -1220,7 +1217,7 @@ module Matter
 
         # Store root certificate
         @trusted_root_certs << cmd.root_ca_certificate
-        @failsafe_context.root_cert_set = true
+        @pending_credentials.root_cert_set = true
 
         # No response for this command (TlvNoResponse in Matter spec)
         nil
@@ -1242,7 +1239,7 @@ module Matter
         end
 
         # Cannot call AddNOC twice in same failsafe
-        if @failsafe_context.noc_added_or_updated?
+        if @pending_credentials.noc_added_or_updated?
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::InvalidNoc,
             debug_text: "AddNOC/UpdateNOC already called in this failsafe"
@@ -1250,7 +1247,7 @@ module Matter
         end
 
         # Must have CSR from this session
-        unless @failsafe_context.csr_exists?(session_id)
+        unless @pending_credentials.csr_exists?(session_id)
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::MissingCsr,
             debug_text: "CSR not found for this session"
@@ -1258,7 +1255,7 @@ module Matter
         end
 
         # Must have root certificate set
-        unless @failsafe_context.root_cert_set?
+        unless @pending_credentials.root_cert_set?
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::InvalidNoc,
             debug_text: "Root certificate not set"
@@ -1310,7 +1307,7 @@ module Matter
         end
 
         # Mark NOC operation completed
-        @failsafe_context.noc_added_or_updated = true
+        @pending_credentials.noc_added_or_updated = true
 
         # Create default ACL entry for case_admin_subject
         # Matter spec requires creating an ACL entry that grants Administer privilege
@@ -1356,7 +1353,7 @@ module Matter
         end
 
         # Cannot call UpdateNOC after AddNOC in same failsafe
-        if @failsafe_context.noc_added_or_updated?
+        if @pending_credentials.noc_added_or_updated?
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::InvalidNoc,
             debug_text: "AddNOC/UpdateNOC already called in this failsafe"
@@ -1364,7 +1361,7 @@ module Matter
         end
 
         # Must have CSR from this session with is_for_update_noc=true
-        unless @failsafe_context.csr_exists?(session_id) && @failsafe_context.is_for_update_noc?
+        unless @pending_credentials.csr_exists?(session_id) && @pending_credentials.is_for_update_noc?
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::MissingCsr,
             debug_text: "CSR for update not found"
@@ -1372,7 +1369,7 @@ module Matter
         end
 
         # Root certificate cannot be set for updates
-        if @failsafe_context.root_cert_set?
+        if @pending_credentials.root_cert_set?
           return NOCResponse.new(
             status_code: NodeOperationalCertStatus::InvalidNoc,
             debug_text: "Cannot set root certificate for NOC update"
@@ -1409,7 +1406,7 @@ module Matter
         @fabric_table.update_fabric(fabric)
 
         # Mark NOC operation completed
-        @failsafe_context.noc_added_or_updated = true
+        @pending_credentials.noc_added_or_updated = true
 
         NOCResponse.new(
           status_code: NodeOperationalCertStatus::Ok,

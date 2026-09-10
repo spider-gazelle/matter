@@ -249,34 +249,33 @@ module Matter
       @fabrics.clear
 
       data.each do |index_str, fabric_data|
-        # Convert JSON::Any values to proper types
-        fabric_hash = {} of String => (String | UInt64 | UInt16 | UInt8 | Int64)
-
-        fabric_data.each do |key, value|
-          fabric_hash[key] = case value.raw
-                             when String
-                               value.as_s
-                             when Int64
-                               value.as_i64
-                             when Float64
-                               value.as_i64 # Convert float to int
-                             when Bool
-                               value.as_bool ? 1_i64 : 0_i64
-                             else
-                               value.as_s
-                             end
-        end
-
-        begin
-          fabric = Fabric.from_h(fabric_hash)
-          @fabrics[fabric.fabric_index] = fabric
-        rescue ex
-          # Skip invalid fabric entries
-          Log.warn(exception: ex) { "Failed to load fabric at index #{index_str}" }
-        end
+        fabric = Fabric.from_h(coerce_fabric_hash(index_str, fabric_data))
+        @fabrics[fabric.fabric_index] = fabric
+      rescue ex
+        # Skip invalid fabric entries, keeping the rest of the table intact
+        Log.warn(exception: ex) { "Failed to load fabric at index #{index_str}" }
       end
 
       Log.info { "Loaded #{@fabrics.size} fabric(s) from storage" }
+    end
+
+    # Convert the JSON::Any values of a stored fabric entry into the scalar types
+    # `Fabric.from_h` expects. Values of unsupported types are skipped with a warning.
+    private def coerce_fabric_hash(index_str : String, fabric_data : Hash(String, JSON::Any)) : Hash(String, String | UInt64 | UInt16 | UInt8 | Int64)
+      fabric_hash = {} of String => (String | UInt64 | UInt16 | UInt8 | Int64)
+
+      fabric_data.each do |key, value|
+        case raw = value.raw
+        when String  then fabric_hash[key] = raw
+        when Int64   then fabric_hash[key] = raw
+        when Float64 then fabric_hash[key] = raw.to_i64
+        when Bool    then fabric_hash[key] = raw ? 1_i64 : 0_i64
+        else
+          Log.warn { "Skipping unsupported value for fabric #{index_str} field #{key} (#{raw.class})" }
+        end
+      end
+
+      fabric_hash
     end
 
     # Export all fabrics for backup

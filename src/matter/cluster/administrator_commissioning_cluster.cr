@@ -503,11 +503,6 @@ module Matter
         Time.utc >= timeout
       end
 
-      # Check if any commissioning window is open
-      def window_open? : Bool
-        !@window_status.window_not_open?
-      end
-
       # ========================================================================
       # Public Query Methods
       # ========================================================================

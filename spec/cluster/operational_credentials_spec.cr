@@ -274,10 +274,10 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
   describe "NodeOperationalCertStatus" do
     it "defines status codes" do
-      Matter::Cluster::OperationalCredentialsCluster::NodeOperationalCertStatus::OK.value.should eq(0_u8)
+      Matter::Cluster::OperationalCredentialsCluster::NodeOperationalCertStatus::Ok.value.should eq(0_u8)
       Matter::Cluster::OperationalCredentialsCluster::NodeOperationalCertStatus::InvalidPublicKey.value.should eq(1_u8)
       Matter::Cluster::OperationalCredentialsCluster::NodeOperationalCertStatus::InvalidNodeOpId.value.should eq(2_u8)
-      Matter::Cluster::OperationalCredentialsCluster::NodeOperationalCertStatus::InvalidNOC.value.should eq(3_u8)
+      Matter::Cluster::OperationalCredentialsCluster::NodeOperationalCertStatus::InvalidNoc.value.should eq(3_u8)
       Matter::Cluster::OperationalCredentialsCluster::NodeOperationalCertStatus::MissingCsr.value.should eq(4_u8)
       Matter::Cluster::OperationalCredentialsCluster::NodeOperationalCertStatus::TableFull.value.should eq(5_u8)
       Matter::Cluster::OperationalCredentialsCluster::NodeOperationalCertStatus::InsufficientPrivilege.value.should eq(8_u8)

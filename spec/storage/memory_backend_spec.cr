@@ -285,4 +285,46 @@ describe Matter::Storage::MemoryBackend do
       storage.keys(["app", "config"]).should eq(["language", "theme"])
     end
   end
+
+  describe "root context" do
+    it "returns a copy from values" do
+      storage = Matter::Storage::MemoryBackend.new
+      storage.set(["context"], "key", "value")
+
+      values = storage.values(["context"])
+      values["injected"] = "value"
+      values.delete("key")
+
+      storage.get(["context"], "key").should eq("value")
+      storage.keys(["context"]).should eq(["key"])
+    end
+
+    it "raises ArgumentError for keys and values on the root context" do
+      storage = Matter::Storage::MemoryBackend.new
+
+      expect_raises(ArgumentError, "Context must not be empty!") do
+        storage.keys([] of String)
+      end
+
+      expect_raises(ArgumentError, "Context must not be empty!") do
+        storage.values([] of String)
+      end
+    end
+
+    it "raises ArgumentError for empty context segments" do
+      storage = Matter::Storage::MemoryBackend.new
+
+      expect_raises(ArgumentError, "Context must not be an empty string.") do
+        storage.keys(["ok", ""])
+      end
+    end
+
+    it "lists root contexts" do
+      storage = Matter::Storage::MemoryBackend.new
+      storage.set(["alpha", "child"], "key", "value")
+      storage.set(["beta"], "key", "value")
+
+      storage.contexts([] of String).should eq(["alpha", "beta"])
+    end
+  end
 end

@@ -312,7 +312,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
   describe "status codes" do
     it "defines status codes" do
       Matter::Cluster::NetworkCommissioningCluster::NetworkCommissioningStatus::Success.value.should eq(0_u8)
-      Matter::Cluster::NetworkCommissioningCluster::NetworkCommissioningStatus::NetworkIDNotFound.value.should eq(3_u8)
+      Matter::Cluster::NetworkCommissioningCluster::NetworkCommissioningStatus::NetworkIdNotFound.value.should eq(3_u8)
       Matter::Cluster::NetworkCommissioningCluster::NetworkCommissioningStatus::AuthFailure.value.should eq(7_u8)
     end
   end

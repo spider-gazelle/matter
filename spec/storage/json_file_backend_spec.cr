@@ -64,4 +64,49 @@ describe Matter::Storage::JsonFileBackend do
       File.delete(path) if File.exists?(path)
     end
   end
+
+  it "returns a copy from values" do
+    path = File.tempname("matter-storage-values")
+    File.delete(path) if File.exists?(path)
+
+    begin
+      storage = Matter::Storage::JsonFileBackend.new(path)
+      storage.start
+      storage.set(["context"], "key", "value")
+
+      values = storage.values(["context"])
+      values["injected"] = "value"
+      values.delete("key")
+
+      storage.get(["context"], "key").should eq("value")
+      storage.keys(["context"]).should eq(["key"])
+      storage.stop
+    ensure
+      File.delete(path) if File.exists?(path)
+    end
+  end
+
+  it "raises ArgumentError for keys and values on the root context" do
+    storage = Matter::Storage::JsonFileBackend.new(File.tempname("matter-storage-root"))
+
+    expect_raises(ArgumentError, "Context must not be empty!") do
+      storage.keys([] of String)
+    end
+
+    expect_raises(ArgumentError, "Context must not be empty!") do
+      storage.values([] of String)
+    end
+
+    expect_raises(ArgumentError, "Context must not be an empty string.") do
+      storage.keys(["ok", ""])
+    end
+  end
+
+  it "lists root contexts" do
+    storage = Matter::Storage::JsonFileBackend.new(File.tempname("matter-storage-contexts"))
+    storage.set(["alpha", "child"], "key", "value")
+    storage.set(["beta"], "key", "value")
+
+    storage.contexts([] of String).should eq(["alpha", "beta"])
+  end
 end

@@ -12,6 +12,22 @@ module Matter
       abstract def contexts(contexts : Array(String)) : Array(String)
       abstract def clear : Nil
       abstract def clear_all(contexts : Array(String)) : Nil
+
+      CONTEXT_SEPARATOR = "."
+
+      # Join a context path into the flat key used by the backing store.
+      # Raises `ArgumentError` when the path is empty or contains an empty segment.
+      protected def create_context_key(contexts : Array(String)) : String
+        raise ArgumentError.new("Context must not be empty!") if contexts.empty?
+
+        key = contexts.join(CONTEXT_SEPARATOR)
+
+        if key.empty? || key.includes?(CONTEXT_SEPARATOR * 2) || key.starts_with?(CONTEXT_SEPARATOR) || key.ends_with?(CONTEXT_SEPARATOR)
+          raise ArgumentError.new("Context must not be an empty string.")
+        end
+
+        key
+      end
     end
   end
 end
