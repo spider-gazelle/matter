@@ -23,10 +23,13 @@ Gates for every phase: `crystal tool format --check`, `./bin/ameba`, `crystal sp
 
 ## Phase 0: Branch and safety net
 - [x] Create branch, add this file
-- [ ] Byte-exact assertions in `spec/exact_tlv_match_spec.cr`, `spec/exact_matterjs_vector_spec.cr`,
-      `spec/message_codec_compatibility_spec.cr` (encode side)
-- [ ] `spec/support/cluster_helpers.cr` (build cluster, read/write attr, assert status)
-- [ ] Baseline `./test` green on branch tip
+- [x] Byte-exact assertions: `spec/interaction_model/report_data_matterjs_vector_spec.cr` (merged the two
+      "exact" specs; encode match stays pending because AttributePath uses fixed-size ints for iOS),
+      `spec/message_codec_compatibility_spec.cr` re-encodes both matter.js vectors byte-for-byte
+- [x] `spec/support/cluster_helpers.cr` + `boolean_state_spec.cr` converted as the demonstration
+- [x] Bug found by the new specs and fixed: destination group id was encoded as 4 bytes (`message_codec.cr:166`)
+- [x] e2e harness: build the device image once, lock the compiler cache mount (parallel build race)
+- [x] Baseline `./test` green on branch tip (2026-09-10: 2133 unit + 61 e2e examples, 0 failures)
 
 ## Phase 1: Prune, explicit requires, naming collisions
 - [ ] Explicit require tree; `src/matter/controller.cr` entrypoint
@@ -35,6 +38,7 @@ Gates for every phase: `crystal tool format --check`, `./bin/ameba`, `crystal sp
 - [ ] Fix collisions (`CLUSTER_REVISION`, `FailsafeContext`, `SessionManager`, `DeviceType`)
 - [ ] Fix bugs (on_off duplicate tags, redaction regex, node_id bounds, memory backend live hash)
 - [ ] Spec reorg tranche 1
+- [ ] `./bin/ameba` clean repo-wide (250 pre-existing findings on develop)
 
 ## Phase 2: Foundations
 - [ ] `Matter::Error` hierarchy

@@ -25,7 +25,7 @@ COPY examples ./examples
 
 # Build all `examples/matter_*_device.cr` into `bin/matter_*` (e.g. bin/matter_switch)
 # plus the chip-tool driven validation helper used by the switch spec.
-RUN --mount=type=cache,target=/root/.cache/crystal \
+RUN --mount=type=cache,target=/root/.cache/crystal,sharing=locked \
     mkdir -p bin && \
     jobs="$(nproc)"; [ "$jobs" -gt 4 ] && jobs=4; \
     ls examples/matter_*_device.cr examples/device_validation.cr | \

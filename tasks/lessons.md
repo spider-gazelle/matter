@@ -8,3 +8,7 @@
   list entries/enum values are annotated (`256 (On/Off Light)`), and `--help` exits non-zero.
 - Official chip-tool docker image (`ghcr.io/matter-js/chip`) is IPv6-only and needs dbus+avahi
   running inside the container; give the compose network an IPv6 ULA subnet.
+- 2026-09-10: `docker compose build` builds every service that declares `build:` concurrently. Ten device
+  services sharing one Dockerfile target raced on the BuildKit crystal cache mount (object-file rename
+  failures, ld errors). Declare `build:` on one service, give the rest `image:` only, and use
+  `sharing=locked` on compiler cache mounts.
