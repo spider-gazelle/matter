@@ -1,7 +1,6 @@
 require "../spec_helper"
 require "../../src/matter/cluster/operational_credentials_cluster"
 require "../../src/matter/cluster/general_commissioning_cluster"
-require "../../src/matter/storage/memory_backend"
 
 # Tests for failsafe reset behavior when starting a new commissioning session
 # This specifically tests the fix for "Cannot generate CSR after AddNOC/UpdateNOC"
@@ -10,7 +9,7 @@ require "../../src/matter/storage/memory_backend"
 describe "Failsafe Reset Behavior" do
   describe "OperationalCredentials.on_failsafe_armed" do
     it "resets failsafe context state" do
-      storage = Matter::Storage::MemoryBackend.new
+      storage = Matter::Storage::Memory.new
       fabric_table = Matter::FabricTable.new(storage)
       cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table)
 
@@ -52,7 +51,7 @@ describe "Failsafe Reset Behavior" do
     end
 
     it "clears pending NOC key" do
-      storage = Matter::Storage::MemoryBackend.new
+      storage = Matter::Storage::Memory.new
       fabric_table = Matter::FabricTable.new(storage)
       cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table)
 
@@ -228,7 +227,7 @@ describe "Failsafe Reset Behavior" do
 
   describe "Integration: CSR after NOC in new session" do
     it "allows CSR after on_failsafe_armed even if NOC was previously added" do
-      storage = Matter::Storage::MemoryBackend.new
+      storage = Matter::Storage::Memory.new
       fabric_table = Matter::FabricTable.new(storage)
       op_creds = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table)
 
@@ -298,7 +297,7 @@ describe "Failsafe Reset Behavior" do
     end
 
     it "blocks CSR if NOC added in same session (not reset)" do
-      storage = Matter::Storage::MemoryBackend.new
+      storage = Matter::Storage::Memory.new
       fabric_table = Matter::FabricTable.new(storage)
       op_creds = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table)
 

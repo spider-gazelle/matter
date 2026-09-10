@@ -1,6 +1,6 @@
 require "tlv"
-require "json"
 require "../interaction_model/status_code"
+require "../storage/record"
 require "../interaction_model/paths"
 require "../datatype/*"
 require "./definitions/access_control"
@@ -90,6 +90,13 @@ module Matter
       # Callback for attribute change notifications (used by subscription system)
       # Parameters: endpoint_id, cluster_id, attribute_id
       property on_attribute_changed : Proc(UInt16, UInt32, UInt32, Nil)?
+
+      # Called from `increment_version` after every data version bump; the
+      # persistence layer uses it to mark this cluster dirty.
+      property on_version_changed : Proc(Nil)?
+
+      # Separates the endpoint and cluster id in `persistence_key`.
+      PERSISTENCE_KEY_SEPARATOR = "-"
 
       # Macro to add class method for accessing CLUSTER_ID constant
       # Revision of the cluster specification this implementation follows.
@@ -237,7 +244,7 @@ module Matter
 
         # Validate value (simplified - real implementation would decode and validate)
         @attribute_values[attribute_id] = value
-        @data_version += 1
+        increment_version
 
         InteractionModel::Status.success
       end
@@ -363,9 +370,11 @@ module Matter
         InteractionModel::Status.unsupported_command
       end
 
-      # Increment data version (call when attribute changes)
+      # Increment data version (call when attribute changes). This is the only
+      # place the version moves so persistence sees every change.
       protected def increment_version
-        @data_version += 1
+        @data_version &+= 1
+        @on_version_changed.try(&.call)
       end
 
       # Notify that a specific attribute has changed (triggers subscription updates)
@@ -393,23 +402,26 @@ module Matter
         commands.find { |cmd| cmd.id.id == command_id }
       end
 
-      # Returns a unique key for this cluster instance for persistence
-      # Format: "endpoint_<id>_cluster_<id>"
+      # The id of this cluster's document in the `clusters` collection:
+      # `"<endpoint>-<cluster id>"` in decimal.
       def persistence_key : String
-        "endpoint_#{@endpoint_id.number}_cluster_#{@cluster_id.id}"
+        Base.persistence_key(@endpoint_id.number, @cluster_id.id)
       end
 
-      # Save cluster state to JSON for persistence.
+      # :ditto:
+      def self.persistence_key(endpoint : UInt16, cluster_id : UInt32) : String
+        "#{endpoint}#{PERSISTENCE_KEY_SEPARATOR}#{cluster_id}"
+      end
+
+      # The cluster state to persist, or nil when the cluster has none.
       # Override in subclasses that need to persist state (e.g., scenes, groups).
-      # Returns nil if no state needs to be persisted.
-      def save_state : String?
+      def save_state : Storage::Document?
         nil
       end
 
-      # Restore cluster state from JSON.
+      # Restore cluster state from a document produced by `save_state`.
       # Override in subclasses that need to restore state.
-      # The json parameter is the string returned by save_state.
-      def restore_state(json : String) : Nil
+      def restore_state(document : Storage::Document) : Nil
         # Default: no-op
       end
 

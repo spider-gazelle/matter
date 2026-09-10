@@ -99,6 +99,23 @@ collections `fabrics`, `sessions`, `subscriptions`, `device`, `clusters`, `app`,
 - [ ] Docs, changelog, CLAUDE.md
 - [ ] Full gates; PR to develop
 
+## Phase 3 Step 2: consumers onto `Storage::Backend`, delete the legacy layer
+- [x] `Matter::Debouncer` (single fiber, trigger/flush/cancel) shared by cluster/fabric/session writes
+- [x] `Fabric` is a `Record` (Time fields, `cats` as `[u32]`, key split into private/public Bytes, key rebuilt lazily);
+      `FabricTable.new(backend)` one document per fabric; `mark_fabric_used` debounced when a debouncer is attached
+- [x] `SessionRecord` / `SubscriptionRecord` (+ `AttributePathRecord`); `Protocol::Persistence::StorageBackend`
+      per-document `sessions`/`subscriptions`, `device/counters`; redaction helpers deleted
+- [x] `Cluster::Base#save_state : Document?` / `restore_state(Document)`, `persistence_key` = `"<ep>-<cluster>"`,
+      `on_version_changed`, `increment_version` the only bump; every `PersistedState` a `Record`;
+      `GroupKeyManagementCluster` bumps the version on every mutation
+- [x] `Device::Persistence` (identity, clusters, app documents, flush/close/reset!, debounced dirty writes)
+- [x] `Device::Base.new(storage, ...)`, `persistence` getter, `remove_endpoint` forgets clusters, examples on
+      `YamlFile` with `persistence.reset!`; sensors gain the reset command; bridge state as app documents
+- [x] `Controller::State` records; `StateStore.new(backend)`; chip-tool context owns the store
+- [x] Delete `Storage::Base`/`MemoryBackend`/`JsonFileBackend`/`Manager`/`LegacyType` and their specs
+- [x] Gates: full spec (2234 examples, 0 failures, 1 pending), `--no-codegen` builds (library, controller, chip-tool, storage CLI, ten examples),
+      format, ameba on touched files
+
 ## Review
 
 ### Phase 0 (2026-09-10)

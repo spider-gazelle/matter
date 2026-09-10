@@ -6,7 +6,6 @@ require "../../src/matter/crypto/crypto"
 require "../../src/matter/datatype/node_id"
 require "../../src/matter/protocol/message_handler"
 require "../../src/matter/session/secure_message"
-require "../../src/matter/storage/memory_backend"
 require "../../src/matter/transport/udp_transport"
 
 # Captures outbound packets without actually sending them.
@@ -42,7 +41,7 @@ end
 describe "Subscription report exchange regression" do
   it "sends subscription ReportData on a new exchange (initiator=true)" do
     transport = CaptureTransport.new_for_spec
-    storage = Matter::Storage::MemoryBackend.new
+    storage = Matter::Storage::Memory.new
     fabric_table = Matter::FabricTable.new(storage)
 
     handler = Matter::Protocol::MessageHandler.new(

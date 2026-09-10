@@ -155,7 +155,9 @@ module Matter
           {% raise "Storage::Record: unsupported union field type #{T} (only nilable unions are storable)" unless inner.size == 1 %}
           return nil if value.nil?
           decode(value, {{ inner.first }}, field)
-        {% elsif T == Bool || T == String || T == Time || T == Bytes %}
+        {% elsif T == Bool %}
+          value.is_a?(Bool) ? value : type_error(field, T, value)
+        {% elsif T == String || T == Time || T == Bytes %}
           value.as?(T) || type_error(field, T, value)
         {% elsif T <= Int %}
           integer = value.as?(Int64) || value.as?(UInt64) || type_error(field, T, value)

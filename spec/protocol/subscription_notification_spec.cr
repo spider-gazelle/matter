@@ -386,7 +386,7 @@ describe "Subscription Notifications" do
     describe "#setup_cluster_notifications" do
       it "wires up on_attribute_changed callback for all clusters" do
         transport = NoSocketTransportForSubscriptionNotificationSpec.new_for_spec
-        storage = Matter::Storage::MemoryBackend.new
+        storage = Matter::Storage::Memory.new
         fabric_table = Matter::FabricTable.new(storage)
 
         handler = Matter::Protocol::MessageHandler.new(

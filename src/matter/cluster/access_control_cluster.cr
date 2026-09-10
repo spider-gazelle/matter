@@ -1,6 +1,5 @@
 require "./cluster"
 require "tlv"
-require "json"
 require "log"
 require "../datatype/node_id"
 require "../datatype/case_authenticated_tag"
@@ -119,7 +118,7 @@ module Matter
       end
 
       struct PersistedTarget
-        include JSON::Serializable
+        include Storage::Record
 
         getter cluster : UInt32?
         getter endpoint : UInt16?
@@ -130,17 +129,17 @@ module Matter
       end
 
       struct PersistedAclEntry
-        include JSON::Serializable
+        include Storage::Record
 
-        getter privilege : UInt8
-        getter auth_mode : UInt8
+        getter privilege : AccessControlEntryPrivilege
+        getter auth_mode : AccessControlEntryAuthMode
         getter subjects : Array(UInt64)
         getter targets : Array(PersistedTarget)?
         getter fabric_index : UInt8?
 
         def initialize(
-          @privilege : UInt8,
-          @auth_mode : UInt8,
+          @privilege : AccessControlEntryPrivilege,
+          @auth_mode : AccessControlEntryAuthMode,
           @subjects : Array(UInt64),
           @targets : Array(PersistedTarget)?,
           @fabric_index : UInt8?,
@@ -149,17 +148,17 @@ module Matter
       end
 
       struct PersistedExtensionEntry
-        include JSON::Serializable
+        include Storage::Record
 
-        getter data_hex : String
+        getter data : Bytes
         getter fabric_index : UInt8
 
-        def initialize(@data_hex : String, @fabric_index : UInt8)
+        def initialize(@data : Bytes, @fabric_index : UInt8)
         end
       end
 
       struct PersistedState
-        include JSON::Serializable
+        include Storage::Record
 
         getter data_version : UInt32
         getter acl : Array(PersistedAclEntry)
@@ -173,13 +172,13 @@ module Matter
         end
       end
 
-      def save_state : String?
+      def save_state : Storage::Document?
         PersistedState.new(
           data_version: @data_version,
           acl: @acl.map do |entry|
             PersistedAclEntry.new(
-              privilege: entry.privilege.value,
-              auth_mode: entry.auth_mode.value,
+              privilege: entry.privilege,
+              auth_mode: entry.auth_mode,
               subjects: entry.subjects,
               targets: entry.targets.try do |targets|
                 targets.map { |target| PersistedTarget.new(target.cluster, target.endpoint, target.device_type) }
@@ -187,17 +186,12 @@ module Matter
               fabric_index: entry.fabric_index
             )
           end,
-          extension: @extension.map do |entry|
-            PersistedExtensionEntry.new(entry.data.hexstring, entry.fabric_index)
-          end
-        ).to_json
-      rescue ex
-        Log.error(exception: ex) { "save_state failed (acl_entries=#{@acl.size} extension_entries=#{@extension.size})" }
-        nil
+          extension: @extension.map { |entry| PersistedExtensionEntry.new(entry.data, entry.fabric_index) }
+        ).to_document
       end
 
-      def restore_state(json : String) : Nil
-        state = PersistedState.from_json(json)
+      def restore_state(document : Storage::Document) : Nil
+        state = PersistedState.from_document(document)
         @data_version = state.data_version
 
         @acl = state.acl.compact_map do |entry|
@@ -207,34 +201,22 @@ module Matter
             next
           end
 
-          privilege = AccessControlEntryPrivilege.from_value?(entry.privilege)
-          auth_mode = AccessControlEntryAuthMode.from_value?(entry.auth_mode)
-          unless privilege && auth_mode
-            Log.warn { "restore_state: skipping ACL entry with invalid enums (privilege=#{entry.privilege} auth_mode=#{entry.auth_mode})" }
-            next
-          end
-
           targets = entry.targets.try do |tgts|
             tgts.map { |target| Target.new(cluster: target.cluster, endpoint: target.endpoint, device_type: target.device_type) }
           end
 
           AccessControlEntry.new(
-            privilege: privilege,
-            auth_mode: auth_mode,
+            privilege: entry.privilege,
+            auth_mode: entry.auth_mode,
             subjects: entry.subjects,
             targets: targets,
             fabric_index: idx
           )
         end
 
-        @extension = state.extension.compact_map do |entry|
-          ExtensionEntry.new(entry.data_hex.hexbytes, entry.fabric_index)
-        rescue ex
-          Log.warn(exception: ex) { "restore_state: skipping extension entry with invalid data_hex (fabric_index=#{entry.fabric_index} data_hex=#{entry.data_hex})" }
-          next
-        end
+        @extension = state.extension.map { |entry| ExtensionEntry.new(entry.data, entry.fabric_index) }
       rescue ex
-        Log.error(exception: ex) { "restore_state failed (json_bytes=#{json.bytesize})" }
+        Log.error(exception: ex) { "AccessControl restore_state failed; starting fresh" }
       end
 
       def name : String

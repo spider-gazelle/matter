@@ -3,7 +3,7 @@ require "../src/matter"
 module MatterHumiditySensor
   class Device < Matter::Device::Base
     DEVICE_NAME  = "Crystal Humidity Sensor"
-    STORAGE_FILE = "matter_humidity_sensor_storage.json"
+    STORAGE_FILE = "matter_humidity_sensor_storage.yml"
 
     UPDATE_INTERVAL_SECONDS =       10
     MIN_HUMIDITY            = 3500_u16 # 35.00%
@@ -20,7 +20,7 @@ module MatterHumiditySensor
     @running : Bool = false
 
     def initialize
-      super(ip_addresses: Matter::Network.local_ip_addresses)
+      super(Matter::Storage::YamlFile.new(STORAGE_FILE), ip_addresses: Matter::Network.local_ip_addresses)
     end
 
     def device_name : String
@@ -57,10 +57,6 @@ module MatterHumiditySensor
 
     def humidity : Matter::Cluster::RelativeHumidityMeasurementCluster
       @humidity.as(Matter::Cluster::RelativeHumidityMeasurementCluster)
-    end
-
-    protected def build_storage_manager : Matter::Storage::Manager
-      Matter::Storage::Manager.new(Matter::Storage::JsonFileBackend.new(STORAGE_FILE))
     end
 
     protected def device_clusters : Array(Matter::Cluster::Base)
@@ -117,6 +113,7 @@ module MatterHumiditySensor
       @running = true
       puts "Sampling humidity every #{UPDATE_INTERVAL_SECONDS}s"
       spawn { run_sensor_loop }
+      spawn { run_interactive_loop } unless ARGV.includes?("--no-interactive")
     end
 
     protected def on_shutdown : Nil
@@ -131,6 +128,64 @@ module MatterHumiditySensor
 
         humidity.update_humidity(rand(MIN_HUMIDITY..MAX_HUMIDITY))
       end
+    end
+
+    private def run_interactive_loop : Nil
+      puts "Interactive Commands:"
+      puts "  status - Show current status"
+      puts "  reset  - Reset to factory defaults"
+      puts "  quit   - Exit the application"
+      puts ""
+
+      loop do
+        print "> "
+        input = gets
+        break unless input
+        handle_command(input.strip.downcase)
+      end
+    end
+
+    private def handle_command(command : String) : Nil
+      case command
+      when "status"
+        show_status
+      when "reset"
+        factory_reset
+      when "quit", "exit", "q"
+        puts "Shutting down..."
+        shutdown!
+      when "help", "?"
+        puts "Commands: status, reset, quit"
+      when ""
+        # Ignore empty input
+      else
+        puts "Unknown command: #{command}"
+        puts "Type 'help' for available commands"
+      end
+    end
+
+    private def show_status : Nil
+      puts ""
+      puts "Device Status:"
+      puts "  Name: #{device_name}"
+      puts "  Commissioned: #{fabric_table.empty? ? "No" : "Yes"}"
+      puts "  Fabrics: #{fabric_table.size}"
+      puts "  Sessions: #{message_handler.sessions.size}"
+      puts "  Subscriptions: #{message_handler.active_subscriptions.size}"
+      puts ""
+    end
+
+    private def factory_reset : Nil
+      print "Are you sure you want to reset to factory defaults? (yes/no): "
+      confirmation = gets
+      return unless confirmation && confirmation.strip.downcase == "yes"
+
+      puts "Performing factory reset..."
+      shutdown!
+      persistence.reset!
+      puts "Factory reset complete."
+      puts "Please restart the application."
+      exit(0)
     end
   end
 end

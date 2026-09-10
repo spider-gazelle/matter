@@ -1,6 +1,5 @@
 require "./spec_helper"
 require "../src/matter/fabric"
-require "../src/matter/storage/memory_backend"
 
 describe Matter::Fabric do
   describe "initialization" do
@@ -142,11 +141,15 @@ describe Matter::Fabric do
         label: "Test"
       )
 
-      hash = fabric.to_h
-      hash["fabric_id"].should eq(0x1234567890ABCDEF_u64)
-      hash["fabric_index"].should eq(1_u8)
-      hash["vendor_id"].should eq(0xFFF1_u16)
-      hash["label"].should eq("Test")
+      document = fabric.to_document
+      document["fabric_id"].should eq(0x1234567890ABCDEF_u64)
+      document["fabric_index"].should eq(1_i64)
+      document["vendor_id"].should eq(0xFFF1_i64)
+      document["label"].should eq("Test")
+      document["operational_private_key"].should eq(key.private_bits)
+      document["operational_public_key"].should eq(key.public_bits)
+      document.has_key?("intermediate_cert").should be_false
+      document.has_key?("root_cert").should be_false
     end
 
     it "deserializes from hash" do
@@ -167,10 +170,13 @@ describe Matter::Fabric do
         label: "Test"
       )
 
-      hash = original.to_h
-      restored = Matter::Fabric.from_h(hash)
+      restored = Matter::Fabric.from_document(original.to_document)
 
       restored.fabric_id.should eq(original.fabric_id)
+      restored.operational_key.private_bits.should eq(key.private_bits)
+      restored.operational_key.public_bits.should eq(key.public_bits)
+      restored.created_at.should eq(original.created_at)
+      restored.last_used_at.should eq(original.last_used_at)
       restored.fabric_index.should eq(original.fabric_index)
       restored.node_id.should eq(original.node_id)
       restored.vendor_id.should eq(original.vendor_id)
@@ -254,7 +260,7 @@ describe Matter::Fabric do
       ipk = Random::Secure.random_bytes(16)
 
       # Create fabric with an old timestamp
-      old_time = Time.utc.to_unix - 100
+      old_time = Time.utc - 100.seconds
       fabric = Matter::Fabric.new(
         fabric_id: 0x1_u64,
         fabric_index: 1_u8,
@@ -284,7 +290,7 @@ describe Matter::Fabric do
         operational_cert: Random::Secure.random_bytes(200),
         operational_key: key,
         ipk: ipk,
-        last_used_at: Time.utc.to_unix - 365 * 24 * 3600 - 1 # Just over 1 year
+        last_used_at: Time.utc - Matter::Fabric::EXPIRY - 1.second
       )
 
       fabric.expired?.should be_true
@@ -422,10 +428,10 @@ describe Matter::Fabric do
         cats: cats
       )
 
-      hash = original.to_h
-      hash["cats"].as(String).should eq("abcd1234,ef567890")
+      document = original.to_document
+      document["cats"].should eq([0xABCD1234_i64, 0xEF567890_i64])
 
-      restored = Matter::Fabric.from_h(hash)
+      restored = Matter::Fabric.from_document(document)
       restored.cats.size.should eq(2)
       restored.cats[0].value.should eq(0xABCD1234_u32)
       restored.cats[1].value.should eq(0xEF567890_u32)
@@ -446,10 +452,10 @@ describe Matter::Fabric do
         # No cats specified - defaults to empty
       )
 
-      hash = original.to_h
-      hash["cats"].as(String).should eq("")
+      document = original.to_document
+      document["cats"].should eq([] of Matter::Storage::Type)
 
-      restored = Matter::Fabric.from_h(hash)
+      restored = Matter::Fabric.from_document(document)
       restored.cats.should be_empty
     end
   end

@@ -1,7 +1,7 @@
 require "../fabric_table"
 require "../transport/udp_transport"
 require "../protocol/message_handler"
-require "../storage/manager"
+require "./persistence"
 require "./lifecycle_manager"
 
 require "../mdns/responder"
@@ -26,14 +26,13 @@ module Matter
     # Base class for Matter device applications.
     #
     # Provides:
-    # - Persistent storage + FabricTable
+    # - Persistence (fabrics, sessions, cluster state, identity) on a `Storage::Backend`
     # - UDP transport + Protocol MessageHandler
     # - Default Root Node clusters (including OperationalCredentials)
     # - DescriptorCluster injection and auto-population
     # - mDNS responder + lifecycle management (commissioning <-> operational)
     #
     # Subclasses typically implement:
-    # - `build_storage_manager`
     # - `device_clusters` (endpoint-specific clusters)
     # - device identity getters (name/vendor/product/pin/discriminator)
     # - optional hooks like `started_commissioning_mode`
@@ -43,7 +42,10 @@ module Matter
       getter hostname : String
       getter ip_addresses : Array(Socket::IPAddress)
 
-      getter storage_manager : Storage::Manager
+      # Default Matter operational UDP port.
+      DEFAULT_PORT = 5540
+
+      getter persistence : Persistence
       getter fabric_table : FabricTable
       getter transport : Transport::UDPTransport
       getter message_handler : Protocol::MessageHandler
@@ -82,15 +84,17 @@ module Matter
       end
 
       def initialize(
+        storage : Storage::Backend,
         ip_addresses : Array(Socket::IPAddress)? = nil,
-        port : Int32 = 5540,
+        port : Int32 = DEFAULT_PORT,
         hostname : String? = nil,
+        max_fabrics : UInt8 = FabricTable::DEFAULT_MAX_FABRICS,
       )
         @ip_addresses = ip_addresses || default_ip_addresses
 
-        @storage_manager = build_storage_manager
-        @fabric_table = @storage_manager.fabric_table
-        @hostname = hostname || load_or_create_commissioning_hostname
+        @persistence = Persistence.new(storage, max_fabrics: max_fabrics)
+        @fabric_table = @persistence.fabric_table
+        @hostname = hostname || @persistence.commissioning_hostname
 
         @transport = Transport::UDPTransport.new(port: port)
         @message_handler = Protocol::MessageHandler.new(
@@ -100,7 +104,7 @@ module Matter
           fabric_table: @fabric_table,
           vendor_id: vendor_id,
           product_id: product_id,
-          persistence: @storage_manager.protocol_persistence
+          persistence: @persistence.protocol_persistence
         )
 
         @responder = MDNS::Responder.new(hostname: @hostname, ip_addresses: @ip_addresses)
@@ -108,8 +112,8 @@ module Matter
         build_and_wire_clusters
         @message_handler.setup_cluster_notifications
 
-        # Restore cluster state (scenes, groups, etc.) from storage
-        restore_cluster_states
+        # Restore cluster state (scenes, groups, etc.) and track changes
+        @persistence.restore_clusters(@message_handler.clusters.values)
 
         @lifecycle = LifecycleManager.new(
           fabric_table: @fabric_table,
@@ -161,10 +165,8 @@ module Matter
         # and other session data are saved for clean reconnection after restart
         @message_handler.persist_all_sessions
 
-        # Save cluster state (scenes, groups, etc.)
-        save_cluster_states
-
-        @storage_manager.stop
+        @persistence.flush
+        @persistence.close
         @transport.close
         @responder.stop
         on_shutdown
@@ -222,11 +224,6 @@ module Matter
       def product_appearance : Cluster::BasicInformationCluster::ProductAppearanceStruct?
         nil
       end
-
-      # ------------------------------------------------------------------------
-      # Storage
-      # ------------------------------------------------------------------------
-      protected abstract def build_storage_manager : Storage::Manager
 
       # ------------------------------------------------------------------------
       # Device clusters / endpoints
@@ -335,8 +332,8 @@ module Matter
           hardware_version_string: hardware_version_string,
           software_version: software_version,
           software_version_string: software_version_string,
-          serial_number: serial_number || load_or_create_serial_number,
-          unique_id: unique_id || load_or_create_unique_id,
+          serial_number: serial_number || @persistence.serial_number,
+          unique_id: unique_id || @persistence.unique_id,
           product_appearance: product_appearance
         )
         @basic_info = basic_info
@@ -535,57 +532,6 @@ module Matter
         ips
       end
 
-      private IDENTITY_CONTEXT  = ["device_identity"] of String
-      private HOSTNAME_KEY      = "commissioning_hostname"
-      private SERIAL_NUMBER_KEY = "serial_number"
-      private UNIQUE_ID_KEY     = "unique_id"
-      private HOSTNAME_RE       = /^[0-9A-F]{16}\\.local$/
-
-      private def load_or_create_commissioning_hostname : String
-        stored = @storage_manager.storage.get(IDENTITY_CONTEXT, HOSTNAME_KEY)
-        if stored.is_a?(String)
-          hostname = stored.strip
-          return hostname if hostname.matches?(HOSTNAME_RE)
-          return hostname if hostname.ends_with?(".local") && !hostname.empty?
-        end
-
-        token = Hex.node_id(Random::Secure.rand(UInt64))
-        hostname = "#{token}.local"
-        @storage_manager.storage.set(IDENTITY_CONTEXT, HOSTNAME_KEY, hostname)
-        hostname
-      rescue ex
-        Log.error(exception: ex) { "Failed to load or persist the commissioning hostname; using a transient value" }
-        "#{Hex.node_id(Random::Secure.rand(UInt64))}.local"
-      end
-
-      private def load_or_create_serial_number : String
-        stored = @storage_manager.storage.get(IDENTITY_CONTEXT, SERIAL_NUMBER_KEY)
-        if stored.is_a?(String) && !stored.empty?
-          return stored
-        end
-
-        serial = Random::Secure.hex(8).upcase
-        @storage_manager.storage.set(IDENTITY_CONTEXT, SERIAL_NUMBER_KEY, serial)
-        serial
-      rescue ex
-        Log.error(exception: ex) { "Failed to load or persist the serial number; using a transient value" }
-        Random::Secure.hex(8).upcase
-      end
-
-      private def load_or_create_unique_id : String
-        stored = @storage_manager.storage.get(IDENTITY_CONTEXT, UNIQUE_ID_KEY)
-        if stored.is_a?(String) && !stored.empty?
-          return stored
-        end
-
-        unique_id = Random::Secure.hex(16)
-        @storage_manager.storage.set(IDENTITY_CONTEXT, UNIQUE_ID_KEY, unique_id)
-        unique_id
-      rescue ex
-        Log.error(exception: ex) { "Failed to load or persist the unique id; using a transient value" }
-        Random::Secure.hex(16)
-      end
-
       # Updates the default commissioning target hostname used for mDNS advertisements.
       # This is useful for platforms that rotate link-layer identifiers or for hosting
       # multiple virtual devices in one executable.
@@ -594,7 +540,7 @@ module Matter
         raise ArgumentError.new("hostname must be non-empty") if normalized.empty?
 
         @hostname = normalized
-        @storage_manager.storage.set(IDENTITY_CONTEXT, HOSTNAME_KEY, normalized)
+        @persistence.update_hostname(normalized)
         @responder.update_commissioning_hostname(normalized)
       end
 
@@ -626,12 +572,13 @@ module Matter
         existing = @message_handler.clusters.keys.any? { |k| k[0] == endpoint_id }
         return false if existing
 
-        # Register all provided clusters
+        # Register all provided clusters and persist their changes
         clusters.each do |cluster|
           if cluster.endpoint_id.number != endpoint_id
             raise ArgumentError.new("Cluster endpoint_id (#{cluster.endpoint_id.number}) doesn't match endpoint_id (#{endpoint_id})")
           end
           @message_handler.clusters[{endpoint_id, cluster.cluster_id.id}] = cluster
+          @persistence.track(cluster)
         end
 
         # Inject DescriptorCluster if not provided
@@ -701,9 +648,11 @@ module Matter
         cluster_keys = @message_handler.clusters.keys.select { |k| k[0] == endpoint_id }
         return false if cluster_keys.empty?
 
-        # Remove all clusters from the registry
+        # Remove all clusters from the registry and their persisted state
         cluster_keys.each do |key|
-          @message_handler.clusters.delete(key)
+          if cluster = @message_handler.clusters.delete(key)
+            @persistence.forget_cluster(cluster)
+          end
         end
 
         # Remove from root node's PartsList
@@ -741,16 +690,6 @@ module Matter
           id += 1
         end
         id
-      end
-
-      # Save state for all clusters that need persistence
-      protected def save_cluster_states : Nil
-        @storage_manager.save_all_cluster_states(@message_handler.clusters.values)
-      end
-
-      # Restore state for all clusters from storage
-      protected def restore_cluster_states : Nil
-        @storage_manager.restore_all_cluster_states(@message_handler.clusters.values)
       end
     end
   end

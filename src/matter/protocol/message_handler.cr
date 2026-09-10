@@ -207,62 +207,83 @@ module Matter
           end
         end
 
-        # Serialize subscription to hash for persistence
-        # Note: session is stored by session_id - must be resolved when restoring
-        def to_h : Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16?)))
-          paths_array = @attribute_paths.map do |path|
-            {
-              "endpoint"   => path.endpoint,
-              "cluster"    => path.cluster,
-              "attribute"  => path.attribute,
-              "list_index" => path.list_index,
-            }
+        # One subscribed attribute path in its persisted form.
+        struct AttributePathRecord
+          include Storage::Record
+
+          getter endpoint : UInt16?
+          getter cluster : UInt32?
+          getter attribute : UInt32?
+          getter list_index : UInt16?
+
+          def initialize(@endpoint : UInt16?, @cluster : UInt32?, @attribute : UInt32?, @list_index : UInt16?)
           end
 
-          {
-            "subscription_id"  => @subscription_id,
-            "min_interval"     => @min_interval,
-            "max_interval"     => @max_interval,
-            "peer_address"     => @peer.address,
-            "peer_port"        => @peer.port.to_u16,
-            "session_id"       => @session.session_id,
-            "exchange_id"      => @exchange_id,
-            "last_report_time" => @last_report_time.to_unix,
-            "attribute_paths"  => paths_array,
-          }
+          def self.from_path(path : InteractionModel::AttributePath) : AttributePathRecord
+            new(path.endpoint, path.cluster, path.attribute, path.list_index)
+          end
+
+          def to_path : InteractionModel::AttributePath
+            InteractionModel::AttributePath.new(endpoint: @endpoint, cluster: @cluster, attribute: @attribute, list_index: @list_index)
+          end
         end
 
-        # Deserialize subscription from hash
-        # Requires a session lookup function to resolve session_id to SecureContext
-        def self.from_h(
-          h : Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16?))),
-          session : Session::SecureContext,
-        ) : ActiveSubscription
-          # Parse attribute paths
-          paths_data = h["attribute_paths"].as(Array(Hash(String, UInt32 | UInt16?)))
-          paths = paths_data.map do |path_h|
-            InteractionModel::AttributePath.new(
-              endpoint: path_h["endpoint"]?.try(&.as(UInt16)),
-              cluster: path_h["cluster"]?.try(&.as(UInt32)),
-              attribute: path_h["attribute"]?.try(&.as(UInt32)),
-              list_index: path_h["list_index"]?.try(&.as(UInt16))
-            )
-          end
+        # The persisted form of a subscription (`subscriptions/<subscription_id>`).
+        # The session is referenced by id and resolved on restore.
+        struct SubscriptionRecord
+          include Storage::Record
 
-          # Build subscription
-          sub = ActiveSubscription.new(
-            subscription_id: h["subscription_id"].as(UInt32),
-            min_interval: h["min_interval"].as(UInt16),
-            max_interval: h["max_interval"].as(UInt16),
-            peer: Socket::IPAddress.new(h["peer_address"].as(String), h["peer_port"].as(UInt16).to_i),
-            session: session,
-            attribute_paths: paths,
-            exchange_id: h["exchange_id"]?.try(&.as(UInt16)) || h["next_exchange_id"].as(UInt16)
+          getter subscription_id : UInt32
+          getter min_interval : UInt16
+          getter max_interval : UInt16
+          getter peer_address : String
+          getter peer_port : UInt16
+          getter session_id : UInt16
+          getter exchange_id : UInt16
+          getter last_report_at : Time
+          getter attribute_paths : Array(AttributePathRecord)
+
+          def initialize(
+            @subscription_id : UInt32,
+            @min_interval : UInt16,
+            @max_interval : UInt16,
+            @peer_address : String,
+            @peer_port : UInt16,
+            @session_id : UInt16,
+            @exchange_id : UInt16,
+            @last_report_at : Time,
+            @attribute_paths : Array(AttributePathRecord),
           )
+          end
+        end
 
-          # Restore last_report_time
-          sub.last_report_time = Time.unix(h["last_report_time"].as(Int64))
-          sub
+        def to_record : SubscriptionRecord
+          SubscriptionRecord.new(
+            subscription_id: @subscription_id,
+            min_interval: @min_interval,
+            max_interval: @max_interval,
+            peer_address: @peer.address,
+            peer_port: @peer.port.to_u16,
+            session_id: @session.session_id,
+            exchange_id: @exchange_id,
+            last_report_at: @last_report_time,
+            attribute_paths: @attribute_paths.map { |path| AttributePathRecord.from_path(path) }
+          )
+        end
+
+        # Rebuilds a subscription from its record and the resolved *session*.
+        def self.from_record(record : SubscriptionRecord, session : Session::SecureContext) : ActiveSubscription
+          subscription = new(
+            subscription_id: record.subscription_id,
+            min_interval: record.min_interval,
+            max_interval: record.max_interval,
+            peer: Socket::IPAddress.new(record.peer_address, record.peer_port.to_i),
+            session: session,
+            attribute_paths: record.attribute_paths.map(&.to_path),
+            exchange_id: record.exchange_id
+          )
+          subscription.last_report_time = record.last_report_at
+          subscription
         end
       end
 

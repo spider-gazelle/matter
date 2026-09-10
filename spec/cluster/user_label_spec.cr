@@ -60,10 +60,14 @@ describe Matter::Cluster::UserLabelCluster do
       Matter::Cluster::LabelStruct.new("a", "b"),
     ])
 
-    json = cluster.save_state.as(String)
+    cluster.data_version = 3_u32
+    document = cluster.save_state.as(Matter::Storage::Document)
+    document["labels"].should eq([Matter::Storage::Document{"label" => "a", "value" => "b"}] of Matter::Storage::Type)
+    document["data_version"].should eq(3_i64)
 
     restored = Matter::Cluster::UserLabelCluster.new(endpoint_id)
-    restored.restore_state(json)
+    restored.restore_state(document)
+    restored.data_version.should eq(3_u32)
     restored.label_list.size.should eq(1)
     restored.label_list[0].label.should eq("a")
     restored.label_list[0].value.should eq("b")

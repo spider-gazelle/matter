@@ -1,4 +1,3 @@
-require "json"
 require "./cluster"
 require "./definitions/label_struct"
 
@@ -61,13 +60,25 @@ module Matter
         end
       end
 
-      def save_state : String?
-        @label_list.to_json
+      private struct PersistedState
+        include Storage::Record
+
+        getter labels : Array(LabelStruct)
+        getter data_version : UInt32
+
+        def initialize(@labels : Array(LabelStruct), @data_version : UInt32)
+        end
       end
 
-      def restore_state(json : String) : Nil
-        @label_list = Array(LabelStruct).from_json(json)
+      def save_state : Storage::Document?
+        PersistedState.new(@label_list, @data_version).to_document
+      end
+
+      def restore_state(document : Storage::Document) : Nil
+        state = PersistedState.from_document(document)
+        @label_list = state.labels
         @attribute_values[ATTR_LABEL_LIST] = @label_list.to_tlv
+        @data_version = state.data_version
       rescue ex
         Log.warn(exception: ex) { "UserLabel restore_state failed; starting fresh" }
       end

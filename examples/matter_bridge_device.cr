@@ -26,7 +26,7 @@ require "../src/matter/cluster/identify_cluster"
 module MatterBridge
   # Persisted state for a bridged device
   struct BridgedDeviceConfig
-    include JSON::Serializable
+    include Matter::Storage::Record
 
     property endpoint_id : UInt16
     property name : String
@@ -38,7 +38,7 @@ module MatterBridge
 
   # Persisted state for all bridged devices
   struct BridgedDevicesState
-    include JSON::Serializable
+    include Matter::Storage::Record
 
     property devices : Array(BridgedDeviceConfig)
     property device_counter : Int32
@@ -127,23 +127,22 @@ module MatterBridge
 
   class Device < Matter::Device::Base
     DEVICE_NAME  = "Crystal Bridge"
-    STORAGE_FILE = "matter_bridge_storage.json"
+    STORAGE_FILE = "matter_bridge_storage.yml"
 
     VENDOR_ID      = Matter::SetupPayload.test_vendor_id
     PRODUCT_ID     = rand(0x0001_u16..0xFFFF_u16)
     DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
     SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
 
-    # Storage keys for bridged devices
-    BRIDGED_DEVICES_CONTEXT = ["bridge"] of String
-    BRIDGED_DEVICES_KEY     = "bridged_devices"
+    # Application document holding the bridged device list
+    BRIDGED_DEVICES_DOCUMENT = "bridged_devices"
 
     # Track bridged devices by endpoint ID
     @bridged_devices : Hash(UInt16, BridgedDevice) = {} of UInt16 => BridgedDevice
     @device_counter : Int32 = 0
 
     def initialize
-      super(ip_addresses: Matter::Network.local_ip_addresses)
+      super(Matter::Storage::YamlFile.new(STORAGE_FILE), ip_addresses: Matter::Network.local_ip_addresses)
     end
 
     # Save bridged devices configuration to storage
@@ -161,7 +160,7 @@ module MatterBridge
         device_counter: @device_counter
       )
 
-      storage_manager.storage.set(BRIDGED_DEVICES_CONTEXT, BRIDGED_DEVICES_KEY, state.to_json)
+      persistence.write_app_document(BRIDGED_DEVICES_DOCUMENT, state.to_document)
     rescue ex
       puts "Warning: Failed to save bridged devices: #{ex.message}"
     end
@@ -169,11 +168,10 @@ module MatterBridge
     # Restore bridged devices from storage
     # Returns true if devices were restored, false if none were stored
     private def restore_bridged_devices : Bool
-      json = storage_manager.storage.get(BRIDGED_DEVICES_CONTEXT, BRIDGED_DEVICES_KEY)
-      return false unless json.is_a?(String)
-      return false if json.empty?
+      document = persistence.app_document(BRIDGED_DEVICES_DOCUMENT)
+      return false unless document
 
-      state = BridgedDevicesState.from_json(json)
+      state = BridgedDevicesState.from_document(document)
       @device_counter = state.device_counter
 
       return false if state.devices.empty?
@@ -185,7 +183,7 @@ module MatterBridge
       end
 
       # Restore cluster states (OnOff state, etc.) after devices are created
-      restore_cluster_states
+      persistence.restore_clusters(@bridged_devices.values.flat_map(&.clusters))
 
       true
     rescue ex
@@ -260,10 +258,6 @@ module MatterBridge
       Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.new(
         Matter::Cluster::BasicInformationCluster::ProductFinish::Matte
       )
-    end
-
-    protected def build_storage_manager : Matter::Storage::Manager
-      Matter::Storage::Manager.new(Matter::Storage::JsonFileBackend.new(STORAGE_FILE))
     end
 
     # Bridge doesn't have static device endpoints - we use dynamic endpoints
@@ -598,7 +592,7 @@ module MatterBridge
 
       puts "Performing factory reset..."
       shutdown!
-      File.delete(STORAGE_FILE) if File.exists?(STORAGE_FILE)
+      persistence.reset!
       puts "Factory reset complete"
       puts "Please restart the application"
       exit(0)

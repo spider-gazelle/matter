@@ -198,6 +198,11 @@ describe Matter::Storage::Record do
       restored.with_default.should eq(original.with_default)
     end
 
+    it "round trips a false Bool" do
+      restored = RecordSpec::Everything.from_document(RecordSpec::Everything.new(flag: false).to_document)
+      restored.flag?.should be_false
+    end
+
     it "round trips through a backend" do
       backend = Matter::Storage::Memory.new
       backend.write("records", "one", RecordSpec::Everything.new.to_document)

@@ -386,7 +386,7 @@ module Matter
 
       # SceneInfo structure for fabric-scoped scene info
       struct SceneInfo
-        include JSON::Serializable
+        include Storage::Record
 
         property scene_count : UInt8
         property current_scene : UInt8
@@ -406,33 +406,19 @@ module Matter
         end
       end
 
-      # Extension field set for scene data
+      # Extension field set for scene data: the attribute values (raw TLV
+      # bytes) a sceneable cluster captured, keyed by attribute id.
       struct ExtensionFieldSet
-        include JSON::Serializable
-
         property cluster_id : UInt32
-        # Store as array of {attribute_id, hex_encoded_bytes} for JSON compatibility
-        @[JSON::Field(key: "attributes")]
-        property attribute_value_list_json : Array(Tuple(UInt32, String)) = [] of Tuple(UInt32, String)
-
-        @[JSON::Field(ignore: true)]
-        property attribute_value_list : Array(Tuple(UInt32, Bytes)) = [] of Tuple(UInt32, Bytes)
+        property attribute_value_list : Array(Tuple(UInt32, Bytes))
 
         def initialize(@cluster_id, attribute_list : Array(Tuple(UInt32, Bytes)) = [] of Tuple(UInt32, Bytes))
           @attribute_value_list = attribute_list
-          @attribute_value_list_json = attribute_list.map { |id, bytes| {id, bytes.hexstring} }
-        end
-
-        def after_initialize
-          # Convert hex strings back to bytes after deserialization
-          @attribute_value_list = @attribute_value_list_json.map { |id, hex| {id, hex.hexbytes} }
         end
       end
 
       # Scene data structure
       struct SceneData
-        include JSON::Serializable
-
         property transition_time : UInt32 # milliseconds
         property scene_name : String
         property extension_field_sets : Array(ExtensionFieldSet)
@@ -445,34 +431,89 @@ module Matter
         end
       end
 
-      # JSON wrapper for scene key (fabric_index, group_id, scene_id)
-      struct SceneKey
-        include JSON::Serializable
+      # One attribute value of a persisted extension field set.
+      struct PersistedAttributeValue
+        include Storage::Record
 
-        property fabric_index : UInt8
-        property group_id : UInt16
-        property scene_id : UInt8
+        getter attribute_id : UInt32
+        getter value : Bytes
 
-        def initialize(@fabric_index, @group_id, @scene_id)
-        end
-
-        def to_tuple : {UInt8, UInt16, UInt8}
-          {@fabric_index, @group_id, @scene_id}
+        def initialize(@attribute_id : UInt32, @value : Bytes)
         end
       end
 
-      # Full state for JSON persistence
-      struct PersistedState
-        include JSON::Serializable
+      # A persisted extension field set.
+      struct PersistedExtensionFieldSet
+        include Storage::Record
 
-        property scenes : Array(Tuple(SceneKey, SceneData))
-        property fabric_scene_info : Hash(String, SceneInfo)
-        property data_version : UInt32
+        getter cluster_id : UInt32
+        getter attributes : Array(PersistedAttributeValue)
+
+        def initialize(@cluster_id : UInt32, @attributes : Array(PersistedAttributeValue))
+        end
+
+        def self.from_field_set(field_set : ExtensionFieldSet) : PersistedExtensionFieldSet
+          new(field_set.cluster_id, field_set.attribute_value_list.map { |id, value| PersistedAttributeValue.new(id, value) })
+        end
+
+        def to_field_set : ExtensionFieldSet
+          ExtensionFieldSet.new(@cluster_id, @attributes.map { |attribute| {attribute.attribute_id, attribute.value} })
+        end
+      end
+
+      # A persisted scene: its key (fabric, group, scene) and data.
+      struct PersistedScene
+        include Storage::Record
+
+        getter fabric_index : UInt8
+        getter group_id : UInt16
+        getter scene_id : UInt8
+        getter transition_time : UInt32
+        getter scene_name : String
+        getter extension_field_sets : Array(PersistedExtensionFieldSet)
 
         def initialize(
-          @scenes = [] of Tuple(SceneKey, SceneData),
-          @fabric_scene_info = {} of String => SceneInfo,
-          @data_version = 0_u32,
+          @fabric_index : UInt8,
+          @group_id : UInt16,
+          @scene_id : UInt8,
+          @transition_time : UInt32,
+          @scene_name : String,
+          @extension_field_sets : Array(PersistedExtensionFieldSet),
+        )
+        end
+
+        def self.from_scene(key : {UInt8, UInt16, UInt8}, data : SceneData) : PersistedScene
+          new(
+            fabric_index: key[0],
+            group_id: key[1],
+            scene_id: key[2],
+            transition_time: data.transition_time,
+            scene_name: data.scene_name,
+            extension_field_sets: data.extension_field_sets.map { |field_set| PersistedExtensionFieldSet.from_field_set(field_set) }
+          )
+        end
+
+        def key : {UInt8, UInt16, UInt8}
+          {@fabric_index, @group_id, @scene_id}
+        end
+
+        def to_scene_data : SceneData
+          SceneData.new(@transition_time, @scene_name, @extension_field_sets.map(&.to_field_set))
+        end
+      end
+
+      # Full persisted cluster state.
+      struct PersistedState
+        include Storage::Record
+
+        getter scenes : Array(PersistedScene)
+        getter fabric_scene_info : Hash(UInt8, SceneInfo)
+        getter data_version : UInt32
+
+        def initialize(
+          @scenes : Array(PersistedScene),
+          @fabric_scene_info : Hash(UInt8, SceneInfo),
+          @data_version : UInt32,
         )
         end
       end
@@ -906,51 +947,24 @@ module Matter
 
       # Persistence support
 
-      # Save all scene state to JSON
-      def save_state : String?
-        # Convert scenes hash to array for JSON serialization
-        scenes_array = @scenes.map do |key, data|
-          scene_key = SceneKey.new(key[0], key[1], key[2])
-          {scene_key, data}
-        end
-
-        # Convert fabric_scene_info keys to strings for JSON
-        fabric_info_json = {} of String => SceneInfo
-        @fabric_scene_info.each do |fabric_idx, info|
-          fabric_info_json[fabric_idx.to_s] = info
-        end
-
-        state = PersistedState.new(
-          scenes: scenes_array,
-          fabric_scene_info: fabric_info_json,
+      def save_state : Storage::Document?
+        PersistedState.new(
+          scenes: @scenes.map { |key, data| PersistedScene.from_scene(key, data) },
+          fabric_scene_info: @fabric_scene_info,
           data_version: @data_version
-        )
-
-        state.to_json
+        ).to_document
       end
 
-      # Restore scene state from JSON
-      def restore_state(json : String) : Nil
-        state = PersistedState.from_json(json)
+      def restore_state(document : Storage::Document) : Nil
+        state = PersistedState.from_document(document)
 
-        # Restore scenes
         @scenes.clear
-        state.scenes.each do |key, data|
-          tuple_key = key.to_tuple
-          @scenes[tuple_key] = data
-        end
+        state.scenes.each { |scene| @scenes[scene.key] = scene.to_scene_data }
 
-        # Restore fabric scene info
-        @fabric_scene_info.clear
-        state.fabric_scene_info.each do |fabric_idx_str, info|
-          @fabric_scene_info[fabric_idx_str.to_u8] = info
-        end
-
-        # Restore data version
+        @fabric_scene_info = state.fabric_scene_info
         @data_version = state.data_version
       rescue ex
-        # Log error but don't crash - start fresh if restore fails
-        Log.error(exception: ex) { "Failed to restore ScenesManagement state (json=#{json})" }
+        Log.error(exception: ex) { "ScenesManagement restore_state failed; starting fresh" }
       end
     end
   end

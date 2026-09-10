@@ -6,7 +6,7 @@ class CommissioningWindowTestDevice < Matter::Device::Base
   DEVICE_DISCRIMINATOR = 3840_u16
 
   def initialize
-    super()
+    super(Matter::Storage::Memory.new)
   end
 
   def device_name : String
@@ -31,10 +31,6 @@ class CommissioningWindowTestDevice < Matter::Device::Base
 
   def primary_device_type_id : UInt32
     Matter::DeviceType::ROOT_NODE
-  end
-
-  protected def build_storage_manager : Matter::Storage::Manager
-    Matter::Storage::Manager.new(Matter::Storage::MemoryBackend.new)
   end
 
   protected def device_clusters : Array(Matter::Cluster::Base)

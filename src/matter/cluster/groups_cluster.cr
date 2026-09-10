@@ -1,6 +1,5 @@
 require "./cluster"
 require "tlv"
-require "json"
 
 module Matter
   module Cluster
@@ -266,7 +265,7 @@ module Matter
       # ------------------------------------------------------------------------
 
       private struct PersistedState
-        include JSON::Serializable
+        include Storage::Record
 
         getter groups : Hash(UInt16, String)
         getter data_version : UInt32
@@ -278,12 +277,12 @@ module Matter
         end
       end
 
-      def save_state : String?
-        PersistedState.new(@groups, @data_version).to_json
+      def save_state : Storage::Document?
+        PersistedState.new(@groups, @data_version).to_document
       end
 
-      def restore_state(json : String) : Nil
-        state = PersistedState.from_json(json)
+      def restore_state(document : Storage::Document) : Nil
+        state = PersistedState.from_document(document)
         @groups = state.groups
         @data_version = state.data_version
       rescue ex

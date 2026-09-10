@@ -5,6 +5,10 @@ require "../../src/matter/cluster/bridged_device_basic_information_cluster"
 
 # Test device for dynamic endpoint tests
 class TestBridgeDevice < Matter::Device::Base
+  def initialize
+    super(Matter::Storage::Memory.new)
+  end
+
   def device_name : String
     "Test Bridge"
   end
@@ -27,10 +31,6 @@ class TestBridgeDevice < Matter::Device::Base
 
   def primary_device_type_id : UInt32
     Matter::DeviceType::ROOT_NODE
-  end
-
-  protected def build_storage_manager : Matter::Storage::Manager
-    Matter::Storage::Manager.new(Matter::Storage::MemoryBackend.new)
   end
 
   # Bridge has no static device endpoints

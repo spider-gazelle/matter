@@ -1,6 +1,6 @@
 require "./fabric"
-require "./storage/base"
-require "json"
+require "./debouncer"
+require "./storage/backend"
 require "log"
 
 module Matter
@@ -21,33 +21,41 @@ module Matter
   class FabricTable
     Log = ::Log.for("matter.fabric_table")
 
-    # Storage context for fabric persistence
-    STORAGE_CONTEXT = ["fabrics"]
+    # Every fabric is one document in this collection, keyed by fabric index.
+    COLLECTION = Storage::Collections::FABRICS
 
     # Maximum number of fabrics a device can support
     # Matter spec requires minimum 5, but devices may support more
     DEFAULT_MAX_FABRICS = 16_u8
+    MIN_MAX_FABRICS     =  5_u8
+    MAX_MAX_FABRICS     = Fabric::MAX_FABRIC_INDEX
 
     # Fabrics indexed by fabric_index (1-254)
     @fabrics : Hash(UInt8, Fabric)
 
     # Storage backend for persistence
-    @storage : Storage::Base
+    @backend : Storage::Backend
+
+    # Fabrics whose `last_used_at` changed and have not been written yet.
+    @dirty : Hash(UInt8, Fabric) = Hash(UInt8, Fabric).new
 
     # Maximum number of fabrics this device supports
     property max_fabrics : UInt8
 
+    # When set, `mark_fabric_used` defers its write to this debouncer; the
+    # owner calls `flush_pending_writes` from the debounced action. Without a
+    # debouncer every change is written immediately.
+    property write_debouncer : Debouncer?
+
     def initialize(
-      @storage : Storage::Base,
+      @backend : Storage::Backend,
       @max_fabrics : UInt8 = DEFAULT_MAX_FABRICS,
     )
       @fabrics = Hash(UInt8, Fabric).new
 
-      # Validate max_fabrics
-      raise ArgumentError.new("max_fabrics must be >= 5 (Matter requirement)") if @max_fabrics < 5
-      raise ArgumentError.new("max_fabrics must be <= 254") if @max_fabrics > 254
+      raise ArgumentError.new("max_fabrics must be >= #{MIN_MAX_FABRICS} (Matter requirement)") if @max_fabrics < MIN_MAX_FABRICS
+      raise ArgumentError.new("max_fabrics must be <= #{MAX_MAX_FABRICS}") if @max_fabrics > MAX_MAX_FABRICS
 
-      # Load existing fabrics from storage
       load_from_storage
     end
 
@@ -70,9 +78,8 @@ module Matter
         return false
       end
 
-      # Add fabric and persist
       @fabrics[fabric.fabric_index] = fabric
-      persist_to_storage
+      write_fabric(fabric)
       true
     end
 
@@ -84,7 +91,7 @@ module Matter
       operational_cert : Bytes,
       operational_key : Crypto::Key,
       ipk : Bytes,
-      vendor_id : UInt16 = 0xFFF1_u16,
+      vendor_id : UInt16 = Fabric::DEFAULT_VENDOR_ID,
       label : String = "",
       intermediate_cert : Bytes? = nil,
       root_cert : Bytes? = nil,
@@ -118,18 +125,17 @@ module Matter
       return false unless @fabrics.has_key?(fabric.fabric_index)
 
       @fabrics[fabric.fabric_index] = fabric
-      persist_to_storage
+      write_fabric(fabric)
       true
     end
 
     # Remove a fabric by fabric_index
     def remove_fabric(fabric_index : UInt8) : Bool
-      if @fabrics.delete(fabric_index)
-        persist_to_storage
-        true
-      else
-        false
-      end
+      return false unless @fabrics.delete(fabric_index)
+
+      @dirty.delete(fabric_index)
+      @backend.delete(COLLECTION, fabric_index.to_s)
+      true
     end
 
     # Remove a fabric by fabric_id
@@ -182,7 +188,7 @@ module Matter
 
     # Find next available fabric index (1-254)
     def next_available_index : UInt8?
-      (1_u8..254_u8).each do |index|
+      (Fabric::MIN_FABRIC_INDEX..Fabric::MAX_FABRIC_INDEX).each do |index|
         return index unless @fabrics.has_key?(index)
       end
       nil
@@ -201,81 +207,55 @@ module Matter
     # Clear all fabrics (used for factory reset)
     def clear_all
       @fabrics.clear
-      persist_to_storage
+      @dirty.clear
+      @backend.clear(COLLECTION)
     end
 
-    # Mark a fabric as recently used (updates last_used_at)
+    # Mark a fabric as recently used (updates last_used_at). The write is
+    # deferred when a `write_debouncer` is attached.
     def mark_fabric_used(fabric_index : UInt8) : Bool
       fabric = @fabrics[fabric_index]?
       return false unless fabric
 
       fabric.mark_used
-      persist_to_storage
+      if debouncer = @write_debouncer
+        @dirty[fabric_index] = fabric
+        debouncer.trigger
+      else
+        write_fabric(fabric)
+      end
       true
     end
 
-    # Persist fabrics to storage
-    def persist_to_storage
-      # Convert UInt8 keys to String keys for JSON serialization
-      data = {} of String => Hash(String, String | UInt64 | UInt16 | UInt8 | Int64)
-      @fabrics.each do |index, fabric|
-        data[index.to_s] = fabric.to_h
+    # Writes every fabric deferred by `mark_fabric_used`.
+    def flush_pending_writes : Nil
+      return if @dirty.empty?
+
+      pending = @dirty.values
+      @dirty.clear
+      @backend.transaction do
+        pending.each { |fabric| write_fabric(fabric) }
       end
-      json = data.to_json
-      @storage.set(STORAGE_CONTEXT, "fabric_table", json)
     end
 
-    # Load fabrics from storage
-    def load_from_storage
-      stored_value = @storage.get(STORAGE_CONTEXT, "fabric_table")
-      return if stored_value.nil?
+    # Writes *fabric* as the `fabrics/<index>` document.
+    def write_fabric(fabric : Fabric) : Nil
+      @backend.write(COLLECTION, fabric.fabric_index.to_s, fabric.to_document)
+    end
 
-      # We store JSON strings, so expect a String back
-      unless stored_value.is_a?(String)
-        Log.warn { "Expected String from storage, got #{stored_value.class}" }
-        return
-      end
-
-      json = stored_value
-
-      # Parse JSON and reconstruct fabrics
-      begin
-        data = Hash(String, Hash(String, JSON::Any)).from_json(json)
-      rescue ex
-        Log.error(exception: ex) { "Failed to parse fabric table JSON (json=#{json})" }
-        return
-      end
-
+    # Load fabrics from storage. A document that cannot be decoded is skipped
+    # with a warning so one bad entry does not take the whole table down.
+    private def load_from_storage : Nil
       @fabrics.clear
 
-      data.each do |index_str, fabric_data|
-        fabric = Fabric.from_h(coerce_fabric_hash(index_str, fabric_data))
+      @backend.all(COLLECTION).each do |id, document|
+        fabric = Fabric.from_document(document)
         @fabrics[fabric.fabric_index] = fabric
       rescue ex
-        # Skip invalid fabric entries, keeping the rest of the table intact
-        Log.warn(exception: ex) { "Failed to load fabric at index #{index_str}" }
+        Log.warn(exception: ex) { "Skipping fabric document #{COLLECTION}/#{id}: cannot be decoded" }
       end
 
-      Log.info { "Loaded #{@fabrics.size} fabric(s) from storage" }
-    end
-
-    # Convert the JSON::Any values of a stored fabric entry into the scalar types
-    # `Fabric.from_h` expects. Values of unsupported types are skipped with a warning.
-    private def coerce_fabric_hash(index_str : String, fabric_data : Hash(String, JSON::Any)) : Hash(String, String | UInt64 | UInt16 | UInt8 | Int64)
-      fabric_hash = {} of String => (String | UInt64 | UInt16 | UInt8 | Int64)
-
-      fabric_data.each do |key, value|
-        case raw = value.raw
-        when String  then fabric_hash[key] = raw
-        when Int64   then fabric_hash[key] = raw
-        when Float64 then fabric_hash[key] = raw.to_i64
-        when Bool    then fabric_hash[key] = raw ? 1_i64 : 0_i64
-        else
-          Log.warn { "Skipping unsupported value for fabric #{index_str} field #{key} (#{raw.class})" }
-        end
-      end
-
-      fabric_hash
+      Log.info { "Loaded #{@fabrics.size} fabric(s) from storage" } unless @fabrics.empty?
     end
 
     # Validate fabric table consistency
@@ -294,7 +274,7 @@ module Matter
           errors << "Fabric index mismatch: key=#{index}, fabric.fabric_index=#{fabric.fabric_index}"
         end
 
-        if index == 0 || index == 255
+        unless Fabric::MIN_FABRIC_INDEX <= index <= Fabric::MAX_FABRIC_INDEX
           errors << "Invalid fabric index: #{index}"
         end
       end
@@ -309,17 +289,17 @@ module Matter
 
     # Get statistics about fabric usage
     def statistics : Hash(String, Int32 | Float64)
-      now = Time.utc.to_unix
+      now = Time.utc
       fabrics_array = @fabrics.values
 
       active_count = fabrics_array.count { |fabric| !fabric.expired? }
       expired_count = fabrics_array.size - active_count
 
-      ages = fabrics_array.map { |fabric| now - fabric.created_at }
-      avg_age = ages.empty? ? 0.0 : ages.sum.to_f / ages.size
+      ages = fabrics_array.map { |fabric| (now - fabric.created_at).total_seconds }
+      avg_age = ages.empty? ? 0.0 : ages.sum / ages.size
 
-      last_used_ages = fabrics_array.map { |fabric| now - fabric.last_used_at }
-      avg_last_used = last_used_ages.empty? ? 0.0 : last_used_ages.sum.to_f / last_used_ages.size
+      last_used_ages = fabrics_array.map { |fabric| (now - fabric.last_used_at).total_seconds }
+      avg_last_used = last_used_ages.empty? ? 0.0 : last_used_ages.sum / last_used_ages.size
 
       {
         "total_fabrics"         => @fabrics.size,

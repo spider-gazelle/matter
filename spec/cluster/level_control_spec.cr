@@ -415,8 +415,10 @@ describe Matter::Cluster::LevelControlCluster do
       cluster.max_frequency = 120_u16
       cluster.data_version = 12_u32
 
-      saved = cluster.save_state
-      saved.should_not be_nil
+      saved = cluster.save_state.as(Matter::Storage::Document)
+      saved["current_level"].should eq(50_i64)
+      saved["on_level"].should eq(42_i64)
+      saved["data_version"].should eq(12_i64)
 
       restored = Matter::Cluster::LevelControlCluster.new(
         endpoint_id,
@@ -427,7 +429,7 @@ describe Matter::Cluster::LevelControlCluster do
                      Matter::Cluster::LevelControlCluster::Feature::Lighting |
                      Matter::Cluster::LevelControlCluster::Feature::Frequency
       )
-      restored.restore_state(saved.as(String))
+      restored.restore_state(saved)
 
       restored.current_level.should eq(50_u8)
       restored.min_level.should eq(1_u8)
