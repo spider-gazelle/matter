@@ -198,7 +198,8 @@ describe Matter::Cluster::OnOffCluster do
           feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting
         )
 
-        result = invoke(cluster, Matter::Cluster::OnOffCluster::CMD_OFF_WITH_EFFECT, Bytes.new(0))
+        request = Matter::Cluster::OnOffCluster::OffWithEffectRequest.new(Matter::Cluster::OnOffCluster::EffectIdentifier::DelayedAllOff, 0_u8)
+        result = invoke(cluster, Matter::Cluster::OnOffCluster::CMD_OFF_WITH_EFFECT, request)
 
         result.as(Matter::InteractionModel::Status).success?.should be_true
         cluster.on_off?.should be_false
@@ -230,7 +231,8 @@ describe Matter::Cluster::OnOffCluster do
           feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting
         )
 
-        result = invoke(cluster, Matter::Cluster::OnOffCluster::CMD_ON_WITH_TIMED_OFF, Bytes.new(0))
+        request = Matter::Cluster::OnOffCluster::OnWithTimedOffRequest.new(Matter::Cluster::OnOffCluster::OnOffControl::None, 10_u16, 20_u16)
+        result = invoke(cluster, Matter::Cluster::OnOffCluster::CMD_ON_WITH_TIMED_OFF, request)
 
         result.as(Matter::InteractionModel::Status).success?.should be_true
         cluster.on_off?.should be_true

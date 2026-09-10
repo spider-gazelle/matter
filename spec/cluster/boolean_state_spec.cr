@@ -26,7 +26,7 @@ describe Matter::Cluster::BooleanStateCluster do
 
       attrs.size.should eq(1)
       attrs[0].id.id.should eq(BooleanState::ATTR_STATE_VALUE)
-      attrs[0].name.should eq("StateValue")
+      attrs[0].name.should eq("stateValue")
       attrs[0].writable?.should be_false
     end
 

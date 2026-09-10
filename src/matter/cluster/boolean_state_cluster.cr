@@ -7,57 +7,24 @@ module Matter
     # Exposes a single read-only boolean state value.
     # Commonly used by contact sensors.
     class BooleanStateCluster < Base
-      CLUSTER_ID = 0x0045_u32
+      cluster 0x0045, revision: 1
 
-      ATTR_STATE_VALUE = 0x0000_u32
+      attribute 0x0000, :state_value, Bool, default: false
 
-      getter? state_value : Bool
+      event 0x00, :state_change, priority: :info
 
       def initialize(endpoint_id : DataType::EndpointNumber, @state_value : Bool = false)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
       end
 
-      def name : String
-        "BooleanState"
+      # Reports a new reading; `state_value=` with a device-facing name.
+      def update_state(value : Bool) : Nil
+        self.state_value = value
       end
 
-      def attributes : Array(AttributeMetadata)
-        [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_STATE_VALUE),
-            "StateValue",
-            :bool,
-            writable: false
-          ),
-        ]
-      end
-
-      def commands : Array(CommandMetadata)
-        [] of CommandMetadata
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
-        case attribute_id
-        when ATTR_STATE_VALUE
-          tlv(@state_value)
-        else
-          super
-        end
-      end
-
-      def update_state(value : Bool)
-        old_value = @state_value
-        return if old_value == value
-
-        @state_value = value
-        increment_version_and_notify(ATTR_STATE_VALUE)
-        @on_state_changed.try &.call(old_value, value)
-      end
-
-      @on_state_changed : Proc(Bool, Bool, Nil)?
-
-      def on_state_changed(&block : Bool, Bool -> Nil)
-        @on_state_changed = block
+      # Called with the previous and the new value whenever the state changes.
+      def on_state_changed(&block : Bool, Bool -> Nil) : Nil
+        on_state_value_changed(&block)
       end
     end
   end

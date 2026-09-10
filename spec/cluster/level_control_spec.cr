@@ -190,15 +190,15 @@ describe Matter::Cluster::LevelControlCluster do
 
   describe "MoveMode enum" do
     it "has move modes" do
-      Matter::Cluster::LevelControlCluster::MoveMode::Up.value.should eq(0)
-      Matter::Cluster::LevelControlCluster::MoveMode::Down.value.should eq(1)
+      Matter::Cluster::Definitions::LevelControl::MoveMode::Up.value.should eq(0)
+      Matter::Cluster::Definitions::LevelControl::MoveMode::Down.value.should eq(1)
     end
   end
 
   describe "StepMode enum" do
     it "has step modes" do
-      Matter::Cluster::LevelControlCluster::StepMode::Up.value.should eq(0)
-      Matter::Cluster::LevelControlCluster::StepMode::Down.value.should eq(1)
+      Matter::Cluster::Definitions::LevelControl::StepMode::Up.value.should eq(0)
+      Matter::Cluster::Definitions::LevelControl::StepMode::Down.value.should eq(1)
     end
   end
 
@@ -438,6 +438,19 @@ describe Matter::Cluster::LevelControlCluster do
       restored.min_frequency.should eq(100_u16)
       restored.max_frequency.should eq(120_u16)
       restored.data_version.should eq(12_u32)
+    end
+  end
+
+  describe "OnLevel writes" do
+    it "rejects a level outside MinLevel..MaxLevel with ConstraintError" do
+      cluster = Matter::Cluster::LevelControlCluster.new(endpoint(1), min_level: 10_u8, max_level: 200_u8)
+
+      expect_status(write(cluster, Matter::Cluster::LevelControlCluster::ATTR_ON_LEVEL, 201_u8), Matter::InteractionModel::StatusCode::ConstraintError)
+      expect_status(write(cluster, Matter::Cluster::LevelControlCluster::ATTR_ON_LEVEL, 9_u8), Matter::InteractionModel::StatusCode::ConstraintError)
+      cluster.on_level.should be_nil
+
+      expect_success(write(cluster, Matter::Cluster::LevelControlCluster::ATTR_ON_LEVEL, 200_u8))
+      cluster.on_level.should eq(200_u8)
     end
   end
 

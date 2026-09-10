@@ -12,33 +12,13 @@ module Matter
     #
     # Matter Spec: Application Clusters 1.5
     class OnOffCluster < Base
-      CLUSTER_ID = 0x0006_u32
+      cluster 0x0006, revision: 6
 
-      # Feature flags
-      @[Flags]
-      enum Feature : UInt32
-        None              =    0
-        Lighting          = 0x01 # LT - Lighting applications
-        DeadFrontBehavior = 0x02 # DF - Dead front behavior when off
-        OffOnly           = 0x04 # OFFONLY - Only off command supported
-      end
-
-      # Attribute IDs
-      ATTR_ON_OFF               = 0x0000_u32
-      ATTR_GLOBAL_SCENE_CONTROL = 0x4000_u32 # Lighting feature
-      ATTR_ON_TIME              = 0x4001_u32 # Lighting feature
-      ATTR_OFF_WAIT_TIME        = 0x4002_u32 # Lighting feature
-      ATTR_START_UP_ON_OFF      = 0x4003_u32 # Lighting feature
-
-      # Command IDs
-      CMD_OFF                         = 0x00_u32
-      CMD_ON                          = 0x01_u32 # Not with OffOnly
-      CMD_TOGGLE                      = 0x02_u32 # Not with OffOnly
-      CMD_OFF_WITH_EFFECT             = 0x40_u32 # Lighting feature
-      CMD_ON_WITH_RECALL_GLOBAL_SCENE = 0x41_u32 # Lighting feature
-      CMD_ON_WITH_TIMED_OFF           = 0x42_u32 # Lighting feature
-
-      CLUSTER_REVISION = 6_u16
+      feature :lighting, bit: 0            # LT - Lighting applications
+      feature :dead_front_behavior, bit: 1 # DF - Dead front behavior when off
+      feature :off_only, bit: 2            # OFFONLY - Only off command supported
+      conflicts :lighting, :off_only
+      conflicts :dead_front_behavior, :off_only
 
       # StartUpOnOff enum values
       enum StartUpOnOff : UInt8
@@ -47,18 +27,59 @@ module Matter
         Toggle = 2
       end
 
-      # State
-      property? on_off : Bool
-      property feature_map : Feature
+      # OffWithEffect effect identifiers
+      enum EffectIdentifier : UInt8
+        DelayedAllOff = 0
+        DyingLight    = 1
+      end
 
-      # Lighting feature attributes
-      property? global_scene_control : Bool
-      property on_time : UInt16
-      property off_wait_time : UInt16
-      property start_up_on_off : StartUpOnOff?
+      # OnWithTimedOff control bits
+      @[Flags]
+      enum OnOffControl : UInt8
+        AcceptOnlyWhenOn = 1
+      end
 
-      # Callbacks
-      @on_state_changed : Proc(Bool, Nil)?
+      struct OffWithEffectRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property effect_identifier : EffectIdentifier
+
+        @[TLV::Field(tag: 1)]
+        property effect_variant : UInt8
+
+        def initialize(@effect_identifier : EffectIdentifier, @effect_variant : UInt8)
+        end
+      end
+
+      struct OnWithTimedOffRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property on_off_control : OnOffControl
+
+        @[TLV::Field(tag: 1)]
+        property on_time : UInt16
+
+        @[TLV::Field(tag: 2)]
+        property off_wait_time : UInt16
+
+        def initialize(@on_off_control : OnOffControl, @on_time : UInt16, @off_wait_time : UInt16)
+        end
+      end
+
+      attribute 0x0000, :on_off, Bool, default: false, persist: true, scene: true, callback: :new_only
+      attribute 0x4000, :global_scene_control, Bool, default: true, persist: true, requires: :lighting
+      attribute 0x4001, :on_time, UInt16, default: 0_u16, writable: true, requires: :lighting
+      attribute 0x4002, :off_wait_time, UInt16, default: 0_u16, writable: true, requires: :lighting
+      attribute 0x4003, :start_up_on_off, StartUpOnOff, nullable: true, writable: true, write_access: :manage, requires: :lighting
+
+      command 0x00, :off
+      command 0x01, :on, requires: {off_only: false}
+      command 0x02, :toggle, requires: {off_only: false}
+      command 0x40, :off_with_effect, request: OffWithEffectRequest, requires: :lighting
+      command 0x41, :on_with_recall_global_scene, requires: :lighting
+      command 0x42, :on_with_timed_off, request: OnWithTimedOffRequest, requires: :lighting
 
       def initialize(
         endpoint_id : DataType::EndpointNumber,
@@ -66,317 +87,40 @@ module Matter
         @feature_map : Feature = Feature::None,
       )
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
-
-        # Validate feature combinations
-        validate_features!
-
-        # Initialize Lighting feature attributes
-        @global_scene_control = true
-        @on_time = 0_u16
-        @off_wait_time = 0_u16
-        @start_up_on_off = nil
-
-        @attribute_values[ATTR_ON_OFF] = tlv(@on_off)
       end
 
-      # Validate feature flag combinations per Matter spec
-      private def validate_features!
-        # Illegal: Lighting + OffOnly
-        if feature_map.lighting? && feature_map.off_only?
-          raise ArgumentError.new("OnOff cluster: Lighting and OffOnly features cannot be combined")
-        end
+      # ------------------------------------------------------------------------
+      # Commands
+      # ------------------------------------------------------------------------
 
-        # Illegal: DeadFrontBehavior + OffOnly
-        if feature_map.dead_front_behavior? && feature_map.off_only?
-          raise ArgumentError.new("OnOff cluster: DeadFrontBehavior and OffOnly features cannot be combined")
-        end
-      end
-
-      def name : String
-        "OnOff"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        # Only cluster-specific attributes - global attributes (FeatureMap, ClusterRevision, etc.)
-        # are handled by the base class
-        attrs = [
-          # Base attribute - always present
-          AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_ON_OFF),
-            name: "onOff",
-            type: :bool,
-            writable: false,
-            default: tlv(false)
-          ),
-        ]
-
-        # Lighting feature adds these attributes
-        if feature_map.lighting?
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_GLOBAL_SCENE_CONTROL),
-            name: "globalSceneControl",
-            type: :bool,
-            writable: false,
-            default: tlv(true)
-          )
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_ON_TIME),
-            name: "onTime",
-            type: :uint16,
-            writable: true,
-            default: tlv(0_u16)
-          )
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_OFF_WAIT_TIME),
-            name: "offWaitTime",
-            type: :uint16,
-            writable: true,
-            default: tlv(0_u16)
-          )
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_START_UP_ON_OFF),
-            name: "startUpOnOff",
-            type: :enum8,
-            writable: true,
-            optional: true # Can be null
-          )
-        end
-
-        attrs
-      end
-
-      def commands : Array(CommandMetadata)
-        cmds = [
-          # Off command - always present
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_OFF),
-            name: "off"
-          ),
-        ]
-
-        # On and Toggle only available without OffOnly feature
-        unless feature_map.off_only?
-          cmds << CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_ON),
-            name: "on"
-          )
-          cmds << CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_TOGGLE),
-            name: "toggle"
-          )
-        end
-
-        # Lighting feature adds these commands
-        if feature_map.lighting?
-          cmds << CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_OFF_WITH_EFFECT),
-            name: "offWithEffect"
-          )
-          cmds << CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_ON_WITH_RECALL_GLOBAL_SCENE),
-            name: "onWithRecallGlobalScene"
-          )
-          cmds << CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_ON_WITH_TIMED_OFF),
-            name: "onWithTimedOff"
-          )
-        end
-
-        cmds
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_ON_OFF
-          tlv(@on_off)
-        when ATTR_GLOBAL_SCENE_CONTROL
-          return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
-          tlv(@global_scene_control)
-        when ATTR_ON_TIME
-          return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
-          tlv(@on_time)
-        when ATTR_OFF_WAIT_TIME
-          return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
-          tlv(@off_wait_time)
-        when ATTR_START_UP_ON_OFF
-          return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
-          if suo = @start_up_on_off
-            tlv(suo.value)
-          else
-            tlv(nil)
-          end
-        when GLOBAL_FEATURE_MAP
-          tlv(feature_map.value)
-        when GLOBAL_ATTRIBUTE_LIST
-          build_attribute_list
-        when GLOBAL_ACCEPTED_COMMAND_LIST
-          build_accepted_command_list
-        when GLOBAL_GENERATED_COMMAND_LIST
-          build_generated_command_list
-        else
-          super
-        end
-      end
-
-      # Encode list of supported attribute IDs as TLV array
-      private def build_attribute_list : TLV::Any
-        # Build list of supported attributes
-        attr_ids = [ATTR_ON_OFF]
-
-        # Lighting feature adds additional attributes
-        if feature_map.lighting?
-          attr_ids << ATTR_GLOBAL_SCENE_CONTROL
-          attr_ids << ATTR_ON_TIME
-          attr_ids << ATTR_OFF_WAIT_TIME
-          attr_ids << ATTR_START_UP_ON_OFF
-        end
-
-        # Global attributes (always present)
-        attr_ids << GLOBAL_GENERATED_COMMAND_LIST
-        attr_ids << GLOBAL_ACCEPTED_COMMAND_LIST
-        attr_ids << GLOBAL_ATTRIBUTE_LIST
-        attr_ids << GLOBAL_FEATURE_MAP
-        attr_ids << GLOBAL_CLUSTER_REVISION
-
-        tlv(attr_ids)
-      end
-
-      # Encode list of accepted command IDs as TLV array
-      private def build_accepted_command_list : TLV::Any
-        cmd_ids = [CMD_OFF]
-
-        # On and Toggle only available without OffOnly feature
-        unless feature_map.off_only?
-          cmd_ids << CMD_ON
-          cmd_ids << CMD_TOGGLE
-        end
-
-        # Lighting feature adds additional commands
-        if feature_map.lighting?
-          cmd_ids << CMD_OFF_WITH_EFFECT
-          cmd_ids << CMD_ON_WITH_RECALL_GLOBAL_SCENE
-          cmd_ids << CMD_ON_WITH_TIMED_OFF
-        end
-
-        tlv(cmd_ids)
-      end
-
-      # Encode list of generated command IDs as TLV array (empty for OnOff)
-      private def build_generated_command_list : TLV::Any
-        # OnOff cluster doesn't generate any response commands
-        tlv(([] of UInt32))
-      end
-
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        case attribute_id
-        when ATTR_ON_TIME
-          return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
-          on_time = decode?(value, UInt16)
-          return InteractionModel::Status.invalid_data_type unless on_time
-          @on_time = on_time
-          increment_version
-          InteractionModel::Status.success
-        when ATTR_OFF_WAIT_TIME
-          return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
-          off_wait_time = decode?(value, UInt16)
-          return InteractionModel::Status.invalid_data_type unless off_wait_time
-          @off_wait_time = off_wait_time
-          increment_version
-          InteractionModel::Status.success
-        when ATTR_START_UP_ON_OFF
-          return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
-          # Nullable enum
-          if value.value.nil?
-            @start_up_on_off = nil
-          else
-            start_up = narrow_u8?(value)
-            return InteractionModel::Status.invalid_data_type unless start_up
-            @start_up_on_off = StartUpOnOff.from_value(start_up)
-          end
-          increment_version
-          InteractionModel::Status.success
-        else
-          super
-        end
-      end
-
-      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
-        case command_id
-        when CMD_OFF
-          handle_off
-        when CMD_ON
-          return InteractionModel::Status.unsupported_command if feature_map.off_only?
-          handle_on
-        when CMD_TOGGLE
-          return InteractionModel::Status.unsupported_command if feature_map.off_only?
-          handle_toggle
-        when CMD_OFF_WITH_EFFECT
-          return InteractionModel::Status.unsupported_command unless feature_map.lighting?
-          handle_off_with_effect(fields)
-        when CMD_ON_WITH_RECALL_GLOBAL_SCENE
-          return InteractionModel::Status.unsupported_command unless feature_map.lighting?
-          handle_on_with_recall_global_scene
-        when CMD_ON_WITH_TIMED_OFF
-          return InteractionModel::Status.unsupported_command unless feature_map.lighting?
-          handle_on_with_timed_off(fields)
-        else
-          InteractionModel::Status.unsupported_command
-        end
-      end
-
-      private def handle_off : InteractionModel::Status
-        set_on_off(false)
-        if feature_map.lighting?
-          @global_scene_control = false
-        end
+      def off : InteractionModel::Status
+        self.on_off = false
+        self.global_scene_control = false if feature_map.lighting?
         InteractionModel::Status.success
       end
 
-      private def handle_on : InteractionModel::Status
-        set_on_off(true)
-        if feature_map.lighting?
-          @global_scene_control = true
-        end
+      def on : InteractionModel::Status
+        self.on_off = true
+        self.global_scene_control = true if feature_map.lighting?
         InteractionModel::Status.success
       end
 
-      private def handle_toggle : InteractionModel::Status
-        if @on_off
-          handle_off
-        else
-          handle_on
-        end
+      def toggle : InteractionModel::Status
+        @on_off ? off : on
       end
 
-      private def handle_off_with_effect(fields : TLV::Any?) : InteractionModel::Status
-        # Would decode EffectIdentifier and EffectVariant from fields
-        # For now, just turn off
-        set_on_off(false)
-        @global_scene_control = false
-        InteractionModel::Status.success
+      # Effects are not rendered; the device turns off immediately.
+      def off_with_effect(request : OffWithEffectRequest) : InteractionModel::Status
+        off
       end
 
-      private def handle_on_with_recall_global_scene : InteractionModel::Status
-        set_on_off(true)
-        @global_scene_control = true
-        InteractionModel::Status.success
+      def on_with_recall_global_scene : InteractionModel::Status
+        on
       end
 
-      private def handle_on_with_timed_off(fields : TLV::Any?) : InteractionModel::Status
-        # Would decode OnOffControl, OnTime, OffWaitTime from fields
-        # For now, just turn on
-        set_on_off(true)
-        @global_scene_control = true
-        InteractionModel::Status.success
-      end
-
-      private def set_on_off(value : Bool)
-        if @on_off != value
-          @on_off = value
-          @attribute_values[ATTR_ON_OFF] = tlv(value)
-          increment_version_and_notify(ATTR_ON_OFF)
-          @on_state_changed.try &.call(value)
-        end
+      # The timed off is not scheduled; the device turns on immediately.
+      def on_with_timed_off(request : OnWithTimedOffRequest) : InteractionModel::Status
+        on
       end
 
       # ------------------------------------------------------------------------
@@ -392,67 +136,13 @@ module Matter
       end
 
       def on=(state : Bool) : Bool
-        state ? handle_on : handle_off
+        state ? on : off
         state
       end
 
-      def toggle : Bool
-        handle_toggle
-        @on_off
-      end
-
-      # ------------------------------------------------------------------------
-      # Persistence support
-      # ------------------------------------------------------------------------
-
-      private struct PersistedState
-        include Storage::Record
-
-        getter? on_off : Bool
-        getter? global_scene_control : Bool
-        getter on_time : UInt16
-        getter off_wait_time : UInt16
-        getter start_up_on_off : StartUpOnOff?
-        getter data_version : UInt32
-
-        def initialize(
-          @on_off : Bool,
-          @global_scene_control : Bool,
-          @on_time : UInt16,
-          @off_wait_time : UInt16,
-          @start_up_on_off : StartUpOnOff?,
-          @data_version : UInt32,
-        )
-        end
-      end
-
-      def save_state : Storage::Document?
-        PersistedState.new(
-          on_off: @on_off,
-          global_scene_control: @global_scene_control,
-          on_time: @on_time,
-          off_wait_time: @off_wait_time,
-          start_up_on_off: @start_up_on_off,
-          data_version: @data_version
-        ).to_document
-      end
-
-      def restore_state(document : Storage::Document) : Nil
-        state = PersistedState.from_document(document)
-
-        @on_off = state.on_off?
-        @attribute_values[ATTR_ON_OFF] = tlv(@on_off)
-
-        if feature_map.lighting?
-          @global_scene_control = state.global_scene_control?
-          @on_time = state.on_time
-          @off_wait_time = state.off_wait_time
-          @start_up_on_off = state.start_up_on_off
-        end
-
-        @data_version = state.data_version
-      rescue ex
-        Log.warn(exception: ex) { "OnOff restore_state failed; starting fresh" }
+      # Called with the new state whenever OnOff changes
+      def on_state_changed(&block : Bool -> Nil) : Nil
+        on_on_off_changed(&block)
       end
 
       # ------------------------------------------------------------------------
@@ -479,20 +169,15 @@ module Matter
 
           case parsed = value.value
           when Bool
-            set_on_off(parsed)
+            self.on_off = parsed
             return true
           when UInt8
-            set_on_off(parsed == SCENE_BOOLEAN_TRUE)
+            self.on_off = parsed == SCENE_BOOLEAN_TRUE
             return true
           end
         end
 
         false
-      end
-
-      # Set callback for state changes
-      def on_state_changed(&block : Bool -> Nil)
-        @on_state_changed = block
       end
     end
   end

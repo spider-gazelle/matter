@@ -308,7 +308,7 @@ describe "TLV attribute type preservation" do
     attribute = Matter::Cluster::OnOffCluster::ATTR_START_UP_ON_OFF
 
     expect_success(write(cluster, attribute, 1_u8))
-    expect_status(write(cluster, attribute, 20_u8), Matter::InteractionModel::StatusCode::InvalidDataType)
+    expect_status(write(cluster, attribute, 20_u8), Matter::InteractionModel::StatusCode::ConstraintError)
     read_tlv(cluster, attribute).as_u8.should eq(1_u8)
     expect_success(write(cluster, attribute, nil))
     read_tlv(cluster, attribute).value.should be_nil

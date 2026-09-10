@@ -252,7 +252,8 @@ describe Matter::Cluster::OnOffCluster do
       invoke(cluster, Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
       cluster.on_off?.should be_true
 
-      result = invoke(cluster, Matter::Cluster::OnOffCluster::CMD_OFF_WITH_EFFECT, Bytes.new(0))
+      request = Matter::Cluster::OnOffCluster::OffWithEffectRequest.new(Matter::Cluster::OnOffCluster::EffectIdentifier::DyingLight, 0_u8)
+      result = invoke(cluster, Matter::Cluster::OnOffCluster::CMD_OFF_WITH_EFFECT, request)
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::Success)
       cluster.on_off?.should be_false
