@@ -6,7 +6,7 @@ require "./definitions"
 module Matter
   module Session
     module Pase
-      Log = ::Log.for("matter.pase")
+      Log = ::Log.for("matter.session.pase")
 
       # PBKDF parameters for PASE
       struct PbkdfParameters

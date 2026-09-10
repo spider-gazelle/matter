@@ -10,7 +10,7 @@ module Matter
   module Controller
     module Pairing
       class PasePairing
-        Log = ::Log.for("matter.controller.pairing.pase")
+        Log = ::Log.for("matter.controller.pairing.pase_pairing")
 
         MSG_PBKDF_PARAM_REQUEST  = 0x20_u8
         MSG_PBKDF_PARAM_RESPONSE = 0x21_u8

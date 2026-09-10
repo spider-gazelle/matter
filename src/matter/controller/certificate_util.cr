@@ -5,7 +5,7 @@ module Matter
     module CertificateUtil
       extend self
 
-      Log = ::Log.for("matter.controller.cert")
+      Log = ::Log.for("matter.controller.certificate_util")
 
       # Extract the 65-byte uncompressed EC public key from a DER-encoded CSR.
       #

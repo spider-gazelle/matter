@@ -26,7 +26,7 @@ module Matter
     # - Interaction Model protocol (0x0001) - Read, Write, Invoke, Subscribe
     class MessageHandler
       include SessionManager
-      Log = ::Log.for("matter.protocol")
+      Log = ::Log.for("matter.protocol.message_handler")
 
       # Protocol IDs
       PROTOCOL_SECURE_CHANNEL     = 0x0000_u16

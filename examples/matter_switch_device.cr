@@ -327,7 +327,7 @@ end
 puts "Starting Matter Switch Device..."
 puts ""
 
-Log.setup(:debug)
+Log.setup(Log::Severity.parse(ENV["MATTER_LOG"]? || "info"))
 
 device = MatterSwitch::Device.new
 

@@ -163,7 +163,7 @@ end
 puts "Starting Matter Humidity Sensor Device..."
 puts ""
 
-Log.setup(:debug)
+Log.setup(Log::Severity.parse(ENV["MATTER_LOG"]? || "info"))
 
 device = MatterHumiditySensor::Device.new
 

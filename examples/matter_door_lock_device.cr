@@ -307,7 +307,7 @@ module MatterDoorLock
   end
 end
 
-Log.setup(:debug)
+Log.setup(Log::Severity.parse(ENV["MATTER_LOG"]? || "info"))
 
 device = MatterDoorLock::Device.new
 

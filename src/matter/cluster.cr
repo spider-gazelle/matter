@@ -1,4 +1,11 @@
 # Cluster framework and every server cluster implementation.
+module Matter
+  module Cluster
+    # Fallback logger for cluster files that do not define their own `Log`.
+    Log = ::Log.for("matter.cluster")
+  end
+end
+
 require "./cluster/cluster"
 require "./cluster/definitions/*"
 

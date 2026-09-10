@@ -381,7 +381,7 @@ end
 puts "Starting Matter Level Control Device..."
 puts ""
 
-Log.setup(:debug)
+Log.setup(Log::Severity.parse(ENV["MATTER_LOG"]? || "info"))
 
 device = MatterLevelControl::Device.new
 

@@ -352,7 +352,7 @@ module Matter
     end
 
     class ScenesManagementCluster < Base
-      Log        = ::Log.for("matter.cluster.scenes")
+      Log        = ::Log.for("matter.cluster.scenes_management")
       CLUSTER_ID = 0x0062_u32
 
       # Feature flags

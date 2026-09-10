@@ -17,7 +17,7 @@ module Matter
     # The device/application can still hook into these events, but does not need
     # to manually persist sessions/subscriptions or manage advertisement state.
     class LifecycleManager
-      Log = ::Log.for("matter.device.lifecycle")
+      Log = ::Log.for("matter.device.lifecycle_manager")
 
       enum Mode
         Commissioning

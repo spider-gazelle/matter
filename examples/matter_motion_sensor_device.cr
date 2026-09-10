@@ -159,7 +159,7 @@ end
 puts "Starting Matter Motion Sensor Device..."
 puts ""
 
-Log.setup(:debug)
+Log.setup(Log::Severity.parse(ENV["MATTER_LOG"]? || "info"))
 
 device = MatterMotionSensor::Device.new
 

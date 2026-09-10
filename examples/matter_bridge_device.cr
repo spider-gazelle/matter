@@ -634,7 +634,7 @@ end
 puts "Starting Matter Bridge Device..."
 puts ""
 
-Log.setup(:debug)
+Log.setup(Log::Severity.parse(ENV["MATTER_LOG"]? || "info"))
 
 device = MatterBridge::Device.new
 

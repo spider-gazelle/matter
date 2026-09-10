@@ -38,6 +38,8 @@ module Matter
     # - device identity getters (name/vendor/product/pin/discriminator)
     # - optional hooks like `started_commissioning_mode`
     abstract class Base
+      Log = ::Log.for("matter.device.base")
+
       getter hostname : String
       getter ip_addresses : Array(Socket::IPAddress)
 

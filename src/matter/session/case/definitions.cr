@@ -4,8 +4,6 @@ module Matter
   module Session
     module Case
       module Definitions
-        Log = ::Log.for("matter.case")
-
         # Session parameter structure (used in Sigma1 and Sigma2)
         # Contains session idle/active interval parameters
         struct SessionParameter

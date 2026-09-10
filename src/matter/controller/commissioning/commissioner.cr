@@ -21,7 +21,7 @@ module Matter
   module Controller
     module Commissioning
       class Commissioner
-        Log = ::Log.for("matter.controller.commissioning")
+        Log = ::Log.for("matter.controller.commissioning.commissioner")
 
         def initialize(
           @store : StateStore,

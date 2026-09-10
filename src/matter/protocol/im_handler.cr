@@ -9,7 +9,7 @@ module Matter
   module Protocol
     # Helper module for Interaction Model message handling
     module IMHandler
-      Log = ::Log.for("matter.im")
+      Log = ::Log.for("matter.protocol.im_handler")
 
       private def self.access_control_cluster(clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base)) : Cluster::AccessControlCluster?
         clusters[{0_u16, Cluster::AccessControlCluster::CLUSTER_ID}]?.as?(Cluster::AccessControlCluster)

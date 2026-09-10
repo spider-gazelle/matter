@@ -14,7 +14,7 @@ module Matter
   module Controller
     module Pairing
       class CasePairing
-        Log = ::Log.for("matter.controller.pairing.case")
+        Log = ::Log.for("matter.controller.pairing.case_pairing")
 
         MSG_CASE_SIGMA1   = 0x30_u8
         MSG_CASE_SIGMA2   = 0x31_u8

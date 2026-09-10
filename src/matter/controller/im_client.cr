@@ -7,7 +7,7 @@ require "./client"
 module Matter
   module Controller
     class ImClient
-      Log = ::Log.for("matter.controller.im")
+      Log = ::Log.for("matter.controller.im_client")
 
       MSG_READ_REQUEST    = 0x02_u8
       MSG_REPORT_DATA     = 0x05_u8

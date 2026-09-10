@@ -28,6 +28,14 @@ An example OnOff device is provided in the `./examples` directory.
 
 Confirmed working with iOS.
 
+Examples log at `info` by default; set `MATTER_LOG` to change the level (specs use
+`MATTER_SPEC_LOG` the same way, defaulting to `warn`):
+
+```
+MATTER_LOG=debug bin/matter_switch
+MATTER_SPEC_LOG=trace crystal spec
+```
+
 ### Example projects
 
 These projects show off how custom matter interfaces can be built for almost any device.

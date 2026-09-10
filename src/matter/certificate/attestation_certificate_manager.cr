@@ -11,8 +11,6 @@ end
 
 module Matter
   module Certificate
-    Log = ::Log.for("matter.certificate")
-
     # Manages generation of attestation certificates (PAA, PAI, DAC)
     # Based on matter.js AttestationCertificateManager
     #
@@ -21,6 +19,8 @@ module Matter
     # - PAI (Product Attestation Intermediate) - intermediate CA
     # - DAC (Device Attestation Certificate) - device certificate
     class AttestationCertificateManager
+      Log = ::Log.for("matter.certificate.attestation_certificate_manager")
+
       # PAA key pair (persisted across instances for same vendor)
       getter paa_key_pair : Crypto::Key
 

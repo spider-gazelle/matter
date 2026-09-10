@@ -10,7 +10,7 @@ module Matter
     module SecureMessage
       extend self
 
-      Log = ::Log.for("matter.session.secure")
+      Log = ::Log.for("matter.session.secure_message")
 
       # Nonce size for AES-CCM in Matter (13 bytes)
       NONCE_LENGTH = 13

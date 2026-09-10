@@ -4,8 +4,6 @@ module Matter
   module Session
     module Pase
       module Definitions
-        Log = ::Log.for("matter.pase")
-
         # MRP (Message Reliability Protocol) parameters
         struct MrpParameters
           include TLV::Serializable

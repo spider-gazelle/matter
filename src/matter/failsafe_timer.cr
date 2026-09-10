@@ -11,7 +11,7 @@ module Matter
   #
   # Matter Core Spec §11.10.7.2 - ArmFailSafe Command & Fail Safe Context
   class FailsafeTimer
-    Log = ::Log.for("matter.failsafe")
+    Log = ::Log.for("matter.failsafe_timer")
 
     property associated_fabric_index : UInt8?
 

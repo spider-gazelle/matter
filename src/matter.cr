@@ -10,6 +10,9 @@ module Matter
   {% begin %}
     VERSION = {{ `shards version "#{__DIR__}"`.chomp.stringify.downcase }}
   {% end %}
+
+  # Fallback logger for files that do not define their own `Log` constant.
+  Log = ::Log.for("matter")
 end
 
 # Subsystems are loaded in dependency order: lower layers first.

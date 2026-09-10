@@ -38,6 +38,8 @@ module Matter
     # - TrustedRootCertificates (0x04): List of trusted root certs
     # - CurrentFabricIndex (0x05): Fabric index of current session
     class OperationalCredentialsCluster < Base
+      Log = ::Log.for("matter.cluster.operational_credentials")
+
       CLUSTER_ID = 0x003E_u32
 
       # Certificate Chain Type

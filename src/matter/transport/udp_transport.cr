@@ -19,7 +19,7 @@ module Matter
       # Matter default port
       MATTER_PORT = 5540
 
-      Log = ::Log.for("matter.transport.udp")
+      Log = ::Log.for("matter.transport.udp_transport")
 
       getter socket : UDPSocket
       getter port : Int32
