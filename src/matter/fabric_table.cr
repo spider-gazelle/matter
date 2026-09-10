@@ -278,47 +278,6 @@ module Matter
       fabric_hash
     end
 
-    # Export all fabrics for backup
-    def export : String
-      data = @fabrics.transform_values(&.to_h)
-      data.to_json
-    end
-
-    # Import fabrics from backup (replaces existing)
-    def import(json : String) : Bool
-      data = Hash(String, Hash(String, JSON::Any)).from_json(json)
-
-      # Validate before clearing existing fabrics
-      new_fabrics = Hash(UInt8, Fabric).new
-      data.each do |_, fabric_data|
-        fabric_hash = fabric_data.transform_values do |value|
-          case value.raw
-          when String
-            value.as_s
-          when Int64
-            value.as_i64
-          when Float64
-            value.as_f
-          when Bool
-            value.as_bool
-          else
-            value.raw
-          end
-        end
-
-        fabric = Fabric.from_h(fabric_hash)
-        new_fabrics[fabric.fabric_index] = fabric
-      end
-
-      # All valid, replace existing
-      @fabrics = new_fabrics
-      persist_to_storage
-      true
-    rescue ex
-      Log.error(exception: ex) { "Failed to import fabrics (json=#{json})" }
-      false
-    end
-
     # Validate fabric table consistency
     def validate : Array(String)
       errors = [] of String
