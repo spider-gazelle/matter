@@ -365,12 +365,6 @@ module Matter
         administrator_commissioning = Cluster::AdministratorCommissioningCluster.new(endpoint_0)
         @administrator_commissioning = administrator_commissioning
 
-        # Provide device identity for cluster attributes (and legacy mdns paths).
-        administrator_commissioning.device_name = device_name
-        administrator_commissioning.device_type = primary_device_type_id.to_u32
-        administrator_commissioning.vendor_id = vendor_id
-        administrator_commissioning.product_id = product_id
-
         general_diagnostics = Cluster::GeneralDiagnosticsCluster.new(endpoint_0)
         icd_management = Cluster::IcdManagementCluster.new(endpoint_0)
         network_commissioning = Cluster::NetworkCommissioningCluster.new(
@@ -383,13 +377,14 @@ module Matter
         diagnostic_logs = Cluster::DiagnosticLogsCluster.new(endpoint_0)
         ethernet_diagnostics = include_ethernet_diagnostics? ? Cluster::EthernetNetworkDiagnosticsCluster.new(endpoint_0) : nil
 
-        # Wire commissioning-window mDNS advertisement via the new Responder.
+        # Wire commissioning-window mDNS advertisement via the Responder.
         # This enables multi-admin flows (chip-tool/iOS) that require _matterc advertising
         # while the commissioning window is open, even when already operational.
-        administrator_commissioning.on_start_commissioning_advertising = ->(disc : UInt16, mode : MDNS::CommissioningMode) do
+        # A basic window (nil discriminator) advertises the device's own discriminator.
+        administrator_commissioning.on_start_commissioning_advertising = ->(disc : UInt16?, mode : MDNS::CommissioningMode) do
           @responder.stop_commissioning
           info = commissioning_info_for(mode)
-          info.discriminator = disc
+          info.discriminator = disc if disc
           @responder.advertise_commissioning(info, port: port)
         end
         administrator_commissioning.on_stop_commissioning_advertising = -> do

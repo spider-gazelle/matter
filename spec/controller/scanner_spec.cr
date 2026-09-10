@@ -1,13 +1,13 @@
 require "../spec_helper"
-require "../../src/matter/mdns/scanner"
+require "../../src/matter/controller"
 require "../../src/matter/mdns/service_type"
 require "../../src/matter/mdns/record_builder"
 
-describe Matter::MDNS::Scanner do
+describe Matter::Controller::Scanner do
   describe "initialization" do
     it "creates a scanner and joins multicast group" do
       require_udp_sockets!
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       scanner.devices.should be_empty
       scanner.close
     end
@@ -16,7 +16,7 @@ describe Matter::MDNS::Scanner do
   describe "device discovery" do
     it "starts and stops scanner" do
       require_udp_sockets!
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       scanner.start
       sleep 50.milliseconds
       scanner.stop
@@ -25,28 +25,28 @@ describe Matter::MDNS::Scanner do
 
     it "maintains device discovery table" do
       require_udp_sockets!
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       scanner.devices.should be_empty
       scanner.close
     end
 
     it "filters commissioning devices" do
       require_udp_sockets!
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       scanner.commissioning_devices.should be_empty
       scanner.close
     end
 
     it "filters operational devices" do
       require_udp_sockets!
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       scanner.operational_devices.should be_empty
       scanner.close
     end
 
     it "retrieves device by instance name" do
       require_udp_sockets!
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       device = scanner.get_device("nonexistent._matterc._udp.local")
       device.should be_nil
       scanner.close
@@ -56,7 +56,7 @@ describe Matter::MDNS::Scanner do
   describe "query methods" do
     it "sends commissioning query" do
       require_udp_sockets!
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       # Should not raise
       scanner.query_commissioning
       scanner.close
@@ -64,7 +64,7 @@ describe Matter::MDNS::Scanner do
 
     it "sends operational query" do
       require_udp_sockets!
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       # Should not raise
       scanner.query_operational
       scanner.close
@@ -75,7 +75,7 @@ describe Matter::MDNS::Scanner do
     it "creates discovered device" do
       ip = Socket::IPAddress.new("192.168.1.100", 5540)
 
-      device = Matter::MDNS::DiscoveredDevice.new(
+      device = Matter::Controller::DiscoveredDevice.new(
         instance_name: "TestDevice._matterc._udp.local",
         hostname: "test-device.local",
         addresses: [ip],
@@ -95,7 +95,7 @@ describe Matter::MDNS::Scanner do
     it "parses commissioning TXT records" do
       ip = Socket::IPAddress.new("192.168.1.100", 5540)
 
-      device = Matter::MDNS::DiscoveredDevice.new(
+      device = Matter::Controller::DiscoveredDevice.new(
         instance_name: "TestDevice._matterc._udp.local",
         hostname: "test-device.local",
         addresses: [ip],
@@ -122,7 +122,7 @@ describe Matter::MDNS::Scanner do
     it "parses operational TXT records" do
       ip = Socket::IPAddress.new("192.168.1.100", 5540)
 
-      device = Matter::MDNS::DiscoveredDevice.new(
+      device = Matter::Controller::DiscoveredDevice.new(
         instance_name: "1234567890ABCDEF-FEDCBA0987654321._matter._tcp.local",
         hostname: "test-device.local",
         addresses: [ip],
@@ -143,7 +143,7 @@ describe Matter::MDNS::Scanner do
     it "detects expired devices" do
       ip = Socket::IPAddress.new("192.168.1.100", 5540)
 
-      device = Matter::MDNS::DiscoveredDevice.new(
+      device = Matter::Controller::DiscoveredDevice.new(
         instance_name: "TestDevice._matterc._udp.local",
         hostname: "test-device.local",
         addresses: [ip],
@@ -159,7 +159,7 @@ describe Matter::MDNS::Scanner do
     it "detects non-expired devices" do
       ip = Socket::IPAddress.new("192.168.1.100", 5540)
 
-      device = Matter::MDNS::DiscoveredDevice.new(
+      device = Matter::Controller::DiscoveredDevice.new(
         instance_name: "TestDevice._matterc._udp.local",
         hostname: "test-device.local",
         addresses: [ip],
@@ -176,10 +176,10 @@ describe Matter::MDNS::Scanner do
   describe "callbacks" do
     it "supports device discovered callback" do
       require_udp_sockets!
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
 
       discovered = false
-      scanner.on_device_discovered = ->(_device : Matter::MDNS::DiscoveredDevice) {
+      scanner.on_device_discovered = ->(_device : Matter::Controller::DiscoveredDevice) {
         discovered = true
         nil
       }
@@ -189,10 +189,10 @@ describe Matter::MDNS::Scanner do
 
     it "supports device updated callback" do
       require_udp_sockets!
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
 
       updated = false
-      scanner.on_device_updated = ->(_device : Matter::MDNS::DiscoveredDevice) {
+      scanner.on_device_updated = ->(_device : Matter::Controller::DiscoveredDevice) {
         updated = true
         nil
       }
@@ -202,7 +202,7 @@ describe Matter::MDNS::Scanner do
 
     it "supports device removed callback" do
       require_udp_sockets!
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
 
       removed = false
       scanner.on_device_removed = ->(_instance_name : String) {
@@ -217,7 +217,7 @@ describe Matter::MDNS::Scanner do
   describe "service name extraction" do
     it "extracts commissioning instance name" do
       require_udp_sockets!
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
 
       # Test with PTR record name
       # This will be tested indirectly through packet processing
@@ -226,7 +226,7 @@ describe Matter::MDNS::Scanner do
 
     it "extracts operational instance name" do
       require_udp_sockets!
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
 
       # Test with PTR record name
       # This will be tested indirectly through packet processing
@@ -235,7 +235,7 @@ describe Matter::MDNS::Scanner do
 
     it "ignores non-Matter services" do
       require_udp_sockets!
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
 
       # Non-Matter services should be filtered out
       scanner.close
@@ -247,7 +247,7 @@ describe Matter::MDNS::Scanner do
       ip = Socket::IPAddress.new("192.168.1.100", 5540)
 
       expires_at = Time.utc + 120.seconds
-      device = Matter::MDNS::DiscoveredDevice.new(
+      device = Matter::Controller::DiscoveredDevice.new(
         instance_name: "TestDevice._matterc._udp.local",
         hostname: "test-device.local",
         addresses: [ip],
@@ -267,7 +267,7 @@ describe Matter::MDNS::Scanner do
       ip1 = Socket::IPAddress.new("192.168.1.100", 5540)
       ip2 = Socket::IPAddress.new("192.168.1.101", 5540)
 
-      device = Matter::MDNS::DiscoveredDevice.new(
+      device = Matter::Controller::DiscoveredDevice.new(
         instance_name: "TestDevice._matterc._udp.local",
         hostname: "test-device.local",
         addresses: [ip1, ip2],
@@ -284,7 +284,7 @@ describe Matter::MDNS::Scanner do
       ipv4 = Socket::IPAddress.new("192.168.1.100", 5540)
       ipv6 = Socket::IPAddress.new("fe80::1", 5540)
 
-      device = Matter::MDNS::DiscoveredDevice.new(
+      device = Matter::Controller::DiscoveredDevice.new(
         instance_name: "TestDevice._matterc._udp.local",
         hostname: "test-device.local",
         addresses: [ipv4, ipv6],
@@ -304,7 +304,7 @@ describe Matter::MDNS::Scanner do
     it "handles missing TXT records" do
       ip = Socket::IPAddress.new("192.168.1.100", 5540)
 
-      device = Matter::MDNS::DiscoveredDevice.new(
+      device = Matter::Controller::DiscoveredDevice.new(
         instance_name: "TestDevice._matterc._udp.local",
         hostname: "test-device.local",
         addresses: [ip],
@@ -322,7 +322,7 @@ describe Matter::MDNS::Scanner do
     it "handles malformed VP record" do
       ip = Socket::IPAddress.new("192.168.1.100", 5540)
 
-      device = Matter::MDNS::DiscoveredDevice.new(
+      device = Matter::Controller::DiscoveredDevice.new(
         instance_name: "TestDevice._matterc._udp.local",
         hostname: "test-device.local",
         addresses: [ip],
@@ -339,7 +339,7 @@ describe Matter::MDNS::Scanner do
     it "handles invalid numeric fields" do
       ip = Socket::IPAddress.new("192.168.1.100", 5540)
 
-      device = Matter::MDNS::DiscoveredDevice.new(
+      device = Matter::Controller::DiscoveredDevice.new(
         instance_name: "TestDevice._matterc._udp.local",
         hostname: "test-device.local",
         addresses: [ip],
@@ -357,7 +357,7 @@ describe Matter::MDNS::Scanner do
     it "parses valid operational instance name" do
       ip = Socket::IPAddress.new("192.168.1.100", 5540)
 
-      device = Matter::MDNS::DiscoveredDevice.new(
+      device = Matter::Controller::DiscoveredDevice.new(
         instance_name: "1234567890ABCDEF-FEDCBA0987654321._matter._tcp.local",
         hostname: "test-device.local",
         addresses: [ip],
@@ -374,7 +374,7 @@ describe Matter::MDNS::Scanner do
     it "handles invalid operational instance name" do
       ip = Socket::IPAddress.new("192.168.1.100", 5540)
 
-      device = Matter::MDNS::DiscoveredDevice.new(
+      device = Matter::Controller::DiscoveredDevice.new(
         instance_name: "invalid-format._matter._tcp.local",
         hostname: "test-device.local",
         addresses: [ip],

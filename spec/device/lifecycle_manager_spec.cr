@@ -1,7 +1,7 @@
 require "../spec_helper"
 
 module Matter
-  class FakeAdvertiser
+  class FakeResponder
     include MDNS::ResponderInterface
 
     getter stop_commissioning_calls = 0
@@ -57,7 +57,7 @@ describe Matter::Device::LifecycleManager do
       fabric_index: 1_u8
     )
 
-    advertiser = Matter::FakeAdvertiser.new
+    advertiser = Matter::FakeResponder.new
     opcreds = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table)
 
     Matter::Device::LifecycleManager.new(
