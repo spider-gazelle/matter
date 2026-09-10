@@ -14,7 +14,10 @@ module Matter
           @[TLV::Field(tag: 0)]
           property mode : SetpointAdjustMode
           @[TLV::Field(tag: 1)]
-          property amount : UInt8
+          property amount : Int8
+
+          def initialize(@mode : SetpointAdjustMode, @amount : Int8)
+          end
         end
 
         # This represents a single transition in a Thermostat schedule

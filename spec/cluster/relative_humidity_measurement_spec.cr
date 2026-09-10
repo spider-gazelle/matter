@@ -125,8 +125,8 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
       )
 
       result = cluster.read_attribute(0x0000_u32)
-      result.should be_a(Bytes)
-      decode_tlv_value(result.as(Bytes)).should eq(4500)
+      result.should be_a(TLV::Any)
+      result.as(TLV::Any).value.should eq(4500)
     end
 
     it "reads MeasuredValue as null when not set" do
@@ -134,8 +134,8 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
       cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(endpoint_id)
 
       result = cluster.read_attribute(0x0000_u32)
-      result.should be_a(Bytes)
-      decode_tlv_value(result.as(Bytes)).should be_nil
+      result.should be_a(TLV::Any)
+      result.as(TLV::Any).value.should be_nil
     end
 
     it "reads MinMeasuredValue attribute" do
@@ -146,8 +146,8 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
       )
 
       result = cluster.read_attribute(0x0001_u32)
-      result.should be_a(Bytes)
-      decode_tlv_value(result.as(Bytes)).should eq(2000)
+      result.should be_a(TLV::Any)
+      result.as(TLV::Any).value.should eq(2000)
     end
 
     it "reads MaxMeasuredValue attribute" do
@@ -158,8 +158,8 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
       )
 
       result = cluster.read_attribute(0x0002_u32)
-      result.should be_a(Bytes)
-      decode_tlv_value(result.as(Bytes)).should eq(9500)
+      result.should be_a(TLV::Any)
+      result.as(TLV::Any).value.should eq(9500)
     end
 
     it "reads Tolerance attribute when set" do
@@ -170,8 +170,8 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
       )
 
       result = cluster.read_attribute(0x0003_u32)
-      result.should be_a(Bytes)
-      value = decode_tlv_value(result.as(Bytes))
+      result.should be_a(TLV::Any)
+      value = result.as(TLV::Any).value
       value.should eq(150_u16)
     end
 

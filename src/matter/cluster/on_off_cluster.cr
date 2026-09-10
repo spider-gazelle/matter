@@ -76,7 +76,7 @@ module Matter
         @off_wait_time = 0_u16
         @start_up_on_off = nil
 
-        @attribute_values[ATTR_ON_OFF] = @on_off.to_tlv
+        @attribute_values[ATTR_ON_OFF] = tlv(@on_off)
       end
 
       # Validate feature flag combinations per Matter spec
@@ -106,7 +106,7 @@ module Matter
             name: "onOff",
             type: :bool,
             writable: false,
-            default: false.to_tlv
+            default: tlv(false)
           ),
         ]
 
@@ -117,21 +117,21 @@ module Matter
             name: "globalSceneControl",
             type: :bool,
             writable: false,
-            default: true.to_tlv
+            default: tlv(true)
           )
           attrs << AttributeMetadata.new(
             id: DataType::AttributeId.new(ATTR_ON_TIME),
             name: "onTime",
             type: :uint16,
             writable: true,
-            default: 0_u16.to_tlv
+            default: tlv(0_u16)
           )
           attrs << AttributeMetadata.new(
             id: DataType::AttributeId.new(ATTR_OFF_WAIT_TIME),
             name: "offWaitTime",
             type: :uint16,
             writable: true,
-            default: 0_u16.to_tlv
+            default: tlv(0_u16)
           )
           attrs << AttributeMetadata.new(
             id: DataType::AttributeId.new(ATTR_START_UP_ON_OFF),
@@ -185,41 +185,41 @@ module Matter
         cmds
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_ON_OFF
-          @on_off.to_tlv
+          tlv(@on_off)
         when ATTR_GLOBAL_SCENE_CONTROL
           return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
-          @global_scene_control.to_tlv
+          tlv(@global_scene_control)
         when ATTR_ON_TIME
           return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
-          @on_time.to_tlv
+          tlv(@on_time)
         when ATTR_OFF_WAIT_TIME
           return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
-          @off_wait_time.to_tlv
+          tlv(@off_wait_time)
         when ATTR_START_UP_ON_OFF
           return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
           if suo = @start_up_on_off
-            suo.value.to_tlv
+            tlv(suo.value)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when GLOBAL_FEATURE_MAP
-          feature_map.value.to_tlv
+          tlv(feature_map.value)
         when GLOBAL_ATTRIBUTE_LIST
-          encode_attribute_list
+          build_attribute_list
         when GLOBAL_ACCEPTED_COMMAND_LIST
-          encode_accepted_command_list
+          build_accepted_command_list
         when GLOBAL_GENERATED_COMMAND_LIST
-          encode_generated_command_list
+          build_generated_command_list
         else
           super
         end
       end
 
       # Encode list of supported attribute IDs as TLV array
-      private def encode_attribute_list : Bytes
+      private def build_attribute_list : TLV::Any
         # Build list of supported attributes
         attr_ids = [ATTR_ON_OFF]
 
@@ -238,11 +238,11 @@ module Matter
         attr_ids << GLOBAL_FEATURE_MAP
         attr_ids << GLOBAL_CLUSTER_REVISION
 
-        attr_ids.to_tlv
+        tlv(attr_ids)
       end
 
       # Encode list of accepted command IDs as TLV array
-      private def encode_accepted_command_list : Bytes
+      private def build_accepted_command_list : TLV::Any
         cmd_ids = [CMD_OFF]
 
         # On and Toggle only available without OffOnly feature
@@ -258,27 +258,27 @@ module Matter
           cmd_ids << CMD_ON_WITH_TIMED_OFF
         end
 
-        cmd_ids.to_tlv
+        tlv(cmd_ids)
       end
 
       # Encode list of generated command IDs as TLV array (empty for OnOff)
-      private def encode_generated_command_list : Bytes
+      private def build_generated_command_list : TLV::Any
         # OnOff cluster doesn't generate any response commands
-        ([] of UInt32).to_tlv
+        tlv(([] of UInt32))
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_ON_TIME
           return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
-          on_time = decode_u16(value)
+          on_time = decode?(value, UInt16)
           return InteractionModel::Status.invalid_data_type unless on_time
           @on_time = on_time
           increment_version
           InteractionModel::Status.success
         when ATTR_OFF_WAIT_TIME
           return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
-          off_wait_time = decode_u16(value)
+          off_wait_time = decode?(value, UInt16)
           return InteractionModel::Status.invalid_data_type unless off_wait_time
           @off_wait_time = off_wait_time
           increment_version
@@ -286,10 +286,10 @@ module Matter
         when ATTR_START_UP_ON_OFF
           return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
           # Nullable enum
-          if tlv_null?(value)
+          if value.value.nil?
             @start_up_on_off = nil
           else
-            start_up = decode_u8(value)
+            start_up = narrow_u8?(value)
             return InteractionModel::Status.invalid_data_type unless start_up
             @start_up_on_off = StartUpOnOff.from_value(start_up)
           end
@@ -300,7 +300,7 @@ module Matter
         end
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_OFF
           handle_off
@@ -348,7 +348,7 @@ module Matter
         end
       end
 
-      private def handle_off_with_effect(fields : Bytes) : InteractionModel::Status
+      private def handle_off_with_effect(fields : TLV::Any?) : InteractionModel::Status
         # Would decode EffectIdentifier and EffectVariant from fields
         # For now, just turn off
         set_on_off(false)
@@ -362,7 +362,7 @@ module Matter
         InteractionModel::Status.success
       end
 
-      private def handle_on_with_timed_off(fields : Bytes) : InteractionModel::Status
+      private def handle_on_with_timed_off(fields : TLV::Any?) : InteractionModel::Status
         # Would decode OnOffControl, OnTime, OffWaitTime from fields
         # For now, just turn on
         set_on_off(true)
@@ -373,7 +373,7 @@ module Matter
       private def set_on_off(value : Bool)
         if @on_off != value
           @on_off = value
-          @attribute_values[ATTR_ON_OFF] = value.to_tlv
+          @attribute_values[ATTR_ON_OFF] = tlv(value)
           increment_version_and_notify(ATTR_ON_OFF)
           @on_state_changed.try &.call(value)
         end
@@ -441,7 +441,7 @@ module Matter
         state = PersistedState.from_document(document)
 
         @on_off = state.on_off?
-        @attribute_values[ATTR_ON_OFF] = @on_off.to_tlv
+        @attribute_values[ATTR_ON_OFF] = tlv(@on_off)
 
         if feature_map.lighting?
           @global_scene_control = state.global_scene_control?
@@ -467,6 +467,10 @@ module Matter
         )
       end
 
+      # Scenes map bool attributes to ValueUnsigned8; only 1 represents true.
+      # Other values map to false for the non-nullable OnOff attribute.
+      SCENE_BOOLEAN_TRUE = 1_u8
+
       def apply_scene_extension_field_set(field_set : ScenesManagementCluster::ExtensionFieldSet) : Bool
         return false unless field_set.cluster_id == CLUSTER_ID
 
@@ -478,6 +482,9 @@ module Matter
             case parsed
             when Bool
               set_on_off(parsed)
+              return true
+            when UInt8
+              set_on_off(parsed == SCENE_BOOLEAN_TRUE)
               return true
             end
           rescue ex

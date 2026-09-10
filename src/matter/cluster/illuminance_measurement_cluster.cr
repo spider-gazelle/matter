@@ -138,35 +138,35 @@ module Matter
         [] of CommandMetadata # No commands for measurement clusters
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
         case attribute_id
         when ATTR_MEASURED_VALUE
           if value = @measured_value
-            value.to_tlv
+            tlv(value)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_MIN_MEASURED_VALUE
           if value = @min_measured_value
-            value.to_tlv
+            tlv(value)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_MAX_MEASURED_VALUE
           if value = @max_measured_value
-            value.to_tlv
+            tlv(value)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_TOLERANCE
           if tolerance = @tolerance
-            tolerance.to_tlv
+            tlv(tolerance)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_LIGHT_SENSOR_TYPE
           if sensor_type = @light_sensor_type
-            sensor_type.value.to_u8.to_tlv
+            tlv(sensor_type.value.to_u8)
           else
             InteractionModel::Status.unsupported_attribute
           end
@@ -230,8 +230,6 @@ module Matter
         value = MAX_ILLUMINANCE if value > MAX_ILLUMINANCE
         value
       end
-
-      # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
     end
   end
 end

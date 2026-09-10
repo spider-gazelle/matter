@@ -1,5 +1,15 @@
 # Lessons
 
+- 2026-09-10: If a referenced task plan is missing, check the local planning directory before
+  proposing to reconstruct it. This phase's approved detail was in `~/.claude/plans/`.
+- 2026-09-10: A locked compiler cache does not serialize Docker image exports. Shared builder
+  layers can still fail with a missing parent snapshot; build the device and test images
+  sequentially before considering cache cleanup.
+- 2026-09-10: Crystal structs are copied by `Array#each`. When normalizing decoded records,
+  use `map!` and return the modified struct; otherwise fabric indices and similar changes are lost.
+- 2026-09-10: Verbose spec output repeats example labels for failures too. Report success only
+  from the failure summary/exit status, and use chip-tool's generated log field names for assertions.
+
 - 2026-09-10: For docker based e2e tooling, base the test-runner image on the official chip-tool image
   (`ghcr.io/matter-js/chip`) and add crystal on top, rather than copying chip-tool into a crystal image.
   Keep the GitHub CI using the in-repo crystal `chip-tool` (examples/chip-tool.cr); docker e2e is additive.

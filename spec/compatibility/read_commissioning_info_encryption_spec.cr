@@ -30,9 +30,7 @@ describe "ReadCommissioningInfo Response Encryption - matter.js Compatibility" d
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: 0x00_u8,          # No node IDs in PASE
-        security_flags: 0x00_u8, # Unicast
-        source_node_id: nil,     # PASE doesn't include source node ID in header
+        source_node_id: nil, # PASE doesn't include source node ID in header
         destination_node_id: nil
       )
 
@@ -52,8 +50,6 @@ describe "ReadCommissioningInfo Response Encryption - matter.js Compatibility" d
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: 0x00_u8,
-        security_flags: 0x00_u8,
         source_node_id: nil,
         destination_node_id: nil
       )
@@ -100,8 +96,6 @@ describe "ReadCommissioningInfo Response Encryption - matter.js Compatibility" d
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: 0x00_u8,
-        security_flags: 0x00_u8,
         source_node_id: nil,
         destination_node_id: nil
       )
@@ -162,8 +156,6 @@ describe "ReadCommissioningInfo Response Encryption - matter.js Compatibility" d
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: 0x00_u8,
-        security_flags: 0x00_u8,
         source_node_id: nil,
         destination_node_id: nil
       )
@@ -215,8 +207,6 @@ describe "ReadCommissioningInfo Response Encryption - matter.js Compatibility" d
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: 0x00_u8,
-        security_flags: 0x00_u8,
         source_node_id: nil,
         destination_node_id: nil
       )
@@ -321,8 +311,6 @@ describe "ReadCommissioningInfo Response Encryption - matter.js Compatibility" d
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: 0x00_u8,
-        security_flags: 0x00_u8,
         source_node_id: nil,
         destination_node_id: nil
       )
@@ -365,8 +353,6 @@ describe "ReadCommissioningInfo Response Encryption - matter.js Compatibility" d
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: 0x00_u8,
-        security_flags: 0x00_u8,
         source_node_id: nil,
         destination_node_id: nil
       )

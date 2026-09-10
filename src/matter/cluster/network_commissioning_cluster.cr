@@ -479,47 +479,46 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_MAX_NETWORKS
-          @max_networks.to_tlv
+          tlv(@max_networks)
         when ATTR_SCAN_MAX_TIME_SECONDS
-          @scan_max_time_seconds.to_tlv
+          tlv(@scan_max_time_seconds)
         when ATTR_CONNECT_MAX_TIME_SECONDS
-          @connect_max_time_seconds.to_tlv
+          tlv(@connect_max_time_seconds)
         when ATTR_INTERFACE_ENABLED
-          @interface_enabled.to_tlv
+          tlv(@interface_enabled)
         when ATTR_LAST_NETWORKING_STATUS
-          @last_networking_status.try(&.value).to_tlv
+          tlv(@last_networking_status.try(&.value))
         when ATTR_LAST_NETWORK_ID
-          @last_network_id.to_tlv
+          tlv(@last_network_id)
         when ATTR_LAST_CONNECT_ERROR_VALUE
-          @last_connect_error_value.to_tlv
+          tlv(@last_connect_error_value)
         when ATTR_NETWORKS
-          encode_networks
+          build_networks
         when GLOBAL_FEATURE_MAP
-          @feature_map.value.to_tlv
+          tlv(@feature_map.value)
         else
           super
         end
       end
 
       # Encode the Networks attribute as TLV array
-      private def encode_networks : Bytes
-        @networks.map do |network|
+      private def build_networks : TLV::Any
+        networks = @networks.map do |network|
           Definitions::NetworkCommissioning::NetworkInformation.new(
             network_id: network.network_id,
             connected: network.connected?
           )
-        end.to_tlv
+        end
+        tlv(networks)
       end
 
-      # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
-
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_INTERFACE_ENABLED
-          enabled = decode_bool(value)
+          enabled = decode?(value, Bool)
           if enabled.nil?
             InteractionModel::Status.invalid_data_type
           else
@@ -534,7 +533,7 @@ module Matter
 
       # Protocol-level command handling
       # Parses TLV-encoded request bytes, calls high-level handlers, and encodes TLV response
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_SCAN_NETWORKS
           Cluster::CommandResponse.new(CMD_SCAN_NETWORKS_RESPONSE, handle_scan_networks_tlv(fields))
@@ -913,17 +912,17 @@ module Matter
       # A request DTO rejected a field (oversized ssid / credentials / dataset /
       # network_id): answer `OutOfRange` with the validation message instead of
       # failing the whole command.
-      private def out_of_range_config_response(command : String, ex : ArgumentError) : Bytes
+      private def out_of_range_config_response(command : String, ex : ArgumentError) : TLV::Any
         Log.warn(exception: ex) { "#{command} rejected" }
         Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
           status_code: OUT_OF_RANGE_STATUS,
           debug_text: ex.message
-        ).to_slice
+        ).to_tlv(nil)
       end
 
-      private def handle_scan_networks_tlv(fields : Bytes) : Bytes
+      private def handle_scan_networks_tlv(fields : TLV::Any?) : TLV::Any
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::ScanAvailableNetworksRequest.from_slice(fields)
+        tlv_req = Definitions::NetworkCommissioning::ScanAvailableNetworksRequest.from_tlv(fields || tlv(nil))
 
         # Convert to simple struct
         req = begin
@@ -936,7 +935,7 @@ module Matter
           return Definitions::NetworkCommissioning::ScanNetworksResponse.new(
             status_code: OUT_OF_RANGE_STATUS,
             debug_text: ex.message
-          ).to_slice
+          ).to_tlv(nil)
         end
 
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
@@ -980,12 +979,12 @@ module Matter
           debug_text: response.debug_text,
           wifi_scan_results: wifi_results.try { |wifi_res| wifi_res.empty? ? nil : wifi_res },
           thread_scan_results: thread_results.try { |thread_res| thread_res.empty? ? nil : thread_res }
-        ).to_slice
+        ).to_tlv(nil)
       end
 
-      private def handle_add_or_update_wifi_network_tlv(fields : Bytes) : Bytes
+      private def handle_add_or_update_wifi_network_tlv(fields : TLV::Any?) : TLV::Any
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest.from_slice(fields)
+        tlv_req = Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest.from_tlv(fields || tlv(nil))
 
         # Convert to simple struct
         req = begin
@@ -1006,12 +1005,12 @@ module Matter
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           network_index: response.network_index
-        ).to_slice
+        ).to_tlv(nil)
       end
 
-      private def handle_add_or_update_thread_network_tlv(fields : Bytes) : Bytes
+      private def handle_add_or_update_thread_network_tlv(fields : TLV::Any?) : TLV::Any
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::AddOrUpdateThreadNetworkRequest.from_slice(fields)
+        tlv_req = Definitions::NetworkCommissioning::AddOrUpdateThreadNetworkRequest.from_tlv(fields || tlv(nil))
 
         # Convert to simple struct
         req = begin
@@ -1031,12 +1030,12 @@ module Matter
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           network_index: response.network_index
-        ).to_slice
+        ).to_tlv(nil)
       end
 
-      private def handle_remove_network_tlv(fields : Bytes) : Bytes
+      private def handle_remove_network_tlv(fields : TLV::Any?) : TLV::Any
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::RemoveNetworkRequest.from_slice(fields)
+        tlv_req = Definitions::NetworkCommissioning::RemoveNetworkRequest.from_tlv(fields || tlv(nil))
 
         # Convert to simple struct
         req = begin
@@ -1056,12 +1055,12 @@ module Matter
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           network_index: response.network_index
-        ).to_slice
+        ).to_tlv(nil)
       end
 
-      private def handle_connect_network_tlv(fields : Bytes) : Bytes
+      private def handle_connect_network_tlv(fields : TLV::Any?) : TLV::Any
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::ConnectNetworkRequest.from_slice(fields)
+        tlv_req = Definitions::NetworkCommissioning::ConnectNetworkRequest.from_tlv(fields || tlv(nil))
 
         # Convert to simple struct
         req = begin
@@ -1074,7 +1073,7 @@ module Matter
           return Definitions::NetworkCommissioning::ConnectNetworkResponse.new(
             status_code: OUT_OF_RANGE_STATUS,
             debug_text: ex.message
-          ).to_slice
+          ).to_tlv(nil)
         end
 
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
@@ -1085,12 +1084,12 @@ module Matter
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           error_value: response.error_value
-        ).to_slice
+        ).to_tlv(nil)
       end
 
-      private def handle_reorder_network_tlv(fields : Bytes) : Bytes
+      private def handle_reorder_network_tlv(fields : TLV::Any?) : TLV::Any
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::ReorderNetworkRequest.from_slice(fields)
+        tlv_req = Definitions::NetworkCommissioning::ReorderNetworkRequest.from_tlv(fields || tlv(nil))
 
         # Convert to simple struct
         req = begin
@@ -1111,7 +1110,7 @@ module Matter
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           network_index: response.network_index
-        ).to_slice
+        ).to_tlv(nil)
       end
 
       # Restore network state from snapshot (used during failsafe rollback)

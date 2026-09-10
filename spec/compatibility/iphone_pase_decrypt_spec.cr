@@ -23,7 +23,6 @@ describe "iPhone PASE message decryption" do
     expected_plaintext = "050243df01001536001724020024031d2404031818290324ff0c18".hexbytes
     encrypted_payload.size.should eq(expected_plaintext.size + Matter::Session::SecureMessage::MIC_LENGTH)
 
-    flags = 0x00_u8
     security_flags = 0x00_u8
 
     packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
@@ -33,8 +32,6 @@ describe "iPhone PASE message decryption" do
       privacy_enhancements: false,
       control_message: false,
       message_extensions: false,
-      flags: flags,
-      security_flags: security_flags
     )
 
     # We are the responder
@@ -57,13 +54,9 @@ describe "iPhone PASE message decryption" do
     Matter::Codec::MessageCodec::Base.encode_packet_header(packet_header, aad_io)
     aad_io.to_slice.hexstring.should eq("00018a005155bb0a")
 
-    decrypted = Matter::Session::SecureMessage.decrypt(
-      context,
-      encrypted_payload,
-      message_counter,
-      packet_header,
-      crypto
-    )
+    packet = Matter::Codec::MessageCodec::Packet.new(packet_header, encrypted_payload, aad_io.to_slice)
+    message = Matter::Session::SecureMessage.decode(context, packet, crypto)
+    decrypted = Matter::Codec::MessageCodec::Base.encode_payload(message).payload
 
     decrypted.should eq(expected_plaintext)
   end

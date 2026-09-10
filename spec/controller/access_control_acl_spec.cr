@@ -13,7 +13,7 @@ describe Matter::Controller::Clusters::AccessControl do
     tlv = Matter::Controller::Clusters::AccessControl.encode_acl_tlv(entries)
 
     cluster = Matter::Cluster::AccessControlCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
-    status = cluster.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL, tlv)
+    status = write(cluster, Matter::Cluster::AccessControlCluster::ATTR_ACL, TLV::Any.from_slice(tlv))
     status.status.should eq Matter::InteractionModel::StatusCode::Success
 
     cluster.acl.size.should eq 1

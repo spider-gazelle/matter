@@ -39,14 +39,14 @@ private class RaisingCluster < Matter::Cluster::Base
     ]
   end
 
-  protected def handle_command(command_id : UInt32, fields : Bytes) : Matter::InteractionModel::Status | Matter::Cluster::CommandResponse
+  protected def handle_command(command_id : UInt32, fields : TLV::Any?) : Matter::InteractionModel::Status | Matter::Cluster::CommandResponse
     if error = @failure
       raise error
     end
     Matter::InteractionModel::Status.success
   end
 
-  protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : Matter::InteractionModel::Status
+  protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : Matter::InteractionModel::Status
     if error = @failure
       raise error
     end
@@ -70,64 +70,64 @@ describe "cluster boundary error mapping" do
   describe "Cluster::Base#invoke_command" do
     it "returns the status carried by a ClusterError" do
       cluster = build_raising_cluster(cluster_error)
-      result = cluster.invoke_command(RaisingCluster::CMD_RAISE)
+      result = invoke(cluster, RaisingCluster::CMD_RAISE)
       result.should eq(Matter::InteractionModel::Status.new(Matter::InteractionModel::StatusCode::Busy, RaisingCluster::CLUSTER_STATUS))
     end
 
     it "maps CodecError and TLV deserialization failures to InvalidCommand" do
       cluster = build_raising_cluster(Matter::CodecError.new("truncated"))
-      cluster.invoke_command(RaisingCluster::CMD_RAISE).should eq(Matter::InteractionModel::Status.invalid_command)
+      invoke(cluster, RaisingCluster::CMD_RAISE).should eq(Matter::InteractionModel::Status.invalid_command)
 
       cluster = build_raising_cluster(TLV::DeserializationError.new("bad element"))
-      cluster.invoke_command(RaisingCluster::CMD_RAISE).should eq(Matter::InteractionModel::Status.invalid_command)
+      invoke(cluster, RaisingCluster::CMD_RAISE).should eq(Matter::InteractionModel::Status.invalid_command)
     end
 
     it "maps ArgumentError to InvalidCommand" do
       cluster = build_raising_cluster(ArgumentError.new("field out of range"))
-      cluster.invoke_command(RaisingCluster::CMD_RAISE).should eq(Matter::InteractionModel::Status.invalid_command)
+      invoke(cluster, RaisingCluster::CMD_RAISE).should eq(Matter::InteractionModel::Status.invalid_command)
     end
 
     it "maps any other exception to Failure" do
       cluster = build_raising_cluster(Matter::CryptoError.new("no key"))
-      cluster.invoke_command(RaisingCluster::CMD_RAISE).should eq(Matter::InteractionModel::Status.failure)
+      invoke(cluster, RaisingCluster::CMD_RAISE).should eq(Matter::InteractionModel::Status.failure)
 
       cluster = build_raising_cluster(Exception.new("bug"))
-      cluster.invoke_command(RaisingCluster::CMD_RAISE).should eq(Matter::InteractionModel::Status.failure)
+      invoke(cluster, RaisingCluster::CMD_RAISE).should eq(Matter::InteractionModel::Status.failure)
     end
 
     it "passes a successful handler result through" do
       cluster = build_raising_cluster(nil)
-      cluster.invoke_command(RaisingCluster::CMD_RAISE).should eq(Matter::InteractionModel::Status.success)
+      invoke(cluster, RaisingCluster::CMD_RAISE).should eq(Matter::InteractionModel::Status.success)
     end
   end
 
   describe "Cluster::Base#write_attribute" do
-    value = Bytes[0x01_u8]
+    value = TLV::Any.new(1_u8)
 
     it "returns the status carried by a ClusterError" do
       cluster = build_raising_cluster(cluster_error)
-      cluster.write_attribute(RaisingCluster::ATTR_RAISE, value).should eq(cluster_error.to_status)
+      write(cluster, RaisingCluster::ATTR_RAISE, value).should eq(cluster_error.to_status)
     end
 
     it "maps CodecError, TLV deserialization failures and ArgumentError to InvalidDataType" do
       cluster = build_raising_cluster(Matter::CodecError.new("truncated"))
-      cluster.write_attribute(RaisingCluster::ATTR_RAISE, value).should eq(Matter::InteractionModel::Status.invalid_data_type)
+      write(cluster, RaisingCluster::ATTR_RAISE, value).should eq(Matter::InteractionModel::Status.invalid_data_type)
 
       cluster = build_raising_cluster(TLV::DeserializationError.new("bad element"))
-      cluster.write_attribute(RaisingCluster::ATTR_RAISE, value).should eq(Matter::InteractionModel::Status.invalid_data_type)
+      write(cluster, RaisingCluster::ATTR_RAISE, value).should eq(Matter::InteractionModel::Status.invalid_data_type)
 
       cluster = build_raising_cluster(ArgumentError.new("too long"))
-      cluster.write_attribute(RaisingCluster::ATTR_RAISE, value).should eq(Matter::InteractionModel::Status.invalid_data_type)
+      write(cluster, RaisingCluster::ATTR_RAISE, value).should eq(Matter::InteractionModel::Status.invalid_data_type)
     end
 
     it "maps any other exception to Failure" do
       cluster = build_raising_cluster(Matter::StorageError.new("disk"))
-      cluster.write_attribute(RaisingCluster::ATTR_RAISE, value).should eq(Matter::InteractionModel::Status.failure)
+      write(cluster, RaisingCluster::ATTR_RAISE, value).should eq(Matter::InteractionModel::Status.failure)
     end
 
     it "passes a successful handler result through" do
       cluster = build_raising_cluster(nil)
-      cluster.write_attribute(RaisingCluster::ATTR_RAISE, value).should eq(Matter::InteractionModel::Status.success)
+      write(cluster, RaisingCluster::ATTR_RAISE, value).should eq(Matter::InteractionModel::Status.success)
     end
   end
 

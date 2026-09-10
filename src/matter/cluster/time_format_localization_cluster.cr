@@ -127,25 +127,25 @@ module Matter
       end
 
       # Report the cluster's features to controllers.
-      protected def encode_feature_map_global : Bytes
-        @feature_map.value.to_tlv
+      protected def feature_map_tlv : TLV::Any
+        tlv(@feature_map.value)
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
         case attribute_id
         when ATTR_HOUR_FORMAT
-          @hour_format.value.to_u8.to_tlv
+          tlv(@hour_format.value.to_u8)
         when ATTR_ACTIVE_CALENDAR_TYPE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.calendar_format?
           if active = @active_calendar_type
-            active.value.to_u8.to_tlv
+            tlv(active.value.to_u8)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_SUPPORTED_CALENDAR_TYPES
           return InteractionModel::Status.unsupported_attribute unless @feature_map.calendar_format?
           if supported = @supported_calendar_types
-            encode_array(supported.map(&.value.to_u8))
+            tlv(supported.map(&.value.to_u8))
           else
             InteractionModel::Status.unsupported_attribute
           end
@@ -154,10 +154,10 @@ module Matter
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_HOUR_FORMAT
-          hour_value = decode_u8(value)
+          hour_value = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless hour_value
 
           # Validate hour format value
@@ -175,7 +175,7 @@ module Matter
           InteractionModel::Status.success
         when ATTR_ACTIVE_CALENDAR_TYPE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.calendar_format?
-          calendar_value = decode_u8(value)
+          calendar_value = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless calendar_value
 
           # Validate calendar type value
@@ -223,10 +223,6 @@ module Matter
 
       def on_calendar_changed(&block : CalendarType?, CalendarType -> Nil)
         @on_calendar_changed = block
-      end
-
-      private def encode_array(values : Array(UInt8)) : Bytes
-        values.to_tlv
       end
     end
   end

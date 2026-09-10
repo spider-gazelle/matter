@@ -2,21 +2,12 @@ require "../spec_helper"
 
 private alias Def = Matter::Cluster::Definitions::DoorLock
 
-private def encode_lock_request(pin : String? = nil) : Bytes
-  payload = TLV::Structure.new
-  if pin_value = pin
-    payload[0_u8] = TLV::Any.new(pin_value.to_slice, 0_u8)
-  end
-  TLV::Any.new(payload, nil).to_slice
+private def lock_request(pin : String? = nil) : Def::LockDoorRequest
+  Def::LockDoorRequest.new(pin.try(&.to_slice))
 end
 
-private def encode_unlock_with_timeout_request(timeout : UInt16, pin : String? = nil) : Bytes
-  payload = TLV::Structure.new
-  payload[0_u8] = TLV::Any.new(timeout, 0_u8, fixed_size: true)
-  if pin_value = pin
-    payload[1_u8] = TLV::Any.new(pin_value.to_slice, 1_u8)
-  end
-  TLV::Any.new(payload, nil).to_slice
+private def unlock_with_timeout_request(timeout : UInt16, pin : String? = nil) : Def::UnlockWithTimeoutRequest
+  Def::UnlockWithTimeoutRequest.new(timeout, pin.try(&.to_slice))
 end
 
 describe Matter::Cluster::DoorLockCluster do
@@ -48,12 +39,12 @@ describe Matter::Cluster::DoorLockCluster do
     it "invokes unlock and lock and updates lock state" do
       cluster = Matter::Cluster::DoorLockCluster.new(endpoint_id)
 
-      unlock_result = cluster.invoke_command(Matter::Cluster::DoorLockCluster::CMD_UNLOCK_DOOR, encode_lock_request)
+      unlock_result = invoke(cluster, Matter::Cluster::DoorLockCluster::CMD_UNLOCK_DOOR, lock_request)
       unlock_result.should be_a(Matter::InteractionModel::Status)
       unlock_result.as(Matter::InteractionModel::Status).success?.should be_true
       cluster.lock_state.should eq(Def::LockState::Unlocked)
 
-      lock_result = cluster.invoke_command(Matter::Cluster::DoorLockCluster::CMD_LOCK_DOOR, encode_lock_request)
+      lock_result = invoke(cluster, Matter::Cluster::DoorLockCluster::CMD_LOCK_DOOR, lock_request)
       lock_result.should be_a(Matter::InteractionModel::Status)
       lock_result.as(Matter::InteractionModel::Status).success?.should be_true
       cluster.lock_state.should eq(Def::LockState::Locked)
@@ -67,7 +58,7 @@ describe Matter::Cluster::DoorLockCluster do
         notified_attrs << attr
       }
 
-      cluster.invoke_command(Matter::Cluster::DoorLockCluster::CMD_UNLOCK_DOOR, encode_lock_request)
+      invoke(cluster, Matter::Cluster::DoorLockCluster::CMD_UNLOCK_DOOR, lock_request)
 
       notified_attrs.should contain(Matter::Cluster::DoorLockCluster::ATTR_LOCK_STATE)
     end
@@ -75,9 +66,9 @@ describe Matter::Cluster::DoorLockCluster do
     it "auto-relocks after unlockWithTimeout" do
       cluster = Matter::Cluster::DoorLockCluster.new(endpoint_id)
 
-      result = cluster.invoke_command(
+      result = invoke(cluster,
         Matter::Cluster::DoorLockCluster::CMD_UNLOCK_WITH_TIMEOUT,
-        encode_unlock_with_timeout_request(1_u16)
+        unlock_with_timeout_request(1_u16)
       )
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).success?.should be_true
@@ -93,7 +84,7 @@ describe Matter::Cluster::DoorLockCluster do
         feature_map: Matter::Cluster::DoorLockCluster::Feature::PinCredential
       )
 
-      result = cluster.invoke_command(Matter::Cluster::DoorLockCluster::CMD_UNBOLT_DOOR, encode_lock_request)
+      result = invoke(cluster, Matter::Cluster::DoorLockCluster::CMD_UNBOLT_DOOR, lock_request)
       result.should be_a(Matter::InteractionModel::Status)
 
       status = result.as(Matter::InteractionModel::Status)
@@ -136,7 +127,7 @@ describe Matter::Cluster::DoorLockCluster do
         require_pin_for_remote_operation: true
       )
 
-      result = cluster.invoke_command(Matter::Cluster::DoorLockCluster::CMD_UNLOCK_DOOR, encode_lock_request)
+      result = invoke(cluster, Matter::Cluster::DoorLockCluster::CMD_UNLOCK_DOOR, lock_request)
       result.should be_a(Matter::InteractionModel::Status)
 
       status = result.as(Matter::InteractionModel::Status)
@@ -151,7 +142,7 @@ describe Matter::Cluster::DoorLockCluster do
         default_pin_code: "2468"
       )
 
-      result = cluster.invoke_command(Matter::Cluster::DoorLockCluster::CMD_UNLOCK_DOOR, encode_lock_request("2468"))
+      result = invoke(cluster, Matter::Cluster::DoorLockCluster::CMD_UNLOCK_DOOR, lock_request("2468"))
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).success?.should be_true
     end
@@ -165,18 +156,18 @@ describe Matter::Cluster::DoorLockCluster do
         user_code_temporary_disable_time: 1_u8
       )
 
-      wrong_result = cluster.invoke_command(Matter::Cluster::DoorLockCluster::CMD_UNLOCK_DOOR, encode_lock_request("0000"))
+      wrong_result = invoke(cluster, Matter::Cluster::DoorLockCluster::CMD_UNLOCK_DOOR, lock_request("0000"))
       wrong_status = wrong_result.as(Matter::InteractionModel::Status)
       wrong_status.status.should eq(Matter::InteractionModel::StatusCode::Failure)
       wrong_status.cluster_status.should eq(Def::StatusCode::InvalidField.value)
 
-      locked_out_result = cluster.invoke_command(Matter::Cluster::DoorLockCluster::CMD_UNLOCK_DOOR, encode_lock_request("2468"))
+      locked_out_result = invoke(cluster, Matter::Cluster::DoorLockCluster::CMD_UNLOCK_DOOR, lock_request("2468"))
       locked_out_status = locked_out_result.as(Matter::InteractionModel::Status)
       locked_out_status.status.should eq(Matter::InteractionModel::StatusCode::Failure)
       locked_out_status.cluster_status.should eq(Def::StatusCode::Failure.value)
 
       sleep 1.2.seconds
-      recovered_result = cluster.invoke_command(Matter::Cluster::DoorLockCluster::CMD_UNLOCK_DOOR, encode_lock_request("2468"))
+      recovered_result = invoke(cluster, Matter::Cluster::DoorLockCluster::CMD_UNLOCK_DOOR, lock_request("2468"))
       recovered_result.as(Matter::InteractionModel::Status).success?.should be_true
     end
   end
@@ -195,18 +186,18 @@ describe Matter::Cluster::DoorLockCluster do
         credential_rule: Def::CredentialRule::Single
       )
 
-      set_result = cluster.invoke_command(Matter::Cluster::DoorLockCluster::CMD_SET_USER, set_user.to_slice)
+      set_result = invoke(cluster, Matter::Cluster::DoorLockCluster::CMD_SET_USER, set_user)
       set_result.should be_a(Matter::InteractionModel::Status)
       set_result.as(Matter::InteractionModel::Status).success?.should be_true
 
       get_user = Def::GetUserRequest.new(user_index: 2_u16)
-      get_result = cluster.invoke_command(Matter::Cluster::DoorLockCluster::CMD_GET_USER, get_user.to_slice)
+      get_result = invoke(cluster, Matter::Cluster::DoorLockCluster::CMD_GET_USER, get_user)
       get_result.should be_a(Matter::Cluster::CommandResponse)
 
       response = get_result.as(Matter::Cluster::CommandResponse)
       response.command_id.should eq(Matter::Cluster::DoorLockCluster::CMD_GET_USER_RESPONSE)
 
-      parsed = Def::GetUserResponse.from_slice(response.data)
+      parsed = Def::GetUserResponse.from_tlv(response.response.as(TLV::Any))
       parsed.user_index.should eq(2_u16)
       parsed.user_name.should eq("Guest")
       parsed.user_status.should eq(Def::UserStatus::OccupiedEnabled)
@@ -229,18 +220,18 @@ describe Matter::Cluster::DoorLockCluster do
         user_type: Def::UserType::UnrestrictedUser
       )
 
-      set_result = cluster.invoke_command(Matter::Cluster::DoorLockCluster::CMD_SET_CREDENTIAL, set_credential.to_slice)
+      set_result = invoke(cluster, Matter::Cluster::DoorLockCluster::CMD_SET_CREDENTIAL, set_credential)
       set_result.should be_a(Matter::Cluster::CommandResponse)
 
-      set_response = Def::SetCredentialResponse.from_slice(set_result.as(Matter::Cluster::CommandResponse).data)
+      set_response = Def::SetCredentialResponse.from_tlv(set_result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any))
       set_response.status_code.should eq(Def::StatusCode::Success)
       set_response.user_index.should eq(2_u16)
 
       get_status = Def::GetCredentialStatusRequest.new(credential: credential)
-      get_result = cluster.invoke_command(Matter::Cluster::DoorLockCluster::CMD_GET_CREDENTIAL_STATUS, get_status.to_slice)
+      get_result = invoke(cluster, Matter::Cluster::DoorLockCluster::CMD_GET_CREDENTIAL_STATUS, get_status)
       get_result.should be_a(Matter::Cluster::CommandResponse)
 
-      parsed = Def::GetCredentialStatusResponse.from_slice(get_result.as(Matter::Cluster::CommandResponse).data)
+      parsed = Def::GetCredentialStatusResponse.from_tlv(get_result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any))
       parsed.credential_exists?.should be_true
       parsed.user_index.should eq(2_u16)
     end
@@ -265,10 +256,10 @@ describe Matter::Cluster::DoorLockCluster do
         user_type: Def::UserType::UnrestrictedUser
       )
 
-      result = cluster.invoke_command(Matter::Cluster::DoorLockCluster::CMD_SET_CREDENTIAL, request.to_slice)
+      result = invoke(cluster, Matter::Cluster::DoorLockCluster::CMD_SET_CREDENTIAL, request)
       result.should be_a(Matter::Cluster::CommandResponse)
 
-      response = Def::SetCredentialResponse.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+      response = Def::SetCredentialResponse.from_tlv(result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any))
       response.status_code.should eq(Def::StatusCode::InvalidField)
     end
   end

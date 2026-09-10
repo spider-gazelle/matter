@@ -223,33 +223,33 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_WINDOW_STATUS
-          @window_status.value.to_tlv
+          tlv(@window_status.value)
         when ATTR_ADMIN_FABRIC_INDEX
           if index = @admin_fabric_index
-            index.to_tlv
+            tlv(index)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_ADMIN_VENDOR_ID
           if vendor = @admin_vendor_id
-            vendor.to_tlv
+            tlv(vendor)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         # All attributes are read-only
         super
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_OPEN_COMMISSIONING_WINDOW
           handle_open_commissioning_window(fields)
@@ -404,10 +404,10 @@ module Matter
       # Internal Command Handlers (cluster/ version style)
       # ========================================================================
 
-      private def handle_open_commissioning_window(fields : Bytes) : InteractionModel::Status
+      private def handle_open_commissioning_window(fields : TLV::Any?) : InteractionModel::Status
         # Parse TLV-encoded command using the TLV library
 
-        request = OpenCommissioningWindowRequest.from_slice(fields)
+        request = OpenCommissioningWindowRequest.from_tlv(fields || tlv(nil))
 
         fabric_index = @session_fabric_index
         vendor_id = @session_vendor_id
@@ -423,14 +423,14 @@ module Matter
           InteractionModel::Status.constraint_error
         end
       rescue ex
-        Log.error(exception: ex) { "OpenCommissioningWindow: failed to parse request (bytes=#{fields.hexstring})" }
+        Log.error(exception: ex) { "OpenCommissioningWindow: failed to parse request (fields=#{fields.inspect})" }
         InteractionModel::Status.failure
       end
 
-      private def handle_open_basic_commissioning_window(fields : Bytes) : InteractionModel::Status
+      private def handle_open_basic_commissioning_window(fields : TLV::Any?) : InteractionModel::Status
         # Parse TLV-encoded command using the TLV library
 
-        request = OpenBasicCommissioningWindowRequest.from_slice(fields)
+        request = OpenBasicCommissioningWindowRequest.from_tlv(fields || tlv(nil))
 
         fabric_index = @session_fabric_index
         vendor_id = @session_vendor_id
@@ -446,11 +446,11 @@ module Matter
           InteractionModel::Status.constraint_error
         end
       rescue ex
-        Log.error(exception: ex) { "OpenBasicCommissioningWindow: failed to parse request (bytes=#{fields.hexstring})" }
+        Log.error(exception: ex) { "OpenBasicCommissioningWindow: failed to parse request (fields=#{fields.inspect})" }
         InteractionModel::Status.failure
       end
 
-      private def handle_revoke_commissioning(fields : Bytes) : InteractionModel::Status
+      private def handle_revoke_commissioning(fields : TLV::Any?) : InteractionModel::Status
         # RevokeCommissioning command has no parameters
 
         revoke_commissioning

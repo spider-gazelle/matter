@@ -8,7 +8,7 @@ require "../../src/matter/codec/message_codec"
 describe "iPhone PASE nonce and AAD vectors" do
   session_id = 32753_u16
   message_counter = 196062899_u32
-  flags = 0x00_u8
+
   security_flags = 0x00_u8
   pase_initiator_node_id = 0xFFFFFFFB00000001_u64
 
@@ -25,8 +25,6 @@ describe "iPhone PASE nonce and AAD vectors" do
       privacy_enhancements: false,
       control_message: false,
       message_extensions: false,
-      flags: flags,
-      security_flags: security_flags
     )
 
     aad_io = IO::Memory.new

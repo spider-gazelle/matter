@@ -72,13 +72,13 @@ private class BrokenTlvCluster < Matter::Cluster::Base
     ]
   end
 
-  def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Matter::InteractionModel::Status | Bytes
+  def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Matter::InteractionModel::Status | TLV::Any
     case attribute_id
     when ATTR_GOOD
-      7_u8.to_tlv
+      TLV::Any.new(7_u8)
     when ATTR_BROKEN
-      # Truncated TLV element to simulate malformed cluster data.
-      Bytes[0x24_u8]
+      # A cluster decoding malformed stored data fails before returning a typed value.
+      TLV::Any.from_slice(Bytes[0x24_u8])
     else
       super(attribute_id, fabric_index)
     end
@@ -107,12 +107,12 @@ private class RaisingReadCluster < Matter::Cluster::Base
     ]
   end
 
-  def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Matter::InteractionModel::Status | Bytes
+  def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Matter::InteractionModel::Status | TLV::Any
     case attribute_id
     when ATTR_RAISE
       # Simulate a cluster implementation that raises while decoding stored TLV.
       TLV::Any.from_slice(Bytes[0x24_u8])
-      1_u8.to_tlv
+      TLV::Any.new(1_u8)
     else
       super(attribute_id, fabric_index)
     end

@@ -263,38 +263,38 @@ module Matter
         [] of CommandMetadata
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_ACL
           # ACL is fabric-sensitive; only return entries for the requesting fabric.
           if fabric_index
-            @acl.select { |entry| entry.fabric_index == fabric_index }.to_tlv
+            tlv(@acl.select { |entry| entry.fabric_index == fabric_index })
           else
-            @acl.to_tlv
+            tlv(@acl)
           end
         when ATTR_EXTENSION
           if fabric_index
-            @extension.select { |entry| entry.fabric_index == fabric_index }.to_tlv
+            tlv(@extension.select { |entry| entry.fabric_index == fabric_index })
           else
-            @extension.to_tlv
+            tlv(@extension)
           end
         when ATTR_SUBJECTS_PER_ACCESS_CONTROL_ENTRY
-          @subjects_per_access_control_entry.to_tlv
+          tlv(@subjects_per_access_control_entry)
         when ATTR_TARGETS_PER_ACCESS_CONTROL_ENTRY
-          @targets_per_access_control_entry.to_tlv
+          tlv(@targets_per_access_control_entry)
         when ATTR_ACCESS_CONTROL_ENTRIES_PER_FABRIC
-          @access_control_entries_per_fabric.to_tlv
+          tlv(@access_control_entries_per_fabric)
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_ACL
-          decode_acl_list(value)
+          replace_acl(value)
         when ATTR_EXTENSION
-          decode_extension_list(value)
+          replace_extension(value)
         else
           super
         end
@@ -386,133 +386,43 @@ module Matter
         increment_version
       end
 
-      # Decode ACL list from TLV array
-      private def decode_acl_list(value : Bytes) : InteractionModel::Status
+      private def replace_acl(value : TLV::Any) : InteractionModel::Status
         fabric_index = request_fabric_index
-
-        Log.debug { "decode_acl_list: received #{value.size} bytes" }
-        Log.trace { "decode_acl_list: value_hex=#{value.hexstring}" }
-
-        parsed = TLV::Any.from_slice(value)
-
-        Log.trace { "decode_acl_list: parsed TLV: #{parsed.inspect}" }
-
-        # Extract the array from the parsed data
-        # The TLV structure can vary - handle multiple cases
-        acl_array = extract_acl_array(parsed)
-
-        Log.debug { "decode_acl_list: extracted #{acl_array.size} ACL entries" }
-
-        new_acl = [] of AccessControlEntry
-
-        acl_array.each_with_index do |entry_value, idx|
-          Log.debug { "decode_acl_list: parsing entry #{idx}" }
-          Log.trace { "decode_acl_list: entry #{idx} TLV: #{entry_value.inspect}" }
-
-          # Serialize entry back to bytes and deserialize with from_slice
-          entry_bytes = entry_value.to_slice
-          entry = AccessControlEntry.from_slice(entry_bytes)
+        entries = decode(value, Array(AccessControlEntry))
+        entries.map! do |entry|
           entry.fabric_index ||= fabric_index
-          new_acl << entry
+          entry
         end
-
         if fabric_index
-          # ACL is fabric-scoped; only replace entries for the requesting fabric.
           @acl.reject! { |entry| entry.fabric_index == fabric_index }
-          @acl.concat(new_acl)
+          @acl.concat(entries)
         else
-          # Unit tests and some tooling call `write_attribute` directly without setting request context.
-          # In that case, behave like a full replace and keep any FabricIndex values provided in the TLV.
-          @acl = new_acl
+          @acl = entries
         end
-
         increment_version
-        Log.debug { "decode_acl_list: wrote #{new_acl.size} ACL entries" }
         InteractionModel::Status.success
       rescue ex
-        Log.error(exception: ex) { "Failed to decode ACL list (bytes=#{value.hexstring})" }
+        Log.warn(exception: ex) { "Invalid access control list" }
         InteractionModel::Status.constraint_error
       end
 
-      # Helper to extract ACL array from various TLV structures
-      private def extract_acl_array(data : TLV::Any) : Array(TLV::Any)
-        value = data.value
-        case value
-        when Array(TLV::Any)
-          # Direct array
-          value
-        when TLV::Structure
-          hash = value
-          # Check for "Any" wrapper (anonymous structure)
-          if hash.has_key?("Any")
-            inner = hash["Any"]
-            case inner_val = inner.value
-            when Array(TLV::Any)
-              inner_val
-            when TLV::Structure
-              # Nested hash - might contain the array
-              inner_hash = inner_val
-              if inner_hash.has_key?("Any")
-                nested = inner_hash["Any"]
-                case nested_val = nested.value
-                when Array(TLV::Any)
-                  nested_val
-                else
-                  [inner]
-                end
-              else
-                # Single entry wrapped in hash
-                [inner]
-              end
-            else
-              [] of TLV::Any
-            end
-          else
-            # Hash without "Any" - might be a single entry
-            [data]
-          end
-        else
-          [] of TLV::Any
-        end
-      end
-
-      # Decode Extension list from TLV array
-      private def decode_extension_list(value : Bytes) : InteractionModel::Status
+      private def replace_extension(value : TLV::Any) : InteractionModel::Status
         fabric_index = request_fabric_index
-
-        Log.debug { "decode_extension_list: received #{value.size} bytes" }
-        Log.trace { "decode_extension_list: value_hex=#{value.hexstring}" }
-
-        parsed = TLV::Any.from_slice(value)
-
-        # Extract the array from the parsed data
-        extension_array = case v = parsed.value
-                          when Array
-                            v.as(Array(TLV::Any))
-                          else
-                            # Empty array case
-                            [] of TLV::Any
-                          end
-
-        new_extension = extension_array.map do |entry_value|
-          # Serialize entry back to bytes and deserialize with from_slice
-          entry_bytes = entry_value.to_slice
-          entry = ExtensionEntry.from_slice(entry_bytes)
-          entry.fabric_index = fabric_index if fabric_index
-          entry
-        end
-
+        entries = decode(value, Array(ExtensionEntry))
         if fabric_index
+          entries.map! do |entry|
+            entry.fabric_index = fabric_index
+            entry
+          end
           @extension.reject! { |entry| entry.fabric_index == fabric_index }
-          @extension.concat(new_extension)
+          @extension.concat(entries)
         else
-          @extension = new_extension
+          @extension = entries
         end
-
         increment_version
         InteractionModel::Status.success
       rescue ex
-        Log.error(exception: ex) { "Failed to decode extension list (bytes=#{value.hexstring})" }
+        Log.warn(exception: ex) { "Invalid access control extension list" }
         InteractionModel::Status.constraint_error
       end
     end

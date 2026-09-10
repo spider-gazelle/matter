@@ -100,23 +100,23 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_IDENTIFY_TIME
-          @identify_time.to_tlv
+          tlv(@identify_time)
         when ATTR_IDENTIFY_TYPE
-          @identify_type.value.to_tlv
+          tlv(@identify_type.value)
         when GLOBAL_FEATURE_MAP
-          0_u32.to_tlv # No features for basic Identify
+          tlv(0_u32) # No features for basic Identify
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_IDENTIFY_TIME
-          new_time = decode_u16(value)
+          new_time = decode?(value, UInt16)
           return InteractionModel::Status.invalid_data_type unless new_time
           @identify_time = new_time
           increment_version
@@ -126,7 +126,7 @@ module Matter
         end
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_IDENTIFY
           handle_identify_command(fields)
@@ -139,8 +139,8 @@ module Matter
 
       # Handle Identify command
       # Command fields: IdentifyTime (tag 0, uint16) - seconds to identify
-      private def handle_identify_command(fields : Bytes) : InteractionModel::Status
-        req = Definitions::Identify::Request.from_slice(fields)
+      private def handle_identify_command(fields : TLV::Any?) : InteractionModel::Status
+        req = Definitions::Identify::Request.from_tlv(fields || tlv(nil))
         new_time = req.identify_time
 
         was_identifying = identifying?
@@ -156,14 +156,14 @@ module Matter
 
         InteractionModel::Status.success
       rescue ex
-        Log.error(exception: ex) { "Identify command TLV parsing error (bytes=#{fields.hexstring})" }
+        Log.error(exception: ex) { "Identify command TLV parsing error (fields=#{fields.inspect})" }
         InteractionModel::Status.invalid_command
       end
 
       # Handle TriggerEffect command
       # Command fields: EffectIdentifier (tag 0, enum8), EffectVariant (tag 1, enum8)
-      private def handle_trigger_effect_command(fields : Bytes) : InteractionModel::Status
-        req = Definitions::Identify::TriggerEffectRequest.from_slice(fields)
+      private def handle_trigger_effect_command(fields : TLV::Any?) : InteractionModel::Status
+        req = Definitions::Identify::TriggerEffectRequest.from_tlv(fields || tlv(nil))
 
         # Convert from Definitions enum to cluster enum
         effect = EffectIdentifier.from_value(req.effect_identifier.value)
@@ -173,7 +173,7 @@ module Matter
 
         InteractionModel::Status.success
       rescue ex
-        Log.error(exception: ex) { "TriggerEffect command TLV parsing error (bytes=#{fields.hexstring})" }
+        Log.error(exception: ex) { "TriggerEffect command TLV parsing error (fields=#{fields.inspect})" }
         InteractionModel::Status.invalid_command
       end
 

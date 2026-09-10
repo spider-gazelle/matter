@@ -424,10 +424,10 @@ describe "Dynamic Endpoint Management" do
         .as(Matter::Cluster::DescriptorCluster)
 
       result = root_descriptor.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
       # Parse the TLV response - endpoint IDs may be encoded as UInt8 or UInt16
-      tlv_data = TLV::Any.from_slice(result.as(Bytes))
+      tlv_data = result.as(TLV::Any)
       parts_array = tlv_data.value.as(Array(TLV::Any))
       parts = parts_array.map do |part|
         case v = part.value
@@ -464,7 +464,7 @@ describe "Dynamic Endpoint Management" do
         .as(Matter::Cluster::DescriptorCluster)
 
       result = root_descriptor.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-      tlv_data = TLV::Any.from_slice(result.as(Bytes))
+      tlv_data = result.as(TLV::Any)
       parts_array = tlv_data.value.as(Array(TLV::Any))
       parts = parts_array.map do |part|
         case v = part.value

@@ -46,6 +46,8 @@ module Matter
       MRP_DUPLICATE_RESPONSE_TTL         = 10.seconds
       MRP_DUPLICATE_RESPONSE_MAX_ENTRIES = 512
 
+      MSG_REPORT_DATA = 0x05_u8
+
       # Secure Channel Message Types
       MSG_STANDALONE_ACK       = 0x10_u8
       MSG_PBKDF_PARAM_REQUEST  = 0x20_u8
@@ -588,17 +590,16 @@ module Matter
             # Build attribute report for this attribute
             value = cluster.read_attribute(attribute_id, subscription.session.fabric_index)
             case value
-            when Bytes
+            when TLV::Any
               attr_path = InteractionModel::AttributePath.new(
                 endpoint: endpoint_id,
                 cluster: cluster_id,
                 attribute: attribute_id
               )
 
-              data = TLV::Any.from_slice(value)
               attr_data = InteractionModel::AttributeDataIB.new(
                 path: attr_path,
-                data: data,
+                data: value,
                 data_version: cluster.data_version
               )
 
@@ -624,89 +625,18 @@ module Matter
       # Send a subscription update (ReportData) to a subscriber
       private def send_subscription_update(subscription : ActiveSubscription, payload : Bytes)
         session = subscription.session
-        crypto = Crypto::StandardCrypto.new
-
-        # Build security flags byte for outgoing message
-        security_flags = 0_u8
-        security_flags |= Codec::MessageCodec::SessionType::Unicast.value
-
-        # Compute flags - for encrypted unicast, many controllers (notably iOS)
-        # expect destination_node_id to be omitted (it's implied by the session).
-        # We still include our source_node_id to ensure the nonce matches.
-        flags = Codec::MessageCodec::Base.compute_flags(
-          session.local_node_id, # Our node as source
-          nil,                   # Destination omitted
-          nil
-        )
-
-        # Get next message counter
-        message_counter = session.next_message_counter
-
-        # Build packet header
-        packet_header = Codec::MessageCodec::PacketHeader.new(
-          session_id: session.peer_session_id, # Use peer's session ID
-          session_type: Codec::MessageCodec::SessionType::Unicast,
-          message_id: message_counter,
-          privacy_enhancements: false,
-          control_message: false,
-          message_extensions: false,
-          flags: flags,
-          security_flags: security_flags,
-          source_node_id: session.local_node_id,
-          destination_node_id: nil
-        )
-
-        # For subscription updates (not initial reports), the server INITIATES a new exchange.
-        # This is different from the initial subscribe response which uses the controller's exchange.
-        # We generate a new exchange ID and set initiator_message: true.
         new_exchange_id = @next_exchange_id
-        @next_exchange_id = @next_exchange_id &+ 1 # Wrap-around safe
-
+        @next_exchange_id = @next_exchange_id &+ 1
         payload_header = Codec::MessageCodec::PayloadHeader.new(
           exchange_id: new_exchange_id,
           protocol_id: PROTOCOL_INTERACTION_MODEL,
-          message_type: 0x05_u8, # ReportData
+          message_type: MSG_REPORT_DATA,
           initiator_message: true,
-          requires_acknowledge: true,
-          acknowledged_message_id: nil
+          requires_acknowledge: true
         )
-
-        # Encode payload header
-        payload_header_io = IO::Memory.new
-        Codec::MessageCodec::Base.encode_payload_header(payload_header, payload_header_io)
-        payload_header_bytes = payload_header_io.rewind.to_slice
-
-        # Application payload = payload header + TLV payload
-        application_payload = Slice.join([payload_header_bytes, payload])
-
-        # Encode packet header (needed for AAD)
-        packet_header_io = IO::Memory.new
-        Codec::MessageCodec::Base.encode_packet_header(packet_header, packet_header_io)
-        packet_header_bytes = packet_header_io.rewind.to_slice
-
-        # Extract security_flags from encoded header
-        actual_security_flags = packet_header_bytes[Codec::MessageCodec::SECURITY_FLAGS_OFFSET]
-
-        # Determine source node id for nonce
-        source_node_id = session.local_node_id.try(&.id) || 0_u64
-
-        # Build nonce
-        nonce = Session::SecureMessage.build_nonce(source_node_id, message_counter, actual_security_flags)
-
-        # Encrypt using packet header bytes as AAD
-        encrypted = crypto.encrypt(session.encryption_key, application_payload, nonce, packet_header_bytes)
-        unless encrypted
-          Log.error { "Failed to encrypt subscription update (peer=#{subscription.peer}, subscription_id=#{subscription.subscription_id}, exchange=#{new_exchange_id})" }
-          return
-        end
-
-        # Final UDP packet = packet header + encrypted payload
-        udp_packet = Slice.join([packet_header_bytes, encrypted])
-
-        # Send raw UDP packet
+        udp_packet, _ = Session::SecureMessage.encode(session, payload_header, payload,
+          source_node_id: session.local_node_id)
         @transport.send_raw(udp_packet, subscription.peer)
-
-        Log.debug { "Sent subscription update: peer=#{subscription.peer}, subscription_id=#{subscription.subscription_id}, payload_bytes=#{payload.size}, exchange=#{new_exchange_id}" }
       end
 
       # Main message routing entry point
@@ -716,15 +646,6 @@ module Matter
         # and without synchronization, responses could get interleaved or state corrupted
         @message_mutex.synchronize do
           session_id = msg.packet_header.session_id
-
-          # MRP duplicate retransmission handling:
-          # If we've already generated a response for this incoming message counter,
-          # resend the cached response and do not reprocess the message.
-          if session_id != 0
-            if resend_cached_mrp_response?(session_id, msg.packet_header.message_id, peer)
-              return
-            end
-          end
 
           # Decrypt encrypted messages (session_id != 0) BEFORE routing
           if session_id != 0
@@ -737,21 +658,18 @@ module Matter
               return
             end
 
-            # Check if this is a duplicate message that we should drop
-            # (MRP retransmit with no cached response - MRP cache check was already done above)
             message_counter = msg.packet_header.message_id
-            unless session.would_accept_message_counter?(message_counter)
-              # This is a duplicate without a cached response - drop silently
-              # The MRP cache was already checked above, so if we're here, there's no response to resend
-              Log.trace { "Dropping duplicate message: session_id=#{session_id}, counter=#{message_counter} (no cached response)" }
+            case session.check_peer_message_counter(message_counter)
+            when Transport::MessageCounter::CheckResult::Duplicate
+              resend_cached_mrp_response?(session_id, message_counter, peer)
+              return
+            when Transport::MessageCounter::CheckResult::Stale
+              Log.trace { "Dropping stale message: session_id=#{session_id}, counter=#{message_counter}" }
               return
             end
 
-            # Cancel any pending cleanup for this session since we received traffic
-            cancel_cleanup_on_traffic(session_id)
-
-            # Decrypt the payload
             msg = decrypt_message(msg, session)
+            cancel_cleanup_on_traffic(session_id)
           end
 
           Log.debug { "Received message: protocol=0x#{msg.payload_header.protocol_id.to_s(16)}, type=0x#{msg.payload_header.message_type.to_s(16)}" }
@@ -779,24 +697,8 @@ module Matter
         msg : Codec::MessageCodec::Message,
         session : Session::SecureContext,
       ) : Codec::MessageCodec::Message
-        Log.trace { "Decrypting payload (#{msg.payload.size} bytes)" }
-        crypto = Crypto::StandardCrypto.new
-
-        # Use the actual message_id from the packet header as the message counter
-        # (message_id IS the message counter for encrypted messages)
-        message_counter = msg.packet_header.message_id
-
-        decrypted = Session::SecureMessage.decrypt(
-          context: session,
-          encrypted_payload: msg.payload,
-          message_counter: message_counter,
-          packet_header: msg.packet_header,
-          crypto: crypto
-        )
-
-        unless decrypted
-          raise Matter::SessionError.new("Failed to decrypt message")
-        end
+        decrypted = Session::SecureMessage.decode(session,
+          Codec::MessageCodec::Packet.new(msg.packet_header, msg.payload, msg.header_bytes))
 
         # Some controllers (notably iOS) may omit or otherwise vary the peer identity
         # we can extract during CASE establishment; however encrypted packet headers
@@ -817,16 +719,7 @@ module Matter
           end
         end
 
-        Log.trace { "Decrypted payload: #{decrypted.hexstring}" }
-
-        # Create a packet with decrypted payload and decode it
-        decrypted_packet = Codec::MessageCodec::Packet.new(
-          header: msg.packet_header,
-          payload: decrypted
-        )
-
-        # Decode the payload to get the real protocol_id and message_type
-        Codec::MessageCodec::Base.decode_payload(decrypted_packet)
+        decrypted
       end
 
       # Handle Secure Channel protocol (PASE, CASE, etc.)
@@ -870,17 +763,17 @@ module Matter
         # Message is already decrypted, payload contains TLV data
         # Parse IM message based on message type
         case msg.payload_header.message_type
-        when 0x01_u8 # StatusResponse
+        when InteractionModel::MessageType::StatusResponse.value
           handle_status_response(msg.payload, msg, peer, session)
-        when 0x02_u8 # ReadRequest
+        when InteractionModel::MessageType::ReadRequest.value
           handle_read_request(msg.payload, msg, peer, session)
-        when 0x03_u8 # SubscribeRequest
+        when InteractionModel::MessageType::SubscribeRequest.value
           handle_subscribe_request(msg.payload, msg, peer, session)
-        when 0x06_u8 # WriteRequest
+        when InteractionModel::MessageType::WriteRequest.value
           handle_write_request(msg.payload, msg, peer, session)
-        when 0x08_u8 # InvokeRequest
+        when InteractionModel::MessageType::InvokeRequest.value
           handle_invoke_request(msg.payload, msg, peer, session)
-        when 0x0A_u8 # TimedRequest
+        when InteractionModel::MessageType::TimedRequest.value
           handle_timed_request(msg.payload, msg, peer, session)
         else
           Log.warn { "Unknown IM message type: 0x#{msg.payload_header.message_type.to_s(16)}" }
@@ -921,18 +814,7 @@ module Matter
 
         timeout_ms = 0_u16
         begin
-          parsed = TLV::Any.from_slice(decrypted)
-          tlv_struct = parsed.value.as(TLV::Structure)
-          timeout_any = tlv_struct[0_u8]?
-          if timeout_any
-            timeout_ms = case v = timeout_any.value
-                         when Int    then v.to_u16
-                         when UInt16 then v
-                         when UInt32 then v.to_u16
-                         when UInt8  then v.to_u16
-                         else             0_u16
-                         end
-          end
+          timeout_ms = InteractionModel::TimedRequestMessage.from_slice(decrypted).timeout
         rescue ex
           Log.error(exception: ex) do
             "TimedRequest: failed to parse request (session_id=#{session.session_id} exchange=#{exchange_id} bytes=#{decrypted.hexstring})"
@@ -946,12 +828,12 @@ module Matter
         record_timed_request(session.session_id, exchange_id, timeout_ms)
         Log.info { "TimedRequest: timeout_ms=#{timeout_ms} (session_id=#{session.session_id} exchange=#{exchange_id})" }
 
-        status = InteractionModel::StatusResponseMessage.new(status: 0_u8)
+        status = InteractionModel::StatusResponseMessage.new(status: InteractionModel::StatusCode::Success.value)
         send_im_response(
           original_msg: original_msg,
           peer: peer,
           session: session,
-          message_type: 0x01_u8, # StatusResponse
+          message_type: InteractionModel::MessageType::StatusResponse.value,
           payload: status.to_slice,
           cache_for_mrp: true
         )
@@ -971,27 +853,11 @@ module Matter
         Log.debug { "Handling StatusResponse (exchange=#{original_msg.payload_header.exchange_id})" }
 
         # Parse StatusResponse TLV
-        status_code = 0_u8
+        status_code = InteractionModel::StatusCode::Success.value
         begin
-          parsed = TLV::Any.from_slice(decrypted)
-          request_data = parsed.value.as(TLV::Structure)
+          status_code = InteractionModel::StatusResponseMessage.from_slice(decrypted).status
 
-          # Extract status code (tag 0)
-          status_any = request_data[0_u8]?
-          status_code = if status_any
-                          case status_value = status_any.value
-                          when Int
-                            status_value.to_u8
-                          when UInt8
-                            status_value
-                          else
-                            0_u8
-                          end
-                        else
-                          0_u8
-                        end
-
-          if status_code == 0
+          if status_code == InteractionModel::StatusCode::Success.value
             Log.debug { "StatusResponse: SUCCESS" }
           else
             Log.warn { "StatusResponse: status=0x#{status_code.to_s(16)}" }
@@ -1003,7 +869,7 @@ module Matter
         # Check if this StatusResponse is for a pending subscription
         exchange_id = original_msg.payload_header.exchange_id
         if pending = @pending_subscriptions.delete(exchange_id)
-          if status_code == 0
+          if status_code == InteractionModel::StatusCode::Success.value
             # Success - check if there are more chunks to send
             if !pending.remaining_chunks.empty?
               # Send next chunk
@@ -1015,7 +881,7 @@ module Matter
                 original_msg: original_msg,
                 peer: pending.peer,
                 session: pending.session,
-                message_type: 0x05_u8, # ReportData
+                message_type: InteractionModel::MessageType::ReportData.value,
                 payload: next_chunk
               )
 
@@ -1035,7 +901,7 @@ module Matter
                 original_msg: original_msg,
                 peer: pending.peer,
                 session: pending.session,
-                message_type: 0x04_u8, # SubscribeResponse
+                message_type: InteractionModel::MessageType::SubscribeResponse.value,
                 payload: subscribe_response_tlv
               )
 
@@ -1074,7 +940,7 @@ module Matter
           end
           # Check if this StatusResponse is for a pending read response
         elsif pending_read = @pending_read_responses.delete(exchange_id)
-          if status_code == 0
+          if status_code == InteractionModel::StatusCode::Success.value
             # Success - check if there are more chunks to send
             if !pending_read.remaining_chunks.empty?
               # Send next chunk
@@ -1086,7 +952,7 @@ module Matter
                 original_msg: original_msg,
                 peer: pending_read.peer,
                 session: pending_read.session,
-                message_type: 0x05_u8, # ReportData
+                message_type: InteractionModel::MessageType::ReportData.value,
                 payload: next_chunk
               )
 
@@ -1123,83 +989,17 @@ module Matter
         peer : Socket::IPAddress,
         session : Session::SecureContext,
       ) : Nil
-        crypto = Crypto::StandardCrypto.new
-
-        # Build security flags byte for outgoing message
-        security_flags = 0_u8
-        security_flags |= Codec::MessageCodec::SessionType::Unicast.value
-
-        # Compute flags - swap source/destination from request
-        flags = Codec::MessageCodec::Base.compute_flags(
-          session.local_node_id, # Our node as source
-          session.peer_node_id,  # Peer as destination
-          nil
-        )
-
-        # Get next message counter
-        message_counter = session.next_message_counter
-
-        # Build packet header
-        packet_header = Codec::MessageCodec::PacketHeader.new(
-          session_id: session.peer_session_id, # Use peer's session ID
-          session_type: Codec::MessageCodec::SessionType::Unicast,
-          message_id: message_counter,
-          privacy_enhancements: false,
-          control_message: false,
-          message_extensions: false,
-          flags: flags,
-          security_flags: security_flags,
-          source_node_id: session.local_node_id,
-          destination_node_id: session.peer_node_id
-        )
-
-        # Build payload header for MRP Standalone Acknowledgement
-        # Use same protocol as original message, with ACK message type
         payload_header = Codec::MessageCodec::PayloadHeader.new(
           exchange_id: original_msg.payload_header.exchange_id,
-          protocol_id: PROTOCOL_SECURE_CHANNEL, # ACKs are secure channel protocol
-          message_type: MSG_STANDALONE_ACK,     # 0x10
+          protocol_id: PROTOCOL_SECURE_CHANNEL,
+          message_type: MSG_STANDALONE_ACK,
           initiator_message: !original_msg.payload_header.initiator_message?,
-          requires_acknowledge: false, # ACKs don't require ACKs
+          requires_acknowledge: false,
           acknowledged_message_id: original_msg.packet_header.message_id
         )
-
-        # Encode payload header
-        payload_header_io = IO::Memory.new
-        Codec::MessageCodec::Base.encode_payload_header(payload_header, payload_header_io)
-        payload_header_bytes = payload_header_io.rewind.to_slice
-
-        # Application payload = payload header only (no TLV payload for ACK)
-        application_payload = payload_header_bytes
-
-        # Encode packet header (needed for AAD)
-        packet_header_io = IO::Memory.new
-        Codec::MessageCodec::Base.encode_packet_header(packet_header, packet_header_io)
-        packet_header_bytes = packet_header_io.rewind.to_slice
-
-        # Extract security_flags from encoded header
-        actual_security_flags = packet_header_bytes[Codec::MessageCodec::SECURITY_FLAGS_OFFSET]
-
-        # Determine source node id for nonce
-        source_node_id = session.local_node_id.try(&.id) || 0_u64
-
-        # Build nonce
-        nonce = Session::SecureMessage.build_nonce(source_node_id, message_counter, actual_security_flags)
-
-        # Encrypt using packet header bytes as AAD
-        encrypted = crypto.encrypt(session.encryption_key, application_payload, nonce, packet_header_bytes)
-        unless encrypted
-          Log.error { "Failed to encrypt standalone ACK" }
-          return
-        end
-
-        # Final UDP packet = packet header + encrypted payload
-        udp_packet = Slice.join([packet_header_bytes, encrypted])
-
-        # Send raw UDP packet
+        udp_packet, _ = Session::SecureMessage.encode(session, payload_header, Bytes.empty,
+          source_node_id: session.local_node_id, destination_node_id: session.peer_node_id)
         @transport.send_raw(udp_packet, peer)
-
-        Log.trace { "Sent standalone ACK: acked_message_id=#{original_msg.packet_header.message_id}, exchange=#{original_msg.payload_header.exchange_id}, peer=#{peer}" }
       end
 
       # Handle ReadRequest - parse, read attributes, encode response, encrypt and send
@@ -1248,7 +1048,7 @@ module Matter
           original_msg: original_msg,
           peer: peer,
           session: session,
-          message_type: 0x05_u8, # ReportData
+          message_type: InteractionModel::MessageType::ReportData.value,
           payload: first_chunk,
           cache_for_mrp: true
         )
@@ -1339,7 +1139,7 @@ module Matter
           original_msg: original_msg,
           peer: peer,
           session: session,
-          message_type: 0x05_u8, # ReportData
+          message_type: InteractionModel::MessageType::ReportData.value,
           payload: first_chunk,
           cache_for_mrp: true
         )
@@ -1409,7 +1209,7 @@ module Matter
               original_msg: original_msg,
               peer: peer,
               session: session,
-              message_type: 0x01_u8, # StatusResponse
+              message_type: InteractionModel::MessageType::StatusResponse.value,
               payload: status.to_slice,
               cache_for_mrp: true
             )
@@ -1447,7 +1247,7 @@ module Matter
           original_msg: original_msg,
           peer: peer,
           session: session,
-          message_type: 0x07_u8, # WriteResponse
+          message_type: InteractionModel::MessageType::WriteResponse.value,
           payload: response_tlv,
           cache_for_mrp: true
         )
@@ -1488,7 +1288,7 @@ module Matter
               original_msg: original_msg,
               peer: peer,
               session: session,
-              message_type: 0x01_u8, # StatusResponse
+              message_type: InteractionModel::MessageType::StatusResponse.value,
               payload: status.to_slice,
               cache_for_mrp: true
             )
@@ -1527,7 +1327,7 @@ module Matter
           original_msg: original_msg,
           peer: peer,
           session: session,
-          message_type: 0x09_u8, # InvokeResponse
+          message_type: InteractionModel::MessageType::InvokeResponse.value,
           payload: response_tlv,
           cache_for_mrp: true
         )
@@ -1550,150 +1350,19 @@ module Matter
         payload : Bytes,
         cache_for_mrp : Bool = false,
       ) : Nil
-        # Encrypt the payload using the session's encryption key
-        crypto = Crypto::StandardCrypto.new
-
-        # Build security flags byte for outgoing message
-        # Bits 1-0: Session type (0=Unicast, 1=Group)
-        # Bits 7-5: Control flags (privacy, control msg, extensions)
-        security_flags = 0_u8
-        security_flags |= Codec::MessageCodec::SessionType::Unicast.value # Bits 1-0
-
-        # Determine response source node ID
-        # For PASE sessions, this will be nil (no node IDs in header)
-        # For CASE sessions, we use the actual node IDs from the session
-        # IMPORTANT: Use nil when there's no node ID, not NodeId(0)
-        # Presence is determined by nil-ness in compute_flags/encode_packet_header
-        response_source_node_id = if original_msg.packet_header.destination_node_id
-                                    original_msg.packet_header.destination_node_id
-                                  elsif session.local_node_id
-                                    session.local_node_id
-                                  end
-
-        # Compute the flags byte for the packet header (swapping source/dest from request)
-        flags = Codec::MessageCodec::Base.compute_flags(
-          response_source_node_id,                   # Will become source in response
-          original_msg.packet_header.source_node_id, # Will become destination in response
-          nil
-        )
-        Log.debug { "compute_flags returned: 0x#{flags.to_s(16)}, response_source_node_id=#{response_source_node_id.inspect}" }
-
-        # Build packet header for encrypted response
-        # CRITICAL: Use peer_session_id so recipient can find the session!
-        # When chip-tool receives, it looks up by its own local session_id
-        # which is our peer_session_id
-        packet_header = Codec::MessageCodec::PacketHeader.new(
-          session_id: session.peer_session_id, # Use peer's session ID so they can look it up!
-          session_type: Codec::MessageCodec::SessionType::Unicast,
-          message_id: 0_u32, # Will be set by transport
-          privacy_enhancements: false,
-          control_message: false,
-          message_extensions: false,
-          flags: flags,
-          security_flags: security_flags,
-          source_node_id: response_source_node_id,
-          destination_node_id: original_msg.packet_header.source_node_id
-        )
-
-        Log.debug { "Sending response on peer_session_id=#{session.peer_session_id} (received on our session_id=#{session.session_id})" }
-
-        # Build payload header
-        # If the original message required acknowledgment, embed the ACK in our response
-        ack_msg_id = if original_msg.payload_header.requires_acknowledge?
-                       original_msg.packet_header.message_id
-                     end
-
         payload_header = Codec::MessageCodec::PayloadHeader.new(
           exchange_id: original_msg.payload_header.exchange_id,
           protocol_id: PROTOCOL_INTERACTION_MODEL,
           message_type: message_type,
           initiator_message: !original_msg.payload_header.initiator_message?,
-          requires_acknowledge: true, # Set to true like matter.js does
-          acknowledged_message_id: ack_msg_id
+          requires_acknowledge: true,
+          acknowledged_message_id: original_msg.payload_header.requires_acknowledge? ? original_msg.packet_header.message_id : nil
         )
-
-        Log.debug { "Response payload header: exchange=#{payload_header.exchange_id}, ack_msg=#{ack_msg_id}, initiator=#{payload_header.initiator_message?}" }
-
-        # Encode the payload header to bytes
-        payload_header_io = IO::Memory.new
-        Codec::MessageCodec::Base.encode_payload_header(payload_header, payload_header_io)
-        payload_header_bytes = payload_header_io.rewind.to_slice
-
-        # Concatenate payload header + TLV payload (this is the "application payload" that gets encrypted)
-        application_payload = Slice.join([payload_header_bytes, payload])
-
-        Log.debug { "Application payload to encrypt: #{application_payload.size} bytes (#{payload_header_bytes.size} header + #{payload.size} TLV)" }
-
-        # CRITICAL: Must encode packet header BEFORE encrypting to get the correct AAD!
-        # Update packet header with the actual message counter we'll use
-        message_counter = session.next_message_counter
-        packet_header = Codec::MessageCodec::PacketHeader.new(
-          session_id: packet_header.session_id,
-          session_type: packet_header.session_type,
-          message_id: message_counter, # Use the actual counter!
-          privacy_enhancements: packet_header.privacy_enhancements?,
-          control_message: packet_header.control_message?,
-          message_extensions: packet_header.message_extensions?,
-          flags: packet_header.flags,
-          security_flags: packet_header.security_flags,
-          source_node_id: response_source_node_id,                        # Use the computed value!
-          destination_node_id: original_msg.packet_header.source_node_id, # Use the original source as destination
-          destination_group_id: packet_header.destination_group_id
-        )
-
-        # Encode packet header to get the exact bytes that will be sent (and used as AAD)
-        packet_header_io = IO::Memory.new
-        Codec::MessageCodec::Base.encode_packet_header(packet_header, packet_header_io)
-        packet_header_bytes = packet_header_io.rewind.to_slice
-
-        # Extract security_flags from the encoded header - like matter.js does
-        security_flags = packet_header_bytes[Codec::MessageCodec::SECURITY_FLAGS_OFFSET]
-
-        # Determine node_id for nonce (must match source_node_id in header)
-        source_node_id = if packet_header.source_node_id
-                           packet_header.source_node_id.as(DataType::NodeId).id
-                         elsif session.local_node_id
-                           session.local_node_id.as(DataType::NodeId).id
-                         else
-                           0_u64 # PASE uses node_id=0
-                         end
-
-        # Build nonce: security_flags (1) + message_counter (4) + source_node_id (8)
-        nonce = Session::SecureMessage.build_nonce(source_node_id, message_counter, security_flags)
-
-        # Encrypt using the ACTUAL packet header bytes as AAD (exactly like matter.js!)
-        encrypted = crypto.encrypt(session.encryption_key, application_payload, nonce, packet_header_bytes)
-
-        unless encrypted
-          Log.error { "Failed to encrypt IM response" }
-          return
-        end
-
-        Log.debug { "Encrypted application payload (#{encrypted.size} bytes)" }
-
-        # Final UDP packet: packet_header_bytes + encrypted_application_payload
-        udp_packet = Slice.join([packet_header_bytes, encrypted])
-
-        Log.trace do
-          "IM response encryption: key=#{session.encryption_key.hexstring} " \
-          "nonce=#{nonce.hexstring} aad_len=#{packet_header_bytes.size} " \
-          "app_len=#{application_payload.size} enc_len=#{encrypted.size} " \
-          "enc_first64=#{encrypted[0, [64, encrypted.size].min].hexstring}"
-        end
-
-        Log.trace do
-          "Sending UDP packet: bytes=#{udp_packet.size} " \
-          "header=#{packet_header_bytes.hexstring} " \
-          "enc_first64=#{encrypted[0, [64, encrypted.size].min].hexstring}"
-        end
-
-        # Send raw UDP packet
+        udp_packet, _ = Session::SecureMessage.encode(session, payload_header, payload,
+          source_node_id: original_msg.packet_header.destination_node_id || session.local_node_id,
+          destination_node_id: original_msg.packet_header.source_node_id)
         if cache_for_mrp && original_msg.packet_header.session_id != 0
-          cache_mrp_response(
-            session_id: original_msg.packet_header.session_id,
-            incoming_counter: original_msg.packet_header.message_id,
-            udp_packet: udp_packet.dup
-          )
+          cache_mrp_response(original_msg.packet_header.session_id, original_msg.packet_header.message_id, udp_packet.dup)
         end
         @transport.send_raw(udp_packet, peer)
       end
@@ -1834,14 +1503,7 @@ module Matter
       private def handle_pase_pake3(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
         Log.info { "Handling PASE Pake3" }
 
-        # Decode Pake3 message - manually parse TLV to extract verifier (cA)
-        Log.trace { "  Pake3 payload: #{msg.payload.hexstring}" }
-        parsed = TLV::Any.from_slice(msg.payload)
-        struct_data = parsed.value.as(TLV::Structure)
-        Log.debug { "  Pake3 TLV keys: #{struct_data.keys.inspect}" }
-
-        # Extract cA (verifier) from tag 1
-        c_a = struct_data[1_u8].as_bytes
+        c_a = Session::Pase::Definitions::Pake3.from_slice(msg.payload).verifier
         Log.debug { "  Received cA: #{c_a.size} bytes" }
         Log.trace { "  cA hex: #{c_a.hexstring}" }
 
@@ -1932,19 +1594,6 @@ module Matter
         # Build response packet header
         response_session_id = session_id || msg.packet_header.session_id
 
-        # Build security flags byte for outgoing message
-        # Bits 1-0: Session type (0=Unicast, 1=Group)
-        # Bits 7-5: Control flags (privacy, control msg, extensions)
-        security_flags = 0_u8
-        security_flags |= Codec::MessageCodec::SessionType::Unicast.value # Bits 1-0
-
-        # Compute the flags byte for the packet header (swapping source/dest from request)
-        flags = Codec::MessageCodec::Base.compute_flags(
-          msg.packet_header.destination_node_id, # Will become source in response
-          msg.packet_header.source_node_id,      # Will become destination in response
-          nil
-        )
-
         packet_header = Codec::MessageCodec::PacketHeader.new(
           session_id: response_session_id,
           session_type: Codec::MessageCodec::SessionType::Unicast,
@@ -1952,8 +1601,6 @@ module Matter
           privacy_enhancements: false,
           control_message: false,
           message_extensions: false,
-          flags: flags,
-          security_flags: security_flags,
           source_node_id: msg.packet_header.destination_node_id,
           destination_node_id: msg.packet_header.source_node_id
         )
@@ -2004,7 +1651,7 @@ module Matter
               original_msg: pending.original_msg,
               peer: pending.peer,
               session: pending.session,
-              message_type: 0x05_u8, # ReportData
+              message_type: InteractionModel::MessageType::ReportData.value,
               payload: next_chunk
             )
 
@@ -2031,7 +1678,7 @@ module Matter
               original_msg: pending.original_msg,
               peer: pending.peer,
               session: pending.session,
-              message_type: 0x04_u8, # SubscribeResponse
+              message_type: InteractionModel::MessageType::SubscribeResponse.value,
               payload: subscribe_response_tlv
             )
 
@@ -2066,7 +1713,7 @@ module Matter
               original_msg: pending_read.original_msg,
               peer: pending_read.peer,
               session: pending_read.session,
-              message_type: 0x05_u8, # ReportData
+              message_type: InteractionModel::MessageType::ReportData.value,
               payload: next_chunk
             )
 

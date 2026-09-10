@@ -578,32 +578,43 @@ module Matter
       end
 
       # CurrentFabricIndex attribute (0x05) - Fabric index from session context
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_NOCS
-          encode_noc_list
+          tlv(nocs.map do |noc|
+            OpCredDefs::NOC.new(noc: noc.noc, icac: noc.icac, fabric_index: noc.fabric_index)
+          end)
         when ATTR_FABRICS
-          encode_fabric_list
+          tlv(fabrics.map do |fabric|
+            OpCredDefs::FabricDescriptor.new(
+              root_public_key: fabric.root_public_key,
+              vendor_id: fabric.vendor_id,
+              fabric_id: fabric.fabric_id,
+              node_id: fabric.node_id,
+              label: fabric.label,
+              fabric_index: fabric.fabric_index
+            )
+          end)
         when ATTR_SUPPORTED_FABRICS
-          supported_fabrics.to_tlv
+          tlv(supported_fabrics)
         when ATTR_COMMISSIONED_FABRICS
-          commissioned_fabrics.to_tlv
+          tlv(commissioned_fabrics)
         when ATTR_TRUSTED_ROOT_CERTIFICATES
-          encode_certificate_list
+          tlv(@trusted_root_certs)
         when ATTR_CURRENT_FABRIC_INDEX
           # Use passed fabric_index from session context, fall back to stored value
-          (fabric_index || @current_fabric_index).to_tlv
+          tlv((fabric_index || @current_fabric_index))
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         # All attributes are read-only
         super
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_ATTESTATION_REQUEST
           Cluster::CommandResponse.new(CMD_ATTESTATION_RESPONSE, handle_attestation_request(fields))
@@ -636,9 +647,9 @@ module Matter
 
       # Command Handlers
 
-      private def handle_attestation_request(fields : Bytes) : Bytes
+      private def handle_attestation_request(fields : TLV::Any?) : TLV::Any
         # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::AttestationRequest.from_slice(fields)
+        request = Definitions::OperationalCredentials::AttestationRequest.from_tlv(fields || tlv(nil))
 
         # Build attestation elements (TLV structure containing certification declaration, nonce, timestamp)
         attestation_elements = build_attestation_elements(request.attestation_nonce)
@@ -648,12 +659,12 @@ module Matter
 
         # Encode response as TLV
         response = OpCredDefs::AttestationResponse.new(attestation_elements, attestation_signature)
-        response.to_slice
+        tlv(response)
       end
 
-      private def handle_certificate_chain_request(fields : Bytes) : Bytes
+      private def handle_certificate_chain_request(fields : TLV::Any?) : TLV::Any
         # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::CertificateChainRequest.from_slice(fields)
+        request = Definitions::OperationalCredentials::CertificateChainRequest.from_tlv(fields || tlv(nil))
 
         # Get the appropriate certificate
         certificate = case request.certificate_type
@@ -665,12 +676,12 @@ module Matter
 
         # Encode response as TLV
         response = OpCredDefs::CertificateChainResponse.new(certificate || Bytes.new(0))
-        response.to_slice
+        tlv(response)
       end
 
-      private def handle_csr_request(fields : Bytes) : InteractionModel::Status | Bytes
+      private def handle_csr_request(fields : TLV::Any?) : InteractionModel::Status | TLV::Any
         # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::CsrRequest.from_slice(fields)
+        request = Definitions::OperationalCredentials::CsrRequest.from_tlv(fields || tlv(nil))
 
         # Validate failsafe is armed
         # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
@@ -703,39 +714,39 @@ module Matter
 
         # Encode response as TLV
         response = OpCredDefs::CsrResponse.new(csr_elements, csr_signature)
-        response.to_slice
+        tlv(response)
       end
 
-      private def handle_add_noc(fields : Bytes) : Bytes
+      private def handle_add_noc(fields : TLV::Any?) : TLV::Any
         # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::AddNocRequest.from_slice(fields)
+        request = Definitions::OperationalCredentials::AddNocRequest.from_tlv(fields || tlv(nil))
 
         # Validate failsafe is armed
         # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
         unless @failsafe_armed
-          return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failsafe not armed")
+          return noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failsafe not armed")
         end
 
         # Cannot call AddNOC twice in same failsafe
         if @pending_credentials.noc_added_or_updated?
-          return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "AddNOC/UpdateNOC already called in this failsafe")
+          return noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "AddNOC/UpdateNOC already called in this failsafe")
         end
 
         # Must have CSR from this session
         # NOTE: @session_id should be set by protocol layer, defaults to 0 for testing
         session_id = @session_id || 0_u64
         unless @pending_credentials.csr_exists?(session_id)
-          return encode_noc_response(NodeOperationalCertStatus::MissingCsr, nil, "CSR not found for this session")
+          return noc_response(NodeOperationalCertStatus::MissingCsr, nil, "CSR not found for this session")
         end
 
         # Must have root certificate set
         unless @pending_credentials.root_cert_set?
-          return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Root certificate not set")
+          return noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Root certificate not set")
         end
 
         # Check if table is full
         if @fabric_table.full?
-          return encode_noc_response(NodeOperationalCertStatus::TableFull, nil, "Fabric table is full")
+          return noc_response(NodeOperationalCertStatus::TableFull, nil, "Fabric table is full")
         end
 
         # Parse NOC to extract fabric_id and node_id
@@ -749,7 +760,7 @@ module Matter
             "Failed to parse NOC (#{request.noc_value.size} bytes): " \
             "#{request.noc_value[0, [200, request.noc_value.size].min].hexstring}"
           end
-          return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failed to parse NOC: #{ex.message}")
+          return noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failed to parse NOC: #{ex.message}")
         end
 
         # Extract public key from root certificate
@@ -760,7 +771,7 @@ module Matter
 
         # Check for fabric conflict (same root_public_key + fabric_id already exists)
         if @fabric_table.find_by_fabric_identity(fabric_id, root_public_key)
-          return encode_noc_response(NodeOperationalCertStatus::FabricConflict, nil, "Fabric already exists")
+          return noc_response(NodeOperationalCertStatus::FabricConflict, nil, "Fabric already exists")
         end
 
         # Add fabric to table
@@ -793,7 +804,7 @@ module Matter
         )
 
         unless fabric
-          return encode_noc_response(NodeOperationalCertStatus::TableFull, nil, "Failed to add fabric")
+          return noc_response(NodeOperationalCertStatus::TableFull, nil, "Failed to add fabric")
         end
 
         # Mark NOC operation completed
@@ -836,17 +847,17 @@ module Matter
           Log.debug { "AddNOC: No on_fabric_added callback registered" }
         end
 
-        encode_noc_response(NodeOperationalCertStatus::Ok, fabric.fabric_index)
+        noc_response(NodeOperationalCertStatus::Ok, fabric.fabric_index)
       end
 
-      private def handle_update_noc(fields : Bytes) : Bytes
+      private def handle_update_noc(fields : TLV::Any?) : TLV::Any
         # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::UpdateNocRequest.from_slice(fields)
+        request = Definitions::OperationalCredentials::UpdateNocRequest.from_tlv(fields || tlv(nil))
 
         # Validate failsafe is armed
         # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
         unless @failsafe_armed
-          return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failsafe not armed")
+          return noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failsafe not armed")
         end
 
         # Get session fabric index from instance variable or request
@@ -855,32 +866,32 @@ module Matter
 
         # Cannot call UpdateNOC after AddNOC in same failsafe
         if @pending_credentials.noc_added_or_updated?
-          return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "AddNOC/UpdateNOC already called in this failsafe")
+          return noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "AddNOC/UpdateNOC already called in this failsafe")
         end
 
         # Must have CSR from this session with is_for_update_noc=true
         # NOTE: @session_id should be set by protocol layer, defaults to 0 for testing
         session_id = @session_id || 0_u64
         unless @pending_credentials.csr_exists?(session_id) && @pending_credentials.is_for_update_noc?
-          return encode_noc_response(NodeOperationalCertStatus::MissingCsr, nil, "CSR for update not found")
+          return noc_response(NodeOperationalCertStatus::MissingCsr, nil, "CSR for update not found")
         end
 
         # Root certificate cannot be set for updates
         if @pending_credentials.root_cert_set?
-          return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Cannot set root certificate for NOC update")
+          return noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Cannot set root certificate for NOC update")
         end
 
         # Get current fabric
         fabric = @fabric_table.get_fabric(session_fabric_index)
         unless fabric
-          return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Session fabric not found")
+          return noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Session fabric not found")
         end
 
         # Parse new NOC to verify fabric_id matches and extract node_id
         begin
           new_fabric_id = extract_fabric_id_from_noc(request.noc_value)
           if new_fabric_id != fabric.fabric_id
-            return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Fabric ID mismatch")
+            return noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Fabric ID mismatch")
           end
 
           # Extract new node_id from the updated NOC
@@ -890,7 +901,7 @@ module Matter
             "Failed to parse NOC (#{request.noc_value.size} bytes): " \
             "#{request.noc_value[0, [200, request.noc_value.size].min].hexstring}"
           end
-          return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failed to parse NOC: #{ex.message}")
+          return noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failed to parse NOC: #{ex.message}")
         end
 
         # Update fabric with new NOC, node_id, and operational key
@@ -904,12 +915,12 @@ module Matter
         # Mark NOC operation completed
         @pending_credentials.noc_added_or_updated = true
 
-        encode_noc_response(NodeOperationalCertStatus::Ok, fabric.fabric_index)
+        noc_response(NodeOperationalCertStatus::Ok, fabric.fabric_index)
       end
 
-      private def handle_update_fabric_label(fields : Bytes) : Bytes
+      private def handle_update_fabric_label(fields : TLV::Any?) : TLV::Any
         # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::UpdateFabricLabelRequest.from_slice(fields)
+        request = Definitions::OperationalCredentials::UpdateFabricLabelRequest.from_tlv(fields || tlv(nil))
 
         # Get session fabric index from instance variable or request
         # NOTE: @session_fabric_index should be set by protocol layer
@@ -917,19 +928,19 @@ module Matter
         fabric_idx = @session_fabric_index || request.fabric_index
 
         unless fabric_idx
-          return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Invalid fabric index")
+          return noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Invalid fabric index")
         end
 
         # Get fabric
         fabric = @fabric_table.get_fabric(fabric_idx)
         unless fabric
-          return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Fabric not found")
+          return noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Fabric not found")
         end
 
         # Check for label conflict
         @fabric_table.all_fabrics.each do |existing_fabric|
           if existing_fabric.fabric_index != fabric_idx && existing_fabric.label == request.label
-            return encode_noc_response(NodeOperationalCertStatus::LabelConflict, nil, "Label already in use")
+            return noc_response(NodeOperationalCertStatus::LabelConflict, nil, "Label already in use")
           end
         end
 
@@ -938,43 +949,18 @@ module Matter
         @fabric_table.update_fabric(fabric)
         increment_version
 
-        encode_noc_response(NodeOperationalCertStatus::Ok, fabric.fabric_index)
+        noc_response(NodeOperationalCertStatus::Ok, fabric.fabric_index)
       end
 
-      private def handle_remove_fabric(fields : Bytes) : Bytes
-        Log.debug { "RemoveFabric: received #{fields.size} bytes" }
-        Log.trace { "RemoveFabric: fields hex: #{fields.hexstring}" }
-
-        # Parse TLV manually to extract fabric_index
-        # Expected format: 15 24 00 XX 18 (structure with tag 0 = fabric_index)
-        fabric_idx : UInt8? = nil
-        begin
-          parsed = TLV::Any.from_slice(fields)
-          Log.trace { "RemoveFabric: TLV parsed: #{parsed.inspect}" }
-
-          # Try to get fabric_index from tag 0
-          if val = parsed[0_u8]?
-            fabric_idx = case v = val.value
-                         when Int
-                           v.to_u8
-                         end
-          end
-        rescue ex
-          Log.error(exception: ex) { "RemoveFabric: TLV parsing error (fields_hex=#{fields.hexstring})" }
-        end
-
-        Log.debug { "RemoveFabric: parsed fabric_index=#{fabric_idx.inspect}" }
-
-        unless fabric_idx
-          Log.error { "RemoveFabric: fabric_index is nil after parsing" }
-          # Return error with fabric_index 0 since we couldn't parse
-          return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, 0_u8, "Invalid fabric index")
-        end
+      private def handle_remove_fabric(fields : TLV::Any?) : TLV::Any
+        request = Definitions::OperationalCredentials::RemoveFabricRequest.from_tlv(fields || tlv(nil))
+        fabric_idx = request.fabric_index
+        Log.debug { "RemoveFabric: fabric_index=#{fabric_idx}" }
 
         # fabric_index 0 means NO_FABRIC per Matter spec - this is invalid for RemoveFabric
-        if fabric_idx == 0
+        if fabric_idx == DataType::FabricIndex::NO_FABRIC
           Log.warn { "RemoveFabric: fabric_index 0 (NO_FABRIC) is invalid" }
-          return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, fabric_idx, "Invalid fabric index (NO_FABRIC)")
+          return noc_response(NodeOperationalCertStatus::InvalidFabricIndex, fabric_idx, "Invalid fabric index (NO_FABRIC)")
         end
 
         # Check if fabric exists
@@ -986,11 +972,11 @@ module Matter
           # as an idempotent success so the commissioner can move forward.
           if @fabric_table.empty?
             Log.info { "RemoveFabric: fabric #{fabric_idx} not found but device has no fabrics; treating as success" }
-            return encode_noc_response(NodeOperationalCertStatus::Ok, fabric_idx)
+            return noc_response(NodeOperationalCertStatus::Ok, fabric_idx)
           end
 
           Log.warn { "RemoveFabric: fabric #{fabric_idx} not found" }
-          return encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, fabric_idx, "Fabric not found")
+          return noc_response(NodeOperationalCertStatus::InvalidFabricIndex, fabric_idx, "Fabric not found")
         end
 
         # Remove fabric
@@ -1021,45 +1007,42 @@ module Matter
 
           increment_version
 
-          encode_noc_response(NodeOperationalCertStatus::Ok, fabric_idx)
+          noc_response(NodeOperationalCertStatus::Ok, fabric_idx)
         else
-          encode_noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Failed to remove fabric")
+          noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Failed to remove fabric")
         end
       end
 
-      private def handle_add_trusted_root_certificate(fields : Bytes) : Bytes
+      private def handle_add_trusted_root_certificate(fields : TLV::Any?) : Nil
         # Parse TLV-encoded request
-        request = Definitions::OperationalCredentials::AddTrustedRootCertificateRequest.from_slice(fields)
+        request = Definitions::OperationalCredentials::AddTrustedRootCertificateRequest.from_tlv(fields || tlv(nil))
 
         Log.debug { "Received AddTrustedRootCertificate: #{request.root_certificate.size} bytes" }
         Log.trace { "Root cert hex (first 100): #{request.root_certificate[0, [100, request.root_certificate.size].min].hexstring}" }
 
         # Validate failsafe is armed
         # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
-        # NOTE: This command has no response according to Matter spec, but we return empty
-        # bytes to indicate completion (success or failure cannot be distinguished)
         unless @failsafe_armed
           Log.warn { "AddTrustedRootCertificate failed: Failsafe not armed" }
-          return Bytes.new(0)
+          return
         end
 
         # Cannot set root cert twice in same failsafe
         if @pending_credentials.root_cert_set?
           Log.warn { "AddTrustedRootCertificate failed: Root cert already set" }
-          return Bytes.new(0)
+          return
         end
 
         # Cannot set root cert after AddNOC/UpdateNOC
         if @pending_credentials.noc_added_or_updated?
           Log.warn { "AddTrustedRootCertificate failed: NOC already added/updated" }
-          return Bytes.new(0)
+          return
         end
 
         # Validate certificate format
         unless validate_certificate_format(request.root_certificate)
           Log.error { "AddTrustedRootCertificate failed: Invalid certificate format" }
-          Log.error { "  First byte: 0x#{request.root_certificate[0].to_s(16)}" }
-          return Bytes.new(0)
+          return
         end
 
         # Store root certificate
@@ -1068,8 +1051,8 @@ module Matter
         Log.info { "AddTrustedRootCertificate succeeded, root_cert_set=true" }
         increment_version
 
-        # This command has no response (returns empty bytes on success)
-        Bytes.new(0)
+        # This command has a status-only response.
+        nil
       end
 
       # Failsafe management
@@ -1748,32 +1731,6 @@ module Matter
         raise Matter::CertificateError.new("Failed to extract public key from DER certificate: #{ex.message}", cause: ex)
       end
 
-      # Helper method to recursively find a TLV field by tag
-      private def find_tlv_field(data : TLV::Any, tag : UInt8) : TLV::Any?
-        value = data.value
-        case value
-        when TLV::Structure
-          # Check if the tag exists in the hash
-          return value[tag]? if value.has_key?(tag)
-
-          # Recursively search in nested structures
-          value.each_value do |inner_value|
-            if found = find_tlv_field(inner_value, tag)
-              return found
-            end
-          end
-        when Array(TLV::Any)
-          # Recursively search in array elements
-          value.each do |inner_value|
-            if found = find_tlv_field(inner_value, tag)
-              return found
-            end
-          end
-        end
-
-        nil
-      end
-
       # Validate basic certificate format (DER-encoded X.509)
       private def validate_certificate_format(cert : Bytes) : Bool
         # Check certificate is not empty
@@ -1817,59 +1774,15 @@ module Matter
         false
       end
 
-      # TLV Encoding methods
+      # Shared response for commands that change operational credentials.
 
-      private def encode_noc_list : Bytes
-        # Build array of NOC structs for all fabrics
-        noc_array = [] of OpCredDefs::NOC
-        @fabric_table.all_fabrics.each do |fabric|
-          nocs(fabric.fabric_index).each do |noc_struct|
-            noc_array << OpCredDefs::NOC.new(
-              noc: noc_struct.noc,
-              icac: noc_struct.icac,
-              fabric_index: noc_struct.fabric_index
-            )
-          end
-        end
-        # Serialize the array - TLV::Serializable handles arrays properly
-        TLV::Serializable.serialize_value(noc_array, nil).to_slice
-      end
-
-      private def encode_fabric_list : Bytes
-        fabric_list = fabrics
-        Log.debug { "encode_fabric_list: fabric_table has #{@fabric_table.size} fabrics, fabrics() returned #{fabric_list.size}" }
-
-        # Build array of FabricDescriptor structs
-        fabric_array = fabric_list.map do |fabric|
-          Log.debug { "encode_fabric_list: encoding fabric #{fabric.fabric_index}: id=0x#{fabric.fabric_id.to_s(16)}, node=0x#{fabric.node_id.to_s(16)}" }
-          OpCredDefs::FabricDescriptor.new(
-            root_public_key: fabric.root_public_key,
-            vendor_id: fabric.vendor_id,
-            fabric_id: fabric.fabric_id,
-            node_id: fabric.node_id,
-            label: fabric.label,
-            fabric_index: fabric.fabric_index
-          )
-        end
-
-        # Serialize the array
-        result = TLV::Serializable.serialize_value(fabric_array, nil).to_slice
-        Log.debug { "encode_fabric_list: encoded #{result.size} bytes" }
-        result
-      end
-
-      private def encode_certificate_list : Bytes
-        # Encode array of certificate bytes
-        TLV::Serializable.serialize_value(@trusted_root_certs, nil).to_slice
-      end
-
-      private def encode_noc_response(status : NodeOperationalCertStatus, fabric_index : UInt8?, debug_text : String? = nil) : Bytes
+      private def noc_response(status : NodeOperationalCertStatus, fabric_index : UInt8?, debug_text : String? = nil) : TLV::Any
         response = OpCredDefs::TlvNocResponse.new(
           status_code: OpCredDefs::NodeOperationalCertificateStatus.from_value(status.value.to_i64),
           fabric_index: fabric_index,
           debug_text: debug_text
         )
-        response.to_slice
+        tlv(response)
       end
     end
   end

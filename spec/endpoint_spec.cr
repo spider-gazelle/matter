@@ -291,8 +291,8 @@ describe Matter::Endpoint do
       endpoint.add_cluster(on_off)
 
       result = endpoint.read_attribute(0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
-      result.should be_a(Bytes)
-      decode_tlv_value(result.as(Bytes)).should be_true
+      result.should be_a(TLV::Any)
+      result.as(TLV::Any).value.should be_true
     end
 
     it "returns error for missing cluster" do
@@ -315,8 +315,8 @@ describe Matter::Endpoint do
       identify = Matter::Cluster::IdentifyCluster.new(endpoint_id)
       endpoint.add_cluster(identify)
 
-      # Raw uint16 value bytes as delivered by the IM layer (minimal TLV width)
-      value = Bytes[10]
+      # Typed UInt16 value, as delivered by the IM layer
+      value = TLV::Any.new(10_u16)
 
       status = endpoint.write_attribute(0x0003_u32, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME, value)
       status.should be_a(Matter::InteractionModel::Status)
@@ -333,7 +333,7 @@ describe Matter::Endpoint do
       on_off = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: false)
       endpoint.add_cluster(on_off)
 
-      result = endpoint.invoke_command(0x0006_u32, Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
+      result = endpoint.invoke_command(0x0006_u32, Matter::Cluster::OnOffCluster::CMD_ON)
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).success?.should be_true
 
@@ -473,14 +473,14 @@ describe Matter::MatterNode do
       node.add_endpoint(endpoint2)
 
       # Turn on light on endpoint 1
-      node.invoke_command(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
+      node.invoke_command(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::CMD_ON)
 
       # Check endpoint 1 is on, endpoint 2 is still off
       result1 = node.read_attribute(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
-      decode_tlv_value(result1.as(Bytes)).should be_true
+      result1.as(TLV::Any).value.should be_true
 
       result2 = node.read_attribute(2_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
-      decode_tlv_value(result2.as(Bytes)).should be_false
+      result2.as(TLV::Any).value.should be_false
     end
   end
 
@@ -495,8 +495,8 @@ describe Matter::MatterNode do
       node.add_endpoint(endpoint)
 
       result = node.read_attribute(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
-      result.should be_a(Bytes)
-      decode_tlv_value(result.as(Bytes)).should be_true
+      result.should be_a(TLV::Any)
+      result.as(TLV::Any).value.should be_true
     end
 
     it "returns error for missing endpoint" do
@@ -518,8 +518,8 @@ describe Matter::MatterNode do
       endpoint.add_cluster(identify)
       node.add_endpoint(endpoint)
 
-      # Raw uint16 value bytes as delivered by the IM layer (minimal TLV width)
-      value = Bytes[15]
+      # Typed UInt16 value, as delivered by the IM layer
+      value = TLV::Any.new(15_u16)
 
       status = node.write_attribute(1_u16, 0x0003_u32, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME, value)
       status.success?.should be_true
@@ -536,7 +536,7 @@ describe Matter::MatterNode do
       endpoint.add_cluster(on_off)
       node.add_endpoint(endpoint)
 
-      result = node.invoke_command(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
+      result = node.invoke_command(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::CMD_TOGGLE)
       result.as(Matter::InteractionModel::Status).success?.should be_true
 
       on_off.on_off?.should be_true

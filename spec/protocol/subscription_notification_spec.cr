@@ -72,7 +72,7 @@ describe "Subscription Notifications" do
           notified_attribute = attr
         }
 
-        cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
+        invoke(cluster, Matter::Cluster::OnOffCluster::CMD_ON)
 
         notification_received.should be_true
         notified_endpoint.should eq(1_u16)
@@ -92,7 +92,7 @@ describe "Subscription Notifications" do
           notified_attribute = attr
         }
 
-        cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF, Bytes.new(0))
+        invoke(cluster, Matter::Cluster::OnOffCluster::CMD_OFF)
 
         notification_received.should be_true
         notified_attribute.should eq(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
@@ -109,11 +109,11 @@ describe "Subscription Notifications" do
         }
 
         # Toggle off -> on
-        cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
+        invoke(cluster, Matter::Cluster::OnOffCluster::CMD_TOGGLE)
         notification_count.should eq(1)
 
         # Toggle on -> off
-        cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
+        invoke(cluster, Matter::Cluster::OnOffCluster::CMD_TOGGLE)
         notification_count.should eq(2)
       end
 
@@ -128,7 +128,7 @@ describe "Subscription Notifications" do
         }
 
         # Off command when already off - should not notify
-        cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF, Bytes.new(0))
+        invoke(cluster, Matter::Cluster::OnOffCluster::CMD_OFF)
         notification_count.should eq(0)
       end
 
@@ -138,7 +138,7 @@ describe "Subscription Notifications" do
 
         initial_version = cluster.data_version
 
-        cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
+        invoke(cluster, Matter::Cluster::OnOffCluster::CMD_ON)
 
         cluster.data_version.should eq(initial_version + 1)
       end
@@ -160,7 +160,7 @@ describe "Subscription Notifications" do
           state_value = new_state
         end
 
-        cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
+        invoke(cluster, Matter::Cluster::OnOffCluster::CMD_ON)
 
         attribute_callback_called.should be_true
         state_callback_called.should be_true

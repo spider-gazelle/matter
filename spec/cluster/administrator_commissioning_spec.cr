@@ -8,21 +8,21 @@ def create_open_commissioning_window_tlv(
   discriminator : UInt16,
   iterations : UInt32,
   salt : Bytes,
-) : Bytes
+) : TLV::Any
   Matter::Cluster::Definitions::AdministratorCommissioning::OpenCommissioningWindowRequest.new(
     commissioning_timeout: timeout,
     pake_passcode_verifier: verifier,
     discriminator: discriminator,
     iterations: iterations,
     salt: salt
-  ).to_slice
+  ).to_tlv(nil)
 end
 
 # Helper to create TLV-encoded OpenBasicCommissioningWindowRequest
-def create_open_basic_commissioning_window_tlv(timeout : UInt16) : Bytes
+def create_open_basic_commissioning_window_tlv(timeout : UInt16) : TLV::Any
   Matter::Cluster::Definitions::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
     commissioning_timeout: timeout
-  ).to_slice
+  ).to_tlv(nil)
 end
 
 module Matter::Cluster
@@ -46,8 +46,8 @@ module Matter::Cluster
         cluster = AdministratorCommissioningCluster.new(endpoint_id)
 
         value = cluster.read_attribute(AdministratorCommissioningCluster::ATTR_WINDOW_STATUS)
-        value.should be_a(Bytes)
-        decode_tlv_value(value.as(Bytes)).should eq(0_u8) # WindowNotOpen
+        value.should be_a(TLV::Any)
+        value.as(TLV::Any).value.should eq(0_u8) # WindowNotOpen
       end
 
       it "reads AdminFabricIndex attribute when nil" do
@@ -55,8 +55,8 @@ module Matter::Cluster
         cluster = AdministratorCommissioningCluster.new(endpoint_id)
 
         value = cluster.read_attribute(AdministratorCommissioningCluster::ATTR_ADMIN_FABRIC_INDEX)
-        value.should be_a(Bytes)
-        decode_tlv_value(value.as(Bytes)).should be_nil
+        value.should be_a(TLV::Any)
+        value.as(TLV::Any).value.should be_nil
       end
 
       it "reads AdminVendorId attribute when nil" do
@@ -64,17 +64,17 @@ module Matter::Cluster
         cluster = AdministratorCommissioningCluster.new(endpoint_id)
 
         value = cluster.read_attribute(AdministratorCommissioningCluster::ATTR_ADMIN_VENDOR_ID)
-        value.should be_a(Bytes)
-        decode_tlv_value(value.as(Bytes)).should be_nil
+        value.should be_a(TLV::Any)
+        value.as(TLV::Any).value.should be_nil
       end
 
       it "returns status for unsupported attribute write" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = AdministratorCommissioningCluster.new(endpoint_id)
 
-        status = cluster.write_attribute(
+        status = write(cluster,
           AdministratorCommissioningCluster::ATTR_WINDOW_STATUS,
-          Bytes[1]
+          1_u8
         )
 
         status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedWrite)
@@ -132,7 +132,7 @@ module Matter::Cluster
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = AdministratorCommissioningCluster.new(endpoint_id)
 
-        result = cluster.invoke_command(AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW, Bytes.new(0))
+        result = invoke(cluster, AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW, Bytes.new(0))
         result.should be_a(Matter::InteractionModel::Status | CommandResponse)
       end
 
@@ -140,7 +140,7 @@ module Matter::Cluster
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = AdministratorCommissioningCluster.new(endpoint_id)
 
-        result = cluster.invoke_command(AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW, Bytes.new(0))
+        result = invoke(cluster, AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW, Bytes.new(0))
         result.should be_a(Matter::InteractionModel::Status | CommandResponse)
       end
 
@@ -148,7 +148,7 @@ module Matter::Cluster
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = AdministratorCommissioningCluster.new(endpoint_id)
 
-        result = cluster.invoke_command(AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING, Bytes.new(0))
+        result = invoke(cluster, AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING, Bytes.new(0))
         result.should be_a(Matter::InteractionModel::Status | CommandResponse)
       end
     end
@@ -219,7 +219,7 @@ module Matter::Cluster
             salt: Bytes.new(32, 0xCD_u8)
           )
 
-          result = cluster.invoke_command(
+          result = invoke(cluster,
             AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
             tlv_data
           )
@@ -233,20 +233,16 @@ module Matter::Cluster
           cluster = AdministratorCommissioningCluster.new(endpoint_id)
 
           # Invalid TLV data
-          bad_tlv = Bytes[0xFF, 0xFF, 0xFF]
+          bad_tlv = TLV::Any.new(Bytes[0xFF, 0xFF, 0xFF])
 
-          result = cluster.invoke_command(
+          result = invoke(cluster,
             AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
             bad_tlv
           )
 
           result.should be_a(Matter::InteractionModel::Status | CommandResponse)
           # Should return PAKEParameterError status
-          if result.is_a?(CommandResponse)
-            result.data[0]
-          else
-            result.as(Matter::InteractionModel::Status).status.value
-          end.should eq(1_u8) # StatusCode::PAKEParameterError
+          result.as(Matter::InteractionModel::Status).status.value.should eq(1_u8) # StatusCode::PAKEParameterError
         end
 
         it "returns busy status when window already open" do
@@ -263,24 +259,20 @@ module Matter::Cluster
           )
 
           # First open succeeds
-          cluster.invoke_command(
+          invoke(cluster,
             AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
             tlv_data
           )
           cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen)
 
           # Second open should fail with Busy
-          result2 = cluster.invoke_command(
+          result2 = invoke(cluster,
             AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
             tlv_data
           )
 
           result2.should be_a(Matter::InteractionModel::Status | CommandResponse)
-          if result2.is_a?(CommandResponse)
-            result2.data[0]
-          else
-            result2.as(Matter::InteractionModel::Status).status.value
-          end.should eq(156_u8) # InteractionModel::StatusCode::Busy
+          result2.as(Matter::InteractionModel::Status).status.value.should eq(156_u8) # InteractionModel::StatusCode::Busy
         end
       end
 
@@ -292,7 +284,7 @@ module Matter::Cluster
           # Create TLV-encoded OpenBasicCommissioningWindowRequest
           tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
-          result = cluster.invoke_command(
+          result = invoke(cluster,
             AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
             tlv_data
           )
@@ -306,9 +298,9 @@ module Matter::Cluster
           cluster = AdministratorCommissioningCluster.new(endpoint_id)
 
           # Invalid TLV data
-          bad_tlv = Bytes[0xFF, 0xFF, 0xFF]
+          bad_tlv = TLV::Any.new(Bytes[0xFF, 0xFF, 0xFF])
 
-          result = cluster.invoke_command(
+          result = invoke(cluster,
             AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
             bad_tlv
           )
@@ -316,11 +308,7 @@ module Matter::Cluster
           result.should be_a(Matter::InteractionModel::Status | CommandResponse)
           # Should return Busy error status (error handling for parse failure)
           # Implementation returns Failure (1) instead
-          if result.is_a?(CommandResponse)
-            result.data[0]
-          else
-            result.as(Matter::InteractionModel::Status).status.value
-          end.should eq(1_u8) # StatusCode::Failure
+          result.as(Matter::InteractionModel::Status).status.value.should eq(1_u8) # StatusCode::Failure
         end
 
         it "returns busy status when window already open" do
@@ -331,24 +319,20 @@ module Matter::Cluster
           tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
           # First open succeeds
-          cluster.invoke_command(
+          invoke(cluster,
             AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
             tlv_data
           )
           cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
 
           # Second open should fail with Busy
-          result = cluster.invoke_command(
+          result = invoke(cluster,
             AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
             tlv_data
           )
 
           result.should be_a(Matter::InteractionModel::Status | CommandResponse)
-          if result.is_a?(CommandResponse)
-            result.data[0]
-          else
-            result.as(Matter::InteractionModel::Status).status.value
-          end.should eq(156_u8) # InteractionModel::StatusCode::Busy
+          result.as(Matter::InteractionModel::Status).status.value.should eq(156_u8) # InteractionModel::StatusCode::Busy
         end
       end
 
@@ -359,14 +343,14 @@ module Matter::Cluster
 
           # First open a basic window
           tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
-          cluster.invoke_command(
+          invoke(cluster,
             AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
             tlv_data
           )
           cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
 
           # Then revoke it
-          result = cluster.invoke_command(
+          result = invoke(cluster,
             AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING,
             Bytes.new(0)
           )
@@ -380,17 +364,13 @@ module Matter::Cluster
           cluster = AdministratorCommissioningCluster.new(endpoint_id)
 
           # No callback set, window closed by default
-          result = cluster.invoke_command(
+          result = invoke(cluster,
             AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING,
             Bytes.new(0)
           )
 
           result.should be_a(Matter::InteractionModel::Status | CommandResponse)
-          if result.is_a?(CommandResponse)
-            result.data[0]
-          else
-            result.as(Matter::InteractionModel::Status).status.value
-          end.should eq(1_u8) # StatusCode::WindowNotOpen (implementation returns Failure)
+          result.as(Matter::InteractionModel::Status).status.value.should eq(1_u8) # StatusCode::WindowNotOpen (implementation returns Failure)
         end
 
         it "closes window when no callback set and window is open" do
@@ -402,17 +382,13 @@ module Matter::Cluster
           cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
 
           # Revoke with no callback - should close directly
-          result = cluster.invoke_command(
+          result = invoke(cluster,
             AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING,
             Bytes.new(0)
           )
 
           result.should be_a(Matter::InteractionModel::Status | CommandResponse)
-          if result.is_a?(CommandResponse)
-            result.data[0]
-          else
-            result.as(Matter::InteractionModel::Status).status.value
-          end.should eq(0_u8) # Success
+          result.as(Matter::InteractionModel::Status).status.value.should eq(0_u8) # Success
           cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
         end
       end
@@ -589,7 +565,7 @@ module Matter::Cluster
           salt: Bytes.new(32, 0xCD_u8)
         )
 
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
           tlv_data
         )
@@ -616,7 +592,7 @@ module Matter::Cluster
           salt: Bytes.new(32, 0xCD_u8)
         )
 
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
           tlv_data
         )
@@ -639,7 +615,7 @@ module Matter::Cluster
         # Create TLV-encoded OpenBasicCommissioningWindowRequest
         tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
           tlv_data
         )
@@ -660,7 +636,7 @@ module Matter::Cluster
         # Create TLV-encoded OpenBasicCommissioningWindowRequest
         tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
           tlv_data
         )
@@ -682,7 +658,7 @@ module Matter::Cluster
 
         tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
-        cluster.invoke_command(
+        invoke(cluster,
           AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
           tlv_data
         )
@@ -699,7 +675,7 @@ module Matter::Cluster
         cluster.session_fabric_index = 2_u8
         cluster.session_vendor_id = 0x2222_u16
 
-        cluster.invoke_command(
+        invoke(cluster,
           AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
           tlv_data
         )
@@ -1446,7 +1422,7 @@ module Matter::Cluster
         cluster = AdministratorCommissioningCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
         too_short = AdministratorCommissioningCluster::MINIMUM_COMMISSIONING_TIMEOUT - 1
 
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
           create_open_basic_commissioning_window_tlv(too_short)
         )
@@ -1465,7 +1441,7 @@ module Matter::Cluster
           salt: Bytes.new(32, 0xCD_u8)
         )
 
-        result = cluster.invoke_command(AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW, tlv_data)
+        result = invoke(cluster, AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW, tlv_data)
 
         result.should eq(Matter::InteractionModel::Status.cluster_failure(AdministratorCommissioningCluster::StatusCode::PAKEParameterError))
       end
@@ -1473,9 +1449,9 @@ module Matter::Cluster
       it "answers Busy when a window is already open" do
         cluster = AdministratorCommissioningCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
         tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
-        cluster.invoke_command(AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW, tlv_data)
+        invoke(cluster, AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW, tlv_data)
 
-        result = cluster.invoke_command(AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW, tlv_data)
+        result = invoke(cluster, AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW, tlv_data)
 
         result.should eq(Matter::InteractionModel::Status.busy)
       end
@@ -1483,7 +1459,7 @@ module Matter::Cluster
       it "answers Failure with the WindowNotOpen cluster status when revoking a closed window" do
         cluster = AdministratorCommissioningCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
 
-        result = cluster.invoke_command(AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING, Bytes.new(0))
+        result = invoke(cluster, AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING, Bytes.new(0))
 
         result.should eq(Matter::InteractionModel::Status.cluster_failure(AdministratorCommissioningCluster::StatusCode::WindowNotOpen))
       end

@@ -366,51 +366,51 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_DATA_MODEL_REVISION
-          encode_tlv_uint16(@data_model_revision)
+          tlv(@data_model_revision)
         when ATTR_VENDOR_NAME
-          encode_tlv_string(@vendor_name)
+          tlv(@vendor_name)
         when ATTR_VENDOR_ID
-          encode_tlv_uint16(@vendor_id)
+          tlv(@vendor_id)
         when ATTR_PRODUCT_NAME
-          encode_tlv_string(@product_name)
+          tlv(@product_name)
         when ATTR_PRODUCT_ID
-          encode_tlv_uint16(@product_id)
+          tlv(@product_id)
         when ATTR_NODE_LABEL
-          encode_tlv_string(@node_label)
+          tlv(@node_label)
         when ATTR_LOCATION
-          encode_tlv_string(@location)
+          tlv(@location)
         when ATTR_HARDWARE_VERSION
-          encode_tlv_uint16(@hardware_version)
+          tlv(@hardware_version)
         when ATTR_HARDWARE_VERSION_STRING
-          encode_tlv_string(@hardware_version_string)
+          tlv(@hardware_version_string)
         when ATTR_SOFTWARE_VERSION
-          encode_tlv_uint32(@software_version)
+          tlv(@software_version)
         when ATTR_SOFTWARE_VERSION_STRING
-          encode_tlv_string(@software_version_string)
+          tlv(@software_version_string)
         when ATTR_MANUFACTURING_DATE
-          encode_tlv_string(@manufacturing_date)
+          tlv(@manufacturing_date)
         when ATTR_PART_NUMBER
-          encode_tlv_string(@part_number)
+          tlv(@part_number)
         when ATTR_PRODUCT_URL
-          encode_tlv_string(@product_url)
+          tlv(@product_url)
         when ATTR_PRODUCT_LABEL
-          encode_tlv_string(@product_label)
+          tlv(@product_label)
         when ATTR_SERIAL_NUMBER
-          encode_tlv_string(@serial_number)
+          tlv(@serial_number)
         when ATTR_LOCAL_CONFIG_DISABLED
-          encode_tlv_bool(@local_config_disabled)
+          tlv(@local_config_disabled)
         when ATTR_REACHABLE
-          encode_tlv_bool(@reachable)
+          tlv(@reachable)
         when ATTR_UNIQUE_ID
-          encode_tlv_string(@unique_id)
+          tlv(@unique_id)
         when ATTR_CAPABILITY_MINIMA
-          encode_capability_minima(@capability_minima)
+          tlv(@capability_minima)
         when ATTR_PRODUCT_APPEARANCE
           if appearance = @product_appearance
-            encode_product_appearance(appearance)
+            tlv(appearance)
           else
             # Attribute not present
             InteractionModel::Status.unsupported_attribute
@@ -420,10 +420,10 @@ module Matter
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_NODE_LABEL
-          str = decode_string(value)
+          str = decode?(value, String)
           return InteractionModel::Status.invalid_data_type unless str
 
           # Validate max length (32 chars per Matter spec)
@@ -435,7 +435,7 @@ module Matter
           increment_version_and_notify(ATTR_NODE_LABEL)
           InteractionModel::Status.success
         when ATTR_LOCATION
-          str = decode_string(value)
+          str = decode?(value, String)
           return InteractionModel::Status.invalid_data_type unless str
 
           # Validate ISO 3166-1 alpha-2 format (must be exactly 2 characters)
@@ -452,7 +452,7 @@ module Matter
           increment_version_and_notify(ATTR_LOCATION)
           InteractionModel::Status.success
         when ATTR_LOCAL_CONFIG_DISABLED
-          bool = decode_bool(value)
+          bool = decode?(value, Bool)
           return InteractionModel::Status.invalid_data_type if bool.nil?
 
           @local_config_disabled = bool
@@ -531,29 +531,6 @@ module Matter
       end
 
       # TLV encoding helpers
-      private def encode_tlv_string(value : String) : Bytes
-        TLV::Any.new(value, nil).to_slice
-      end
-
-      private def encode_tlv_uint16(value : UInt16) : Bytes
-        TLV::Any.new(value, nil).to_slice
-      end
-
-      private def encode_tlv_uint32(value : UInt32) : Bytes
-        TLV::Any.new(value, nil).to_slice
-      end
-
-      private def encode_tlv_bool(value : Bool) : Bytes
-        TLV::Any.new(value, nil).to_slice
-      end
-
-      private def encode_capability_minima(capability : CapabilityMinimaStruct) : Bytes
-        capability.to_slice
-      end
-
-      private def encode_product_appearance(appearance : ProductAppearanceStruct) : Bytes
-        appearance.to_slice
-      end
     end
   end
 end

@@ -1,4 +1,5 @@
 require "./cluster"
+require "./definitions/window_covering"
 
 module Matter
   module Cluster
@@ -16,7 +17,8 @@ module Matter
     # - AbsolutePosition (ABS): Supports absolute position control
     # - PositionAwareTilt (PA_TL): Supports precise tilt positioning
     class WindowCoveringCluster < Base
-      CLUSTER_ID = 0x0102_u32
+      CLUSTER_ID                 = 0x0102_u32
+      MAX_POSITION_PERCENT100THS = 10_000_u16
 
       # Feature flags
       @[Flags]
@@ -337,7 +339,7 @@ module Matter
           name: "clusterRevision",
           type: :uint16,
           writable: false,
-          default: CLUSTER_REVISION.to_tlv
+          default: tlv(CLUSTER_REVISION)
         )
 
         attrs << AttributeMetadata.new(
@@ -345,7 +347,7 @@ module Matter
           name: "featureMap",
           type: :uint32,
           writable: false,
-          default: @feature_map.value.to_tlv
+          default: tlv(@feature_map.value)
         )
 
         attrs
@@ -391,55 +393,63 @@ module Matter
         cmds
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_TYPE
-          @covering_type.value.to_tlv
+          tlv(@covering_type.value)
         when ATTR_CONFIG_STATUS
-          @config_status.value.to_tlv
+          tlv(@config_status.value)
         when ATTR_OPERATIONAL_STATUS
-          @operational_status.value.to_tlv
+          tlv(@operational_status.value)
         when ATTR_END_PRODUCT_TYPE
-          @end_product_type.value.to_tlv
+          tlv(@end_product_type.value)
         when ATTR_MODE
-          @mode.value.to_tlv
+          tlv(@mode.value)
         when ATTR_CURRENT_POSITION_LIFT_PERCENTAGE
           if val = @current_position_lift_percentage
-            val.to_tlv
+            tlv(val)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_CURRENT_POSITION_LIFT_PERCENT100THS
           if val = @current_position_lift_percent100ths
-            val.to_tlv
+            tlv(val)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_TARGET_POSITION_LIFT_PERCENT100THS
           if val = @target_position_lift_percent100ths
-            val.to_tlv
+            tlv(val)
           else
-            nil.to_tlv
+            tlv(nil)
           end
+        when ATTR_CURRENT_POSITION_TILT_PERCENTAGE
+          tlv(@current_position_tilt_percentage)
+        when ATTR_CURRENT_POSITION_TILT_PERCENT100THS
+          tlv(@current_position_tilt_percent100ths)
+        when ATTR_TARGET_POSITION_TILT_PERCENT100THS
+          tlv(@target_position_tilt_percent100ths)
+        when ATTR_NUMBER_OF_ACTUATIONS_TILT
+          tlv(@number_of_actuations_tilt || 0_u16)
         when ATTR_NUMBER_OF_ACTUATIONS_LIFT
-          (@number_of_actuations_lift || 0_u16).to_tlv
+          tlv((@number_of_actuations_lift || 0_u16))
         when ATTR_SAFETY_STATUS
           if val = @safety_status
-            val.to_tlv
+            tlv(val)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when GLOBAL_FEATURE_MAP
-          @feature_map.value.to_tlv
+          tlv(@feature_map.value)
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_MODE
-          if mode = decode_u8(value)
+          if mode = narrow_u8?(value)
             @mode = Mode.from_value(mode)
             increment_version
             InteractionModel::Status.success
@@ -451,7 +461,7 @@ module Matter
         end
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_UP_OR_OPEN
           handle_up_or_open
@@ -461,6 +471,8 @@ module Matter
           handle_stop_motion
         when CMD_GO_TO_LIFT_PERCENTAGE
           handle_go_to_lift_percentage(fields)
+        when CMD_GO_TO_TILT_PERCENTAGE
+          handle_go_to_tilt_percentage(fields)
         else
           super
         end
@@ -492,21 +504,27 @@ module Matter
         InteractionModel::Status.success
       end
 
-      private def handle_go_to_lift_percentage(fields : Bytes)
-        # Parse percentage from TLV
-        if fields.size >= 2
-          percentage = IO::ByteFormat::LittleEndian.decode(UInt16, fields)
-          if percentage <= 10000 # 0.00% to 100.00%
-            @target_position_lift_percent100ths = percentage
-            @operational_status = OperationalStatus::GlobalLiftMoving
-            increment_version
-            return InteractionModel::Status.success
-          end
-        end
-        InteractionModel::Status.constraint_error
+      private def handle_go_to_lift_percentage(fields : TLV::Any?)
+        request = decode(fields, Definitions::WindowCovering::GoToLiftPercentageRequest)
+        percentage = request.lift_percent100ths_value
+        return InteractionModel::Status.constraint_error if percentage > MAX_POSITION_PERCENT100THS
+
+        @target_position_lift_percent100ths = percentage
+        @operational_status = OperationalStatus::GlobalLiftMoving
+        increment_version
+        InteractionModel::Status.success
       end
 
-      # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
+      private def handle_go_to_tilt_percentage(fields : TLV::Any?)
+        request = decode(fields, Definitions::WindowCovering::GoToTiltPercentageRequest)
+        percentage = request.tilt_percent100ths_value
+        return InteractionModel::Status.constraint_error if percentage > MAX_POSITION_PERCENT100THS
+
+        @target_position_tilt_percent100ths = percentage
+        @operational_status = OperationalStatus::GlobalTiltMoving
+        increment_version
+        InteractionModel::Status.success
+      end
     end
   end
 end

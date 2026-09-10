@@ -56,10 +56,27 @@ module Matter
         getter? privacy_enhancements : Bool
         getter? control_message : Bool
         getter? message_extensions : Bool
-        getter flags : UInt8          # Raw flags byte from wire (byte 0 of packet header)
-        getter security_flags : UInt8 # Raw security flags byte from wire (byte 3 of packet header)
 
-        def initialize(@session_id : UInt16, @session_type : SessionType, @message_id : UInt32, @privacy_enhancements : Bool, @control_message : Bool, @message_extensions : Bool, @flags : UInt8, @security_flags : UInt8, @source_node_id : DataType::NodeId? = nil, @destination_node_id : DataType::NodeId? = nil, @destination_group_id : DataType::GroupId? = nil)
+        def initialize(@session_id : UInt16, @session_type : SessionType, @message_id : UInt32, @privacy_enhancements : Bool = false, @control_message : Bool = false, @message_extensions : Bool = false, @source_node_id : DataType::NodeId? = nil, @destination_node_id : DataType::NodeId? = nil, @destination_group_id : DataType::GroupId? = nil)
+          if @destination_node_id && @destination_group_id
+            raise Matter::CodecError.new("The header cannot contain destination group and node at the same time")
+          end
+        end
+
+        def flags : UInt8
+          value = (HEADER_VERSION << VERSION_SHIFT).to_u8
+          value |= PacketHeaderFlag::HasSourceNodeId.value if @source_node_id
+          value |= PacketHeaderFlag::HasDestNodeId.value if @destination_node_id
+          value |= PacketHeaderFlag::HasDestGroupId.value if @destination_group_id
+          value
+        end
+
+        def security_flags : UInt8
+          value = @session_type.value
+          value |= SecurityFlag::HasPrivacyEnhancements.value if @privacy_enhancements
+          value |= SecurityFlag::IsControlMessage.value if @control_message
+          value |= SecurityFlag::HasMessageExtension.value if @message_extensions
+          value
         end
       end
 
@@ -77,47 +94,25 @@ module Matter
 
       struct Packet
         getter header : PacketHeader
+        getter header_bytes : Bytes?
         getter payload : Slice(UInt8)
 
-        def initialize(@header : PacketHeader, @payload : Slice(UInt8))
+        def initialize(@header : PacketHeader, @payload : Slice(UInt8), @header_bytes : Bytes? = nil)
         end
       end
 
       struct Message
         getter packet_header : PacketHeader
+        getter header_bytes : Bytes?
         getter payload_header : PayloadHeader
         getter payload : Slice(UInt8)
 
-        def initialize(@packet_header : PacketHeader, @payload_header : PayloadHeader, @payload : Slice(UInt8))
+        def initialize(@packet_header : PacketHeader, @payload_header : PayloadHeader, @payload : Slice(UInt8), @header_bytes : Bytes? = nil)
         end
       end
 
       module Base
         extend self
-
-        # Helper method to compute the flags byte from packet header fields
-        # This is used both when encoding and when creating new packet headers
-        #
-        # Presence is determined by nil-ness, NOT by the node ID value.
-        # Callers should pass nil when there's no node ID (e.g., PASE sessions),
-        # not NodeId(0). This ensures consistent AAD computation across the codebase.
-        def compute_flags(
-          source_node_id : DataType::NodeId?,
-          destination_node_id : DataType::NodeId?,
-          destination_group_id : DataType::GroupId?,
-        ) : UInt8
-          flags = (HEADER_VERSION << VERSION_SHIFT).to_u8
-
-          # Presence is based on nil-ness, not the ID value
-          source_present = !source_node_id.nil?
-          dest_present = !destination_node_id.nil?
-
-          flags |= PacketHeaderFlag::HasSourceNodeId.value if source_present
-          flags |= PacketHeaderFlag::HasDestNodeId.value if dest_present
-          flags |= PacketHeaderFlag::HasDestGroupId.value unless destination_group_id.nil?
-          Log.trace { "compute_flags: source=#{source_node_id.try(&.id) || "nil"}, dest=#{destination_node_id.try(&.id) || "nil"} -> flags=#{Hex.u8(flags)}" }
-          flags
-        end
 
         def decode_packet(data : Slice(UInt8)) : Packet
           io = IO::Memory.new
@@ -126,7 +121,8 @@ module Matter
           io.rewind
           header = decode_packet_header(io)
 
-          Packet.new(header, io.getb_to_end)
+          header_bytes = data[0, io.pos.to_i].dup
+          Packet.new(header, io.getb_to_end, header_bytes)
         end
 
         def decode_payload(packet : Packet) : Message
@@ -136,7 +132,7 @@ module Matter
           io.rewind
           header = decode_payload_header(io)
 
-          Message.new(packet.header, header, io.getb_to_end)
+          Message.new(packet.header, header, io.getb_to_end, packet.header_bytes)
         end
 
         def encode_payload(message : Message) : Packet
@@ -144,6 +140,16 @@ module Matter
           encode_payload_header(message.payload_header, io)
 
           Packet.new(header: message.packet_header, payload: Slice.join([io.rewind.to_slice, message.payload]))
+        end
+
+        def encode_message(packet_header : PacketHeader, payload_header : PayloadHeader, payload : Bytes) : Bytes
+          encode_packet(encode_payload(Message.new(packet_header, payload_header, payload)))
+        end
+
+        def encode_packet_header(packet_header : PacketHeader) : Bytes
+          io = IO::Memory.new
+          encode_packet_header(packet_header, io)
+          io.to_slice
         end
 
         def encode_packet(packet : Packet) : Slice(UInt8)
@@ -154,14 +160,7 @@ module Matter
         end
 
         def encode_packet_header(packet_header : PacketHeader, io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian)
-          # Use the stored flags byte from the packet header
-          # This ensures the encoded flags match exactly what was used for AAD during encryption
           flags = packet_header.flags
-
-          # CRITICAL: Use the full security_flags byte, not just session_type
-          # The security_flags byte contains: [privacy(1) | control(1) | ext(1) | reserved(3) | session_type(2)]
-          # When encrypting, we use this exact byte in the AAD, so we must encode the same byte
-          # Otherwise chip-tool will fail to decrypt because AAD won't match
           security_flags = packet_header.security_flags
 
           byte_format.encode(UInt8.new(flags), io)
@@ -170,7 +169,6 @@ module Matter
           byte_format.encode(UInt32.new(packet_header.message_id), io)
 
           # Presence is based on nil-ness, not the ID value
-          # This must match the logic in compute_flags for consistent AAD
           source_node_id = packet_header.source_node_id
           dest_node_id = packet_header.destination_node_id
 
@@ -233,8 +231,6 @@ module Matter
             privacy_enhancements: has_privacy_enhancements,
             control_message: is_control_message,
             message_extensions: has_message_extensions,
-            flags: flags,
-            security_flags: security_flags,
             source_node_id: source_node_id,
             destination_node_id: destination_node_id,
             destination_group_id: destination_group_id)

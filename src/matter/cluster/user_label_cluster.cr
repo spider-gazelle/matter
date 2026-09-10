@@ -15,7 +15,7 @@ module Matter
 
       def initialize(endpoint_id : DataType::EndpointNumber, @label_list : Array(LabelStruct) = [] of LabelStruct)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
-        @attribute_values[ATTR_LABEL_LIST] = @label_list.to_tlv
+        @attribute_values[ATTR_LABEL_LIST] = tlv(@label_list)
       end
 
       def name : String
@@ -33,26 +33,26 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_LABEL_LIST
-          @label_list.to_tlv
+          tlv(@label_list)
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_LABEL_LIST
           begin
-            list = TLV::Any.from_slice(value).as_list
+            list = value.as_list
             @label_list = list.map { |entry| LabelStruct.from_tlv(entry) }
-            @attribute_values[ATTR_LABEL_LIST] = @label_list.to_tlv
+            @attribute_values[ATTR_LABEL_LIST] = tlv(@label_list)
             increment_version_and_notify(ATTR_LABEL_LIST)
             InteractionModel::Status.success
           rescue ex
-            Log.warn(exception: ex) { "UserLabel: rejected LabelList write (bytes=#{value.hexstring})" }
+            Log.warn(exception: ex) { "UserLabel: rejected LabelList write (bytes=#{value.inspect})" }
             InteractionModel::Status.invalid_data_type
           end
         else
@@ -77,7 +77,7 @@ module Matter
       def restore_state(document : Storage::Document) : Nil
         state = PersistedState.from_document(document)
         @label_list = state.labels
-        @attribute_values[ATTR_LABEL_LIST] = @label_list.to_tlv
+        @attribute_values[ATTR_LABEL_LIST] = tlv(@label_list)
         @data_version = state.data_version
       rescue ex
         Log.warn(exception: ex) { "UserLabel restore_state failed; starting fresh" }

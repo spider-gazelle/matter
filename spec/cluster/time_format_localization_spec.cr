@@ -96,8 +96,8 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
         hour_format: Matter::Cluster::TimeFormatLocalizationCluster::HourFormat::Hr12
       )
       bytes = cluster.read_attribute(Matter::Cluster::TimeFormatLocalizationCluster::ATTR_HOUR_FORMAT)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(0_u8) # Hr12 = 0
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should eq(0_u8) # Hr12 = 0
     end
 
     it "reads ActiveCalendarType when set" do
@@ -110,8 +110,8 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
         ]
       )
       bytes = cluster.read_attribute(Matter::Cluster::TimeFormatLocalizationCluster::ATTR_ACTIVE_CALENDAR_TYPE)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(2_u8) # Coptic = 2
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should eq(2_u8) # Coptic = 2
     end
 
     it "returns unsupported for ActiveCalendarType when not set" do
@@ -134,8 +134,8 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
         ]
       )
       bytes = cluster.read_attribute(Matter::Cluster::TimeFormatLocalizationCluster::ATTR_SUPPORTED_CALENDAR_TYPES)
-      bytes.should be_a(Bytes)
-      values = parse_tlv_array(bytes.as(Bytes)).map(&.as_u8)
+      bytes.should be_a(TLV::Any)
+      values = bytes.as(TLV::Any).as_list.map(&.as_u8)
       values.should eq([0_u8, 1_u8, 2_u8]) # Buddhist, Chinese, Coptic
     end
 
@@ -169,9 +169,9 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
           hour_format: Matter::Cluster::TimeFormatLocalizationCluster::HourFormat::Hr24
         )
 
-        status = cluster.write_attribute(
+        status = write(cluster,
           Matter::Cluster::TimeFormatLocalizationCluster::ATTR_HOUR_FORMAT,
-          Bytes[0] # Hr12
+          0_u8 # Hr12
         )
         status.should be_a(Matter::InteractionModel::Status)
         status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::Success)
@@ -181,9 +181,9 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
       it "writes UseActiveLocale hour format" do
         cluster = Matter::Cluster::TimeFormatLocalizationCluster.new(endpoint_id)
 
-        status = cluster.write_attribute(
+        status = write(cluster,
           Matter::Cluster::TimeFormatLocalizationCluster::ATTR_HOUR_FORMAT,
-          Bytes[255] # UseActiveLocale
+          255_u8 # UseActiveLocale
         )
         status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::Success)
         cluster.hour_format.should eq(Matter::Cluster::TimeFormatLocalizationCluster::HourFormat::UseActiveLocale)
@@ -192,9 +192,9 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
       it "rejects invalid hour format value" do
         cluster = Matter::Cluster::TimeFormatLocalizationCluster.new(endpoint_id)
 
-        status = cluster.write_attribute(
+        status = write(cluster,
           Matter::Cluster::TimeFormatLocalizationCluster::ATTR_HOUR_FORMAT,
-          Bytes[2] # Invalid value
+          2_u8 # Invalid value
         )
         status.should be_a(Matter::InteractionModel::Status)
         status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
@@ -213,9 +213,9 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
           new_format = new
         end
 
-        cluster.write_attribute(
+        write(cluster,
           Matter::Cluster::TimeFormatLocalizationCluster::ATTR_HOUR_FORMAT,
-          Bytes[0] # Hr12
+          0_u8 # Hr12
         )
         old_format.should eq(Matter::Cluster::TimeFormatLocalizationCluster::HourFormat::Hr24)
         new_format.should eq(Matter::Cluster::TimeFormatLocalizationCluster::HourFormat::Hr12)
@@ -236,9 +236,9 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
           ]
         )
 
-        status = cluster.write_attribute(
+        status = write(cluster,
           Matter::Cluster::TimeFormatLocalizationCluster::ATTR_ACTIVE_CALENDAR_TYPE,
-          Bytes[1] # Chinese
+          1_u8 # Chinese
         )
         status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::Success)
         cluster.active_calendar_type.should eq(Matter::Cluster::TimeFormatLocalizationCluster::CalendarType::Chinese)
@@ -258,9 +258,9 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
         )
 
         # Try to set Gregorian (4) which is not in supported list
-        status = cluster.write_attribute(
+        status = write(cluster,
           Matter::Cluster::TimeFormatLocalizationCluster::ATTR_ACTIVE_CALENDAR_TYPE,
-          Bytes[4] # Gregorian - not supported
+          4_u8 # Gregorian - not supported
         )
         status.should be_a(Matter::InteractionModel::Status)
         status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
@@ -271,9 +271,9 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
       it "rejects calendar type when feature not enabled" do
         cluster = Matter::Cluster::TimeFormatLocalizationCluster.new(endpoint_id)
 
-        status = cluster.write_attribute(
+        status = write(cluster,
           Matter::Cluster::TimeFormatLocalizationCluster::ATTR_ACTIVE_CALENDAR_TYPE,
-          Bytes[4] # Gregorian
+          4_u8 # Gregorian
         )
         status.should be_a(Matter::InteractionModel::Status)
         status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
@@ -297,9 +297,9 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
           new_calendar = new
         end
 
-        cluster.write_attribute(
+        write(cluster,
           Matter::Cluster::TimeFormatLocalizationCluster::ATTR_ACTIVE_CALENDAR_TYPE,
-          Bytes[1] # Chinese
+          1_u8 # Chinese
         )
         old_calendar.should eq(Matter::Cluster::TimeFormatLocalizationCluster::CalendarType::Buddhist)
         new_calendar.should eq(Matter::Cluster::TimeFormatLocalizationCluster::CalendarType::Chinese)
@@ -315,7 +315,7 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
           Matter::Cluster::TimeFormatLocalizationCluster::CalendarType::Gregorian,
         ]
       )
-      status = cluster.write_attribute(
+      status = write(cluster,
         Matter::Cluster::TimeFormatLocalizationCluster::ATTR_SUPPORTED_CALENDAR_TYPES,
         Bytes[1, 0]
       )
@@ -325,7 +325,7 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
 
     it "returns error for unsupported attributes" do
       cluster = Matter::Cluster::TimeFormatLocalizationCluster.new(endpoint_id)
-      status = cluster.write_attribute(0x9999_u32, Bytes[1])
+      status = write(cluster, 0x9999_u32, 1_u8)
       status.should be_a(Matter::InteractionModel::Status)
       status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
@@ -382,15 +382,15 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
       device.supported_calendar_types.as(Array).size.should eq(8)
 
       # Switch between calendars
-      device.write_attribute(
+      write(device,
         Matter::Cluster::TimeFormatLocalizationCluster::ATTR_ACTIVE_CALENDAR_TYPE,
-        Bytes[7] # Islamic
+        7_u8 # Islamic
       )
       device.active_calendar_type.should eq(Matter::Cluster::TimeFormatLocalizationCluster::CalendarType::Islamic)
 
-      device.write_attribute(
+      write(device,
         Matter::Cluster::TimeFormatLocalizationCluster::ATTR_ACTIVE_CALENDAR_TYPE,
-        Bytes[5] # Hebrew
+        5_u8 # Hebrew
       )
       device.active_calendar_type.should eq(Matter::Cluster::TimeFormatLocalizationCluster::CalendarType::Hebrew)
     end
@@ -407,15 +407,15 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
       end
 
       # User switches to 24-hour format
-      device.write_attribute(
+      write(device,
         Matter::Cluster::TimeFormatLocalizationCluster::ATTR_HOUR_FORMAT,
-        Bytes[1] # Hr24
+        1_u8 # Hr24
       )
 
       # User switches back to 12-hour format
-      device.write_attribute(
+      write(device,
         Matter::Cluster::TimeFormatLocalizationCluster::ATTR_HOUR_FORMAT,
-        Bytes[0] # Hr12
+        0_u8 # Hr12
       )
 
       changes.should eq([
@@ -434,9 +434,9 @@ describe Matter::Cluster::TimeFormatLocalizationCluster do
       device.attributes.size.should eq(1)
 
       # Can change hour format
-      device.write_attribute(
+      write(device,
         Matter::Cluster::TimeFormatLocalizationCluster::ATTR_HOUR_FORMAT,
-        Bytes[0] # Hr12
+        0_u8 # Hr12
       )
       device.hour_format.should eq(Matter::Cluster::TimeFormatLocalizationCluster::HourFormat::Hr12)
     end

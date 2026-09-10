@@ -72,13 +72,15 @@ collections `fabrics`, `sessions`, `subscriptions`, `device`, `clusters`, `app`,
 - [x] `./test` green at the end (2268 unit + 63 e2e incl. two device restarts)
 
 ## Phase 4: Wire codec and cluster boundary
-- [ ] `SecureMessageCodec` encode/decode; single AAD definition; single `PacketHeader` representation
-- [ ] One message counter implementation
-- [ ] Cluster contract on `TLV::Any`; delete raw-bytes helpers and per-cluster encode_* helpers
-- [ ] Replace manual TLV tag indexing with serializable structs
-- [ ] Fix groups/scenes/color_control/window_covering raw binary handling
-- [ ] `DERCodec` keep-or-delete decision
-- [ ] `./test`
+Detailed implementation and verification plan: [phase4-plan.md](phase4-plan.md).
+- [x] Recover and review detailed phase 4 plan; inspect existing matter.js reference
+- [x] `Session::SecureMessage.encode/decode`; single AAD definition; single `PacketHeader` representation
+- [x] One message counter implementation
+- [x] Cluster contract on `TLV::Any`; delete raw-bytes helpers and per-cluster encode_* helpers
+- [x] Replace manual TLV tag indexing with serializable structs
+- [x] Fix groups/scenes/color_control/window_covering raw binary handling
+- [x] `DERCodec` keep-or-delete decision
+- [x] `./test`
 
 ## Phase 5: Cluster DSL
 - [ ] Macros on `Cluster::Base` (cluster/feature/attribute/command/event, persist)
@@ -197,3 +199,41 @@ collections `fabrics`, `sessions`, `subscriptions`, `device`, `clusters`, `app`,
 | unit examples | 2140 | 2268 |
 | e2e examples | 61 | 63 |
 | storage formats | JSON-in-JSON KV | YAML / JSON / memory documents |
+
+### Phase 4 (2026-09-10)
+- `Session::SecureMessage.encode/decode` centralizes encryption, nonce construction and framing;
+  authenticated data is the complete received/encoded header, including optional node IDs.
+  `PacketHeader` computes flag bytes from its fields; plain messages use `encode_message`.
+- `SecureContext` owns the shared counter implementation. Reordered authenticated datagrams are
+  accepted within the receive window; failed authentication cannot advance counters or cancel
+  cleanup. Counter zero, exhaustion, persisted watermarks and cached duplicate ACKs have regressions.
+- Cluster reads, writes, commands, defaults and responses use `TLV::Any`; IM/endpoint/subscription
+  routing no longer strips scalar types or reparses cluster output. Raw width helpers, the null
+  sentinel and per-cluster encoders are removed. Width compatibility and UTF-8 validation remain.
+  CASE WriteRequest regressions cover fabric-scoped ACL/extension replacement, including assigning
+  fabric indices back into value-type records after deserialization.
+- Groups, ColorControl and WindowCovering consume annotated request structs. The real TLV requests
+  fail against phase 3 and pass here. Scene extension fields survive Add/View/Recall and persistence,
+  including numeric OnOff scene booleans. Fan Step and signed Thermostat commands now reach handlers
+  through the same IM dispatch path as other clusters.
+- Pake3, StatusResponse, TimedRequest and RemoveFabric parsing use structs. DER is limited to the
+  certification declaration encoder; dead decoding/X.509 helpers are gone. DAC/PAI identifiers use
+  OpenSSL's extension generation with a version-aware context binding and byte-value assertions.
+- The level-control example adds color-light and window-covering endpoints. New official chip-tool
+  cases cover group membership, hue/temperature and lift commands plus attribute reads/writes.
+  The test harness builds image targets sequentially after a shared-layer Docker export race was
+  reproduced; no cache pruning was needed.
+- Final gates: `crystal tool format --check`, `./bin/ameba` (344 files, zero findings),
+  `crystal spec -v --error-trace` via subagent (2287 examples, zero failures/errors, one pre-existing
+  pending vector assertion), and ordinary `./test` exit 0 (2287 unit + 66 e2e, including two restarts
+  and device validation 20/20). All ten devices + validation helper, in-repo chip-tool and storage CLI
+  compile. `git diff --check` is clean.
+- Verification logs: `tmp/phase4-unit.log`, `tmp/phase4-e2e.log`, `tmp/phase4-ameba.log`;
+  final container logs: `tmp/e2e/logs/compose-20260910-233725.log`.
+
+| Metric | after Phase 3 | after Phase 4 |
+|---|---|---|
+| unit examples | 2268 | 2287 |
+| e2e examples | 63 | 66 |
+| cluster wire boundary | encoded/raw Bytes | TLV::Any |
+| ameba findings | 0 | 0 |

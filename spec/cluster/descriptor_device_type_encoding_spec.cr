@@ -15,9 +15,9 @@ describe "DeviceType encoding for HomeKit compatibility" do
 
       # Read the device_type_list attribute (0x0000)
       result = descriptor.read_attribute(0x0000_u32)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
-      bytes = result.as(Bytes)
+      bytes = result.as(TLV::Any).to_slice
 
       # Decode the TLV to verify structure
       # Should be an array containing one struct with device_type=0x0100 and revision=2
@@ -39,9 +39,9 @@ describe "DeviceType encoding for HomeKit compatibility" do
       )
 
       result = descriptor.read_attribute(0x0000_u32)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
-      bytes = result.as(Bytes)
+      bytes = result.as(TLV::Any).to_slice
 
       # Device type is always uint32 per Matter spec
       # Format: 26 (uint32) 00 (context tag 0) 16000000 (value 22 LE as uint32)
@@ -60,10 +60,10 @@ describe "DeviceType encoding for HomeKit compatibility" do
 
       # Read the server_list attribute (0x0001)
       result = descriptor.read_attribute(0x0001_u32)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
       # Cluster ids use the compact TLV width: 04 (anonymous uint8) + value
-      hex = result.as(Bytes).hexstring
+      hex = result.as(TLV::Any).to_slice.hexstring
       hex.should start_with("16") # array
       hex.should contain("0403")  # Identify
       hex.should contain("0404")  # Groups
@@ -84,10 +84,10 @@ describe "DeviceType encoding for HomeKit compatibility" do
 
       # FeatureMap attribute ID is 0xFFFC (65532)
       result = on_off.read_attribute(0xFFFC_u32)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
       # Compact TLV: 04 (anonymous uint8) + LIGHTING bit set
-      result.as(Bytes).hexstring.should eq("0401")
+      result.as(TLV::Any).to_slice.hexstring.should eq("0401")
     end
 
     it "encodes OnOff cluster without LIGHTING feature" do
@@ -99,10 +99,10 @@ describe "DeviceType encoding for HomeKit compatibility" do
       )
 
       result = on_off.read_attribute(0xFFFC_u32)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
       # Compact TLV: 04 (anonymous uint8) + no bits set
-      result.as(Bytes).hexstring.should eq("0400")
+      result.as(TLV::Any).to_slice.hexstring.should eq("0400")
     end
   end
 
@@ -112,8 +112,8 @@ describe "DeviceType encoding for HomeKit compatibility" do
       on_off = Matter::Cluster::OnOffCluster.new(endpoint_id)
 
       result = on_off.read_attribute(Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION)
-      result.should be_a(Bytes)
-      TLV::Any.from_slice(result.as(Bytes)).as_u16.should eq(Matter::Cluster::OnOffCluster::CLUSTER_REVISION)
+      result.should be_a(TLV::Any)
+      result.as(TLV::Any).as_u16.should eq(Matter::Cluster::OnOffCluster::CLUSTER_REVISION)
     end
 
     it "encodes Descriptor cluster revision" do
@@ -121,8 +121,8 @@ describe "DeviceType encoding for HomeKit compatibility" do
       descriptor = Matter::Cluster::DescriptorCluster.new(endpoint_id)
 
       result = descriptor.read_attribute(Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION)
-      result.should be_a(Bytes)
-      TLV::Any.from_slice(result.as(Bytes)).as_u16.should eq(Matter::Cluster::DescriptorCluster::CLUSTER_REVISION)
+      result.should be_a(TLV::Any)
+      result.as(TLV::Any).as_u16.should eq(Matter::Cluster::DescriptorCluster::CLUSTER_REVISION)
     end
   end
 end

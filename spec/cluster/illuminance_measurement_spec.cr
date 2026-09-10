@@ -115,15 +115,15 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
         measured_value: 5000_u16
       )
       bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MEASURED_VALUE)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(5000)
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should eq(5000)
     end
 
     it "reads MeasuredValue as null when not set" do
       cluster = Matter::Cluster::IlluminanceMeasurementCluster.new(endpoint_id)
       bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MEASURED_VALUE)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should be_nil
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should be_nil
     end
 
     it "reads MeasuredValue as 0 (too low to measure)" do
@@ -132,8 +132,8 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
         measured_value: 0_u16
       )
       bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MEASURED_VALUE)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(0)
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should eq(0)
     end
 
     it "reads MinMeasuredValue when set" do
@@ -142,15 +142,15 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
         min_measured_value: 1_u16
       )
       bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MIN_MEASURED_VALUE)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(1)
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should eq(1)
     end
 
     it "reads MinMeasuredValue as null when not set" do
       cluster = Matter::Cluster::IlluminanceMeasurementCluster.new(endpoint_id)
       bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MIN_MEASURED_VALUE)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should be_nil
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should be_nil
     end
 
     it "reads MaxMeasuredValue when set" do
@@ -159,15 +159,15 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
         max_measured_value: 10000_u16
       )
       bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MAX_MEASURED_VALUE)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(10000)
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should eq(10000)
     end
 
     it "reads MaxMeasuredValue as null when not set" do
       cluster = Matter::Cluster::IlluminanceMeasurementCluster.new(endpoint_id)
       bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MAX_MEASURED_VALUE)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should be_nil
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should be_nil
     end
 
     it "reads Tolerance when set" do
@@ -176,8 +176,8 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
         tolerance: 100_u16
       )
       bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_TOLERANCE)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(100)
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should eq(100)
     end
 
     it "returns unsupported for Tolerance when not set" do
@@ -194,8 +194,8 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
         light_sensor_type: Matter::Cluster::IlluminanceMeasurementCluster::LightSensorType::CMOS
       )
       bytes = cluster.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_LIGHT_SENSOR_TYPE)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(1_u8) # CMOS = 1
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should eq(1_u8) # CMOS = 1
     end
 
     it "returns unsupported for LightSensorType when not set" do
@@ -497,8 +497,8 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
 
       # Read attribute returns null
       bytes = sensor.read_attribute(Matter::Cluster::IlluminanceMeasurementCluster::ATTR_MEASURED_VALUE)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should be_nil
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should be_nil
     end
 
     it "works with different sensor types" do

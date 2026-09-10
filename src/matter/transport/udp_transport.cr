@@ -23,11 +23,8 @@ module Matter
 
       getter socket : UDPSocket
       getter port : Int32
-      getter message_counter : MessageCounter # Kept for backward compatibility (uses session_id=0)
+      getter message_counter : MessageCounter
       getter exchange_manager : ExchangeManager
-
-      # Per-session message counters (key = session_id)
-      @session_counters : Hash(UInt16, MessageCounter)
 
       # Per-source-node message counters for unsecured messages (session_id=0)
       # Key is the source_node_id (UInt64), value is the MessageCounter
@@ -53,10 +50,7 @@ module Matter
         # Support ephemeral ports: update @port with actual bound port
         @port = @socket.local_address.port if @port == 0
 
-        # Initialize per-session counters hash
-        @session_counters = Hash(UInt16, MessageCounter).new
-        # For backward compatibility, @message_counter points to session_id=0's counter
-        @message_counter = @session_counters[0_u16] = MessageCounter.new
+        @message_counter = MessageCounter.new
         # Initialize per-source-node counters for unsecured messages
         @unsecured_counters = Hash(UInt64, MessageCounter).new
         @exchange_manager = ExchangeManager.new
@@ -102,8 +96,6 @@ module Matter
             privacy_enhancements: message.packet_header.privacy_enhancements?,
             control_message: message.packet_header.control_message?,
             message_extensions: message.packet_header.message_extensions?,
-            flags: message.packet_header.flags,
-            security_flags: message.packet_header.security_flags,
             source_node_id: message.packet_header.source_node_id,
             destination_node_id: message.packet_header.destination_node_id,
             destination_group_id: message.packet_header.destination_group_id
@@ -122,8 +114,7 @@ module Matter
         end
 
         # Encode and send
-        packet = Codec::MessageCodec::Base.encode_payload(message)
-        data = Codec::MessageCodec::Base.encode_packet(packet)
+        data = Codec::MessageCodec::Base.encode_message(message.packet_header, message.payload_header, message.payload)
 
         Log.trace do
           "Sending UDP packet: bytes=#{data.size} peer=#{peer_address.address}:#{peer_address.port} " \
@@ -158,13 +149,6 @@ module Matter
           peer_node_id: peer_node_id
         )
 
-        # Build security flags byte for outgoing message
-        security_flags = 0_u8
-        security_flags |= Codec::MessageCodec::SessionType::Unicast.value # Bits 1-0
-
-        # Compute the flags byte for the packet header
-        flags = Codec::MessageCodec::Base.compute_flags(source_node_id, peer_node_id, nil)
-
         # Build message
         packet_header = Codec::MessageCodec::PacketHeader.new(
           session_id: session_id,
@@ -173,8 +157,6 @@ module Matter
           privacy_enhancements: false,
           control_message: false,
           message_extensions: false,
-          flags: flags,
-          security_flags: security_flags,
           source_node_id: source_node_id,
           destination_node_id: peer_node_id
         )
@@ -292,19 +274,6 @@ module Matter
             end
             return
           end
-        else
-          # For secured messages, track per session_id as before
-          counter = @session_counters[session_id] ||= MessageCounter.new
-          case counter.check(packet.header.message_id)
-          when MessageCounter::CheckResult::Accept
-            # Continue
-          when MessageCounter::CheckResult::Duplicate
-            # MRP retransmission - do not drop; the protocol layer may resend a cached response.
-            Log.warn { "Duplicate message received (MRP retransmit): session_id=#{session_id}, message_id=#{packet.header.message_id}" }
-          when MessageCounter::CheckResult::Stale
-            Log.debug { "Stale message counter ignored: session_id=#{session_id}, message_id=#{packet.header.message_id}" }
-            return
-          end
         end
 
         # For encrypted messages (session_id != 0), do NOT decode the payload yet
@@ -335,7 +304,8 @@ module Matter
                     Codec::MessageCodec::Message.new(
                       packet_header: packet.header,
                       payload_header: dummy_payload_header,
-                      payload: packet.payload # Keep the encrypted payload as-is
+                      payload: packet.payload,
+                      header_bytes: packet.header_bytes
                     )
                   end
 
@@ -382,16 +352,6 @@ module Matter
         peer_address : Socket::IPAddress,
         exchange : Exchange,
       ) : Nil
-        # Build security flags byte - copy from original message
-        security_flags = original_message.packet_header.security_flags
-
-        # Compute the flags byte for the ACK packet header (swapping source/dest from request)
-        flags = Codec::MessageCodec::Base.compute_flags(
-          original_message.packet_header.destination_node_id, # Will become source in ACK
-          original_message.packet_header.source_node_id,      # Will become destination in ACK
-          nil
-        )
-
         # Build ACK message (empty payload)
         packet_header = Codec::MessageCodec::PacketHeader.new(
           session_id: original_message.packet_header.session_id,
@@ -400,8 +360,6 @@ module Matter
           privacy_enhancements: false,
           control_message: false,
           message_extensions: false,
-          flags: flags,
-          security_flags: security_flags,
           source_node_id: original_message.packet_header.destination_node_id,
           destination_node_id: original_message.packet_header.source_node_id
         )

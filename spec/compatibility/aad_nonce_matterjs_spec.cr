@@ -59,8 +59,6 @@ describe "AAD and Nonce Generation - matter.js Compatibility" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: 0x00_u8,
-        security_flags: 0x00_u8,
         source_node_id: nil, # PASE doesn't include node IDs
         destination_node_id: nil,
         destination_group_id: nil
@@ -86,7 +84,6 @@ describe "AAD and Nonce Generation - matter.js Compatibility" do
       source_node_id = Matter::DataType::NodeId.new(0x0123456789ABCDEF_u64)
 
       # Compute flags for header with source_node_id
-      flags = Matter::Codec::MessageCodec::Base.compute_flags(source_node_id, nil, nil)
 
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 0x5678_u16,
@@ -95,8 +92,6 @@ describe "AAD and Nonce Generation - matter.js Compatibility" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: flags,
-        security_flags: 0x00_u8,
         source_node_id: source_node_id,
         destination_node_id: nil,
         destination_group_id: nil
@@ -110,11 +105,11 @@ describe "AAD and Nonce Generation - matter.js Compatibility" do
       # Expected format (16 bytes with source_node_id):
       # flags (1) | session_id (2 LE) | security_flags (1) | message_id (4 LE) | source_node_id (8 LE)
       # Flags byte should have bit 2 set (HasSourceNodeId)
-      packet_header_bytes[0].should eq(flags)                                                    # Verify flags byte
-      packet_header_bytes[1..2].should eq Bytes[0x78, 0x56]                                      # session_id LE
-      packet_header_bytes[3].should eq 0x00                                                      # security_flags
-      packet_header_bytes[4..7].should eq Bytes[0x02, 0x00, 0x00, 0x00]                          # message_id LE
-      packet_header_bytes[8..15].should eq Bytes[0xEF, 0xCD, 0xAB, 0x89, 0x67, 0x45, 0x23, 0x01] # source_node_id LE
+      packet_header_bytes[0].should eq(Matter::Codec::MessageCodec::PacketHeaderFlag::HasSourceNodeId.value) # Verify flags byte
+      packet_header_bytes[1..2].should eq Bytes[0x78, 0x56]                                                  # session_id LE
+      packet_header_bytes[3].should eq 0x00                                                                  # security_flags
+      packet_header_bytes[4..7].should eq Bytes[0x02, 0x00, 0x00, 0x00]                                      # message_id LE
+      packet_header_bytes[8..15].should eq Bytes[0xEF, 0xCD, 0xAB, 0x89, 0x67, 0x45, 0x23, 0x01]             # source_node_id LE
 
       packet_header_bytes.size.should eq 16
     end
@@ -127,10 +122,8 @@ describe "AAD and Nonce Generation - matter.js Compatibility" do
         session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
         message_id: 0x12345678_u32,
         privacy_enhancements: false,
-        control_message: false,
+        control_message: true,
         message_extensions: false,
-        flags: 0x00_u8,
-        security_flags: 0x05_u8, # Test with non-zero value
         source_node_id: nil,
         destination_node_id: nil,
         destination_group_id: nil
@@ -141,7 +134,7 @@ describe "AAD and Nonce Generation - matter.js Compatibility" do
       packet_header_bytes = io.rewind.to_slice
 
       # Byte 3 should contain security_flags
-      packet_header_bytes[3].should eq 0x05
+      packet_header_bytes[3].should eq Matter::Codec::MessageCodec::SecurityFlag::IsControlMessage.value
     end
   end
 
@@ -167,8 +160,6 @@ describe "AAD and Nonce Generation - matter.js Compatibility" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: 0x00_u8,
-        security_flags: 0x00_u8,
         source_node_id: nil,
         destination_node_id: nil,
         destination_group_id: nil
@@ -211,8 +202,6 @@ describe "AAD and Nonce Generation - matter.js Compatibility" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: 0x00_u8,
-        security_flags: 0x00_u8,
         source_node_id: nil,
         destination_node_id: nil
       )
@@ -232,8 +221,6 @@ describe "AAD and Nonce Generation - matter.js Compatibility" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: 0x00_u8,
-        security_flags: 0x01_u8,
         source_node_id: nil,
         destination_node_id: nil,
         destination_group_id: Matter::DataType::GroupId.new(0x1111_u16)

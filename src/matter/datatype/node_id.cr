@@ -6,6 +6,8 @@ module Matter
     define_id NodeId, UInt64
 
     struct NodeId
+      UNSPECIFIED = 0_u64
+
       # Operational Node ID range (Matter 1.4 § 2.5.5.1)
       OPERATIONAL_MINIMUM = 0x0000_0000_0000_0001_u64
       OPERATIONAL_MAXIMUM = 0xFFFF_FFEF_FFFF_FFFF_u64

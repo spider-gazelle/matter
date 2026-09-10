@@ -228,6 +228,12 @@ module Matter
 
       # CASE session establishment (responder side - device)
       class CaseResponder
+        # Certificate Subject DN and repeated CASE Authenticated Tag fields.
+        enum CertificateTag : UInt8
+          Subject              =  6
+          CaseAuthenticatedTag = 22
+        end
+
         Log = ::Log.for("matter.session.case.responder")
 
         # Matter spec key derivation info strings
@@ -652,7 +658,7 @@ module Matter
           begin
             parsed = TLV::Any.from_slice(cert_tlv)
             if tlv_struct = parsed.value.as?(TLV::Structure)
-              subject_any = tlv_struct.each.find { |(k, _)| k == 6 || k == 6_u8 }.try(&.[1])
+              subject_any = tlv_struct[CertificateTag::Subject.value]?
               if subject_any
                 subject_list = [] of TLV::Any
                 case v = subject_any.value
@@ -666,14 +672,9 @@ module Matter
 
                 unless subject_list.empty?
                   subject_list.each do |elem|
-                    next unless elem.header.ids == 22_u8
+                    next unless elem.header.ids == CertificateTag::CaseAuthenticatedTag.value
 
-                    raw = case v = elem.value
-                          when Int    then v.to_u32
-                          when UInt32 then v
-                          when UInt16 then v.to_u32
-                          when UInt8  then v.to_u32
-                          end
+                    raw = elem.as_u32?
                     next unless raw
 
                     begin
@@ -871,7 +872,8 @@ module Matter
           decryption_key: initiator_keys[:decryption],
           initiator: true,
           local_node_id: DataType::NodeId.new(initiator_node_id),
-          peer_node_id: DataType::NodeId.new(responder_node_id)
+          peer_node_id: DataType::NodeId.new(responder_node_id),
+          case_session: true
         )
 
         responder_context = SecureContext.new(
@@ -882,7 +884,8 @@ module Matter
           decryption_key: responder_keys[:decryption],
           initiator: false,
           local_node_id: DataType::NodeId.new(responder_node_id),
-          peer_node_id: DataType::NodeId.new(initiator_node_id)
+          peer_node_id: DataType::NodeId.new(initiator_node_id),
+          case_session: true
         )
 
         {initiator: initiator_context, responder: responder_context}

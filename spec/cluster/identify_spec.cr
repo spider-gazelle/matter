@@ -1,26 +1,17 @@
 require "../spec_helper"
 require "../../src/matter/cluster/identify_cluster"
 
-# Helper to encode a uint16 as TLV for attribute writes
-# Attribute values reach write_attribute as raw little-endian bytes (the IM layer
-# strips the TLV framing), in whatever width the sender's TLV encoder chose.
-def encode_raw_uint16(value : UInt16) : Bytes
-  bytes = Bytes.new(2)
-  IO::ByteFormat::LittleEndian.encode(value, bytes)
-  bytes
-end
-
 # Helper to encode Identify command (tag 0 = IdentifyTime)
-def encode_identify_command(time : UInt16) : Bytes
-  Matter::Cluster::Definitions::Identify::Request.new(time).to_slice
+def encode_identify_command(time : UInt16) : TLV::Any
+  Matter::Cluster::Definitions::Identify::Request.new(time).to_tlv(nil)
 end
 
 # Helper to encode TriggerEffect command (tag 0 = EffectIdentifier, tag 1 = EffectVariant)
-def encode_trigger_effect_command(effect : UInt8, variant : UInt8) : Bytes
+def encode_trigger_effect_command(effect : UInt8, variant : UInt8) : TLV::Any
   Matter::Cluster::Definitions::Identify::TriggerEffectRequest.new(
     effect_identifier: Matter::Cluster::Definitions::Identify::EffectIdentifier.new(effect),
     effect_variany: Matter::Cluster::Definitions::Identify::EffectVariant.new(variant)
-  ).to_slice
+  ).to_tlv(nil)
 end
 
 describe Matter::Cluster::IdentifyCluster do
@@ -74,8 +65,8 @@ describe Matter::Cluster::IdentifyCluster do
       cluster = Matter::Cluster::IdentifyCluster.new(endpoint_id)
 
       result = cluster.read_attribute(Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME)
-      result.should be_a(Bytes)
-      decode_tlv_value(result.as(Bytes)).should eq(0_u16)
+      result.should be_a(TLV::Any)
+      result.as(TLV::Any).value.should eq(0_u16)
     end
 
     it "reads IdentifyType attribute" do
@@ -86,8 +77,8 @@ describe Matter::Cluster::IdentifyCluster do
       )
 
       result = cluster.read_attribute(Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TYPE)
-      result.should be_a(Bytes)
-      decode_tlv_value(result.as(Bytes)).should eq(Matter::Cluster::IdentifyCluster::IdentifyType::AudibleBeep.value)
+      result.should be_a(TLV::Any)
+      result.as(TLV::Any).value.should eq(Matter::Cluster::IdentifyCluster::IdentifyType::AudibleBeep.value)
     end
 
     it "writes IdentifyTime attribute" do
@@ -95,9 +86,9 @@ describe Matter::Cluster::IdentifyCluster do
       cluster = Matter::Cluster::IdentifyCluster.new(endpoint_id)
 
       # Encode 60 seconds as raw uint16
-      status = cluster.write_attribute(
+      status = write(cluster,
         Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME,
-        encode_raw_uint16(60_u16)
+        60_u16
       )
 
       status.success?.should be_true
@@ -108,9 +99,9 @@ describe Matter::Cluster::IdentifyCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::IdentifyCluster.new(endpoint_id)
 
-      status = cluster.write_attribute(
+      status = write(cluster,
         Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TYPE,
-        encode_raw_uint16(2_u16)
+        2_u16
       )
 
       status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedWrite)
@@ -141,7 +132,7 @@ describe Matter::Cluster::IdentifyCluster do
       cluster.identify_time.should eq(0_u16)
 
       # Encode identify time (60 seconds) as TLV struct
-      result = cluster.invoke_command(
+      result = invoke(cluster,
         Matter::Cluster::IdentifyCluster::CMD_IDENTIFY,
         encode_identify_command(60_u16)
       )
@@ -156,7 +147,7 @@ describe Matter::Cluster::IdentifyCluster do
       cluster = Matter::Cluster::IdentifyCluster.new(endpoint_id)
 
       # Encode effect (Blink) and effect variant as TLV struct
-      result = cluster.invoke_command(
+      result = invoke(cluster,
         Matter::Cluster::IdentifyCluster::CMD_TRIGGER_EFFECT,
         encode_trigger_effect_command(
           Matter::Cluster::IdentifyCluster::EffectIdentifier::Blink.value,
@@ -173,12 +164,12 @@ describe Matter::Cluster::IdentifyCluster do
       cluster = Matter::Cluster::IdentifyCluster.new(endpoint_id)
 
       # Start identifying
-      cluster.invoke_command(Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(10_u16))
+      invoke(cluster, Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(10_u16))
       cluster.identify_time.should eq(10_u16)
       cluster.identifying?.should be_true
 
       # Stop identifying
-      cluster.invoke_command(Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(0_u16))
+      invoke(cluster, Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(0_u16))
       cluster.identify_time.should eq(0_u16)
       cluster.identifying?.should be_false
     end
@@ -219,10 +210,10 @@ describe Matter::Cluster::IdentifyCluster do
 
       cluster.identifying?.should be_false
 
-      cluster.invoke_command(Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(30_u16))
+      invoke(cluster, Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(30_u16))
       cluster.identifying?.should be_true
 
-      cluster.invoke_command(Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(0_u16))
+      invoke(cluster, Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(0_u16))
       cluster.identifying?.should be_false
     end
 
@@ -230,7 +221,7 @@ describe Matter::Cluster::IdentifyCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::IdentifyCluster.new(endpoint_id)
 
-      cluster.invoke_command(Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(120_u16))
+      invoke(cluster, Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(120_u16))
       cluster.identify_time.should eq(120_u16)
     end
   end
@@ -245,7 +236,7 @@ describe Matter::Cluster::IdentifyCluster do
         callback_called = true
       end
 
-      cluster.invoke_command(Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(60_u16))
+      invoke(cluster, Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(60_u16))
       callback_called.should be_true
     end
 
@@ -258,10 +249,10 @@ describe Matter::Cluster::IdentifyCluster do
         callback_called = true
       end
 
-      cluster.invoke_command(Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(60_u16))
+      invoke(cluster, Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(60_u16))
       callback_called.should be_false # Not stopped yet
 
-      cluster.invoke_command(Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(0_u16))
+      invoke(cluster, Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(0_u16))
       callback_called.should be_true
     end
 
@@ -277,7 +268,7 @@ describe Matter::Cluster::IdentifyCluster do
         received_variant = variant
       end
 
-      cluster.invoke_command(
+      invoke(cluster,
         Matter::Cluster::IdentifyCluster::CMD_TRIGGER_EFFECT,
         encode_trigger_effect_command(
           Matter::Cluster::IdentifyCluster::EffectIdentifier::Breathe.value,
@@ -358,7 +349,7 @@ describe Matter::Cluster::IdentifyCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::IdentifyCluster.new(endpoint_id)
 
-      result = cluster.invoke_command(0x99_u32, Bytes.new(0))
+      result = invoke(cluster, 0x99_u32, Bytes.new(0))
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).status.should eq(
         Matter::InteractionModel::StatusCode::UnsupportedCommand
@@ -373,7 +364,7 @@ describe Matter::Cluster::IdentifyCluster do
 
       initial_version = cluster.data_version
 
-      cluster.invoke_command(Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(30_u16))
+      invoke(cluster, Matter::Cluster::IdentifyCluster::CMD_IDENTIFY, encode_identify_command(30_u16))
       cluster.data_version.should eq(initial_version + 1)
     end
 
@@ -383,9 +374,9 @@ describe Matter::Cluster::IdentifyCluster do
 
       initial_version = cluster.data_version
 
-      cluster.write_attribute(
+      write(cluster,
         Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME,
-        encode_raw_uint16(45_u16)
+        45_u16
       )
 
       cluster.data_version.should eq(initial_version + 1)

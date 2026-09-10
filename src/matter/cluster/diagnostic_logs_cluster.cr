@@ -101,28 +101,28 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when GLOBAL_FEATURE_MAP
-          0_u32.to_tlv # No features
+          tlv(0_u32) # No features
         when GLOBAL_ATTRIBUTE_LIST
-          [
+          tlv([
             GLOBAL_GENERATED_COMMAND_LIST,
             GLOBAL_ACCEPTED_COMMAND_LIST,
             GLOBAL_ATTRIBUTE_LIST,
             GLOBAL_FEATURE_MAP,
             GLOBAL_CLUSTER_REVISION,
-          ].to_tlv
+          ])
         when GLOBAL_ACCEPTED_COMMAND_LIST
-          [CMD_RETRIEVE_LOGS_REQUEST].to_tlv
+          tlv([CMD_RETRIEVE_LOGS_REQUEST])
         when GLOBAL_GENERATED_COMMAND_LIST
-          [CMD_RETRIEVE_LOGS_RESPONSE].to_tlv
+          tlv([CMD_RETRIEVE_LOGS_RESPONSE])
         else
           super
         end
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_RETRIEVE_LOGS_REQUEST
           handle_retrieve_logs_request(fields)
@@ -131,29 +131,29 @@ module Matter
         end
       end
 
-      private def handle_retrieve_logs_request(fields : Bytes) : Cluster::CommandResponse
+      private def handle_retrieve_logs_request(fields : TLV::Any?) : Cluster::CommandResponse
         # Parse request using TLV::Serializable
         intent = Intent::EndUserSupport
 
         begin
-          req = RetrieveLogsRequest.from_slice(fields)
+          req = RetrieveLogsRequest.from_tlv(fields || tlv(nil))
           intent = Intent.from_value(req.intent)
         rescue ex
-          Log.warn(exception: ex) { "RetrieveLogsRequest: failed to parse request, using defaults (bytes=#{fields.hexstring})" }
+          Log.warn(exception: ex) { "RetrieveLogsRequest: failed to parse request, using defaults (fields=#{fields.inspect})" }
         end
 
         # Build response
-        encode_retrieve_logs_response(intent)
+        build_retrieve_logs_response(intent)
       end
 
-      private def encode_retrieve_logs_response(intent : Intent) : Cluster::CommandResponse
+      private def build_retrieve_logs_response(intent : Intent) : Cluster::CommandResponse
         # Build log content
         log_content = build_log_content(intent)
 
         status = log_content.empty? ? LogsStatus::NoLogs.value : LogsStatus::Success.value
         response = RetrieveLogsResponse.new(status, log_content.to_slice)
 
-        Cluster::CommandResponse.new(CMD_RETRIEVE_LOGS_RESPONSE, response.to_slice)
+        Cluster::CommandResponse.new(CMD_RETRIEVE_LOGS_RESPONSE, tlv(response))
       end
 
       private def build_log_content(intent : Intent) : String

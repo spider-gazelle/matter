@@ -125,9 +125,9 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
       )
 
       result = cluster.read_attribute(0x0000_u32)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
-      value = decode_tlv_value(result.as(Bytes))
+      value = result.as(TLV::Any).value
       value.should eq(2000)
     end
 
@@ -136,8 +136,8 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
       cluster = Matter::Cluster::TemperatureMeasurementCluster.new(endpoint_id)
 
       result = cluster.read_attribute(0x0000_u32)
-      result.should be_a(Bytes)
-      decode_tlv_value(result.as(Bytes)).should be_nil
+      result.should be_a(TLV::Any)
+      result.as(TLV::Any).value.should be_nil
     end
 
     it "reads MinMeasuredValue attribute" do
@@ -148,9 +148,9 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
       )
 
       result = cluster.read_attribute(0x0001_u32)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
-      value = decode_tlv_value(result.as(Bytes))
+      value = result.as(TLV::Any).value
       value.should eq(-2000)
     end
 
@@ -162,9 +162,9 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
       )
 
       result = cluster.read_attribute(0x0002_u32)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
-      value = decode_tlv_value(result.as(Bytes))
+      value = result.as(TLV::Any).value
       value.should eq(12500)
     end
 
@@ -176,9 +176,9 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
       )
 
       result = cluster.read_attribute(0x0003_u32)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
-      value = decode_tlv_value(result.as(Bytes))
+      value = result.as(TLV::Any).value
       value.should eq(100)
     end
 

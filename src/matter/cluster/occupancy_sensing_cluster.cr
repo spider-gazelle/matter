@@ -244,21 +244,21 @@ module Matter
       end
 
       # Report the sensing modality features to controllers.
-      protected def encode_feature_map_global : Bytes
-        @feature_map.value.to_tlv
+      protected def feature_map_tlv : TLV::Any
+        tlv(@feature_map.value)
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
         case attribute_id
         when ATTR_OCCUPANCY
-          @occupancy.to_tlv
+          tlv(@occupancy)
         when ATTR_OCCUPANCY_SENSOR_TYPE
-          @occupancy_sensor_type.value.to_u8.to_tlv
+          tlv(@occupancy_sensor_type.value.to_u8)
         when ATTR_OCCUPANCY_SENSOR_TYPE_BITMAP
-          @occupancy_sensor_type_bitmap.to_tlv
+          tlv(@occupancy_sensor_type_bitmap)
         when ATTR_HOLD_TIME
           if hold_time = @hold_time
-            hold_time.to_tlv
+            tlv(hold_time)
           else
             InteractionModel::Status.unsupported_attribute
           end
@@ -266,77 +266,77 @@ module Matter
         when ATTR_PIR_OCCUPIED_TO_UNOCCUPIED_DELAY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.passive_infrared?
           if delay = @pir_occupied_to_unoccupied_delay
-            delay.to_tlv
+            tlv(delay)
           else
-            0_u16.to_tlv # Default value
+            tlv(0_u16) # Default value
           end
         when ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_DELAY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.passive_infrared?
           if delay = @pir_unoccupied_to_occupied_delay
-            delay.to_tlv
+            tlv(delay)
           else
-            0_u16.to_tlv # Default value
+            tlv(0_u16) # Default value
           end
         when ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.unsupported_attribute unless @feature_map.passive_infrared?
           if threshold = @pir_unoccupied_to_occupied_threshold
-            threshold.to_tlv
+            tlv(threshold)
           else
-            1_u8.to_tlv # Default value
+            tlv(1_u8) # Default value
           end
           # Ultrasonic feature attributes
         when ATTR_ULTRASONIC_OCCUPIED_TO_UNOCCUPIED_DELAY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.ultrasonic?
           if delay = @ultrasonic_occupied_to_unoccupied_delay
-            delay.to_tlv
+            tlv(delay)
           else
-            0_u16.to_tlv
+            tlv(0_u16)
           end
         when ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_DELAY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.ultrasonic?
           if delay = @ultrasonic_unoccupied_to_occupied_delay
-            delay.to_tlv
+            tlv(delay)
           else
-            0_u16.to_tlv
+            tlv(0_u16)
           end
         when ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.unsupported_attribute unless @feature_map.ultrasonic?
           if threshold = @ultrasonic_unoccupied_to_occupied_threshold
-            threshold.to_tlv
+            tlv(threshold)
           else
-            1_u8.to_tlv
+            tlv(1_u8)
           end
           # PhysicalContact feature attributes
         when ATTR_PHYSICAL_CONTACT_OCCUPIED_TO_UNOCCUPIED_DELAY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.physical_contact?
           if delay = @physical_contact_occupied_to_unoccupied_delay
-            delay.to_tlv
+            tlv(delay)
           else
-            0_u16.to_tlv
+            tlv(0_u16)
           end
         when ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_DELAY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.physical_contact?
           if delay = @physical_contact_unoccupied_to_occupied_delay
-            delay.to_tlv
+            tlv(delay)
           else
-            0_u16.to_tlv
+            tlv(0_u16)
           end
         when ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.unsupported_attribute unless @feature_map.physical_contact?
           if threshold = @physical_contact_unoccupied_to_occupied_threshold
-            threshold.to_tlv
+            tlv(threshold)
           else
-            1_u8.to_tlv
+            tlv(1_u8)
           end
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_HOLD_TIME
-          delay = decode_u16(value)
+          delay = decode?(value, UInt16)
           return InteractionModel::Status.invalid_data_type unless delay
           @hold_time = delay
           increment_version
@@ -344,21 +344,21 @@ module Matter
           # PIR feature attributes
         when ATTR_PIR_OCCUPIED_TO_UNOCCUPIED_DELAY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.passive_infrared?
-          delay = decode_u16(value)
+          delay = decode?(value, UInt16)
           return InteractionModel::Status.invalid_data_type unless delay
           @pir_occupied_to_unoccupied_delay = delay
           increment_version
           InteractionModel::Status.success
         when ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_DELAY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.passive_infrared?
-          delay = decode_u16(value)
+          delay = decode?(value, UInt16)
           return InteractionModel::Status.invalid_data_type unless delay
           @pir_unoccupied_to_occupied_delay = delay
           increment_version
           InteractionModel::Status.success
         when ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.unsupported_attribute unless @feature_map.passive_infrared?
-          threshold = decode_u8(value)
+          threshold = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless threshold
           return InteractionModel::Status.constraint_error if threshold < 1_u8 || threshold > 254_u8
           @pir_unoccupied_to_occupied_threshold = threshold
@@ -367,21 +367,21 @@ module Matter
           # Ultrasonic feature attributes
         when ATTR_ULTRASONIC_OCCUPIED_TO_UNOCCUPIED_DELAY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.ultrasonic?
-          delay = decode_u16(value)
+          delay = decode?(value, UInt16)
           return InteractionModel::Status.invalid_data_type unless delay
           @ultrasonic_occupied_to_unoccupied_delay = delay
           increment_version
           InteractionModel::Status.success
         when ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_DELAY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.ultrasonic?
-          delay = decode_u16(value)
+          delay = decode?(value, UInt16)
           return InteractionModel::Status.invalid_data_type unless delay
           @ultrasonic_unoccupied_to_occupied_delay = delay
           increment_version
           InteractionModel::Status.success
         when ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.unsupported_attribute unless @feature_map.ultrasonic?
-          threshold = decode_u8(value)
+          threshold = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless threshold
           return InteractionModel::Status.constraint_error if threshold < 1_u8 || threshold > 254_u8
           @ultrasonic_unoccupied_to_occupied_threshold = threshold
@@ -390,21 +390,21 @@ module Matter
           # PhysicalContact feature attributes
         when ATTR_PHYSICAL_CONTACT_OCCUPIED_TO_UNOCCUPIED_DELAY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.physical_contact?
-          delay = decode_u16(value)
+          delay = decode?(value, UInt16)
           return InteractionModel::Status.invalid_data_type unless delay
           @physical_contact_occupied_to_unoccupied_delay = delay
           increment_version
           InteractionModel::Status.success
         when ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_DELAY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.physical_contact?
-          delay = decode_u16(value)
+          delay = decode?(value, UInt16)
           return InteractionModel::Status.invalid_data_type unless delay
           @physical_contact_unoccupied_to_occupied_delay = delay
           increment_version
           InteractionModel::Status.success
         when ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_THRESH
           return InteractionModel::Status.unsupported_attribute unless @feature_map.physical_contact?
-          threshold = decode_u8(value)
+          threshold = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless threshold
           return InteractionModel::Status.constraint_error if threshold < 1_u8 || threshold > 254_u8
           @physical_contact_unoccupied_to_occupied_threshold = threshold
@@ -440,8 +440,6 @@ module Matter
       def on_occupancy_changed(&block : UInt8, UInt8 -> Nil)
         @on_occupancy_changed = block
       end
-
-      # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
     end
   end
 end

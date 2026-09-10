@@ -71,10 +71,10 @@ describe "Descriptor Integration" do
 
       # Controller would read this over the network
       device_types_tlv = descriptor.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-      device_types_tlv.should be_a(Bytes)
+      device_types_tlv.should be_a(TLV::Any)
 
       # Decode to see what controller sees
-      parsed = TLV::Any.from_slice(device_types_tlv.as(Bytes))
+      parsed = device_types_tlv.as(TLV::Any)
       types = parsed.value.as(Array(TLV::Any))
       types.size.should eq(1)
 
@@ -85,7 +85,7 @@ describe "Descriptor Integration" do
 
       # Controller discovers available clusters
       servers_tlv = descriptor.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-      parsed = TLV::Any.from_slice(servers_tlv.as(Bytes))
+      parsed = servers_tlv.as(TLV::Any)
       clusters = parsed.value.as(Array(TLV::Any))
       clusters.size.should eq(5) # Descriptor + Identify + Groups + Scenes Management + On/Off
 
@@ -116,7 +116,7 @@ describe "Descriptor Integration" do
 
       # Read server list
       servers_tlv = descriptor.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-      parsed = TLV::Any.from_slice(servers_tlv.as(Bytes))
+      parsed = servers_tlv.as(TLV::Any)
       clusters = parsed.value.as(Array(TLV::Any))
 
       # Convert to cluster IDs
@@ -154,7 +154,7 @@ describe "Descriptor Integration" do
 
       # Controller reads parts list to discover endpoints
       parts_tlv = root_descriptor.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-      parsed = TLV::Any.from_slice(parts_tlv.as(Bytes))
+      parsed = parts_tlv.as(TLV::Any)
       parts = parsed.value.as(Array(TLV::Any))
       parts.size.should eq(2)
 
@@ -207,18 +207,18 @@ describe "Descriptor Integration" do
       # Controller discovery flow:
       # 1. Read endpoint 0 descriptor
       root_parts = root.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-      parsed = TLV::Any.from_slice(root_parts.as(Bytes))
+      parsed = root_parts.as(TLV::Any)
       child_endpoints = parsed.value.as(Array(TLV::Any))
       child_endpoints.size.should eq(2)
 
       # 2. Read each child endpoint descriptor
       light1_types = light1.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-      parsed = TLV::Any.from_slice(light1_types.as(Bytes))
+      parsed = light1_types.as(TLV::Any)
       types1 = parsed.value.as(Array(TLV::Any))
       types1.size.should eq(1)
 
       light2_types = light2.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-      parsed = TLV::Any.from_slice(light2_types.as(Bytes))
+      parsed = light2_types.as(TLV::Any)
       types2 = parsed.value.as(Array(TLV::Any))
       types2.size.should eq(1)
 
@@ -266,7 +266,7 @@ describe "Descriptor Integration" do
 
       # Controller can discover all bridged devices
       parts_tlv = root.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-      parsed = TLV::Any.from_slice(parts_tlv.as(Bytes))
+      parsed = parts_tlv.as(TLV::Any)
       bridged_endpoints = parsed.value.as(Array(TLV::Any))
       bridged_endpoints.size.should eq(5)
 
@@ -303,7 +303,7 @@ describe "Descriptor Integration" do
 
       # Controller reads client list to know what this device can control
       clients_tlv = switch.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_CLIENT_LIST)
-      parsed = TLV::Any.from_slice(clients_tlv.as(Bytes))
+      parsed = clients_tlv.as(TLV::Any)
       clients = parsed.value.as(Array(TLV::Any))
       clients.size.should eq(2)
 
@@ -332,7 +332,7 @@ describe "Descriptor Integration" do
 
       # Step 2: Discover device type
       device_types_tlv = root.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-      parsed = TLV::Any.from_slice(device_types_tlv.as(Bytes))
+      parsed = device_types_tlv.as(TLV::Any)
       types = parsed.value.as(Array(TLV::Any))
 
       root_type_hash = types[0].value.as(TLV::Structure)
@@ -341,7 +341,7 @@ describe "Descriptor Integration" do
 
       # Step 3: Discover mandatory clusters
       servers_tlv = root.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-      parsed = TLV::Any.from_slice(servers_tlv.as(Bytes))
+      parsed = servers_tlv.as(TLV::Any)
       clusters = parsed.value.as(Array(TLV::Any))
 
       cluster_ids = clusters.map { |cluster| extract_int_value(cluster) }
@@ -353,7 +353,7 @@ describe "Descriptor Integration" do
 
       # Step 4: Discover child endpoints
       parts_tlv = root.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-      parsed = TLV::Any.from_slice(parts_tlv.as(Bytes))
+      parsed = parts_tlv.as(TLV::Any)
       parts = parsed.value.as(Array(TLV::Any))
 
       child_endpoints = parts.map { |part| extract_u16_value(part) }
@@ -455,7 +455,7 @@ describe "Descriptor Integration" do
 
       # Read and verify via TLV
       servers_tlv = root.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-      parsed = TLV::Any.from_slice(servers_tlv.as(Bytes))
+      parsed = servers_tlv.as(TLV::Any)
       clusters = parsed.value.as(Array(TLV::Any))
 
       # Should have all 8 mandatory clusters

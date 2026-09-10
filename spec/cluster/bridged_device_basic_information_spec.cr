@@ -42,10 +42,10 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint, reachable: true)
 
       result = cluster.read_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_REACHABLE)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
       # Decode the TLV
-      decoded = TLV::Any.from_slice(result.as(Bytes))
+      decoded = result.as(TLV::Any)
       decoded.value.should be_true
     end
 
@@ -54,9 +54,9 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint, node_label: "My Device")
 
       result = cluster.read_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_NODE_LABEL)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
-      decoded = TLV::Any.from_slice(result.as(Bytes))
+      decoded = result.as(TLV::Any)
       decoded.value.should eq("My Device")
     end
 
@@ -65,9 +65,9 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint, vendor_name: "Acme Corp")
 
       result = cluster.read_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_VENDOR_NAME)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
-      decoded = TLV::Any.from_slice(result.as(Bytes))
+      decoded = result.as(TLV::Any)
       decoded.value.should eq("Acme Corp")
     end
 
@@ -85,9 +85,9 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint, unique_id: "abc-123")
 
       result = cluster.read_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_UNIQUE_ID)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
-      decoded = TLV::Any.from_slice(result.as(Bytes))
+      decoded = result.as(TLV::Any)
       decoded.value.should eq("abc-123")
     end
   end
@@ -97,8 +97,8 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint, node_label: "Original")
 
-      new_label = "New Label".to_slice
-      status = cluster.write_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_NODE_LABEL, new_label)
+      new_label = "New Label"
+      status = write(cluster, Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_NODE_LABEL, new_label)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
       cluster.node_label.should eq("New Label")
@@ -108,8 +108,8 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint)
 
-      long_label = ("A" * 33).to_slice
-      status = cluster.write_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_NODE_LABEL, long_label)
+      long_label = ("A" * 33)
+      status = write(cluster, Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_NODE_LABEL, long_label)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
     end
@@ -119,7 +119,7 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint, reachable: true)
 
       value = Bytes[0]
-      status = cluster.write_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_REACHABLE, value)
+      status = write(cluster, Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_REACHABLE, value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedWrite)
     end
@@ -198,8 +198,8 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       )
 
       # Modify state
-      new_label = "Modified Label".to_slice
-      cluster1.write_attribute(Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_NODE_LABEL, new_label)
+      new_label = "Modified Label"
+      write(cluster1, Matter::Cluster::BridgedDeviceBasicInformationCluster::ATTR_NODE_LABEL, new_label)
       cluster1.reachable = false
 
       # Save state

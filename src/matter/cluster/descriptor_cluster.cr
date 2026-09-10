@@ -96,30 +96,30 @@ module Matter
         [] of CommandMetadata
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_DEVICE_TYPE_LIST
-          encode_device_type_list
+          tlv(@device_type_list)
         when ATTR_SERVER_LIST
-          encode_cluster_list(@server_list)
+          tlv(@server_list)
         when ATTR_CLIENT_LIST
-          encode_cluster_list(@client_list)
+          tlv(@client_list)
         when ATTR_PARTS_LIST
-          encode_parts_list
+          tlv(@parts_list)
         when GLOBAL_FEATURE_MAP
-          0_u32.to_tlv # No features for Descriptor cluster
+          tlv(0_u32) # No features for Descriptor cluster
         when GLOBAL_ATTRIBUTE_LIST
-          encode_attribute_list
+          build_attribute_list
         else
           super
         end
       end
 
       # Encode the list of supported attributes as TLV array
-      private def encode_attribute_list : Bytes
+      private def build_attribute_list : TLV::Any
         # All supported attribute IDs including global attributes
         # Order: cluster-specific first, then global attributes
-        [
+        tlv([
           ATTR_DEVICE_TYPE_LIST,
           ATTR_SERVER_LIST,
           ATTR_CLIENT_LIST,
@@ -130,10 +130,10 @@ module Matter
           GLOBAL_ATTRIBUTE_LIST,
           GLOBAL_FEATURE_MAP,
           GLOBAL_CLUSTER_REVISION,
-        ].to_tlv
+        ])
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         # All attributes are read-only
         super
       end
@@ -211,21 +211,12 @@ module Matter
 
       # Encode device type list as TLV array
       # DeviceTypeStruct uses fixed_size: true for proper Matter spec encoding
-      private def encode_device_type_list : Bytes
-        @device_type_list.to_tlv
-      end
 
       # Encode cluster list (server or client) as TLV array
       # Cluster IDs are encoded as UInt32 per Matter spec
-      private def encode_cluster_list(list : Array(UInt32)) : Bytes
-        list.to_tlv
-      end
 
       # Encode parts list as TLV array
       # Endpoint IDs are encoded as UInt16 per Matter spec
-      private def encode_parts_list : Bytes
-        @parts_list.to_tlv
-      end
     end
   end
 end

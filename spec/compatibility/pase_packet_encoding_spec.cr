@@ -41,7 +41,7 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
       # - session_type = Unicast (0)
       # - security_flags = 0x00 (no flags set)
       # - No source/dest node IDs
-      flags = Matter::Codec::MessageCodec::Base.compute_flags(nil, nil, nil)
+
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 0_u16,
         session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -49,8 +49,6 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: flags,
-        security_flags: 0x00_u8 # CRITICAL: must be 0x00 for unsecured messages
       )
 
       # Encode the complete message
@@ -125,7 +123,7 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
       )
 
       # Create packet header for response
-      flags = Matter::Codec::MessageCodec::Base.compute_flags(nil, nil, nil)
+
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 0_u16,
         session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -133,8 +131,6 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: flags,
-        security_flags: 0x00_u8
       )
 
       message = Matter::Codec::MessageCodec::Message.new(
@@ -187,7 +183,7 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
       )
 
       # Create packet header
-      flags = Matter::Codec::MessageCodec::Base.compute_flags(nil, nil, nil)
+
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 0_u16,
         session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -195,8 +191,6 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: flags,
-        security_flags: 0x00_u8
       )
 
       message = Matter::Codec::MessageCodec::Message.new(
@@ -241,7 +235,7 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
       # - session_id = assigned session ID (non-zero)
       # - session_type = Unicast (0)
       # - security_flags = 0x00 (session_type in bottom 2 bits)
-      flags = Matter::Codec::MessageCodec::Base.compute_flags(nil, nil, nil)
+
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 12345_u16,
         session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -249,8 +243,6 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: flags,
-        security_flags: 0x00_u8 # CRITICAL: This must be encoded into byte 3
       )
 
       message = Matter::Codec::MessageCodec::Message.new(
@@ -288,7 +280,6 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
         {type: Matter::Codec::MessageCodec::SessionType::Unicast, expected: 0x00_u8},
         {type: Matter::Codec::MessageCodec::SessionType::Group, expected: 0x01_u8},
       ].each do |test_case|
-        flags = Matter::Codec::MessageCodec::Base.compute_flags(nil, nil, nil)
         packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
           session_id: 1_u16,
           session_type: test_case[:type],
@@ -296,8 +287,6 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
           privacy_enhancements: false,
           control_message: false,
           message_extensions: false,
-          flags: flags,
-          security_flags: test_case[:expected]
         )
 
         payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(
@@ -336,7 +325,6 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
       counters = [1_u32, 2_u32, 3_u32, 4_u32, 5_u32]
 
       counters.each do |counter|
-        flags = Matter::Codec::MessageCodec::Base.compute_flags(nil, nil, nil)
         packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
           session_id: 0_u16,
           session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -344,8 +332,6 @@ describe "PASE Packet Encoding for chip-tool Compatibility" do
           privacy_enhancements: false,
           control_message: false,
           message_extensions: false,
-          flags: flags,
-          security_flags: 0x00_u8
         )
 
         payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(

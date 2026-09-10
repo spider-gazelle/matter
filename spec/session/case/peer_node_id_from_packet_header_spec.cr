@@ -55,9 +55,6 @@ describe "CASE peer_node_id population" do
     )
     handler.sessions[session_id] = session
 
-    flags = Matter::Codec::MessageCodec::Base.compute_flags(peer_node, local_node, nil)
-    security_flags = 0_u8 # Unicast, no privacy/control/ext.
-
     packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
       session_id: session_id,
       session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -65,8 +62,6 @@ describe "CASE peer_node_id population" do
       privacy_enhancements: false,
       control_message: false,
       message_extensions: false,
-      flags: flags,
-      security_flags: security_flags,
       source_node_id: peer_node,
       destination_node_id: local_node
     )
@@ -87,15 +82,9 @@ describe "CASE peer_node_id population" do
     plaintext_packet = Matter::Codec::MessageCodec::Base.encode_payload(plaintext_message)
     plaintext = plaintext_packet.payload
 
-    encrypted_payload = Matter::Session::SecureMessage.encrypt_with_params(
-      key: session.decryption_key,
-      payload: plaintext,
-      source_node_id: peer_node.id,
-      message_counter: message_counter,
-      session_id: session_id,
-      security_flags: security_flags,
-      flags: flags
-    )
+    aad = Matter::Codec::MessageCodec::Base.encode_packet_header(packet_header)
+    nonce = Matter::Session::SecureMessage.build_nonce(peer_node.id, message_counter, packet_header.security_flags)
+    encrypted_payload = Matter::Crypto::StandardCrypto.new.encrypt(session.decryption_key, plaintext, nonce, aad)
 
     encrypted_msg = Matter::Codec::MessageCodec::Message.new(
       packet_header: packet_header,

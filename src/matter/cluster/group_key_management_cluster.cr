@@ -347,20 +347,20 @@ module Matter
 
       CLUSTER_REVISION = 2_u16
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_GROUP_KEY_MAP
-          group_key_map(fabric_index || 0_u8).to_tlv
+          tlv(group_key_map(fabric_index || 0_u8))
         when ATTR_GROUP_TABLE
-          group_table(fabric_index || 0_u8).to_tlv
+          tlv(group_table(fabric_index || 0_u8))
         when ATTR_MAX_GROUPS_PER_FABRIC
-          @max_groups_per_fabric.to_tlv
+          tlv(@max_groups_per_fabric)
         when ATTR_MAX_GROUP_KEYS_PER_FABRIC
-          @max_group_keys_per_fabric.to_tlv
+          tlv(@max_group_keys_per_fabric)
         when GLOBAL_FEATURE_MAP
-          @features.value.to_tlv
+          tlv(@features.value)
         when GLOBAL_ATTRIBUTE_LIST
-          [
+          tlv([
             ATTR_GROUP_KEY_MAP,
             ATTR_GROUP_TABLE,
             ATTR_MAX_GROUPS_PER_FABRIC,
@@ -368,7 +368,7 @@ module Matter
             GLOBAL_CLUSTER_REVISION,
             GLOBAL_FEATURE_MAP,
             GLOBAL_ATTRIBUTE_LIST,
-          ].to_tlv
+          ])
         else
           super
         end

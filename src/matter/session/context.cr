@@ -1,6 +1,7 @@
 require "../crypto/crypto"
 require "../datatype/*"
 require "../storage/record"
+require "../transport/message_counter"
 
 module Matter
   module Session
@@ -51,9 +52,8 @@ module Matter
       property attestation_challenge : Bytes?
 
       # Message counters for replay protection
-      property local_message_counter : UInt32
-      property peer_message_counter : UInt32?
-      property max_message_counter : UInt32
+      @local_counter : Transport::MessageCounter
+      @peer_counter : Transport::MessageCounter
 
       # Session metadata
       property creation_time : Time
@@ -81,58 +81,47 @@ module Matter
       )
         # Matter spec requires message counter to start at a random value
         # to prevent replay attacks across session resumptions
-        @local_message_counter = Random::Secure.rand(UInt32)
-        @peer_message_counter = nil
-        @max_message_counter = UInt32::MAX
+        @local_counter = Transport::MessageCounter.new(Random::Secure.rand(UInt32), rollover: false)
+        @peer_counter = Transport::MessageCounter.new
         @creation_time = Time.utc
         @last_activity_time = Time.utc
       end
 
-      # Get the next message counter and increment
+      def local_message_counter : UInt32
+        @local_counter.counter
+      end
+
+      def local_message_counter=(value : UInt32)
+        @local_counter.reset(value)
+      end
+
+      def peer_message_counter : UInt32?
+        @peer_counter.max_received
+      end
+
+      def peer_message_counter=(value : UInt32?)
+        @peer_counter.restore_received(value)
+      end
+
+      def max_message_counter : UInt32
+        @local_counter.maximum
+      end
+
+      def max_message_counter=(value : UInt32)
+        @local_counter.maximum = value
+      end
+
       def next_message_counter : UInt32
-        counter = @local_message_counter
-        @local_message_counter += 1
-
-        if @local_message_counter > @max_message_counter
-          raise Matter::SessionError.new("Message counter overflow - session must be renegotiated")
-        end
-
-        counter
+        @local_counter.next
       end
 
-      # Check if a message counter would be accepted (without updating state)
-      # Used for pre-checking duplicates before attempting decryption
-      def would_accept_message_counter?(received_counter : UInt32) : Bool
-        last_counter = @peer_message_counter
-
-        # First message: accept any counter
-        return true if last_counter.nil?
-
-        # Subsequent messages: must be greater than last received
-        received_counter > last_counter
+      def check_peer_message_counter(received_counter : UInt32) : Transport::MessageCounter::CheckResult
+        @peer_counter.peek(received_counter)
       end
 
-      # Validate received message counter (prevent replay attacks)
-      def validate_message_counter(received_counter : UInt32) : Bool
-        # Message counter must be greater than the last received counter
-        # This prevents replay attacks
-        last_counter = @peer_message_counter
-
-        # First message: accept any counter (including 0)
-        if last_counter.nil?
-          @peer_message_counter = received_counter
-          @last_activity_time = Time.utc
-          return true
-        end
-
-        # Subsequent messages: must be greater than last received
-        if received_counter <= last_counter
-          return false
-        end
-
-        @peer_message_counter = received_counter
-        @last_activity_time = Time.utc
-        true
+      def accept_peer_message_counter(received_counter : UInt32) : Nil
+        @peer_counter.mark_received(received_counter)
+        update_activity
       end
 
       # Update activity timestamp
@@ -200,8 +189,8 @@ module Matter
           attestation_challenge: @attestation_challenge,
           initiator: @initiator,
           case_session: @case_session,
-          local_message_counter: @local_message_counter,
-          peer_message_counter: @peer_message_counter,
+          local_message_counter: local_message_counter,
+          peer_message_counter: peer_message_counter,
           peer_node_id: @peer_node_id.try(&.id),
           local_node_id: @local_node_id.try(&.id),
           fabric_index: @fabric_index,

@@ -95,21 +95,21 @@ module Matter
         [] of CommandMetadata # No commands for measurement clusters
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
         case attribute_id
         when ATTR_MEASURED_VALUE
           if value = @measured_value
-            encode_int16(value)
+            tlv(value)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_MIN_MEASURED_VALUE
-          encode_int16(@min_measured_value)
+          tlv(@min_measured_value)
         when ATTR_MAX_MEASURED_VALUE
-          encode_int16(@max_measured_value)
+          tlv(@max_measured_value)
         when ATTR_TOLERANCE
           if tolerance = @tolerance
-            tolerance.to_tlv
+            tlv(tolerance)
           else
             InteractionModel::Status.unsupported_attribute
           end
@@ -167,12 +167,7 @@ module Matter
         from_celsius((value - 32.0) * 5.0 / 9.0)
       end
 
-      # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
-
-      # encode_int16 uses TLV encoding for attribute responses
-      private def encode_int16(value : Int16) : Bytes
-        TLV::Any.new(value, nil).to_slice
-      end
+      # build_int16 uses TLV encoding for attribute responses
     end
   end
 end

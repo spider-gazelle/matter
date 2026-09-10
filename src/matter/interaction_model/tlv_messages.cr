@@ -12,13 +12,25 @@ module Matter
     # spell out `0xFF`; keep them in sync with this constant.
     INTERACTION_MODEL_REVISION_TAG = 0xFF_u8
 
+    enum MessageType : UInt8
+      StatusResponse    = 0x01
+      ReadRequest       = 0x02
+      SubscribeRequest  = 0x03
+      SubscribeResponse = 0x04
+      ReportData        = 0x05
+      WriteRequest      = 0x06
+      WriteResponse     = 0x07
+      InvokeRequest     = 0x08
+      InvokeResponse    = 0x09
+      TimedRequest      = 0x0A
+    end
+
     # Default `MaxIntervalCeiling` for subscribe requests we originate
     DEFAULT_MAX_INTERVAL_CEILING_SECONDS = 3600_u16
 
     # Control byte of a TLV Null element with an anonymous tag. Raw attribute
     # values are delivered to clusters as element bytes rather than TLV, so a
     # null is passed through as this single byte.
-    TLV_NULL_MARKER = 0x14_u8
 
     # Event priority levels (used by clusters for event metadata)
     enum EventPriority : UInt8
@@ -417,6 +429,20 @@ module Matter
         @more_chunked_messages = nil,
         @interaction_model_revision = INTERACTION_MODEL_REVISION,
       )
+      end
+    end
+
+    # Timed interaction deadline, in milliseconds (Matter Core Interaction Model).
+    struct TimedRequestMessage
+      include TLV::Serializable
+
+      @[TLV::Field(tag: 0)]
+      property timeout : UInt16
+
+      @[TLV::Field(tag: 0xFF)]
+      property interaction_model_revision : UInt8 = INTERACTION_MODEL_REVISION
+
+      def initialize(@timeout : UInt16, @interaction_model_revision : UInt8 = INTERACTION_MODEL_REVISION)
       end
     end
 

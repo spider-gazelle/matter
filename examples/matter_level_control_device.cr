@@ -11,6 +11,12 @@ module MatterLevelControl
     DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
     SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
 
+    enum Endpoint : UInt16
+      DimmableLight  = 1
+      ColorLight     = 2
+      WindowCovering = 3
+    end
+
     @on_off : Matter::Cluster::OnOffCluster? = nil
     @level_control : Matter::Cluster::LevelControlCluster? = nil
     @fixed_label : Matter::Cluster::FixedLabelCluster? = nil
@@ -68,8 +74,18 @@ module MatterLevelControl
       @level_control.as(Matter::Cluster::LevelControlCluster)
     end
 
+    protected def endpoint_device_types : Hash(UInt16, UInt32)
+      {
+        Endpoint::DimmableLight.value  => Matter::DeviceType::DIMMABLE_LIGHT,
+        Endpoint::ColorLight.value     => Matter::DeviceType::EXTENDED_COLOR_LIGHT,
+        Endpoint::WindowCovering.value => Matter::DeviceType::WINDOW_COVERING,
+      }
+    end
+
     protected def device_clusters : Array(Matter::Cluster::Base)
-      endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+      endpoint = Matter::DataType::EndpointNumber.new(Endpoint::DimmableLight.value)
+      color_endpoint = Matter::DataType::EndpointNumber.new(Endpoint::ColorLight.value)
+      covering_endpoint = Matter::DataType::EndpointNumber.new(Endpoint::WindowCovering.value)
 
       @on_off = Matter::Cluster::OnOffCluster.new(
         endpoint,
@@ -109,6 +125,14 @@ module MatterLevelControl
         @identify.as(Matter::Cluster::IdentifyCluster),
         @groups.as(Matter::Cluster::GroupsCluster),
         @scenes_management.as(Matter::Cluster::ScenesManagementCluster),
+        Matter::Cluster::OnOffCluster.new(color_endpoint, feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting),
+        Matter::Cluster::LevelControlCluster.new(color_endpoint),
+        Matter::Cluster::ColorControlCluster.new(color_endpoint),
+        Matter::Cluster::GroupsCluster.new(color_endpoint),
+        Matter::Cluster::ScenesManagementCluster.new(color_endpoint),
+        Matter::Cluster::IdentifyCluster.new(color_endpoint, identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLight),
+        Matter::Cluster::WindowCoveringCluster.new(covering_endpoint),
+        Matter::Cluster::IdentifyCluster.new(covering_endpoint),
       ] of Matter::Cluster::Base
     end
 

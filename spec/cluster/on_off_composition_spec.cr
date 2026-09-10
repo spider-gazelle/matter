@@ -20,10 +20,10 @@ describe Matter::Cluster::OnOffCluster do
         # featureMap and clusterRevision are global attributes (handled by base class)
         # They're accessible via read_attribute, not in the attributes array
         result = cluster.read_attribute(Matter::Cluster::Base::GLOBAL_FEATURE_MAP)
-        result.should be_a(Bytes)
+        result.should be_a(TLV::Any)
 
         result = cluster.read_attribute(Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION)
-        result.should be_a(Bytes)
+        result.should be_a(TLV::Any)
       end
 
       it "does not have Lighting attributes" do
@@ -128,7 +128,7 @@ describe Matter::Cluster::OnOffCluster do
           feature_map: Matter::Cluster::OnOffCluster::Feature::OffOnly
         )
 
-        result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
+        result = invoke(cluster, Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
         result.should be_a(Matter::InteractionModel::Status)
         result.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedCommand)
       end
@@ -139,7 +139,7 @@ describe Matter::Cluster::OnOffCluster do
           feature_map: Matter::Cluster::OnOffCluster::Feature::OffOnly
         )
 
-        result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
+        result = invoke(cluster, Matter::Cluster::OnOffCluster::CMD_TOGGLE, Bytes.new(0))
         result.should be_a(Matter::InteractionModel::Status)
         result.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedCommand)
       end
@@ -204,10 +204,10 @@ describe Matter::Cluster::OnOffCluster do
       )
 
       result = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_GLOBAL_SCENE_CONTROL)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
       result = cluster.read_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_TIME)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
     end
   end
 
@@ -218,10 +218,7 @@ describe Matter::Cluster::OnOffCluster do
         feature_map: Matter::Cluster::OnOffCluster::Feature::None
       )
 
-      time_bytes = Bytes.new(2)
-      IO::ByteFormat::LittleEndian.encode(100_u16, time_bytes)
-
-      result = cluster.write_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_TIME, time_bytes)
+      result = write(cluster, Matter::Cluster::OnOffCluster::ATTR_ON_TIME, 100_u16)
       result.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
 
@@ -231,10 +228,7 @@ describe Matter::Cluster::OnOffCluster do
         feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting
       )
 
-      time_bytes = Bytes.new(2)
-      IO::ByteFormat::LittleEndian.encode(100_u16, time_bytes)
-
-      result = cluster.write_attribute(Matter::Cluster::OnOffCluster::ATTR_ON_TIME, time_bytes)
+      result = write(cluster, Matter::Cluster::OnOffCluster::ATTR_ON_TIME, 100_u16)
       result.status.should eq(Matter::InteractionModel::StatusCode::Success)
 
       cluster.on_time.should eq(100_u16)
@@ -248,7 +242,7 @@ describe Matter::Cluster::OnOffCluster do
         feature_map: Matter::Cluster::OnOffCluster::Feature::None
       )
 
-      result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF_WITH_EFFECT, Bytes.new(0))
+      result = invoke(cluster, Matter::Cluster::OnOffCluster::CMD_OFF_WITH_EFFECT, Bytes.new(0))
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedCommand)
     end
@@ -260,10 +254,10 @@ describe Matter::Cluster::OnOffCluster do
       )
 
       # Turn on first
-      cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
+      invoke(cluster, Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
       cluster.on_off?.should be_true
 
-      result = cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF_WITH_EFFECT, Bytes.new(0))
+      result = invoke(cluster, Matter::Cluster::OnOffCluster::CMD_OFF_WITH_EFFECT, Bytes.new(0))
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::Success)
       cluster.on_off?.should be_false
@@ -277,7 +271,7 @@ describe Matter::Cluster::OnOffCluster do
         feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting
       )
 
-      cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
+      invoke(cluster, Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
       cluster.global_scene_control?.should be_true
     end
 
@@ -288,10 +282,10 @@ describe Matter::Cluster::OnOffCluster do
       )
 
       # Turn on first
-      cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
+      invoke(cluster, Matter::Cluster::OnOffCluster::CMD_ON, Bytes.new(0))
 
       # Then off
-      cluster.invoke_command(Matter::Cluster::OnOffCluster::CMD_OFF, Bytes.new(0))
+      invoke(cluster, Matter::Cluster::OnOffCluster::CMD_OFF, Bytes.new(0))
       cluster.global_scene_control?.should be_false
     end
   end

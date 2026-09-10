@@ -1,14 +1,4 @@
-# Shared helpers for `spec/cluster/*_spec.cr`.
-#
-# Cluster specs drive `Matter::Cluster::Base` through three entry points:
-#
-# * `read_attribute`  -> TLV-encoded `Bytes` or an `InteractionModel::Status`
-# * `write_attribute` -> takes the RAW value bytes the IM layer extracts from a
-#                        TLV element (see `IMHandler.tlv_value_bytes`)
-# * `invoke_command`  -> takes TLV request bytes, returns `Status | CommandResponse`
-#
-# Every encoding detail lives in this file so specs read as intent. When the
-# cluster contract moves from `Bytes` to `TLV::Any`, only these helpers change.
+# Shared helpers for typed TLV cluster reads, writes and commands.
 
 # Records one `on_attribute_changed` notification, see `capture_changes`.
 record AttributeChange, endpoint : UInt16, cluster : UInt32, attribute : UInt32
@@ -23,8 +13,8 @@ end
 # Raises when the cluster answers with a status instead of a value.
 def read_tlv(cluster : Matter::Cluster::Base, attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any
   case result = cluster.read_attribute(attribute_id, fabric_index)
-  in Bytes
-    TLV::Any.from_slice(result)
+  in TLV::Any
+    result
   in Matter::InteractionModel::Status
     raise "#{cluster.name} read of attribute 0x#{attribute_id.to_s(16)} returned #{result.status}"
   end
@@ -42,20 +32,20 @@ def read_status(cluster : Matter::Cluster::Base, attribute_id : UInt32, fabric_i
   case result = cluster.read_attribute(attribute_id, fabric_index)
   in Matter::InteractionModel::Status
     result
-  in Bytes
-    raise "#{cluster.name} read of attribute 0x#{attribute_id.to_s(16)} returned a value (#{result.hexstring}), expected a status"
+  in TLV::Any
+    raise "#{cluster.name} read of attribute 0x#{attribute_id.to_s(16)} returned a value (#{result.inspect}), expected a status"
   end
 end
 
 # Writes an attribute through the same path a network write takes: the value is
-# TLV-encoded into a WriteRequest, re-parsed, then dispatched by
-# `IMHandler.write_attributes`, which hands the cluster the raw value bytes.
+# encoded into a WriteRequest, re-parsed, then dispatched with its TLV type
+# preserved by `IMHandler.write_attributes`.
 # Accepts anything with `#to_tlv` (Int, Bool, String, Nil, Bytes, Array,
 # `TLV::Serializable` structs) or a ready-made `TLV::Any`.
 # Note: the IM path only carries the IM status code, so `cluster_status` is
 # not available on the returned status.
 def write(cluster : Matter::Cluster::Base, attribute_id : UInt32, value) : Matter::InteractionModel::Status
-  data = value.is_a?(TLV::Any) ? value : TLV::Any.from_slice(value.to_tlv)
+  data = TLV::Serializable.serialize_value(value, nil)
   endpoint_id = cluster.endpoint_id.number
   cluster_id = cluster.cluster_id.id
 
@@ -81,9 +71,10 @@ end
 # `TLV::Serializable` request struct. Session context is forwarded unchanged.
 def invoke(cluster : Matter::Cluster::Base, command_id : UInt32, request = nil, session_id : UInt64? = nil, is_case_session : Bool = false, fabric_index : UInt8? = nil) : Matter::InteractionModel::Status | Matter::Cluster::CommandResponse
   fields = case request
-           when Nil   then Bytes.new(0)
-           when Bytes then request
-           else            request.to_slice
+           when Nil then nil
+           when Bytes
+             request.empty? ? nil : TLV::Any.from_slice(request)
+           else TLV::Serializable.serialize_value(request, nil)
            end
   cluster.invoke_command(command_id, fields, session_id: session_id, is_case_session: is_case_session, fabric_index: fabric_index)
 end
@@ -94,7 +85,7 @@ end
 def invoke_response(cluster : Matter::Cluster::Base, command_id : UInt32, request, response_class : T.class) forall T
   case result = invoke(cluster, command_id, request)
   in Matter::Cluster::CommandResponse
-    response_class.from_slice(result.data)
+    response_class.from_tlv(result.response.as(TLV::Any))
   in Matter::InteractionModel::Status
     raise "#{cluster.name} command 0x#{command_id.to_s(16)} returned #{result.status}, expected a #{response_class}"
   end

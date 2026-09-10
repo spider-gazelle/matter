@@ -254,63 +254,63 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
         case attribute_id
         when ATTR_LOCAL_TEMPERATURE
           if temp = @local_temperature
-            encode_int16(temp)
+            tlv(temp)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_ABS_MIN_HEAT_SETPOINT_LIMIT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          encode_int16(@abs_min_heat_setpoint_limit)
+          tlv(@abs_min_heat_setpoint_limit)
         when ATTR_ABS_MAX_HEAT_SETPOINT_LIMIT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          encode_int16(@abs_max_heat_setpoint_limit)
+          tlv(@abs_max_heat_setpoint_limit)
         when ATTR_ABS_MIN_COOL_SETPOINT_LIMIT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          encode_int16(@abs_min_cool_setpoint_limit)
+          tlv(@abs_min_cool_setpoint_limit)
         when ATTR_ABS_MAX_COOL_SETPOINT_LIMIT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          encode_int16(@abs_max_cool_setpoint_limit)
+          tlv(@abs_max_cool_setpoint_limit)
         when ATTR_OCCUPIED_COOLING_SETPOINT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          encode_int16(@occupied_cooling_setpoint)
+          tlv(@occupied_cooling_setpoint)
         when ATTR_OCCUPIED_HEATING_SETPOINT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          encode_int16(@occupied_heating_setpoint)
+          tlv(@occupied_heating_setpoint)
         when ATTR_MIN_HEAT_SETPOINT_LIMIT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          encode_int16(@min_heat_setpoint_limit)
+          tlv(@min_heat_setpoint_limit)
         when ATTR_MAX_HEAT_SETPOINT_LIMIT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          encode_int16(@max_heat_setpoint_limit)
+          tlv(@max_heat_setpoint_limit)
         when ATTR_MIN_COOL_SETPOINT_LIMIT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          encode_int16(@min_cool_setpoint_limit)
+          tlv(@min_cool_setpoint_limit)
         when ATTR_MAX_COOL_SETPOINT_LIMIT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          encode_int16(@max_cool_setpoint_limit)
+          tlv(@max_cool_setpoint_limit)
         when ATTR_MIN_SETPOINT_DEAD_BAND
           return InteractionModel::Status.unsupported_attribute unless @feature_map.automode?
-          TLV::Any.new(@min_setpoint_dead_band, nil).to_slice
+          tlv(@min_setpoint_dead_band)
         when ATTR_CONTROL_SEQUENCE_OF_OPERATION
-          @control_sequence_of_operation.value.to_u8.to_tlv
+          tlv(@control_sequence_of_operation.value.to_u8)
         when ATTR_SYSTEM_MODE
-          @system_mode.value.to_u8.to_tlv
+          tlv(@system_mode.value.to_u8)
         when ATTR_THERMOSTAT_RUNNING_MODE
-          @thermostat_running_mode.value.to_u8.to_tlv
+          tlv(@thermostat_running_mode.value.to_u8)
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_OCCUPIED_COOLING_SETPOINT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          new_setpoint = decode_i16(value)
+          new_setpoint = signed?(value, Int16)
           return InteractionModel::Status.invalid_data_type unless new_setpoint
           return InteractionModel::Status.constraint_error unless new_setpoint >= @min_cool_setpoint_limit && new_setpoint <= @max_cool_setpoint_limit
 
@@ -321,7 +321,7 @@ module Matter
           InteractionModel::Status.success
         when ATTR_OCCUPIED_HEATING_SETPOINT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          new_setpoint = decode_i16(value)
+          new_setpoint = signed?(value, Int16)
           return InteractionModel::Status.invalid_data_type unless new_setpoint
           return InteractionModel::Status.constraint_error unless new_setpoint >= @min_heat_setpoint_limit && new_setpoint <= @max_heat_setpoint_limit
 
@@ -331,7 +331,7 @@ module Matter
           increment_version_and_notify(ATTR_OCCUPIED_HEATING_SETPOINT)
           InteractionModel::Status.success
         when ATTR_SYSTEM_MODE
-          mode_value = decode_u8(value)
+          mode_value = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless mode_value
 
           begin
@@ -352,7 +352,7 @@ module Matter
           increment_version_and_notify(ATTR_SYSTEM_MODE)
           InteractionModel::Status.success
         when ATTR_CONTROL_SEQUENCE_OF_OPERATION
-          seq_value = decode_u8(value)
+          seq_value = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless seq_value
 
           begin
@@ -367,7 +367,7 @@ module Matter
           InteractionModel::Status.success
         when ATTR_MIN_HEAT_SETPOINT_LIMIT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          new_limit = decode_i16(value)
+          new_limit = signed?(value, Int16)
           return InteractionModel::Status.invalid_data_type unless new_limit
           return InteractionModel::Status.constraint_error unless new_limit >= @abs_min_heat_setpoint_limit && new_limit <= @max_heat_setpoint_limit
 
@@ -376,7 +376,7 @@ module Matter
           InteractionModel::Status.success
         when ATTR_MAX_HEAT_SETPOINT_LIMIT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          new_limit = decode_i16(value)
+          new_limit = signed?(value, Int16)
           return InteractionModel::Status.invalid_data_type unless new_limit
           return InteractionModel::Status.constraint_error unless new_limit >= @min_heat_setpoint_limit && new_limit <= @abs_max_heat_setpoint_limit
 
@@ -385,7 +385,7 @@ module Matter
           InteractionModel::Status.success
         when ATTR_MIN_COOL_SETPOINT_LIMIT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          new_limit = decode_i16(value)
+          new_limit = signed?(value, Int16)
           return InteractionModel::Status.invalid_data_type unless new_limit
           return InteractionModel::Status.constraint_error unless new_limit >= @abs_min_cool_setpoint_limit && new_limit <= @max_cool_setpoint_limit
 
@@ -394,7 +394,7 @@ module Matter
           InteractionModel::Status.success
         when ATTR_MAX_COOL_SETPOINT_LIMIT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          new_limit = decode_i16(value)
+          new_limit = signed?(value, Int16)
           return InteractionModel::Status.invalid_data_type unless new_limit
           return InteractionModel::Status.constraint_error unless new_limit >= @min_cool_setpoint_limit && new_limit <= @abs_max_cool_setpoint_limit
 
@@ -403,7 +403,7 @@ module Matter
           InteractionModel::Status.success
         when ATTR_MIN_SETPOINT_DEAD_BAND
           return InteractionModel::Status.unsupported_attribute unless @feature_map.automode?
-          dead_band = decode_i8(value)
+          dead_band = narrow_i8?(value)
           return InteractionModel::Status.invalid_data_type unless dead_band
 
           @min_setpoint_dead_band = dead_band
@@ -414,7 +414,7 @@ module Matter
         end
       end
 
-      def invoke_command(command_id : UInt32, command_data : Bytes) : Bytes | InteractionModel::Status
+      protected def handle_command(command_id : UInt32, command_data : TLV::Any?) : Cluster::CommandResponse | InteractionModel::Status
         case command_id
         when CMD_SETPOINT_RAISE_LOWER
           handle_setpoint_raise_lower(command_data)
@@ -478,8 +478,8 @@ module Matter
         @on_setpoint_changed = block
       end
 
-      private def handle_setpoint_raise_lower(command_data : Bytes) : InteractionModel::Status
-        request = Definitions::Thermostat::SetpointRaiseLowerRequest.from_slice(command_data)
+      private def handle_setpoint_raise_lower(command_data : TLV::Any?) : InteractionModel::Status
+        request = Definitions::Thermostat::SetpointRaiseLowerRequest.from_tlv(command_data || tlv(nil))
 
         # Amount is in 0.1°C steps, convert to 0.01°C
         delta = request.amount.to_i16 * 10_i16
@@ -575,12 +575,8 @@ module Matter
         end
       end
 
-      protected def encode_feature_map_global : Bytes
-        @feature_map.value.to_tlv
-      end
-
-      private def encode_int16(value : Int16) : Bytes
-        TLV::Any.new(value, nil).to_slice
+      protected def feature_map_tlv : TLV::Any
+        tlv(@feature_map.value)
       end
     end
   end

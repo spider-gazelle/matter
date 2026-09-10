@@ -96,21 +96,21 @@ module Matter
         [] of CommandMetadata # No commands for measurement clusters
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
         case attribute_id
         when ATTR_MEASURED_VALUE
           if value = @measured_value
-            value.to_tlv
+            tlv(value)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_MIN_MEASURED_VALUE
-          @min_measured_value.to_tlv
+          tlv(@min_measured_value)
         when ATTR_MAX_MEASURED_VALUE
-          @max_measured_value.to_tlv
+          tlv(@max_measured_value)
         when ATTR_TOLERANCE
           if tolerance = @tolerance
-            tolerance.to_tlv
+            tlv(tolerance)
           else
             InteractionModel::Status.unsupported_attribute
           end
@@ -158,8 +158,6 @@ module Matter
         raise ArgumentError.new("Humidity percent must be between 0 and 100") if value < 0.0 || value > 100.0
         (value * 100).round.to_u16
       end
-
-      # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
     end
   end
 end

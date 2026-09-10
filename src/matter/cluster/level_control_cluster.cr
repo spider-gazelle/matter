@@ -260,7 +260,7 @@ module Matter
           name: "clusterRevision",
           type: :uint16,
           writable: false,
-          default: CLUSTER_REVISION.to_tlv
+          default: tlv(CLUSTER_REVISION)
         )
 
         attrs << AttributeMetadata.new(
@@ -268,7 +268,7 @@ module Matter
           name: "featureMap",
           type: :uint32,
           writable: false,
-          default: @feature_map.value.to_tlv
+          default: tlv(@feature_map.value)
         )
 
         attrs
@@ -332,76 +332,76 @@ module Matter
         cmds
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_CURRENT_LEVEL
-          @current_level.to_tlv
+          tlv(@current_level)
         when ATTR_MIN_LEVEL
-          @min_level.to_tlv
+          tlv(@min_level)
         when ATTR_MAX_LEVEL
-          @max_level.to_tlv
+          tlv(@max_level)
         when ATTR_OPTIONS
-          @options.to_tlv
+          tlv(@options)
         when ATTR_ON_LEVEL
           if level = @on_level
-            level.to_tlv
+            tlv(level)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_REMAINING_TIME
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
-          @remaining_time.to_tlv
+          tlv(@remaining_time)
         when ATTR_ON_OFF_TRANSITION_TIME
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
-          @on_off_transition_time.to_tlv
+          tlv(@on_off_transition_time)
         when ATTR_ON_TRANSITION_TIME
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           if time = @on_transition_time
-            time.to_tlv
+            tlv(time)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_OFF_TRANSITION_TIME
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           if time = @off_transition_time
-            time.to_tlv
+            tlv(time)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_DEFAULT_MOVE_RATE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           if rate = @default_move_rate
-            rate.to_tlv
+            tlv(rate)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_START_UP_CURRENT_LEVEL
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           if level = @start_up_current_level
-            level.to_tlv
+            tlv(level)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_CURRENT_FREQUENCY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.frequency?
-          @current_frequency.to_tlv
+          tlv(@current_frequency)
         when ATTR_MIN_FREQUENCY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.frequency?
-          @min_frequency.to_tlv
+          tlv(@min_frequency)
         when ATTR_MAX_FREQUENCY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.frequency?
-          @max_frequency.to_tlv
+          tlv(@max_frequency)
         when GLOBAL_FEATURE_MAP
-          @feature_map.value.to_tlv
+          tlv(@feature_map.value)
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_OPTIONS
-          if options = decode_u8(value)
+          if options = narrow_u8?(value)
             @options = options
             increment_version_and_notify(ATTR_OPTIONS)
             InteractionModel::Status.success
@@ -409,7 +409,7 @@ module Matter
             InteractionModel::Status.invalid_data_type
           end
         when ATTR_ON_LEVEL
-          if new_level = decode_u8(value)
+          if new_level = narrow_u8?(value)
             if new_level >= @min_level && new_level <= @max_level
               @on_level = new_level
               increment_version_and_notify(ATTR_ON_LEVEL)
@@ -422,7 +422,7 @@ module Matter
           end
         when ATTR_ON_OFF_TRANSITION_TIME
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
-          if time = decode_u16(value)
+          if time = decode?(value, UInt16)
             @on_off_transition_time = time
             increment_version_and_notify(ATTR_ON_OFF_TRANSITION_TIME)
             InteractionModel::Status.success
@@ -431,7 +431,7 @@ module Matter
           end
         when ATTR_ON_TRANSITION_TIME
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
-          if time = decode_u16(value)
+          if time = decode?(value, UInt16)
             @on_transition_time = time
             increment_version_and_notify(ATTR_ON_TRANSITION_TIME)
             InteractionModel::Status.success
@@ -440,7 +440,7 @@ module Matter
           end
         when ATTR_OFF_TRANSITION_TIME
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
-          if time = decode_u16(value)
+          if time = decode?(value, UInt16)
             @off_transition_time = time
             increment_version_and_notify(ATTR_OFF_TRANSITION_TIME)
             InteractionModel::Status.success
@@ -449,7 +449,7 @@ module Matter
           end
         when ATTR_DEFAULT_MOVE_RATE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
-          if rate = decode_u8(value)
+          if rate = narrow_u8?(value)
             @default_move_rate = rate
             increment_version_and_notify(ATTR_DEFAULT_MOVE_RATE)
             InteractionModel::Status.success
@@ -458,7 +458,7 @@ module Matter
           end
         when ATTR_START_UP_CURRENT_LEVEL
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
-          if level = decode_u8(value)
+          if level = narrow_u8?(value)
             @start_up_current_level = level
             increment_version_and_notify(ATTR_START_UP_CURRENT_LEVEL)
             InteractionModel::Status.success
@@ -470,7 +470,7 @@ module Matter
         end
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_MOVE_TO_LEVEL
           handle_move_to_level_command(fields, with_on_off: false)
@@ -501,19 +501,19 @@ module Matter
       end
 
       # Handle MoveToLevel command
-      private def handle_move_to_level_command(fields : Bytes, with_on_off : Bool) : InteractionModel::Status
+      private def handle_move_to_level_command(fields : TLV::Any?, with_on_off : Bool) : InteractionModel::Status
         command_name = with_on_off ? "MoveToLevelWithOnOff" : "MoveToLevel"
-        request = with_on_off ? MoveToLevelWithOnOffRequest.from_slice(fields) : MoveToLevelRequest.from_slice(fields)
+        request = with_on_off ? MoveToLevelWithOnOffRequest.from_tlv(fields || tlv(nil)) : MoveToLevelRequest.from_tlv(fields || tlv(nil))
         move_to_level(request.level)
       rescue ex
-        Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (bytes=#{fields.hexstring})" }
+        Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (fields=#{fields.inspect})" }
         InteractionModel::Status.invalid_command
       end
 
       # Handle Move command
-      private def handle_move_command(fields : Bytes, with_on_off : Bool) : InteractionModel::Status
+      private def handle_move_command(fields : TLV::Any?, with_on_off : Bool) : InteractionModel::Status
         command_name = with_on_off ? "MoveWithOnOff" : "Move"
-        request = with_on_off ? MoveWithOnOffRequest.from_slice(fields) : MoveRequest.from_slice(fields)
+        request = with_on_off ? MoveWithOnOffRequest.from_tlv(fields || tlv(nil)) : MoveRequest.from_tlv(fields || tlv(nil))
         case request.move_mode
         when MoveMode::Up
           move_to_level(@max_level)
@@ -523,14 +523,14 @@ module Matter
           InteractionModel::Status.invalid_command
         end
       rescue ex
-        Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (bytes=#{fields.hexstring})" }
+        Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (fields=#{fields.inspect})" }
         InteractionModel::Status.invalid_command
       end
 
       # Handle Step command
-      private def handle_step_command(fields : Bytes, with_on_off : Bool) : InteractionModel::Status
+      private def handle_step_command(fields : TLV::Any?, with_on_off : Bool) : InteractionModel::Status
         command_name = with_on_off ? "StepWithOnOff" : "Step"
-        request = with_on_off ? StepWithOnOffRequest.from_slice(fields) : StepRequest.from_slice(fields)
+        request = with_on_off ? StepWithOnOffRequest.from_tlv(fields || tlv(nil)) : StepRequest.from_tlv(fields || tlv(nil))
         step_size = request.step_size
 
         case request.step_mode
@@ -544,28 +544,28 @@ module Matter
           InteractionModel::Status.invalid_command
         end
       rescue ex
-        Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (bytes=#{fields.hexstring})" }
+        Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (fields=#{fields.inspect})" }
         InteractionModel::Status.invalid_command
       end
 
       # Handle Stop command
-      private def handle_stop_command(fields : Bytes, with_on_off : Bool) : InteractionModel::Status
+      private def handle_stop_command(fields : TLV::Any?, with_on_off : Bool) : InteractionModel::Status
         command_name = with_on_off ? "StopWithOnOff" : "Stop"
         if with_on_off
-          StopWithOnOffRequest.from_slice(fields)
+          StopWithOnOffRequest.from_tlv(fields || tlv(nil))
         else
-          StopRequest.from_slice(fields)
+          StopRequest.from_tlv(fields || tlv(nil))
         end
         @remaining_time = 0_u16
         InteractionModel::Status.success
       rescue ex
-        Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (bytes=#{fields.hexstring})" }
+        Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (fields=#{fields.inspect})" }
         InteractionModel::Status.invalid_command
       end
 
       # Handle MoveToClosestFrequency command
-      private def handle_move_to_closest_frequency(fields : Bytes) : InteractionModel::Status
-        request = MoveToClosestFrequencyRequest.from_slice(fields)
+      private def handle_move_to_closest_frequency(fields : TLV::Any?) : InteractionModel::Status
+        request = MoveToClosestFrequencyRequest.from_tlv(fields || tlv(nil))
         target_frequency = request.frequency
 
         # Clamp to valid range
@@ -577,7 +577,7 @@ module Matter
 
         InteractionModel::Status.success
       rescue ex
-        Log.error(exception: ex) { "LevelControl: failed to parse MoveToClosestFrequency request (bytes=#{fields.hexstring})" }
+        Log.error(exception: ex) { "LevelControl: failed to parse MoveToClosestFrequency request (fields=#{fields.inspect})" }
         InteractionModel::Status.invalid_command
       end
 

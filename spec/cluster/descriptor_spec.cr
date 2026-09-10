@@ -24,9 +24,9 @@ describe Matter::Cluster::DescriptorCluster do
       cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-      value.should be_a(Bytes)
+      value.should be_a(TLV::Any)
       # Empty list should be encoded as empty TLV array (not just Bytes.new(0))
-      value.as(Bytes).size.should be > 0
+      value.as(TLV::Any).to_slice.size.should be > 0
     end
 
     it "reads ServerList attribute" do
@@ -34,7 +34,7 @@ describe Matter::Cluster::DescriptorCluster do
       cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-      value.should be_a(Bytes)
+      value.should be_a(TLV::Any)
     end
 
     it "reads ClientList attribute" do
@@ -42,7 +42,7 @@ describe Matter::Cluster::DescriptorCluster do
       cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_CLIENT_LIST)
-      value.should be_a(Bytes)
+      value.should be_a(TLV::Any)
     end
 
     it "reads PartsList attribute" do
@@ -50,14 +50,14 @@ describe Matter::Cluster::DescriptorCluster do
       cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-      value.should be_a(Bytes)
+      value.should be_a(TLV::Any)
     end
 
     it "returns status for unsupported attribute write" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
 
-      status = cluster.write_attribute(
+      status = write(cluster,
         Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST,
         Bytes[0, 1, 2, 3]
       )
@@ -331,11 +331,11 @@ describe Matter::Cluster::DescriptorCluster do
         cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
 
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-        encoded.should be_a(Bytes)
-        encoded.as(Bytes).size.should be > 0
+        encoded.should be_a(TLV::Any)
+        encoded.as(TLV::Any).to_slice.size.should be > 0
 
         # Decode and verify empty array
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        parsed = encoded.as(TLV::Any)
         device_types = parsed.value.as(Array(TLV::Any))
         device_types.should be_empty
       end
@@ -350,10 +350,10 @@ describe Matter::Cluster::DescriptorCluster do
         )
 
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-        encoded.should be_a(Bytes)
+        encoded.should be_a(TLV::Any)
 
         # Decode and verify
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        parsed = encoded.as(TLV::Any)
         device_types = parsed.value.as(Array(TLV::Any))
         device_types.size.should eq(1)
 
@@ -379,7 +379,7 @@ describe Matter::Cluster::DescriptorCluster do
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
 
         # Decode and verify
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        parsed = encoded.as(TLV::Any)
         device_types = parsed.value.as(Array(TLV::Any))
         device_types.size.should eq(2)
 
@@ -405,10 +405,10 @@ describe Matter::Cluster::DescriptorCluster do
         cluster.server_list << 0x0008_u32 # Level Control
 
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-        encoded.should be_a(Bytes)
+        encoded.should be_a(TLV::Any)
 
         # Decode and verify
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        parsed = encoded.as(TLV::Any)
         clusters = parsed.value.as(Array(TLV::Any))
         clusters.size.should eq(3)
 
@@ -426,7 +426,7 @@ describe Matter::Cluster::DescriptorCluster do
 
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
 
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        parsed = encoded.as(TLV::Any)
         clusters = parsed.value.as(Array(TLV::Any))
         clusters.size.should eq(1) # Just Descriptor itself
 
@@ -441,9 +441,9 @@ describe Matter::Cluster::DescriptorCluster do
         cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
 
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_CLIENT_LIST)
-        encoded.should be_a(Bytes)
+        encoded.should be_a(TLV::Any)
 
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        parsed = encoded.as(TLV::Any)
         clusters = parsed.value.as(Array(TLV::Any))
         clusters.should be_empty
       end
@@ -457,7 +457,7 @@ describe Matter::Cluster::DescriptorCluster do
 
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_CLIENT_LIST)
 
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        parsed = encoded.as(TLV::Any)
         clusters = parsed.value.as(Array(TLV::Any))
         clusters.size.should eq(2)
 
@@ -474,9 +474,9 @@ describe Matter::Cluster::DescriptorCluster do
         cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
 
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-        encoded.should be_a(Bytes)
+        encoded.should be_a(TLV::Any)
 
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        parsed = encoded.as(TLV::Any)
         parts = parsed.value.as(Array(TLV::Any))
         parts.should be_empty
       end
@@ -491,7 +491,7 @@ describe Matter::Cluster::DescriptorCluster do
 
         encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
 
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
+        parsed = encoded.as(TLV::Any)
         parts = parsed.value.as(Array(TLV::Any))
         parts.size.should eq(3)
 
@@ -525,19 +525,19 @@ describe Matter::Cluster::DescriptorCluster do
 
         # Verify all attributes encode successfully
         device_types = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-        device_types.should be_a(Bytes)
-        device_types.as(Bytes).size.should be > 0
+        device_types.should be_a(TLV::Any)
+        device_types.as(TLV::Any).to_slice.size.should be > 0
 
         servers = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-        servers.should be_a(Bytes)
-        servers.as(Bytes).size.should be > 0
+        servers.should be_a(TLV::Any)
+        servers.as(TLV::Any).to_slice.size.should be > 0
 
         clients = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_CLIENT_LIST)
-        clients.should be_a(Bytes)
+        clients.should be_a(TLV::Any)
 
         parts = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-        parts.should be_a(Bytes)
-        parts.as(Bytes).size.should be > 0
+        parts.should be_a(TLV::Any)
+        parts.as(TLV::Any).to_slice.size.should be > 0
       end
 
       it "encodes light endpoint descriptor" do
@@ -558,13 +558,13 @@ describe Matter::Cluster::DescriptorCluster do
 
         # Decode device types
         device_types = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-        parsed = TLV::Any.from_slice(device_types.as(Bytes))
+        parsed = device_types.as(TLV::Any)
         dt_array = parsed.value.as(Array(TLV::Any))
         dt_array.size.should eq(1)
 
         # Decode servers
         servers = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-        parsed = TLV::Any.from_slice(servers.as(Bytes))
+        parsed = servers.as(TLV::Any)
         server_array = parsed.value.as(Array(TLV::Any))
         server_array.size.should eq(3) # Descriptor + Identify + On/Off
       end

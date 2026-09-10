@@ -97,37 +97,37 @@ module Matter
         [] of CommandMetadata
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_IDLE_MODE_DURATION
-          @idle_mode_duration.to_tlv
+          tlv(@idle_mode_duration)
         when ATTR_ACTIVE_MODE_DURATION
-          @active_mode_duration.to_tlv
+          tlv(@active_mode_duration)
         when ATTR_ACTIVE_MODE_THRESHOLD
-          @active_mode_threshold.to_tlv
+          tlv(@active_mode_threshold)
         when GLOBAL_FEATURE_MAP
           # No features enabled - this is an always-on device, not a true ICD
-          0_u32.to_tlv
+          tlv(0_u32)
         when GLOBAL_ATTRIBUTE_LIST
-          [
+          tlv([
             ATTR_IDLE_MODE_DURATION,
             ATTR_ACTIVE_MODE_DURATION,
             ATTR_ACTIVE_MODE_THRESHOLD,
             GLOBAL_CLUSTER_REVISION,
             GLOBAL_FEATURE_MAP,
             GLOBAL_ATTRIBUTE_LIST,
-          ].to_tlv
+          ])
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         # All attributes are read-only in the base ICD Management cluster
         super
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_STAY_ACTIVE_REQUEST
           # StayActiveRequest is optional and only with LITS feature

@@ -44,7 +44,7 @@ describe Matter::Transport::UDPTransport do
       transport = Matter::Transport::UDPTransport.new(port: 15543)
 
       # No source or destination node IDs, so flags is just version bits
-      flags = 0_u8
+
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 100_u16,
         session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -52,8 +52,6 @@ describe Matter::Transport::UDPTransport do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: flags,
-        security_flags: 0_u8
       )
 
       payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(
@@ -92,7 +90,7 @@ describe Matter::Transport::UDPTransport do
       # Send 3 messages
       3.times do |i|
         # No source or destination node IDs, so flags is just version bits
-        flags = 0_u8
+
         packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
           session_id: 100_u16,
           session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -100,8 +98,6 @@ describe Matter::Transport::UDPTransport do
           privacy_enhancements: false,
           control_message: false,
           message_extensions: false,
-          flags: flags,
-          security_flags: 0_u8
         )
 
         payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(
@@ -241,5 +237,34 @@ describe Matter::Transport::UDPTransport do
 
       transport.socket.closed?.should be_true
     end
+  end
+end
+
+class AuthenticationBoundaryTransport < Matter::Transport::UDPTransport
+  def receive_for_spec(data : Bytes, peer : Socket::IPAddress)
+    handle_received_data(data, peer)
+  end
+end
+
+describe Matter::Transport::UDPTransport do
+  it "forwards secure packets and their exact headers before deciding replay state" do
+    transport = AuthenticationBoundaryTransport.new(port: 0)
+    received = [] of Matter::Codec::MessageCodec::Message
+    transport.on_message = ->(message : Matter::Codec::MessageCodec::Message, _peer : Socket::IPAddress) { received << message; nil }
+    peer = Socket::IPAddress.new("::1", 5540)
+    # A forged high counter must not suppress a later genuine low counter in UDP.
+    [1000_u32, 1_u32].each do |counter|
+      header = Matter::Codec::MessageCodec::PacketHeader.new(
+        session_id: 1_u16, session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
+        message_id: counter, source_node_id: Matter::DataType::NodeId.new(10_u64))
+      bytes = Matter::Codec::MessageCodec::Base.encode_packet(Matter::Codec::MessageCodec::Packet.new(header, Bytes.new(16)))
+      transport.receive_for_spec(bytes, peer)
+    end
+    received.map(&.packet_header.message_id).should eq([1000_u32, 1_u32])
+    received.each do |message|
+      message.header_bytes.should eq(Matter::Codec::MessageCodec::Base.encode_packet_header(message.packet_header))
+    end
+  ensure
+    transport.try(&.close)
   end
 end

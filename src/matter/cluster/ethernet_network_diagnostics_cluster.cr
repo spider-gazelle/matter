@@ -180,39 +180,39 @@ module Matter
         cmds
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_PHY_RATE
-          @phy_rate.try(&.value).to_tlv
+          tlv(@phy_rate.try(&.value))
         when ATTR_FULL_DUPLEX
-          @full_duplex.to_tlv
+          tlv(@full_duplex)
         when ATTR_PACKET_RX_COUNT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.packet_counts?
-          @packet_rx_count.to_tlv
+          tlv(@packet_rx_count)
         when ATTR_PACKET_TX_COUNT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.packet_counts?
-          @packet_tx_count.to_tlv
+          tlv(@packet_tx_count)
         when ATTR_TX_ERR_COUNT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.error_counts?
-          @tx_err_count.to_tlv
+          tlv(@tx_err_count)
         when ATTR_COLLISION_COUNT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.error_counts?
-          @collision_count.to_tlv
+          tlv(@collision_count)
         when ATTR_OVERRUN_COUNT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.error_counts?
-          @overrun_count.to_tlv
+          tlv(@overrun_count)
         when ATTR_CARRIER_DETECT
-          @carrier_detect.to_tlv
+          tlv(@carrier_detect)
         when ATTR_TIME_SINCE_RESET
-          time_since_reset.to_tlv
+          tlv(time_since_reset)
         when GLOBAL_FEATURE_MAP
-          @feature_map.value.to_tlv
+          tlv(@feature_map.value)
         when GLOBAL_ATTRIBUTE_LIST
-          encode_attribute_list
+          build_attribute_list
         when GLOBAL_ACCEPTED_COMMAND_LIST
-          encode_accepted_command_list
+          build_accepted_command_list
         when GLOBAL_GENERATED_COMMAND_LIST
-          ([] of UInt32).to_tlv
+          tlv(([] of UInt32))
         else
           super
         end
@@ -223,7 +223,7 @@ module Matter
         (Time.utc - @reset_time).total_minutes.to_u64
       end
 
-      private def encode_attribute_list : Bytes
+      private def build_attribute_list : TLV::Any
         attr_ids = [ATTR_PHY_RATE, ATTR_FULL_DUPLEX]
 
         if @feature_map.packet_counts?
@@ -247,18 +247,18 @@ module Matter
         attr_ids << GLOBAL_FEATURE_MAP
         attr_ids << GLOBAL_CLUSTER_REVISION
 
-        attr_ids.to_tlv
+        tlv(attr_ids)
       end
 
-      private def encode_accepted_command_list : Bytes
+      private def build_accepted_command_list : TLV::Any
         cmd_ids = [] of UInt32
         if @feature_map.packet_counts? || @feature_map.error_counts?
           cmd_ids << CMD_RESET_COUNTS
         end
-        cmd_ids.to_tlv
+        tlv(cmd_ids)
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_RESET_COUNTS
           handle_reset_counts

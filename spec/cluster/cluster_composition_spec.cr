@@ -244,10 +244,10 @@ describe "Cluster Composition" do
       )
 
       result = cluster.read_attribute(Matter::Cluster::Base::GLOBAL_FEATURE_MAP)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
       # Tilt (0x02) | PositionAwareTilt (0x10) = 0x12
-      decode_tlv_value(result.as(Bytes)).should eq(0x12)
+      result.as(TLV::Any).value.should eq(0x12)
     end
   end
 

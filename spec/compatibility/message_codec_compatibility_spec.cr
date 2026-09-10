@@ -71,7 +71,7 @@ describe "MessageCodec Compatibility with matter.js" do
       # Create a test message
       source_node_id = Matter::DataType::NodeId.new(0x1122334455667788_u64)
       # Compute flags with source_node_id set
-      flags = Matter::Codec::MessageCodec::Base.compute_flags(source_node_id, nil, nil)
+
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 0x1234_u16,
         session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -79,8 +79,6 @@ describe "MessageCodec Compatibility with matter.js" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: flags,
-        security_flags: 0_u8,
         source_node_id: source_node_id
       )
 
@@ -144,7 +142,7 @@ describe "MessageCodec Compatibility with matter.js" do
     it "handles group session type correctly" do
       dest_group_id = Matter::DataType::GroupId.new(0xABCD_u16)
       # Compute flags with destination_group_id set
-      flags = Matter::Codec::MessageCodec::Base.compute_flags(nil, nil, dest_group_id)
+
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 0x5678_u16,
         session_type: Matter::Codec::MessageCodec::SessionType::Group,
@@ -152,8 +150,6 @@ describe "MessageCodec Compatibility with matter.js" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: flags,
-        security_flags: 1_u8,
         destination_group_id: dest_group_id
       )
 
@@ -190,7 +186,7 @@ describe "MessageCodec Compatibility with matter.js" do
     # decoder consumed the two stray zero bytes as payload flags + message type.
     it "encodes group session packet with a 16-bit destination group id" do
       dest_group_id = Matter::DataType::GroupId.new(0xABCD_u16)
-      flags = Matter::Codec::MessageCodec::Base.compute_flags(nil, nil, dest_group_id)
+
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 0x5678_u16,
         session_type: Matter::Codec::MessageCodec::SessionType::Group,
@@ -198,8 +194,6 @@ describe "MessageCodec Compatibility with matter.js" do
         privacy_enhancements: false,
         control_message: false,
         message_extensions: false,
-        flags: flags,
-        security_flags: 1_u8,
         destination_group_id: dest_group_id
       )
 
@@ -248,7 +242,7 @@ describe "MessageCodec Compatibility with matter.js" do
 
     it "handles control messages correctly" do
       # No source or destination node IDs, so flags is just version bits
-      flags = Matter::Codec::MessageCodec::Base.compute_flags(nil, nil, nil)
+
       packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
         session_id: 1_u16,
         session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
@@ -256,8 +250,6 @@ describe "MessageCodec Compatibility with matter.js" do
         privacy_enhancements: false,
         control_message: true, # Control message flag
         message_extensions: false,
-        flags: flags,
-        security_flags: 0x40_u8
       )
 
       payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(

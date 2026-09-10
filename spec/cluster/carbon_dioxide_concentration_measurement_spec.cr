@@ -201,8 +201,8 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
       )
 
       bytes = sensor.read_attribute(Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_MEASUREMENT_MEDIUM)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(1_u8) # Water = 1
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should eq(1_u8) # Water = 1
     end
 
     it "reads measured value" do
@@ -215,10 +215,10 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
       )
 
       bytes = sensor.read_attribute(Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_MEASURED_VALUE)
-      bytes.should be_a(Bytes)
+      bytes.should be_a(TLV::Any)
 
       # Decode TLV-encoded float value
-      value = decode_tlv_value(bytes.as(Bytes))
+      value = bytes.as(TLV::Any).value
       value.should eq(450.0_f32)
     end
 
@@ -229,8 +229,8 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
       )
 
       bytes = sensor.read_attribute(Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster::ATTR_LEVEL_VALUE)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(4_u8) # Critical = 4
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should eq(4_u8) # Critical = 4
     end
 
     it "returns unsupported for NumericMeasurement attributes when feature disabled" do

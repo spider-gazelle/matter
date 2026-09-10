@@ -15,7 +15,7 @@ module Matter
 
       def initialize(endpoint_id : DataType::EndpointNumber, @label_list : Array(LabelStruct))
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
-        @attribute_values[ATTR_LABEL_LIST] = @label_list.to_tlv
+        @attribute_values[ATTR_LABEL_LIST] = tlv(@label_list)
       end
 
       def name : String
@@ -33,10 +33,10 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_LABEL_LIST
-          @label_list.to_tlv
+          tlv(@label_list)
         else
           super
         end

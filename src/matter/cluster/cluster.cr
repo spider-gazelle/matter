@@ -15,7 +15,7 @@ module Matter
       property? writable : Bool
       property? optional : Bool
       property? fixed : Bool
-      property default : Bytes?
+      property default : TLV::Any?
       property min : Int64?
       property max : Int64?
       property access : Definitions::AccessControl::EntryPrivilege
@@ -27,7 +27,7 @@ module Matter
         @writable : Bool = false,
         @optional : Bool = false,
         @fixed : Bool = false,
-        @default : Bytes? = nil,
+        @default : TLV::Any? = nil,
         @min : Int64? = nil,
         @max : Int64? = nil,
         @access : Definitions::AccessControl::EntryPrivilege = Definitions::AccessControl::EntryPrivilege::View,
@@ -54,9 +54,9 @@ module Matter
     # Command response - returned by invoke_command
     struct CommandResponse
       property command_id : UInt32
-      property data : Bytes
+      property response : TLV::Any?
 
-      def initialize(@command_id : UInt32, @data : Bytes)
+      def initialize(@command_id : UInt32, @response : TLV::Any?)
       end
     end
 
@@ -124,7 +124,7 @@ module Matter
 
       def initialize(@endpoint_id : DataType::EndpointNumber, @cluster_id : DataType::ClusterId)
         @data_version = 0_u32
-        @attribute_values = {} of UInt32 => Bytes
+        @attribute_values = {} of UInt32 => TLV::Any
       end
 
       # Get cluster name
@@ -153,20 +153,20 @@ module Matter
       # Read an attribute value
       # The fabric_index parameter is optional and used for fabric-scoped attributes
       # like CurrentFabricIndex in OperationalCredentialsCluster
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         # Handle global attributes that all clusters must support
         # These MUST be handled before checking cluster-specific attributes
         case attribute_id
         when GLOBAL_ATTRIBUTE_LIST
-          return encode_attribute_list_global
+          return attribute_list_tlv
         when GLOBAL_ACCEPTED_COMMAND_LIST
-          return encode_accepted_command_list_global
+          return accepted_command_list_tlv
         when GLOBAL_GENERATED_COMMAND_LIST
-          return encode_generated_command_list_global
+          return generated_command_list_tlv
         when GLOBAL_FEATURE_MAP
-          return encode_feature_map_global
+          return feature_map_tlv
         when GLOBAL_CLUSTER_REVISION
-          return encode_cluster_revision_global
+          return cluster_revision_tlv
         end
 
         metadata = attributes.find { |attr| attr.id.id == attribute_id }
@@ -179,17 +179,17 @@ module Matter
       end
 
       # Encode FeatureMap - override in subclass if cluster has features
-      protected def encode_feature_map_global : Bytes
-        0_u32.to_tlv # Default: no features
+      protected def feature_map_tlv : TLV::Any
+        tlv(0_u32) # Default: no features
       end
 
       # Encode ClusterRevision - subclasses set `CLUSTER_REVISION` instead of overriding
-      protected def encode_cluster_revision_global : Bytes
-        cluster_revision.to_tlv
+      protected def cluster_revision_tlv : TLV::Any
+        tlv(cluster_revision)
       end
 
       # Encode AttributeList - override in subclass for custom handling
-      protected def encode_attribute_list_global : Bytes
+      protected def attribute_list_tlv : TLV::Any
         # Collect all attribute IDs (cluster-specific + global)
         attr_ids = attributes.map(&.id.id)
         attr_ids << GLOBAL_GENERATED_COMMAND_LIST
@@ -202,18 +202,18 @@ module Matter
           next if unique_attr_ids.includes?(attribute_id)
           unique_attr_ids << attribute_id
         end
-        unique_attr_ids.to_tlv
+        tlv(unique_attr_ids)
       end
 
       # Encode AcceptedCommandList - override in subclass for custom handling
-      protected def encode_accepted_command_list_global : Bytes
-        commands.map(&.id.id).to_tlv
+      protected def accepted_command_list_tlv : TLV::Any
+        tlv(commands.map(&.id.id))
       end
 
       # Encode GeneratedCommandList - override in subclass to add generated commands
-      protected def encode_generated_command_list_global : Bytes
+      protected def generated_command_list_tlv : TLV::Any
         # Default: empty array (no generated commands)
-        ([] of UInt32).to_tlv
+        tlv([] of UInt32)
       end
 
       # Write an attribute value.
@@ -223,7 +223,7 @@ module Matter
       # protocol layer: `Matter::ClusterError` carries its own status, a TLV /
       # codec or argument failure is the peer's fault (`InvalidDataType`) and
       # anything else is a bug reported as `Failure`.
-      def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      def write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         handle_write_attribute(attribute_id, value)
       rescue ex : Matter::ClusterError
         Log.warn(exception: ex) { "#{self.class.name}: write attribute 0x#{attribute_id.to_s(16)} rejected" }
@@ -237,7 +237,7 @@ module Matter
       end
 
       # Attribute write implementation (override in subclasses).
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         metadata = attributes.find { |attr| attr.id.id == attribute_id }
         return InteractionModel::Status.unsupported_attribute unless metadata
         return InteractionModel::Status.unsupported_write unless metadata.writable?
@@ -249,82 +249,51 @@ module Matter
         InteractionModel::Status.success
       end
 
-      # ------------------------------------------------------------------------
-      # Raw attribute value decoding
-      # ------------------------------------------------------------------------
-      #
-      # The protocol layer (IMHandler.tlv_value_bytes) hands write_attribute the
-      # RAW value bytes of the TLV element, not its TLV encoding: integers arrive
-      # little-endian in whatever width the sender's TLV encoder chose (1, 2, 4 or
-      # 8 bytes regardless of the attribute's declared type), booleans as a single
-      # byte, strings as UTF-8 and TLV null as Bytes[0x14]. Lists and structures
-      # are still delivered TLV-encoded. These helpers decode the scalar forms and
-      # return nil when the bytes cannot represent the requested type.
-
-      # True when the raw value is a TLV null element
-      protected def tlv_null?(value : Bytes) : Bool
-        value.size == 1 && value[0] == InteractionModel::TLV_NULL_MARKER
+      # Decode values without losing the TLV type at the cluster boundary.
+      protected def decode(value : TLV::Any?, type : T.class) : T forall T
+        raise TLV::DeserializationError.new("Missing command fields") unless value
+        decoded = TLV::Serializable.deserialize_value(value, type)
+        {% if T == String %}
+          raise TLV::DeserializationError.new("Invalid UTF-8 string") unless decoded.valid_encoding?
+        {% end %}
+        decoded
       end
 
-      protected def decode_uint(value : Bytes) : UInt64?
-        case value.size
-        when 1 then value[0].to_u64
-        when 2 then IO::ByteFormat::LittleEndian.decode(UInt16, value).to_u64
-        when 4 then IO::ByteFormat::LittleEndian.decode(UInt32, value).to_u64
-        when 8 then IO::ByteFormat::LittleEndian.decode(UInt64, value)
+      protected def decode?(value : TLV::Any, type : T.class) : T? forall T
+        {% if T == UInt8 || T == UInt16 || T == UInt32 || T == UInt64 %}
+          number = value.as_u64?
+          T.new(number) if number
+        {% else %}
+          decode(value, type)
+        {% end %}
+      rescue ex : TypeCastError | OverflowError | TLV::DeserializationError | ArgumentError
+        Log.trace(exception: ex) { "Invalid attribute type for #{type}" }
+        nil
+      end
+
+      # Small scalar attributes accept a wider unsigned wire representation.
+      protected def narrow_u8?(value : TLV::Any) : UInt8?
+        number = decode?(value, UInt64)
+        number.to_u8 if number && number <= UInt8::MAX
+      end
+
+      protected def narrow_i8?(value : TLV::Any) : Int8?
+        signed?(value, Int8)
+      end
+
+      # Existing signed attributes also accept nonnegative unsigned encodings.
+      protected def signed?(value : TLV::Any, type : T.class) : T? forall T
+        case number = value.value
+        when Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
+          T.new(number)
         end
+      rescue ex : OverflowError
+        Log.trace(exception: ex) { "Attribute value out of range for #{type}" }
+        nil
       end
 
-      protected def decode_int(value : Bytes) : Int64?
-        case value.size
-        when 1 then IO::ByteFormat::LittleEndian.decode(Int8, value).to_i64
-        when 2 then IO::ByteFormat::LittleEndian.decode(Int16, value).to_i64
-        when 4 then IO::ByteFormat::LittleEndian.decode(Int32, value).to_i64
-        when 8 then IO::ByteFormat::LittleEndian.decode(Int64, value)
-        end
-      end
-
-      protected def decode_u8(value : Bytes) : UInt8?
-        if (int = decode_uint(value)) && int <= UInt8::MAX
-          int.to_u8
-        end
-      end
-
-      protected def decode_u16(value : Bytes) : UInt16?
-        if (int = decode_uint(value)) && int <= UInt16::MAX
-          int.to_u16
-        end
-      end
-
-      protected def decode_u32(value : Bytes) : UInt32?
-        if (int = decode_uint(value)) && int <= UInt32::MAX
-          int.to_u32
-        end
-      end
-
-      protected def decode_i8(value : Bytes) : Int8?
-        if (int = decode_int(value)) && Int8::MIN <= int <= Int8::MAX
-          int.to_i8
-        end
-      end
-
-      protected def decode_i16(value : Bytes) : Int16?
-        if (int = decode_int(value)) && Int16::MIN <= int <= Int16::MAX
-          int.to_i16
-        end
-      end
-
-      protected def decode_bool(value : Bytes) : Bool?
-        return unless value.size == 1
-        case value[0]
-        when 0 then false
-        when 1 then true
-        end
-      end
-
-      protected def decode_string(value : Bytes) : String?
-        str = String.new(value)
-        str if str.valid_encoding?
+      protected def tlv(value) : TLV::Any
+        TLV::Serializable.serialize_value(value, nil)
       end
 
       # Invoke a command.
@@ -333,7 +302,7 @@ module Matter
       # status here (see `write_attribute`): `Matter::ClusterError` carries its
       # own status, a codec or argument failure is `InvalidCommand` and anything
       # else is a bug reported as `Failure`.
-      def invoke_command(command_id : UInt32, fields : Bytes = Bytes.new(0), session_id : UInt64? = nil, is_case_session : Bool = false, fabric_index : UInt8? = nil) : InteractionModel::Status | CommandResponse
+      def invoke_command(command_id : UInt32, fields : TLV::Any? = nil, session_id : UInt64? = nil, is_case_session : Bool = false, fabric_index : UInt8? = nil) : InteractionModel::Status | CommandResponse
         metadata = commands.find { |cmd| cmd.id.id == command_id }
         return InteractionModel::Status.unsupported_command unless metadata
 
@@ -366,7 +335,7 @@ module Matter
       end
 
       # Handle command implementation (to be overridden)
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | CommandResponse
         InteractionModel::Status.unsupported_command
       end
 

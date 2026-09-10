@@ -72,10 +72,13 @@ module Matter
           property transition_time : UInt16
 
           @[TLV::Field(tag: 3)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 4)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@hue : UInt8, @direction : Direction, @transition_time : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl moveHue command
@@ -94,11 +97,14 @@ module Matter
           @[TLV::Field(tag: 1)]
           property rate : UInt8
 
-          @[TLV::Field(tag: 3)]
-          property mask : UInt8
+          @[TLV::Field(tag: 2)]
+          property mask : UInt8 = 0_u8
 
-          @[TLV::Field(tag: 4)]
-          property override : UInt8
+          @[TLV::Field(tag: 3)]
+          property override : UInt8 = 0_u8
+
+          def initialize(@move_mode : MoveMode, @rate : UInt8, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl stepHue command
@@ -123,10 +129,13 @@ module Matter
           property transition_time : UInt8
 
           @[TLV::Field(tag: 3)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 4)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@step_mode : StepMode, @step_size : UInt8, @transition_time : UInt8, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl moveToSaturation command
@@ -137,13 +146,16 @@ module Matter
           property saturation : UInt8
 
           @[TLV::Field(tag: 1)]
-          property transition_time : UInt8
+          property transition_time : UInt16
+
+          @[TLV::Field(tag: 2)]
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 3)]
-          property mask : UInt8
+          property override : UInt8 = 0_u8
 
-          @[TLV::Field(tag: 4)]
-          property override : UInt8
+          def initialize(@saturation : UInt8, @transition_time : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl moveSaturation command
@@ -163,11 +175,14 @@ module Matter
           @[TLV::Field(tag: 1)]
           property rate : UInt8
 
-          @[TLV::Field(tag: 3)]
-          property mask : UInt8
+          @[TLV::Field(tag: 2)]
+          property mask : UInt8 = 0_u8
 
-          @[TLV::Field(tag: 4)]
-          property override : UInt8
+          @[TLV::Field(tag: 3)]
+          property override : UInt8 = 0_u8
+
+          def initialize(@move_mode : MoveMode, @rate : UInt8, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl stepSaturation command
@@ -191,10 +206,13 @@ module Matter
           property transition_time : UInt8
 
           @[TLV::Field(tag: 3)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 4)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@step_mode : StepMode, @step_size : UInt8, @transition_time : UInt8, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl moveToHueAndSaturation command
@@ -211,10 +229,13 @@ module Matter
           property transition_time : UInt16
 
           @[TLV::Field(tag: 3)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 4)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@hue : UInt8, @saturation : UInt8, @transition_time : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl moveToColor command
@@ -231,10 +252,13 @@ module Matter
           property transition_time : UInt16
 
           @[TLV::Field(tag: 3)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 4)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@x : UInt16, @y : UInt16, @transition_time : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl moveColor command
@@ -244,18 +268,21 @@ module Matter
           # The X field specifies the rate of movement in steps per second. A step is a change in the device’s
           # CurrentX attribute of one unit.
           @[TLV::Field(tag: 0)]
-          property x : UInt16
+          property x : Int16
 
           # The Y field specifies the rate of movement in steps per second. A step is a change in the device’s
           # CurrentY attribute of one unit.
           @[TLV::Field(tag: 1)]
-          property y : UInt16
+          property y : Int16
+
+          @[TLV::Field(tag: 2)]
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 3)]
-          property mask : UInt8
+          property override : UInt8 = 0_u8
 
-          @[TLV::Field(tag: 4)]
-          property override : UInt8
+          def initialize(@x : Int16, @y : Int16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl stepColor command
@@ -263,20 +290,23 @@ module Matter
           include TLV::Serializable
 
           @[TLV::Field(tag: 0)]
-          property x : UInt16
+          property x : Int16
 
           @[TLV::Field(tag: 1)]
-          property y : UInt16
+          property y : Int16
 
           # The TransitionTime field specifies, in 1/10ths of a second, the time that shall be taken to perform the color change.
           @[TLV::Field(tag: 2)]
           property transition_time : UInt16
 
           @[TLV::Field(tag: 3)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 4)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@x : Int16, @y : Int16, @transition_time : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl moveToColorTemperature command
@@ -290,10 +320,13 @@ module Matter
           property transition_time : UInt16
 
           @[TLV::Field(tag: 2)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 3)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@color_temperature_mireds : UInt16, @transition_time : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl moveColorTemperature command
@@ -339,10 +372,13 @@ module Matter
           property color_emperature_maximum_mireds : UInt16
 
           @[TLV::Field(tag: 4)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 5)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@move_mode : MoveMode, @rate : UInt16, @color_emperature_minimum_mireds : UInt16, @color_emperature_maximum_mireds : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl stepColorTemperature command
@@ -387,10 +423,13 @@ module Matter
           property color_emperature_maximum_mireds : UInt16
 
           @[TLV::Field(tag: 5)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 6)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@step_mode : StepMode, @step_size : UInt16, @transition_time : UInt16, @color_emperature_minimum_mireds : UInt16, @color_emperature_maximum_mireds : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl enhancedMoveToHue command
@@ -399,7 +438,7 @@ module Matter
 
           # The Hue field specifies the hue to be moved to.
           @[TLV::Field(tag: 0)]
-          property enhanced_hue : UInt8
+          property enhanced_hue : UInt16
 
           # The Direction field shall be one of the non-reserved values in Values of the Direction Field.
           @[TLV::Field(tag: 1)]
@@ -410,10 +449,13 @@ module Matter
           property transition_time : UInt16
 
           @[TLV::Field(tag: 3)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 4)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@enhanced_hue : UInt16, @direction : Direction, @transition_time : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl enhancedMoveHue command
@@ -433,10 +475,13 @@ module Matter
           property rate : UInt16
 
           @[TLV::Field(tag: 2)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 3)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@move_mode : MoveMode, @rate : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl enhancedStepHue command
@@ -462,10 +507,13 @@ module Matter
           property transition_time : UInt16
 
           @[TLV::Field(tag: 3)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 4)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@step_mode : StepMode, @step_size : UInt16, @transition_time : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl enhancedMoveToHueAndSaturation command
@@ -487,10 +535,13 @@ module Matter
           property transition_time : UInt16
 
           @[TLV::Field(tag: 3)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 4)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@enhanced_hue : UInt16, @saturation : UInt8, @transition_time : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl colorLoopSet command
@@ -542,10 +593,13 @@ module Matter
           property start_hue : UInt16
 
           @[TLV::Field(tag: 5)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 6)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@update_flag : UInt8, @action : Action, @direction : ColorLoopSetDirection, @time : UInt16, @start_hue : UInt16, @mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
 
         # Input to the ColorControl stopMoveStep command
@@ -553,10 +607,13 @@ module Matter
           include TLV::Serializable
 
           @[TLV::Field(tag: 0)]
-          property mask : UInt8
+          property mask : UInt8 = 0_u8
 
           @[TLV::Field(tag: 1)]
-          property override : UInt8
+          property override : UInt8 = 0_u8
+
+          def initialize(@mask : UInt8 = 0_u8, @override : UInt8 = 0_u8)
+          end
         end
       end
     end

@@ -41,6 +41,9 @@ module MatterAirConditioner
     DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
     SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
 
+    FAN_ONLY_PERCENT            = 60_u8
+    HEATING_COOLING_FAN_PERCENT = 40_u8
+
     # Endpoint 1: Thermostat clusters
     @thermostat : Matter::Cluster::ThermostatCluster? = nil
     @temperature : Matter::Cluster::TemperatureMeasurementCluster? = nil
@@ -149,13 +152,13 @@ module MatterAirConditioner
           # Fan-only mode: ensure fan is running (default to Medium if off)
           fan_on_off.on_off = true
           if fan_control.fan_mode == Matter::Cluster::FanControlCluster::FanMode::Off
-            fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[60_u8])
+            fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, TLV::Any.new(FAN_ONLY_PERCENT))
           end
         else
           # Cooling/Heating: ensure fan is running
           fan_on_off.on_off = true
           if fan_control.fan_mode == Matter::Cluster::FanControlCluster::FanMode::Off
-            fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[40_u8])
+            fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, TLV::Any.new(HEATING_COOLING_FAN_PERCENT))
           end
         end
         print_state_line
@@ -228,7 +231,7 @@ module MatterAirConditioner
         puts "Fan power: #{is_on ? "ON" : "OFF"}"
         # When fan is turned off via OnOff, also set fan mode to Off
         if !is_on && fan_control.fan_mode != Matter::Cluster::FanControlCluster::FanMode::Off
-          fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, Bytes[Matter::Cluster::FanControlCluster::FanMode::Off.value])
+          fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, TLV::Any.new(Matter::Cluster::FanControlCluster::FanMode::Off.value))
         end
         print "> "
       end
@@ -548,7 +551,7 @@ module MatterAirConditioner
       if percent > 0
         fan_on_off.on_off = true
       end
-      fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[percent])
+      fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, TLV::Any.new(percent))
     end
 
     private def show_status : Nil

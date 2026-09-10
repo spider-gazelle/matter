@@ -299,31 +299,31 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_BREADCRUMB
-          encode_uint64(@breadcrumb)
+          tlv(@breadcrumb)
         when ATTR_BASIC_COMMISSIONING_INFO
-          encode_basic_commissioning_info
+          build_basic_commissioning_info
         when ATTR_REGULATORY_CONFIG
-          @regulatory_config.value.to_tlv
+          tlv(@regulatory_config.value)
         when ATTR_LOCATION_CAPABILITY
-          @location_capability.value.to_tlv
+          tlv(@location_capability.value)
         when ATTR_SUPPORTS_CONCURRENT_CONNECTION
-          @supports_concurrent_connection.to_tlv
+          tlv(@supports_concurrent_connection)
         when ATTR_IS_COMMISSIONING_WITHOUT_POWER
           # Returns true if the device is currently commissioning without main power
           # (e.g., using backup power during initial setup). We don't support this mode.
-          false.to_tlv
+          tlv(false)
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_BREADCRUMB
-          if breadcrumb = decode_uint(value)
+          if breadcrumb = decode?(value, UInt64)
             @breadcrumb = breadcrumb
             increment_version
             InteractionModel::Status.success
@@ -335,7 +335,7 @@ module Matter
         end
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_ARM_FAIL_SAFE
           handle_arm_fail_safe_tlv(fields)
@@ -352,9 +352,9 @@ module Matter
       # TLV Command Handlers (for Base class routing)
       # ========================================================================
 
-      private def handle_arm_fail_safe_tlv(fields : Bytes) : Cluster::CommandResponse
+      private def handle_arm_fail_safe_tlv(fields : TLV::Any?) : Cluster::CommandResponse
         # Parse TLV-encoded request
-        request_def = Definitions::GeneralCommissioning::ArmFailSafeRequest.from_slice(fields)
+        request_def = Definitions::GeneralCommissioning::ArmFailSafeRequest.from_tlv(fields || tlv(nil))
 
         # Convert to cluster request struct
         request = ArmFailSafeRequest.new(
@@ -373,13 +373,13 @@ module Matter
         # Encode response as TLV and return with response command ID
         Cluster::CommandResponse.new(
           command_id: CMD_ARM_FAIL_SAFE_RESPONSE,
-          data: encode_arm_fail_safe_response(response)
+          response: tlv(response)
         )
       end
 
-      private def handle_set_regulatory_config_tlv(fields : Bytes) : Cluster::CommandResponse
+      private def handle_set_regulatory_config_tlv(fields : TLV::Any?) : Cluster::CommandResponse
         # Parse TLV-encoded request
-        request_def = Definitions::GeneralCommissioning::SetRegularConfigurationRequest.from_slice(fields)
+        request_def = Definitions::GeneralCommissioning::SetRegularConfigurationRequest.from_tlv(fields || tlv(nil))
 
         # Convert to cluster request struct
         request = SetRegulatoryConfigRequest.new(
@@ -394,11 +394,11 @@ module Matter
         # Encode response as TLV and return with response command ID
         Cluster::CommandResponse.new(
           command_id: CMD_SET_REGULATORY_CONFIG_RESPONSE,
-          data: encode_set_regulatory_config_response(response)
+          response: tlv(response)
         )
       end
 
-      private def handle_commissioning_complete_tlv(fields : Bytes) : Cluster::CommandResponse
+      private def handle_commissioning_complete_tlv(fields : TLV::Any?) : Cluster::CommandResponse
         # CommissioningComplete has no request fields
 
         # Call public command handler with session context from base class invoke_command
@@ -410,7 +410,7 @@ module Matter
         # Encode response as TLV and return with response command ID
         Cluster::CommandResponse.new(
           command_id: CMD_COMMISSIONING_COMPLETE_RESPONSE,
-          data: encode_commissioning_complete_response(response)
+          response: tlv(response)
         )
       end
 
@@ -846,30 +846,18 @@ module Matter
       # ========================================================================
 
       # Helper: Encode UInt64 as TLV bytes
-      private def encode_uint64(value : UInt64) : Bytes
-        TLV::Any.new(value, nil).to_slice
-      end
 
       # Helper: Encode BasicCommissioningInfo as TLV structure
-      private def encode_basic_commissioning_info : Bytes
+      private def build_basic_commissioning_info : TLV::Any
         info = BasicCommissioningInfo.new(@max_cumulative_failsafe_seconds, @max_network_commissioning_seconds)
-        info.to_slice
+        tlv(info)
       end
 
       # Encode ArmFailSafeResponse as TLV
-      private def encode_arm_fail_safe_response(response : ArmFailSafeResponse) : Bytes
-        response.to_slice
-      end
 
       # Encode SetRegulatoryConfigResponse as TLV
-      private def encode_set_regulatory_config_response(response : SetRegulatoryConfigResponse) : Bytes
-        response.to_slice
-      end
 
       # Encode CommissioningCompleteResponse as TLV
-      private def encode_commissioning_complete_response(response : CommissioningCompleteResponse) : Bytes
-        response.to_slice
-      end
     end
   end
 end

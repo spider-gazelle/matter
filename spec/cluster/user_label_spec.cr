@@ -33,7 +33,7 @@ describe Matter::Cluster::UserLabelCluster do
       Matter::Cluster::LabelStruct.new("control", "volume"),
     ]
 
-    status = cluster.write_attribute(Matter::Cluster::UserLabelCluster::ATTR_LABEL_LIST, new_labels.to_tlv)
+    status = write(cluster, Matter::Cluster::UserLabelCluster::ATTR_LABEL_LIST, new_labels)
     status.success?.should be_true
 
     cluster.label_list.size.should eq(2)
@@ -41,8 +41,8 @@ describe Matter::Cluster::UserLabelCluster do
     cluster.label_list[0].value.should eq("living")
 
     read_back = cluster.read_attribute(Matter::Cluster::UserLabelCluster::ATTR_LABEL_LIST)
-    read_back.should be_a(Bytes)
-    list = TLV::Any.from_slice(read_back.as(Bytes)).as_list
+    read_back.should be_a(TLV::Any)
+    list = read_back.as(TLV::Any).as_list
     list.size.should eq(2)
   end
 
@@ -50,7 +50,7 @@ describe Matter::Cluster::UserLabelCluster do
     endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
     cluster = Matter::Cluster::UserLabelCluster.new(endpoint_id)
 
-    status = cluster.write_attribute(Matter::Cluster::UserLabelCluster::ATTR_LABEL_LIST, 123_u8.to_tlv)
+    status = write(cluster, Matter::Cluster::UserLabelCluster::ATTR_LABEL_LIST, 123_u8)
     status.status.should eq(Matter::InteractionModel::StatusCode::InvalidDataType)
   end
 

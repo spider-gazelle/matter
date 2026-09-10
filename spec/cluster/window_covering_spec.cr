@@ -164,6 +164,46 @@ describe Matter::Cluster::WindowCoveringCluster do
     end
   end
 
+  describe "percentage commands on the wire" do
+    it "sets the lift target from tag zero" do
+      cluster = Matter::Cluster::WindowCoveringCluster.new(endpoint(1))
+      request = Matter::Cluster::Definitions::WindowCovering::GoToLiftPercentageRequest.new(4321_u16)
+      expect_success(invoke(cluster, Matter::Cluster::WindowCoveringCluster::CMD_GO_TO_LIFT_PERCENTAGE, request))
+      read(cluster, Matter::Cluster::WindowCoveringCluster::ATTR_TARGET_POSITION_LIFT_PERCENT100THS).should eq(4321_u16)
+    end
+
+    it "rejects a lift percentage above 100 percent without changing the target" do
+      cluster = Matter::Cluster::WindowCoveringCluster.new(endpoint(1))
+      request = Matter::Cluster::Definitions::WindowCovering::GoToLiftPercentageRequest.new(10001_u16)
+      expect_status(invoke(cluster, Matter::Cluster::WindowCoveringCluster::CMD_GO_TO_LIFT_PERCENTAGE, request), Matter::InteractionModel::StatusCode::ConstraintError)
+      cluster.target_position_lift_percent100ths.should eq(0_u16)
+    end
+
+    it "rejects missing percentage fields" do
+      cluster = Matter::Cluster::WindowCoveringCluster.new(endpoint(1))
+      expect_status(invoke(cluster, Matter::Cluster::WindowCoveringCluster::CMD_GO_TO_LIFT_PERCENTAGE), Matter::InteractionModel::StatusCode::InvalidCommand)
+    end
+
+    it "sets the tilt target from tag zero" do
+      cluster = Matter::Cluster::WindowCoveringCluster.new(endpoint(1),
+        feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Tilt | Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareTilt)
+      request = Matter::Cluster::Definitions::WindowCovering::GoToTiltPercentageRequest.new(6789_u16)
+      expect_success(invoke(cluster, Matter::Cluster::WindowCoveringCluster::CMD_GO_TO_TILT_PERCENTAGE, request))
+      read(cluster, Matter::Cluster::WindowCoveringCluster::ATTR_TARGET_POSITION_TILT_PERCENT100THS).should eq(6789_u16)
+      read(cluster, Matter::Cluster::WindowCoveringCluster::ATTR_CURRENT_POSITION_TILT_PERCENT100THS).should eq(0_u16)
+      read(cluster, Matter::Cluster::WindowCoveringCluster::ATTR_CURRENT_POSITION_TILT_PERCENTAGE).should be_nil
+      read(cluster, Matter::Cluster::WindowCoveringCluster::ATTR_NUMBER_OF_ACTUATIONS_TILT).should eq(0_u16)
+    end
+
+    it "rejects a tilt percentage above 100 percent" do
+      cluster = Matter::Cluster::WindowCoveringCluster.new(endpoint(1),
+        feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Tilt | Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareTilt)
+      request = Matter::Cluster::Definitions::WindowCovering::GoToTiltPercentageRequest.new(10001_u16)
+      expect_status(invoke(cluster, Matter::Cluster::WindowCoveringCluster::CMD_GO_TO_TILT_PERCENTAGE, request), Matter::InteractionModel::StatusCode::ConstraintError)
+      cluster.target_position_tilt_percent100ths.should eq(0_u16)
+    end
+  end
+
   describe "cluster metadata" do
     cluster = Matter::Cluster::WindowCoveringCluster.new(
       endpoint_id: Matter::DataType::EndpointNumber.new(1_u16)
@@ -191,20 +231,20 @@ describe Matter::Cluster::WindowCoveringCluster do
     )
 
     it "reads type attribute" do
-      result = cluster.read_attribute(Matter::Cluster::WindowCoveringCluster::ATTR_TYPE)
-      result.should be_a(Bytes)
-      decode_tlv_value(result.as(Bytes)).should eq(0) # Rollershade
+      result = read_tlv(cluster, Matter::Cluster::WindowCoveringCluster::ATTR_TYPE)
+      result.should be_a(TLV::Any)
+      result.value.should eq(0) # Rollershade
     end
 
     it "reads config status attribute" do
-      result = cluster.read_attribute(Matter::Cluster::WindowCoveringCluster::ATTR_CONFIG_STATUS)
-      result.should be_a(Bytes)
+      result = read_tlv(cluster, Matter::Cluster::WindowCoveringCluster::ATTR_CONFIG_STATUS)
+      result.should be_a(TLV::Any)
     end
 
     it "writes mode attribute" do
       # Set calibration mode
-      mode_bytes = Bytes[0x02] # CalibrationMode
-      status = cluster.write_attribute(Matter::Cluster::WindowCoveringCluster::ATTR_MODE, mode_bytes)
+      mode = 0x02_u8 # CalibrationMode
+      status = write(cluster, Matter::Cluster::WindowCoveringCluster::ATTR_MODE, mode)
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
 
       # Verify it was written
@@ -212,10 +252,10 @@ describe Matter::Cluster::WindowCoveringCluster do
     end
 
     it "reads feature map" do
-      result = cluster.read_attribute(Matter::Cluster::Base::GLOBAL_FEATURE_MAP)
-      result.should be_a(Bytes)
+      result = read_tlv(cluster, Matter::Cluster::Base::GLOBAL_FEATURE_MAP)
+      result.should be_a(TLV::Any)
       # Lift (0x01) | PositionAwareLift (0x04) = 0x05
-      decode_tlv_value(result.as(Bytes)).should eq(0x05)
+      result.value.should eq(0x05)
     end
   end
 end

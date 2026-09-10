@@ -19,6 +19,11 @@ module Matter
     class ColorControlCluster < Base
       CLUSTER_ID = 0x0300_u32
 
+      HUE_MODULUS          =     255
+      SATURATION_MAXIMUM   = 254_u16
+      ENHANCED_HUE_MODULUS =  65_536
+      ENHANCED_HUE_SHIFT   =       8
+
       # Feature flags
       @[Flags]
       enum Feature : UInt32
@@ -310,14 +315,14 @@ module Matter
           name: "clusterRevision",
           type: :uint16,
           writable: false,
-          default: CLUSTER_REVISION.to_tlv
+          default: tlv(CLUSTER_REVISION)
         )
         attrs << AttributeMetadata.new(
           id: DataType::AttributeId.new(GLOBAL_FEATURE_MAP),
           name: "featureMap",
           type: :uint32,
           writable: false,
-          default: @feature_map.value.to_tlv
+          default: tlv(@feature_map.value)
         )
 
         attrs
@@ -372,80 +377,80 @@ module Matter
         cmds
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_CURRENT_HUE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.hue_saturation?
-          @current_hue.to_tlv
+          tlv(@current_hue)
         when ATTR_CURRENT_SATURATION
           return InteractionModel::Status.unsupported_attribute unless @feature_map.hue_saturation?
-          @current_saturation.to_tlv
+          tlv(@current_saturation)
         when ATTR_REMAINING_TIME
-          @remaining_time.to_tlv
+          tlv(@remaining_time)
         when ATTR_CURRENT_X
           return InteractionModel::Status.unsupported_attribute unless @feature_map.xy?
-          @current_x.to_tlv
+          tlv(@current_x)
         when ATTR_CURRENT_Y
           return InteractionModel::Status.unsupported_attribute unless @feature_map.xy?
-          @current_y.to_tlv
+          tlv(@current_y)
         when ATTR_COLOR_TEMPERATURE_MIREDS
           return InteractionModel::Status.unsupported_attribute unless @feature_map.color_temperature?
-          @color_temperature_mireds.to_tlv
+          tlv(@color_temperature_mireds)
         when ATTR_COLOR_MODE
-          @color_mode.value.to_tlv
+          tlv(@color_mode.value)
         when ATTR_OPTIONS
-          @options.to_tlv
+          tlv(@options)
         when ATTR_ENHANCED_CURRENT_HUE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.enhanced_hue?
-          @enhanced_current_hue.to_tlv
+          tlv(@enhanced_current_hue)
         when ATTR_ENHANCED_COLOR_MODE
-          @enhanced_color_mode.value.to_tlv
+          tlv(@enhanced_color_mode.value)
         when ATTR_COLOR_LOOP_ACTIVE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.color_loop?
-          @color_loop_active.to_tlv
+          tlv(@color_loop_active)
         when ATTR_COLOR_LOOP_DIRECTION
           return InteractionModel::Status.unsupported_attribute unless @feature_map.color_loop?
-          @color_loop_direction.to_tlv
+          tlv(@color_loop_direction)
         when ATTR_COLOR_LOOP_TIME
           return InteractionModel::Status.unsupported_attribute unless @feature_map.color_loop?
-          @color_loop_time.to_tlv
+          tlv(@color_loop_time)
         when ATTR_COLOR_LOOP_START_ENHANCED_HUE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.color_loop?
-          @color_loop_start_enhanced_hue.to_tlv
+          tlv(@color_loop_start_enhanced_hue)
         when ATTR_COLOR_LOOP_STORED_ENHANCED_HUE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.color_loop?
-          @color_loop_stored_enhanced_hue.to_tlv
+          tlv(@color_loop_stored_enhanced_hue)
         when ATTR_COLOR_TEMP_PHYSICAL_MIN_MIREDS
           return InteractionModel::Status.unsupported_attribute unless @feature_map.color_temperature?
-          @color_temp_physical_min_mireds.to_tlv
+          tlv(@color_temp_physical_min_mireds)
         when ATTR_COLOR_TEMP_PHYSICAL_MAX_MIREDS
           return InteractionModel::Status.unsupported_attribute unless @feature_map.color_temperature?
-          @color_temp_physical_max_mireds.to_tlv
+          tlv(@color_temp_physical_max_mireds)
         when ATTR_COUPLE_COLOR_TEMP_TO_LEVEL_MIN
           return InteractionModel::Status.unsupported_attribute unless @feature_map.color_temperature?
           if val = @couple_color_temp_to_level_min_mireds
-            val.to_tlv
+            tlv(val)
           else
-            encode_null
+            tlv(nil)
           end
         when ATTR_START_UP_COLOR_TEMPERATURE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.color_temperature?
           if val = @start_up_color_temperature_mireds
-            val.to_tlv
+            tlv(val)
           else
-            encode_null
+            tlv(nil)
           end
         when GLOBAL_FEATURE_MAP
-          @feature_map.value.to_tlv
+          tlv(@feature_map.value)
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_OPTIONS
-          if options = decode_u8(value)
+          if options = narrow_u8?(value)
             @options = options
             increment_version
             InteractionModel::Status.success
@@ -454,7 +459,7 @@ module Matter
           end
         when ATTR_START_UP_COLOR_TEMPERATURE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.color_temperature?
-          if mireds = decode_u16(value)
+          if mireds = decode?(value, UInt16)
             @start_up_color_temperature_mireds = mireds
             increment_version
             InteractionModel::Status.success
@@ -466,7 +471,7 @@ module Matter
         end
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         # HueSaturation commands
         when CMD_MOVE_TO_HUE
@@ -540,42 +545,42 @@ module Matter
 
       # Command handlers
 
-      private def handle_move_to_hue(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.invalid_command if fields.size < 1
-        target_hue = fields[0]
+      private def handle_move_to_hue(fields : TLV::Any?) : InteractionModel::Status
+        req = decode(fields, Definitions::ColorControl::MoveToHueRequest)
+        target_hue = req.hue
         move_to_hue(target_hue)
       end
 
-      private def handle_step_hue(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.invalid_command if fields.size < 2
-        step_mode = Definitions::ColorControl::StepMode.from_value(fields[0])
-        step_size = fields[1]
+      private def handle_step_hue(fields : TLV::Any?) : InteractionModel::Status
+        req = decode(fields, Definitions::ColorControl::StepHueRequest)
+        step_mode = req.step_mode
+        step_size = req.step_size
         case step_mode
         when Definitions::ColorControl::StepMode::Up
-          new_hue = (@current_hue.to_u16 + step_size) % 255
+          new_hue = (@current_hue.to_u16 + step_size) % HUE_MODULUS
           move_to_hue(new_hue.to_u8)
         when Definitions::ColorControl::StepMode::Down
-          new_hue = (@current_hue.to_i16 - step_size) % 255
-          new_hue = new_hue < 0 ? 255 + new_hue : new_hue
+          new_hue = (@current_hue.to_i16 - step_size) % HUE_MODULUS
+          new_hue = new_hue < 0 ? HUE_MODULUS + new_hue : new_hue
           move_to_hue(new_hue.to_u8)
         else
           InteractionModel::Status.invalid_command
         end
       end
 
-      private def handle_move_to_saturation(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.invalid_command if fields.size < 1
-        target_saturation = fields[0]
+      private def handle_move_to_saturation(fields : TLV::Any?) : InteractionModel::Status
+        req = decode(fields, Definitions::ColorControl::MoveToSaturationRequest)
+        target_saturation = req.saturation
         move_to_saturation(target_saturation)
       end
 
-      private def handle_step_saturation(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.invalid_command if fields.size < 2
-        step_mode = Definitions::ColorControl::StepMode.from_value(fields[0])
-        step_size = fields[1]
+      private def handle_step_saturation(fields : TLV::Any?) : InteractionModel::Status
+        req = decode(fields, Definitions::ColorControl::StepSaturationRequest)
+        step_mode = req.step_mode
+        step_size = req.step_size
         case step_mode
         when Definitions::ColorControl::StepMode::Up
-          new_sat = [@current_saturation.to_u16 + step_size, 254_u16].min
+          new_sat = [@current_saturation.to_u16 + step_size, SATURATION_MAXIMUM].min
           move_to_saturation(new_sat.to_u8)
         when Definitions::ColorControl::StepMode::Down
           new_sat = [@current_saturation.to_i16 - step_size, 0_i16].max
@@ -585,13 +590,13 @@ module Matter
         end
       end
 
-      private def handle_move_to_hue_and_saturation(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.invalid_command if fields.size < 2
-        target_hue = fields[0]
-        target_saturation = fields[1]
+      private def handle_move_to_hue_and_saturation(fields : TLV::Any?) : InteractionModel::Status
+        req = decode(fields, Definitions::ColorControl::MoveToHueAndSaturationRequest)
+        target_hue = req.hue
+        target_saturation = req.saturation
         @current_hue = target_hue
         @current_saturation = target_saturation
-        @enhanced_current_hue = (target_hue.to_u16 << 8)
+        @enhanced_current_hue = (target_hue.to_u16 << ENHANCED_HUE_SHIFT)
         @color_mode = Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation
         @enhanced_color_mode = Definitions::ColorControl::EnhancedColorMode::CurrentHueAndCurrentSaturation
         @remaining_time = 0_u16
@@ -600,32 +605,32 @@ module Matter
         InteractionModel::Status.success
       end
 
-      private def handle_move_to_color(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.invalid_command if fields.size < 4
-        target_x = IO::ByteFormat::LittleEndian.decode(UInt16, fields[0, 2])
-        target_y = IO::ByteFormat::LittleEndian.decode(UInt16, fields[2, 2])
+      private def handle_move_to_color(fields : TLV::Any?) : InteractionModel::Status
+        req = decode(fields, Definitions::ColorControl::MoveToColorRequest)
+        target_x = req.x
+        target_y = req.y
         move_to_color(target_x, target_y)
       end
 
-      private def handle_step_color(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.invalid_command if fields.size < 4
-        step_x = IO::ByteFormat::LittleEndian.decode(Int16, fields[0, 2])
-        step_y = IO::ByteFormat::LittleEndian.decode(Int16, fields[2, 2])
-        new_x = [@current_x.to_i32 + step_x, 0_i32, 65535_i32].sort[1].to_u16
-        new_y = [@current_y.to_i32 + step_y, 0_i32, 65535_i32].sort[1].to_u16
+      private def handle_step_color(fields : TLV::Any?) : InteractionModel::Status
+        req = decode(fields, Definitions::ColorControl::StepColorRequest)
+        step_x = req.x
+        step_y = req.y
+        new_x = (@current_x.to_i32 + step_x).clamp(UInt16::MIN.to_i32, UInt16::MAX.to_i32).to_u16
+        new_y = (@current_y.to_i32 + step_y).clamp(UInt16::MIN.to_i32, UInt16::MAX.to_i32).to_u16
         move_to_color(new_x, new_y)
       end
 
-      private def handle_move_to_color_temperature(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.invalid_command if fields.size < 2
-        target_mireds = IO::ByteFormat::LittleEndian.decode(UInt16, fields[0, 2])
+      private def handle_move_to_color_temperature(fields : TLV::Any?) : InteractionModel::Status
+        req = decode(fields, Definitions::ColorControl::MoveToColorTemperatureRequest)
+        target_mireds = req.color_temperature_mireds
         move_to_color_temperature(target_mireds)
       end
 
-      private def handle_step_color_temperature(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.invalid_command if fields.size < 3
-        step_mode = Definitions::ColorControl::StepMode.from_value(fields[0])
-        step_size = IO::ByteFormat::LittleEndian.decode(UInt16, fields[1, 2])
+      private def handle_step_color_temperature(fields : TLV::Any?) : InteractionModel::Status
+        req = decode(fields, Definitions::ColorControl::StepColorTemperatureRequest)
+        step_mode = req.step_mode
+        step_size = req.step_size
         case step_mode
         when Definitions::ColorControl::StepMode::Up
           new_mireds = [@color_temperature_mireds.to_u32 + step_size, @color_temp_physical_max_mireds.to_u32].min
@@ -638,35 +643,35 @@ module Matter
         end
       end
 
-      private def handle_enhanced_move_to_hue(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.invalid_command if fields.size < 2
-        target_enhanced_hue = IO::ByteFormat::LittleEndian.decode(UInt16, fields[0, 2])
+      private def handle_enhanced_move_to_hue(fields : TLV::Any?) : InteractionModel::Status
+        req = decode(fields, Definitions::ColorControl::EnhancedMoveToHueRequest)
+        target_enhanced_hue = req.enhanced_hue
         move_to_enhanced_hue(target_enhanced_hue)
       end
 
-      private def handle_enhanced_step_hue(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.invalid_command if fields.size < 3
-        step_mode = Definitions::ColorControl::StepMode.from_value(fields[0])
-        step_size = IO::ByteFormat::LittleEndian.decode(UInt16, fields[1, 2])
+      private def handle_enhanced_step_hue(fields : TLV::Any?) : InteractionModel::Status
+        req = decode(fields, Definitions::ColorControl::EnhancedStepHueRequest)
+        step_mode = req.step_mode
+        step_size = req.step_size
         case step_mode
         when Definitions::ColorControl::StepMode::Up
-          new_hue = (@enhanced_current_hue.to_u32 + step_size) % 65536
+          new_hue = (@enhanced_current_hue.to_u32 + step_size) % ENHANCED_HUE_MODULUS
           move_to_enhanced_hue(new_hue.to_u16)
         when Definitions::ColorControl::StepMode::Down
-          new_hue = (@enhanced_current_hue.to_i32 - step_size) % 65536
-          new_hue = new_hue < 0 ? 65536 + new_hue : new_hue
+          new_hue = (@enhanced_current_hue.to_i32 - step_size) % ENHANCED_HUE_MODULUS
+          new_hue = new_hue < 0 ? ENHANCED_HUE_MODULUS + new_hue : new_hue
           move_to_enhanced_hue(new_hue.to_u16)
         else
           InteractionModel::Status.invalid_command
         end
       end
 
-      private def handle_enhanced_move_to_hue_and_saturation(fields : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.invalid_command if fields.size < 3
-        target_enhanced_hue = IO::ByteFormat::LittleEndian.decode(UInt16, fields[0, 2])
-        target_saturation = fields[2]
+      private def handle_enhanced_move_to_hue_and_saturation(fields : TLV::Any?) : InteractionModel::Status
+        req = decode(fields, Definitions::ColorControl::EnhancedMoveToHueAndSaturationRequest)
+        target_enhanced_hue = req.enhanced_hue
+        target_saturation = req.saturation
         @enhanced_current_hue = target_enhanced_hue
-        @current_hue = (target_enhanced_hue >> 8).to_u8
+        @current_hue = (target_enhanced_hue >> ENHANCED_HUE_SHIFT).to_u8
         @current_saturation = target_saturation
         @color_mode = Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation
         @enhanced_color_mode = Definitions::ColorControl::EnhancedColorMode::EnhancedCurrentHueAndCurrentSaturation
@@ -676,14 +681,14 @@ module Matter
         InteractionModel::Status.success
       end
 
-      private def handle_color_loop_set(fields : Bytes) : InteractionModel::Status
+      private def handle_color_loop_set(fields : TLV::Any?) : InteractionModel::Status
         # Simplified color loop set
         @remaining_time = 0_u16
         increment_version
         InteractionModel::Status.success
       end
 
-      private def handle_stop_move_step(fields : Bytes) : InteractionModel::Status
+      private def handle_stop_move_step(fields : TLV::Any?) : InteractionModel::Status
         @remaining_time = 0_u16
         InteractionModel::Status.success
       end
@@ -762,10 +767,6 @@ module Matter
       def color_temperature_kelvin=(kelvin : UInt32) : InteractionModel::Status
         mireds = (1_000_000_u32 / kelvin).to_u16
         move_to_color_temperature(mireds)
-      end
-
-      private def encode_null : Bytes
-        TLV::Any.new(nil, nil).to_slice
       end
     end
   end

@@ -432,201 +432,201 @@ module Matter
         event_list
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
         case attribute_id
         when ATTR_LOCK_STATE
           if state = @lock_state
-            state.value.to_tlv
+            tlv(state.value)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_LOCK_TYPE
-          @lock_type.value.to_tlv
+          tlv(@lock_type.value)
         when ATTR_ACTUATOR_ENABLED
-          @actuator_enabled.to_tlv
+          tlv(@actuator_enabled)
         when ATTR_DOOR_STATE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.door_position_sensor?
           if state = @door_state
-            state.value.to_tlv
+            tlv(state.value)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_DOOR_OPEN_EVENTS
           return InteractionModel::Status.unsupported_attribute unless @feature_map.door_position_sensor?
-          @door_open_events.to_tlv
+          tlv(@door_open_events)
         when ATTR_DOOR_CLOSED_EVENTS
           return InteractionModel::Status.unsupported_attribute unless @feature_map.door_position_sensor?
-          @door_closed_events.to_tlv
+          tlv(@door_closed_events)
         when ATTR_OPEN_PERIOD
           return InteractionModel::Status.unsupported_attribute unless @feature_map.door_position_sensor?
-          @open_period.to_tlv
+          tlv(@open_period)
         when ATTR_NUMBER_OF_TOTAL_USERS_SUPPORTED
           return InteractionModel::Status.unsupported_attribute unless @feature_map.user?
-          @number_of_total_users_supported.to_tlv
+          tlv(@number_of_total_users_supported)
         when ATTR_NUMBER_OF_PIN_USERS_SUPPORTED
           return InteractionModel::Status.unsupported_attribute unless @feature_map.pin_credential?
-          @number_of_pin_users_supported.to_tlv
+          tlv(@number_of_pin_users_supported)
         when ATTR_NUMBER_OF_RFID_USERS_SUPPORTED
           return InteractionModel::Status.unsupported_attribute unless @feature_map.rfid_credential?
-          @number_of_rfid_users_supported.to_tlv
+          tlv(@number_of_rfid_users_supported)
         when ATTR_NUMBER_OF_WEEK_DAY_SCHEDULES_SUPPORTED_PER_USER
           return InteractionModel::Status.unsupported_attribute unless @feature_map.week_day_access_schedules?
-          @number_of_week_day_schedules_supported_per_user.to_tlv
+          tlv(@number_of_week_day_schedules_supported_per_user)
         when ATTR_NUMBER_OF_YEAR_DAY_SCHEDULES_SUPPORTED_PER_USER
           return InteractionModel::Status.unsupported_attribute unless @feature_map.year_day_access_schedules?
-          @number_of_year_day_schedules_supported_per_user.to_tlv
+          tlv(@number_of_year_day_schedules_supported_per_user)
         when ATTR_NUMBER_OF_HOLIDAY_SCHEDULES_SUPPORTED
           return InteractionModel::Status.unsupported_attribute unless @feature_map.holiday_schedules?
-          @number_of_holiday_schedules_supported.to_tlv
+          tlv(@number_of_holiday_schedules_supported)
         when ATTR_MAX_PIN_CODE_LENGTH
           return InteractionModel::Status.unsupported_attribute unless @feature_map.pin_credential?
-          @max_pin_code_length.to_tlv
+          tlv(@max_pin_code_length)
         when ATTR_MIN_PIN_CODE_LENGTH
           return InteractionModel::Status.unsupported_attribute unless @feature_map.pin_credential?
-          @min_pin_code_length.to_tlv
+          tlv(@min_pin_code_length)
         when ATTR_MAX_RFID_CODE_LENGTH
           return InteractionModel::Status.unsupported_attribute unless @feature_map.rfid_credential?
-          @max_rfid_code_length.to_tlv
+          tlv(@max_rfid_code_length)
         when ATTR_MIN_RFID_CODE_LENGTH
           return InteractionModel::Status.unsupported_attribute unless @feature_map.rfid_credential?
-          @min_rfid_code_length.to_tlv
+          tlv(@min_rfid_code_length)
         when ATTR_CREDENTIAL_RULES_SUPPORT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.user?
-          @credential_rules_support.to_tlv
+          tlv(@credential_rules_support)
         when ATTR_NUMBER_OF_CREDENTIALS_SUPPORTED_PER_USER
           return InteractionModel::Status.unsupported_attribute unless @feature_map.user?
-          @number_of_credentials_supported_per_user.to_tlv
+          tlv(@number_of_credentials_supported_per_user)
         when ATTR_LANGUAGE
-          @language.to_tlv
+          tlv(@language)
         when ATTR_LED_SETTINGS
-          @led_settings.value.to_tlv
+          tlv(@led_settings.value)
         when ATTR_AUTO_RELOCK_TIME
-          @auto_relock_time.to_tlv
+          tlv(@auto_relock_time)
         when ATTR_SOUND_VOLUME
-          @sound_volume.value.to_tlv
+          tlv(@sound_volume.value)
         when ATTR_OPERATING_MODE
-          @operating_mode.value.to_tlv
+          tlv(@operating_mode.value)
         when ATTR_SUPPORTED_OPERATING_MODES
-          @supported_operating_modes.to_tlv
+          tlv(@supported_operating_modes)
         when ATTR_DEFAULT_CONFIGURATION_REGISTER
-          @default_configuration_register.to_tlv
+          tlv(@default_configuration_register)
         when ATTR_ENABLE_LOCAL_PROGRAMMING
-          @enable_local_programming.to_tlv
+          tlv(@enable_local_programming)
         when ATTR_ENABLE_ONE_TOUCH_LOCKING
-          @enable_one_touch_locking.to_tlv
+          tlv(@enable_one_touch_locking)
         when ATTR_ENABLE_INSIDE_STATUS_LED
-          @enable_inside_status_led.to_tlv
+          tlv(@enable_inside_status_led)
         when ATTR_ENABLE_PRIVACY_MODE_BUTTON
-          @enable_privacy_mode_button.to_tlv
+          tlv(@enable_privacy_mode_button)
         when ATTR_LOCAL_PROGRAMMING_FEATURES
-          @local_programming_features.to_tlv
+          tlv(@local_programming_features)
         when ATTR_WRONG_CODE_ENTRY_LIMIT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.pin_credential? || @feature_map.rfid_credential?
-          @wrong_code_entry_limit.to_tlv
+          tlv(@wrong_code_entry_limit)
         when ATTR_USER_CODE_TEMPORARY_DISABLE_TIME
           return InteractionModel::Status.unsupported_attribute unless @feature_map.pin_credential? || @feature_map.rfid_credential?
-          @user_code_temporary_disable_time.to_tlv
+          tlv(@user_code_temporary_disable_time)
         when ATTR_SEND_PIN_OVER_THE_AIR
           return InteractionModel::Status.unsupported_attribute unless @feature_map.pin_credential?
           return InteractionModel::Status.unsupported_attribute if @feature_map.user?
-          @send_pin_over_the_air.to_tlv
+          tlv(@send_pin_over_the_air)
         when ATTR_REQUIRE_PIN_FOR_REMOTE_OPERATION
           return InteractionModel::Status.unsupported_attribute unless @feature_map.pin_credential? && @feature_map.credential_over_the_air_access?
-          @require_pin_for_remote_operation.to_tlv
+          tlv(@require_pin_for_remote_operation)
         when ATTR_EXPIRING_USER_TIMEOUT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.user?
-          @expiring_user_timeout.to_tlv
+          tlv(@expiring_user_timeout)
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_LANGUAGE
-          text = decode_string(value)
+          text = decode?(value, String)
           return InteractionModel::Status.invalid_data_type unless text
           @language = text
           increment_version_and_notify(ATTR_LANGUAGE)
           InteractionModel::Status.success
         when ATTR_LED_SETTINGS
-          led = decode_u8(value)
+          led = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless led
           @led_settings = LedSettings.from_value(led)
           increment_version_and_notify(ATTR_LED_SETTINGS)
           InteractionModel::Status.success
         when ATTR_AUTO_RELOCK_TIME
-          secs = decode_u32(value)
+          secs = decode?(value, UInt32)
           return InteractionModel::Status.invalid_data_type unless secs
           @auto_relock_time = secs
           increment_version_and_notify(ATTR_AUTO_RELOCK_TIME)
           InteractionModel::Status.success
         when ATTR_SOUND_VOLUME
-          sound = decode_u8(value)
+          sound = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless sound
           @sound_volume = SoundVolume.from_value(sound)
           increment_version_and_notify(ATTR_SOUND_VOLUME)
           InteractionModel::Status.success
         when ATTR_OPERATING_MODE
-          mode = decode_u8(value)
+          mode = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless mode
           @operating_mode = Def::OperatingMode.from_value(mode)
           increment_version_and_notify(ATTR_OPERATING_MODE)
           InteractionModel::Status.success
         when ATTR_ENABLE_LOCAL_PROGRAMMING
-          enabled = decode_bool(value)
+          enabled = decode?(value, Bool)
           return InteractionModel::Status.invalid_data_type if enabled.nil?
           @enable_local_programming = enabled
           increment_version_and_notify(ATTR_ENABLE_LOCAL_PROGRAMMING)
           InteractionModel::Status.success
         when ATTR_ENABLE_ONE_TOUCH_LOCKING
-          enabled = decode_bool(value)
+          enabled = decode?(value, Bool)
           return InteractionModel::Status.invalid_data_type if enabled.nil?
           @enable_one_touch_locking = enabled
           increment_version_and_notify(ATTR_ENABLE_ONE_TOUCH_LOCKING)
           InteractionModel::Status.success
         when ATTR_ENABLE_INSIDE_STATUS_LED
-          enabled = decode_bool(value)
+          enabled = decode?(value, Bool)
           return InteractionModel::Status.invalid_data_type if enabled.nil?
           @enable_inside_status_led = enabled
           increment_version_and_notify(ATTR_ENABLE_INSIDE_STATUS_LED)
           InteractionModel::Status.success
         when ATTR_ENABLE_PRIVACY_MODE_BUTTON
-          enabled = decode_bool(value)
+          enabled = decode?(value, Bool)
           return InteractionModel::Status.invalid_data_type if enabled.nil?
           @enable_privacy_mode_button = enabled
           increment_version_and_notify(ATTR_ENABLE_PRIVACY_MODE_BUTTON)
           InteractionModel::Status.success
         when ATTR_LOCAL_PROGRAMMING_FEATURES
-          features = decode_u8(value)
+          features = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless features
           @local_programming_features = features
           increment_version_and_notify(ATTR_LOCAL_PROGRAMMING_FEATURES)
           InteractionModel::Status.success
         when ATTR_DOOR_OPEN_EVENTS
           return InteractionModel::Status.unsupported_attribute unless @feature_map.door_position_sensor?
-          counter = decode_u32(value)
+          counter = decode?(value, UInt32)
           return InteractionModel::Status.invalid_data_type unless counter
           @door_open_events = counter
           increment_version_and_notify(ATTR_DOOR_OPEN_EVENTS)
           InteractionModel::Status.success
         when ATTR_DOOR_CLOSED_EVENTS
           return InteractionModel::Status.unsupported_attribute unless @feature_map.door_position_sensor?
-          counter = decode_u32(value)
+          counter = decode?(value, UInt32)
           return InteractionModel::Status.invalid_data_type unless counter
           @door_closed_events = counter
           increment_version_and_notify(ATTR_DOOR_CLOSED_EVENTS)
           InteractionModel::Status.success
         when ATTR_OPEN_PERIOD
           return InteractionModel::Status.unsupported_attribute unless @feature_map.door_position_sensor?
-          period = decode_u16(value)
+          period = decode?(value, UInt16)
           return InteractionModel::Status.invalid_data_type unless period
           @open_period = period
           increment_version_and_notify(ATTR_OPEN_PERIOD)
           InteractionModel::Status.success
         when ATTR_WRONG_CODE_ENTRY_LIMIT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.pin_credential? || @feature_map.rfid_credential?
-          limit = decode_u8(value)
+          limit = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless limit
           return InteractionModel::Status.constraint_error if limit < 1_u8
           @wrong_code_entry_limit = limit
@@ -634,7 +634,7 @@ module Matter
           InteractionModel::Status.success
         when ATTR_USER_CODE_TEMPORARY_DISABLE_TIME
           return InteractionModel::Status.unsupported_attribute unless @feature_map.pin_credential? || @feature_map.rfid_credential?
-          secs = decode_u8(value)
+          secs = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless secs
           return InteractionModel::Status.constraint_error if secs < 1_u8
           @user_code_temporary_disable_time = secs
@@ -643,21 +643,21 @@ module Matter
         when ATTR_SEND_PIN_OVER_THE_AIR
           return InteractionModel::Status.unsupported_attribute unless @feature_map.pin_credential?
           return InteractionModel::Status.unsupported_attribute if @feature_map.user?
-          enabled = decode_bool(value)
+          enabled = decode?(value, Bool)
           return InteractionModel::Status.invalid_data_type if enabled.nil?
           @send_pin_over_the_air = enabled
           increment_version_and_notify(ATTR_SEND_PIN_OVER_THE_AIR)
           InteractionModel::Status.success
         when ATTR_REQUIRE_PIN_FOR_REMOTE_OPERATION
           return InteractionModel::Status.unsupported_attribute unless @feature_map.pin_credential? && @feature_map.credential_over_the_air_access?
-          enabled = decode_bool(value)
+          enabled = decode?(value, Bool)
           return InteractionModel::Status.invalid_data_type if enabled.nil?
           @require_pin_for_remote_operation = enabled
           increment_version_and_notify(ATTR_REQUIRE_PIN_FOR_REMOTE_OPERATION)
           InteractionModel::Status.success
         when ATTR_EXPIRING_USER_TIMEOUT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.user?
-          timeout = decode_u16(value)
+          timeout = decode?(value, UInt16)
           return InteractionModel::Status.invalid_data_type unless timeout
           return InteractionModel::Status.constraint_error if timeout < 1_u16
           @expiring_user_timeout = timeout
@@ -671,24 +671,24 @@ module Matter
         InteractionModel::Status.invalid_data_type
       end
 
-      protected def encode_feature_map_global : Bytes
-        @feature_map.value.to_tlv
+      protected def feature_map_tlv : TLV::Any
+        tlv(@feature_map.value)
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_LOCK_DOOR
-          request = Def::LockDoorRequest.from_slice(fields)
+          request = Def::LockDoorRequest.from_tlv(fields || tlv(nil))
           lock(pin: pin_from_slice(request.pin_code))
         when CMD_UNLOCK_DOOR
-          request = Def::UnlockDoorRequest.from_slice(fields)
+          request = Def::UnlockDoorRequest.from_tlv(fields || tlv(nil))
           unlock(pin: pin_from_slice(request.pin_code))
         when CMD_UNLOCK_WITH_TIMEOUT
-          request = Def::UnlockWithTimeoutRequest.from_slice(fields)
+          request = Def::UnlockWithTimeoutRequest.from_tlv(fields || tlv(nil))
           unlock_with_timeout(request.timeout, pin: pin_from_slice(request.pin_code))
         when CMD_UNBOLT_DOOR
           return InteractionModel::Status.unsupported_command unless @feature_map.unbolting?
-          request = Def::UnboltDoorRequest.from_slice(fields)
+          request = Def::UnboltDoorRequest.from_tlv(fields || tlv(nil))
           unbolt(pin: pin_from_slice(request.pin_code))
         when CMD_SET_WEEK_DAY_SCHEDULE
           return InteractionModel::Status.unsupported_command unless @feature_map.week_day_access_schedules?
@@ -739,7 +739,7 @@ module Matter
           super
         end
       rescue ex : TLV::DeserializationError | Matter::CodecError | ArgumentError
-        Log.warn(exception: ex) { "DoorLock: rejected command 0x#{command_id.to_s(16)} (bytes=#{fields.hexstring})" }
+        Log.warn(exception: ex) { "DoorLock: rejected command 0x#{command_id.to_s(16)} (fields=#{fields.inspect})" }
         InteractionModel::Status.invalid_command
       end
 
@@ -836,8 +836,8 @@ module Matter
         @default_pin_code
       end
 
-      private def handle_set_week_day_schedule(fields : Bytes) : InteractionModel::Status
-        request = Def::SetWeekDayScheduleRequest.from_slice(fields)
+      private def handle_set_week_day_schedule(fields : TLV::Any?) : InteractionModel::Status
+        request = Def::SetWeekDayScheduleRequest.from_tlv(fields || tlv(nil))
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) unless valid_user_index?(request.user_index)
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) unless valid_week_day_schedule_index?(request.week_day_index)
         return InteractionModel::Status.cluster_failure(Def::StatusCode::NotFound) unless @users.has_key?(request.user_index)
@@ -853,8 +853,8 @@ module Matter
         InteractionModel::Status.success
       end
 
-      private def handle_get_week_day_schedule(fields : Bytes) : Cluster::CommandResponse
-        request = Def::GetWeekDayScheduleRequest.from_slice(fields)
+      private def handle_get_week_day_schedule(fields : TLV::Any?) : Cluster::CommandResponse
+        request = Def::GetWeekDayScheduleRequest.from_tlv(fields || tlv(nil))
 
         if !valid_user_index?(request.user_index) || !valid_week_day_schedule_index?(request.week_day_index)
           response = Def::GetWeekDayScheduleResponse.new(
@@ -867,7 +867,7 @@ module Matter
             end_hour: 0_u8,
             end_minute: 0_u8
           )
-          return Cluster::CommandResponse.new(CMD_GET_WEEK_DAY_SCHEDULE, response.to_slice)
+          return Cluster::CommandResponse.new(CMD_GET_WEEK_DAY_SCHEDULE, tlv(response))
         end
 
         if schedule = @week_day_schedules[{request.user_index, request.week_day_index}]?
@@ -894,11 +894,11 @@ module Matter
           )
         end
 
-        Cluster::CommandResponse.new(CMD_GET_WEEK_DAY_SCHEDULE, response.to_slice)
+        Cluster::CommandResponse.new(CMD_GET_WEEK_DAY_SCHEDULE, tlv(response))
       end
 
-      private def handle_clear_week_day_schedule(fields : Bytes) : InteractionModel::Status
-        request = Def::ClearWeekDayScheduleRequest.from_slice(fields)
+      private def handle_clear_week_day_schedule(fields : TLV::Any?) : InteractionModel::Status
+        request = Def::ClearWeekDayScheduleRequest.from_tlv(fields || tlv(nil))
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) unless valid_user_index?(request.user_index)
         unless request.week_day_index == ALL_SCHEDULES || valid_week_day_schedule_index?(request.week_day_index)
           return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField)
@@ -916,8 +916,8 @@ module Matter
         InteractionModel::Status.success
       end
 
-      private def handle_set_year_day_schedule(fields : Bytes) : InteractionModel::Status
-        request = Def::SetYearDayScheduleRequest.from_slice(fields)
+      private def handle_set_year_day_schedule(fields : TLV::Any?) : InteractionModel::Status
+        request = Def::SetYearDayScheduleRequest.from_tlv(fields || tlv(nil))
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) unless valid_user_index?(request.user_index)
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) unless valid_year_day_schedule_index?(request.year_day_index)
         return InteractionModel::Status.cluster_failure(Def::StatusCode::NotFound) unless @users.has_key?(request.user_index)
@@ -931,8 +931,8 @@ module Matter
         InteractionModel::Status.success
       end
 
-      private def handle_get_year_day_schedule(fields : Bytes) : Cluster::CommandResponse
-        request = Def::GetYearDayScheduleRequest.from_slice(fields)
+      private def handle_get_year_day_schedule(fields : TLV::Any?) : Cluster::CommandResponse
+        request = Def::GetYearDayScheduleRequest.from_tlv(fields || tlv(nil))
 
         if !valid_user_index?(request.user_index) || !valid_year_day_schedule_index?(request.year_day_index)
           response = Def::GetYearDayScheduleResponse.new(
@@ -942,7 +942,7 @@ module Matter
             local_start_time: 0_u32,
             local_end_time: 0_u32
           )
-          return Cluster::CommandResponse.new(CMD_GET_YEAR_DAY_SCHEDULE, response.to_slice)
+          return Cluster::CommandResponse.new(CMD_GET_YEAR_DAY_SCHEDULE, tlv(response))
         end
 
         if schedule = @year_day_schedules[{request.user_index, request.year_day_index}]?
@@ -963,11 +963,11 @@ module Matter
           )
         end
 
-        Cluster::CommandResponse.new(CMD_GET_YEAR_DAY_SCHEDULE, response.to_slice)
+        Cluster::CommandResponse.new(CMD_GET_YEAR_DAY_SCHEDULE, tlv(response))
       end
 
-      private def handle_clear_year_day_schedule(fields : Bytes) : InteractionModel::Status
-        request = Def::ClearYearDayScheduleRequest.from_slice(fields)
+      private def handle_clear_year_day_schedule(fields : TLV::Any?) : InteractionModel::Status
+        request = Def::ClearYearDayScheduleRequest.from_tlv(fields || tlv(nil))
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) unless valid_user_index?(request.user_index)
         unless request.year_day_index == ALL_SCHEDULES || valid_year_day_schedule_index?(request.year_day_index)
           return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField)
@@ -985,8 +985,8 @@ module Matter
         InteractionModel::Status.success
       end
 
-      private def handle_set_holiday_schedule(fields : Bytes) : InteractionModel::Status
-        request = Def::SetHolidayScheduleRequest.from_slice(fields)
+      private def handle_set_holiday_schedule(fields : TLV::Any?) : InteractionModel::Status
+        request = Def::SetHolidayScheduleRequest.from_tlv(fields || tlv(nil))
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) unless valid_holiday_schedule_index?(request.holiday_index)
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) if request.local_start_time >= request.local_end_time
 
@@ -999,8 +999,8 @@ module Matter
         InteractionModel::Status.success
       end
 
-      private def handle_get_holiday_schedule(fields : Bytes) : Cluster::CommandResponse
-        request = Def::GetHolidayScheduleRequest.from_slice(fields)
+      private def handle_get_holiday_schedule(fields : TLV::Any?) : Cluster::CommandResponse
+        request = Def::GetHolidayScheduleRequest.from_tlv(fields || tlv(nil))
 
         unless valid_holiday_schedule_index?(request.holiday_index)
           response = Def::GetHolidayScheduleResponse.new(
@@ -1010,7 +1010,7 @@ module Matter
             local_end_time: 0_u32,
             operating_mode: Def::OperatingMode::Normal
           )
-          return Cluster::CommandResponse.new(CMD_GET_HOLIDAY_SCHEDULE, response.to_slice)
+          return Cluster::CommandResponse.new(CMD_GET_HOLIDAY_SCHEDULE, tlv(response))
         end
 
         if schedule = @holiday_schedules[request.holiday_index]?
@@ -1031,11 +1031,11 @@ module Matter
           )
         end
 
-        Cluster::CommandResponse.new(CMD_GET_HOLIDAY_SCHEDULE, response.to_slice)
+        Cluster::CommandResponse.new(CMD_GET_HOLIDAY_SCHEDULE, tlv(response))
       end
 
-      private def handle_clear_holiday_schedule(fields : Bytes) : InteractionModel::Status
-        request = Def::ClearHolidayScheduleRequest.from_slice(fields)
+      private def handle_clear_holiday_schedule(fields : TLV::Any?) : InteractionModel::Status
+        request = Def::ClearHolidayScheduleRequest.from_tlv(fields || tlv(nil))
         unless request.holiday_index == ALL_SCHEDULES || valid_holiday_schedule_index?(request.holiday_index)
           return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField)
         end
@@ -1050,8 +1050,8 @@ module Matter
         InteractionModel::Status.success
       end
 
-      private def handle_set_user(fields : Bytes) : InteractionModel::Status
-        request = Def::SetUserRequest.from_slice(fields)
+      private def handle_set_user(fields : TLV::Any?) : InteractionModel::Status
+        request = Def::SetUserRequest.from_tlv(fields || tlv(nil))
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) unless valid_user_index?(request.user_index)
 
         case request.operation_type
@@ -1109,8 +1109,8 @@ module Matter
         InteractionModel::Status.success
       end
 
-      private def handle_get_user(fields : Bytes) : Cluster::CommandResponse
-        request = Def::GetUserRequest.from_slice(fields)
+      private def handle_get_user(fields : TLV::Any?) : Cluster::CommandResponse
+        request = Def::GetUserRequest.from_tlv(fields || tlv(nil))
         unless valid_user_index?(request.user_index)
           response = Def::GetUserResponse.new(
             user_index: request.user_index,
@@ -1124,7 +1124,7 @@ module Matter
             last_modified_fabric_index: nil,
             next_user_index: nil
           )
-          return Cluster::CommandResponse.new(CMD_GET_USER_RESPONSE, response.to_slice)
+          return Cluster::CommandResponse.new(CMD_GET_USER_RESPONSE, tlv(response))
         end
 
         next_user = @users.keys.select { |index| index > request.user_index }.sort!.first?
@@ -1157,11 +1157,11 @@ module Matter
                      )
                    end
 
-        Cluster::CommandResponse.new(CMD_GET_USER_RESPONSE, response.to_slice)
+        Cluster::CommandResponse.new(CMD_GET_USER_RESPONSE, tlv(response))
       end
 
-      private def handle_clear_user(fields : Bytes) : InteractionModel::Status
-        request = Def::ClearUserRequest.from_slice(fields)
+      private def handle_clear_user(fields : TLV::Any?) : InteractionModel::Status
+        request = Def::ClearUserRequest.from_tlv(fields || tlv(nil))
 
         if request.user_index == ALL_USERS
           @users.keys.each { |user_index| clear_user_record(user_index) }
@@ -1174,8 +1174,8 @@ module Matter
         InteractionModel::Status.success
       end
 
-      private def handle_set_credential(fields : Bytes) : Cluster::CommandResponse
-        request = Def::SetCredentialRequest.from_slice(fields)
+      private def handle_set_credential(fields : TLV::Any?) : Cluster::CommandResponse
+        request = Def::SetCredentialRequest.from_tlv(fields || tlv(nil))
         if user_index = request.user_index
           unless valid_user_index?(user_index)
             return Cluster::CommandResponse.new(
@@ -1184,7 +1184,7 @@ module Matter
                 status_code: Def::StatusCode::InvalidField,
                 user_index: nil,
                 next_credential_index: next_available_credential_index(request.credential.credential_type, request.credential.credential_index)
-              ).to_slice
+              ).to_tlv(nil)
             )
           end
         end
@@ -1198,7 +1198,7 @@ module Matter
               status_code: error,
               user_index: nil,
               next_credential_index: next_available_credential_index(request.credential.credential_type, request.credential.credential_index)
-            ).to_slice
+            ).to_tlv(nil)
           )
         end
 
@@ -1217,7 +1217,7 @@ module Matter
                     status_code: Def::StatusCode::ResourceExhausted,
                     user_index: nil,
                     next_credential_index: next_available_credential_index(request.credential.credential_type, request.credential.credential_index)
-                  ).to_slice
+                  ).to_tlv(nil)
                 )
               end
 
@@ -1229,7 +1229,7 @@ module Matter
                     status_code: Def::StatusCode::ResourceExhausted,
                     user_index: nil,
                     next_credential_index: next_available_credential_index(request.credential.credential_type, request.credential.credential_index)
-                  ).to_slice
+                  ).to_tlv(nil)
                 )
               end
 
@@ -1241,7 +1241,7 @@ module Matter
                       status_code: Def::StatusCode::ResourceExhausted,
                       user_index: nil,
                       next_credential_index: next_available_credential_index(request.credential.credential_type, request.credential.credential_index)
-                    ).to_slice
+                    ).to_tlv(nil)
                   )
                 end
               end
@@ -1274,7 +1274,7 @@ module Matter
                     status_code: Def::StatusCode::ResourceExhausted,
                     user_index: nil,
                     next_credential_index: next_available_credential_index(request.credential.credential_type, request.credential.credential_index)
-                  ).to_slice
+                  ).to_tlv(nil)
                 )
               end
 
@@ -1287,7 +1287,7 @@ module Matter
                       status_code: Def::StatusCode::ResourceExhausted,
                       user_index: nil,
                       next_credential_index: next_available_credential_index(request.credential.credential_type, request.credential.credential_index)
-                    ).to_slice
+                    ).to_tlv(nil)
                   )
                 end
               end
@@ -1319,11 +1319,11 @@ module Matter
           next_credential_index: next_available_credential_index(request.credential.credential_type, request.credential.credential_index)
         )
 
-        Cluster::CommandResponse.new(CMD_SET_CREDENTIAL_RESPONSE, response.to_slice)
+        Cluster::CommandResponse.new(CMD_SET_CREDENTIAL_RESPONSE, tlv(response))
       end
 
-      private def handle_get_credential_status(fields : Bytes) : Cluster::CommandResponse
-        request = Def::GetCredentialStatusRequest.from_slice(fields)
+      private def handle_get_credential_status(fields : TLV::Any?) : Cluster::CommandResponse
+        request = Def::GetCredentialStatusRequest.from_tlv(fields || tlv(nil))
         unless credential_index_supported?(request.credential)
           return Cluster::CommandResponse.new(
             CMD_GET_CREDENTIAL_STATUS_RESPONSE,
@@ -1333,7 +1333,7 @@ module Matter
               creator_fabric_index: nil,
               last_modified_fabric_index: nil,
               next_credential_index: nil
-            ).to_slice
+            ).to_tlv(nil)
           )
         end
 
@@ -1357,11 +1357,11 @@ module Matter
                      )
                    end
 
-        Cluster::CommandResponse.new(CMD_GET_CREDENTIAL_STATUS_RESPONSE, response.to_slice)
+        Cluster::CommandResponse.new(CMD_GET_CREDENTIAL_STATUS_RESPONSE, tlv(response))
       end
 
-      private def handle_clear_credential(fields : Bytes) : InteractionModel::Status
-        request = Def::ClearCredentialRequest.from_slice(fields)
+      private def handle_clear_credential(fields : TLV::Any?) : InteractionModel::Status
+        request = Def::ClearCredentialRequest.from_tlv(fields || tlv(nil))
 
         if credential = request.credential
           unless credential.credential_index == ALL_USERS || credential_index_supported?(credential)

@@ -15,8 +15,8 @@ describe Matter::Cluster::DescriptorCluster do
 
       # Read the attribute
       result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-      result.should be_a(Bytes)
-      bytes = result.as(Bytes)
+      result.should be_a(TLV::Any)
+      bytes = result.as(TLV::Any).to_slice
 
       # Parse the TLV
       tlv = TLV.parse(bytes)
@@ -33,8 +33,8 @@ describe Matter::Cluster::DescriptorCluster do
 
       # ServerList should already have CLUSTER_ID from initialize
       result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-      result.should be_a(Bytes)
-      bytes = result.as(Bytes)
+      result.should be_a(TLV::Any)
+      bytes = result.as(TLV::Any).to_slice
 
       tlv = TLV.parse(bytes)
       tlv.header.element_type.should eq(TLV::ElementType::Array)
@@ -46,8 +46,8 @@ describe Matter::Cluster::DescriptorCluster do
       cluster.add_part(1_u16)
 
       result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-      result.should be_a(Bytes)
-      bytes = result.as(Bytes)
+      result.should be_a(TLV::Any)
+      bytes = result.as(TLV::Any).to_slice
 
       tlv = TLV.parse(bytes)
       tlv.header.element_type.should eq(TLV::ElementType::Array)
@@ -58,8 +58,8 @@ describe Matter::Cluster::DescriptorCluster do
       cluster = Matter::Cluster::DescriptorCluster.new(endpoint)
 
       result = cluster.read_attribute(Matter::Cluster::Base::GLOBAL_ATTRIBUTE_LIST)
-      result.should be_a(Bytes)
-      bytes = result.as(Bytes)
+      result.should be_a(TLV::Any)
+      bytes = result.as(TLV::Any).to_slice
 
       tlv = TLV.parse(bytes)
       tlv.header.element_type.should eq(TLV::ElementType::Array)
@@ -75,7 +75,7 @@ describe Matter::Cluster::DescriptorCluster do
       )
 
       result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-      bytes = result.as(Bytes)
+      bytes = result.as(TLV::Any).to_slice
 
       tlv = TLV.parse(bytes)
       tlv.header.element_type.should eq(TLV::ElementType::Array)

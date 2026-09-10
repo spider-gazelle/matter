@@ -36,10 +36,10 @@ module Matter
         [] of CommandMetadata
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
         case attribute_id
         when ATTR_STATE_VALUE
-          @state_value.to_tlv
+          tlv(@state_value)
         else
           super
         end

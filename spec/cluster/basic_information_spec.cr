@@ -72,10 +72,10 @@ describe Matter::Cluster::BasicInformationCluster do
       )
 
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_DATA_MODEL_REVISION)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
       # Parse TLV
-      parsed = TLV::Any.from_slice(result.as(Bytes))
+      parsed = result.as(TLV::Any)
       parsed.value.should eq(17)
     end
 
@@ -86,9 +86,9 @@ describe Matter::Cluster::BasicInformationCluster do
       )
 
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
-      parsed = TLV::Any.from_slice(result.as(Bytes))
+      parsed = result.as(TLV::Any)
       parsed.value.should eq("Test Vendor")
     end
 
@@ -99,9 +99,9 @@ describe Matter::Cluster::BasicInformationCluster do
       )
 
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_ID)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
-      parsed = TLV::Any.from_slice(result.as(Bytes))
+      parsed = result.as(TLV::Any)
       parsed.value.should eq(0xFFF1)
     end
 
@@ -112,9 +112,9 @@ describe Matter::Cluster::BasicInformationCluster do
       )
 
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_SOFTWARE_VERSION)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
-      parsed = TLV::Any.from_slice(result.as(Bytes))
+      parsed = result.as(TLV::Any)
       parsed.value.should eq(0x01020304)
     end
 
@@ -125,9 +125,9 @@ describe Matter::Cluster::BasicInformationCluster do
       )
 
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCAL_CONFIG_DISABLED)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
-      parsed = TLV::Any.from_slice(result.as(Bytes))
+      parsed = result.as(TLV::Any)
       parsed.value.should be_true
     end
 
@@ -143,10 +143,10 @@ describe Matter::Cluster::BasicInformationCluster do
       )
 
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_CAPABILITY_MINIMA)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
       # Parse TLV structure using TLV::Serializable
-      parsed = Matter::Cluster::BasicInformationCluster::CapabilityMinimaStruct.from_slice(result.as(Bytes))
+      parsed = Matter::Cluster::BasicInformationCluster::CapabilityMinimaStruct.from_tlv(result.as(TLV::Any))
       parsed.case_sessions_per_fabric.should eq(5)
       parsed.subscriptions_per_fabric.should eq(10)
     end
@@ -163,10 +163,10 @@ describe Matter::Cluster::BasicInformationCluster do
       )
 
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
       # Parse TLV structure using TLV::Serializable
-      parsed = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.from_slice(result.as(Bytes))
+      parsed = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.from_tlv(result.as(TLV::Any))
       parsed.finish.should eq(Matter::Cluster::BasicInformationCluster::ProductFinish::Matte)
       parsed.primary_color.should eq(Matter::Cluster::BasicInformationCluster::Color::Blue)
     end
@@ -183,10 +183,10 @@ describe Matter::Cluster::BasicInformationCluster do
       )
 
       result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE)
-      result.should be_a(Bytes)
+      result.should be_a(TLV::Any)
 
       # Parse TLV structure using TLV::Serializable
-      parsed = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.from_slice(result.as(Bytes))
+      parsed = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.from_tlv(result.as(TLV::Any))
       parsed.finish.should eq(Matter::Cluster::BasicInformationCluster::ProductFinish::Polished)
       parsed.primary_color.should be_nil
     end
@@ -211,10 +211,10 @@ describe Matter::Cluster::BasicInformationCluster do
       )
 
       # Encode new label as TLV
-      tlv_value = "My Device".to_slice
+      tlv_value = "My Device"
 
       initial_version = cluster.data_version
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL, tlv_value)
 
       status.should be_a(Matter::InteractionModel::Status)
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
@@ -228,9 +228,9 @@ describe Matter::Cluster::BasicInformationCluster do
       )
 
       long_label = "a" * 33
-      tlv_value = long_label.to_slice
+      tlv_value = long_label
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
     end
@@ -240,9 +240,9 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      tlv_value = "US".to_slice
+      tlv_value = "US"
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
       cluster.location.should eq("US")
@@ -253,9 +253,9 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      tlv_value = "gb".to_slice
+      tlv_value = "gb"
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
       cluster.location.should eq("GB")
@@ -266,9 +266,9 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      tlv_value = "XX".to_slice
+      tlv_value = "XX"
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
       cluster.location.should eq("XX")
@@ -279,9 +279,9 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      tlv_value = "USA".to_slice
+      tlv_value = "USA"
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
     end
@@ -291,9 +291,9 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      tlv_value = "U1".to_slice
+      tlv_value = "U1"
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
     end
@@ -304,9 +304,9 @@ describe Matter::Cluster::BasicInformationCluster do
         local_config_disabled: false
       )
 
-      tlv_value = Bytes[1]
+      tlv_value = true
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCAL_CONFIG_DISABLED, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformationCluster::ATTR_LOCAL_CONFIG_DISABLED, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
       cluster.local_config_disabled?.should be_true
@@ -317,9 +317,9 @@ describe Matter::Cluster::BasicInformationCluster do
         endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
       )
 
-      tlv_value = "New Vendor".to_slice
+      tlv_value = "New Vendor"
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedWrite)
     end

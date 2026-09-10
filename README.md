@@ -28,6 +28,16 @@ An example OnOff device is provided in the `./examples` directory.
 
 Confirmed working with iOS.
 
+`examples/matter_level_control_device.cr` exposes a dimmable light with Groups on
+endpoint 1, an extended color light on endpoint 2, and a window covering on endpoint 3.
+The Docker e2e suite commissions it with the official chip-tool and exercises group
+membership, hue, color temperature, and lift position commands.
+
+Cluster reads return `TLV::Any` or an Interaction Model status. Attribute writes
+take `TLV::Any`; command requests and `CommandResponse#response` use `TLV::Any?`.
+For example, pass `TLV::Any.new(50_u8)` to write a scalar or `request.to_tlv(nil)`
+for a `TLV::Serializable` command struct. Wire encoding stays in the protocol layer.
+
 Examples log at `info` by default; set `MATTER_LOG` to change the level (specs use
 `MATTER_SPEC_LOG` the same way, defaulting to `warn`):
 

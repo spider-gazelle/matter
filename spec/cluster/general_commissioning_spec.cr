@@ -2,21 +2,21 @@ require "../spec_helper"
 require "../../src/matter/cluster/general_commissioning_cluster"
 
 # Helper functions for TLV encoding command data
-def create_arm_failsafe_request_tlv(expiry_length : UInt16, breadcrumb : UInt64) : Bytes
+def create_arm_failsafe_request_tlv(expiry_length : UInt16, breadcrumb : UInt64) : TLV::Any
   request = Matter::Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
     expiry_length_seconds: expiry_length,
     breadcrumb: breadcrumb
   )
-  request.to_slice
+  request.to_tlv(nil)
 end
 
-def create_set_regulatory_config_request_tlv(regulatory_config : UInt8, country_code : String, breadcrumb : UInt64) : Bytes
+def create_set_regulatory_config_request_tlv(regulatory_config : UInt8, country_code : String, breadcrumb : UInt64) : TLV::Any
   request = Matter::Cluster::GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
     new_regulatory_config: Matter::Cluster::GeneralCommissioningCluster::RegulatoryLocationType.new(regulatory_config),
     country_code: country_code,
     breadcrumb: breadcrumb
   )
-  request.to_slice
+  request.to_tlv(nil)
 end
 
 module Matter::Cluster
@@ -39,9 +39,9 @@ module Matter::Cluster
         cluster = GeneralCommissioningCluster.new(endpoint_id)
 
         value = cluster.read_attribute(GeneralCommissioningCluster::ATTR_BREADCRUMB)
-        value.should be_a(Bytes)
+        value.should be_a(TLV::Any)
         # UInt64 value 0 is TLV-encoded as 2 bytes (tag + value)
-        value.as(Bytes).size.should eq(2)
+        value.as(TLV::Any).to_slice.size.should eq(2)
       end
 
       it "writes Breadcrumb attribute" do
@@ -49,11 +49,9 @@ module Matter::Cluster
         cluster = GeneralCommissioningCluster.new(endpoint_id)
 
         # Encode UInt64 value
-        io = IO::Memory.new
-        io.write_bytes(0x1234567890ABCDEF_u64, IO::ByteFormat::LittleEndian)
-        new_value = io.to_slice
+        new_value = 0x1234567890ABCDEF_u64
 
-        status = cluster.write_attribute(
+        status = write(cluster,
           GeneralCommissioningCluster::ATTR_BREADCRUMB,
           new_value
         )
@@ -67,7 +65,7 @@ module Matter::Cluster
         cluster = GeneralCommissioningCluster.new(endpoint_id)
 
         value = cluster.read_attribute(GeneralCommissioningCluster::ATTR_BASIC_COMMISSIONING_INFO)
-        value.should be_a(Bytes)
+        value.should be_a(TLV::Any)
       end
 
       it "reads RegulatoryConfig attribute" do
@@ -75,7 +73,7 @@ module Matter::Cluster
         cluster = GeneralCommissioningCluster.new(endpoint_id)
 
         value = cluster.read_attribute(GeneralCommissioningCluster::ATTR_REGULATORY_CONFIG)
-        value.should be_a(Bytes)
+        value.should be_a(TLV::Any)
       end
 
       it "reads LocationCapability attribute" do
@@ -83,7 +81,7 @@ module Matter::Cluster
         cluster = GeneralCommissioningCluster.new(endpoint_id)
 
         value = cluster.read_attribute(GeneralCommissioningCluster::ATTR_LOCATION_CAPABILITY)
-        value.should be_a(Bytes)
+        value.should be_a(TLV::Any)
       end
 
       it "reads SupportsConcurrentConnection attribute" do
@@ -91,17 +89,17 @@ module Matter::Cluster
         cluster = GeneralCommissioningCluster.new(endpoint_id)
 
         value = cluster.read_attribute(GeneralCommissioningCluster::ATTR_SUPPORTS_CONCURRENT_CONNECTION)
-        value.should be_a(Bytes)
-        decode_tlv_value(value.as(Bytes)).should be_true
+        value.should be_a(TLV::Any)
+        value.as(TLV::Any).value.should be_true
       end
 
       it "returns status for unsupported attribute write" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = GeneralCommissioningCluster.new(endpoint_id)
 
-        status = cluster.write_attribute(
+        status = write(cluster,
           GeneralCommissioningCluster::ATTR_REGULATORY_CONFIG,
-          Bytes[0]
+          0_u8
         )
 
         status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedWrite)
@@ -174,7 +172,7 @@ module Matter::Cluster
         cluster = GeneralCommissioningCluster.new(endpoint_id)
 
         command_data = create_arm_failsafe_request_tlv(60_u16, 0x1234_u64)
-        result = cluster.invoke_command(GeneralCommissioningCluster::CMD_ARM_FAIL_SAFE, command_data)
+        result = invoke(cluster, GeneralCommissioningCluster::CMD_ARM_FAIL_SAFE, command_data)
         result.should be_a(CommandResponse)
       end
 
@@ -183,7 +181,7 @@ module Matter::Cluster
         cluster = GeneralCommissioningCluster.new(endpoint_id)
 
         command_data = create_set_regulatory_config_request_tlv(2_u8, "US", 0x5678_u64) # IndoorOutdoor
-        result = cluster.invoke_command(GeneralCommissioningCluster::CMD_SET_REGULATORY_CONFIG, command_data)
+        result = invoke(cluster, GeneralCommissioningCluster::CMD_SET_REGULATORY_CONFIG, command_data)
         result.should be_a(CommandResponse)
       end
 
@@ -192,7 +190,7 @@ module Matter::Cluster
         cluster = GeneralCommissioningCluster.new(endpoint_id)
 
         # CommissioningComplete has no request parameters, but still needs empty TLV structure
-        result = cluster.invoke_command(GeneralCommissioningCluster::CMD_COMMISSIONING_COMPLETE, Bytes.new(0))
+        result = invoke(cluster, GeneralCommissioningCluster::CMD_COMMISSIONING_COMPLETE, Bytes.new(0))
         result.should be_a(CommandResponse)
       end
     end

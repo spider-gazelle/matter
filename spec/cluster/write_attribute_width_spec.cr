@@ -10,13 +10,7 @@ require "../../src/matter/cluster/thermostat_cluster"
 require "../../src/matter/cluster/occupancy_sensing_cluster"
 require "../../src/matter/interaction_model/tlv_messages"
 
-# Regression tests for attribute writes arriving from the official chip-tool.
-#
-# The IM layer hands clusters the RAW value bytes of the TLV element (see
-# IMHandler.tlv_value_bytes): integers arrive little-endian in whatever width the
-# TLV encoder chose (60 is a single byte even for a uint16/uint32 attribute),
-# strings arrive as UTF-8 bytes and booleans as a single byte. Clusters must not
-# attempt to re-parse these bytes as TLV, nor assume a fixed integer width.
+# Width and type preservation for attribute writes from the official chip-tool.
 private def write_via_im(cluster : Matter::Cluster::Base, attribute_id : UInt32, data : TLV::Any) : Matter::InteractionModel::AttributeStatusIB
   endpoint = cluster.endpoint_id.number
   cluster_id = cluster.cluster_id.id
@@ -49,7 +43,7 @@ private def write_via_im(cluster : Matter::Cluster::Base, attribute_id : UInt32,
   results[0]
 end
 
-describe "write_attribute with raw IM value bytes (chip-tool)" do
+describe "write_attribute with typed TLV values (chip-tool)" do
   endpoint = Matter::DataType::EndpointNumber.new(1_u16)
   success = Matter::InteractionModel::StatusCode::Success.value
 
@@ -187,5 +181,143 @@ describe "write_attribute with raw IM value bytes (chip-tool)" do
     result = write_via_im(identify, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME, TLV::Any.new("sixty"))
     result.status.status.should eq Matter::InteractionModel::StatusCode::InvalidDataType.value
     identify.identify_time.should eq 0_u16
+  end
+end
+
+describe "FanControl writes through the interaction model" do
+  it "writes UInt8 attribute via round-tripped TLV bytes (simulating iOS wire format)" do
+    endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+    fan = Matter::Cluster::FanControlCluster.new(
+      endpoint,
+      fan_mode: Matter::Cluster::FanControlCluster::FanMode::Off,
+      fan_mode_sequence: Matter::Cluster::FanControlCluster::FanModeSequence::OffLowMedHigh,
+      percent_setting: 0_u8,
+      percent_current: 0_u8,
+      speed_max: 4_u8,
+    )
+
+    clusters = {
+      {1_u16, 0x0202_u32} => fan.as(Matter::Cluster::Base),
+    }
+
+    # Build a WriteRequestMessage, serialize to TLV, then parse it back —
+    # this is exactly what happens on the wire from iOS Home
+    original_msg = Matter::InteractionModel::WriteRequestMessage.new(
+      suppress_response: false,
+      timed_request: false,
+      write_requests: [
+        Matter::InteractionModel::AttributeDataIB.new(
+          path: Matter::InteractionModel::AttributePath.new(
+            endpoint: 1_u16,
+            cluster: 0x0202_u32,
+            attribute: 0x0002_u32,
+          ),
+          data: TLV::Any.new(100_u8),
+        ),
+      ],
+    )
+
+    # Serialize and re-parse (simulates network round-trip)
+    wire_bytes = original_msg.to_slice
+    parsed_msg = Matter::Protocol::IMHandler.parse_write_request(wire_bytes)
+    parsed_msg.should_not be_nil
+    parsed_msg = parsed_msg.as(Matter::InteractionModel::WriteRequestMessage)
+
+    # Now write through the full path
+    results = Matter::Protocol::IMHandler.write_attributes(parsed_msg.write_requests, clusters)
+    results.size.should eq 1
+    results[0].status.status.should eq 0_u8 # Success — NOT 0x8d (InvalidDataType)
+
+    fan.percent_setting.should eq 100_u8
+  end
+
+  it "writes FanMode enum via TLV round-trip" do
+    endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+    fan = Matter::Cluster::FanControlCluster.new(
+      endpoint,
+      fan_mode: Matter::Cluster::FanControlCluster::FanMode::Off,
+      fan_mode_sequence: Matter::Cluster::FanControlCluster::FanModeSequence::OffLowMedHigh,
+      percent_setting: 0_u8,
+      percent_current: 0_u8,
+      speed_max: 4_u8,
+    )
+
+    clusters = {
+      {1_u16, 0x0202_u32} => fan.as(Matter::Cluster::Base),
+    }
+
+    # Write FanMode (attribute 0x00) = 3 (High)
+    original_msg = Matter::InteractionModel::WriteRequestMessage.new(
+      suppress_response: false,
+      timed_request: false,
+      write_requests: [
+        Matter::InteractionModel::AttributeDataIB.new(
+          path: Matter::InteractionModel::AttributePath.new(
+            endpoint: 1_u16,
+            cluster: 0x0202_u32,
+            attribute: 0x0000_u32, # FanMode
+          ),
+          data: TLV::Any.new(3_u8), # High
+        ),
+      ],
+    )
+
+    wire_bytes = original_msg.to_slice
+    parsed_msg = Matter::Protocol::IMHandler.parse_write_request(wire_bytes).as(Matter::InteractionModel::WriteRequestMessage)
+
+    results = Matter::Protocol::IMHandler.write_attributes(parsed_msg.write_requests, clusters)
+    results.size.should eq 1
+    results[0].status.status.should eq 0_u8
+
+    fan.fan_mode.should eq Matter::Cluster::FanControlCluster::FanMode::High
+  end
+end
+
+describe "TLV attribute type preservation" do
+  it "distinguishes the unsigned value 20 from null" do
+    cluster = Matter::Cluster::OnOffCluster.new(endpoint(1), feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting)
+    attribute = Matter::Cluster::OnOffCluster::ATTR_START_UP_ON_OFF
+
+    expect_success(write(cluster, attribute, 1_u8))
+    expect_status(write(cluster, attribute, 20_u8), Matter::InteractionModel::StatusCode::InvalidDataType)
+    read_tlv(cluster, attribute).as_u8.should eq(1_u8)
+    expect_success(write(cluster, attribute, nil))
+    read_tlv(cluster, attribute).value.should be_nil
+  end
+
+  it "accepts a wider unsigned encoding without truncating overflow" do
+    cluster = Matter::Cluster::IdentifyCluster.new(endpoint(1))
+    attribute = Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME
+
+    expect_success(write(cluster, attribute, TLV::Any.new(300_u64, fixed_size: true)))
+    cluster.identify_time.should eq(300_u16)
+    expect_status(write(cluster, attribute, TLV::Any.new(UInt16::MAX.to_u64 + 1)), Matter::InteractionModel::StatusCode::InvalidDataType)
+    cluster.identify_time.should eq(300_u16)
+  end
+
+  it "keeps signed values distinct from unsigned values" do
+    fan = Matter::Cluster::FanControlCluster.new(endpoint(1))
+    expect_status(write(fan, Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, -1_i8), Matter::InteractionModel::StatusCode::InvalidDataType)
+    expect_status(write(fan, Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, true), Matter::InteractionModel::StatusCode::InvalidDataType)
+
+    thermostat = Matter::Cluster::ThermostatCluster.new(endpoint(1))
+    expect_success(write(thermostat, Matter::Cluster::ThermostatCluster::ATTR_OCCUPIED_HEATING_SETPOINT, 2100_u16))
+    thermostat.occupied_heating_setpoint.should eq(2100_i16)
+  end
+end
+
+describe "UTF-8 attribute writes" do
+  it "rejects malformed UTF-8 from a real WriteRequest without changing state" do
+    cluster = Matter::Cluster::BasicInformationCluster.new(endpoint(0))
+    original_label = cluster.node_label
+    original_version = cluster.data_version
+    # A two-byte UTF-8 lead byte followed by an ASCII byte is invalid.
+    invalid_label = String.new(Bytes[0xC3, 0x28])
+    invalid_label.valid_encoding?.should be_false
+
+    status = write_via_im(cluster, Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL, TLV::Any.new(invalid_label))
+    status.status.status.should eq(Matter::InteractionModel::StatusCode::InvalidDataType.value)
+    cluster.node_label.should eq(original_label)
+    cluster.data_version.should eq(original_version)
   end
 end

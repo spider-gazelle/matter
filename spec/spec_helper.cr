@@ -17,15 +17,13 @@ macro require_udp_sockets!
 end
 
 # Helper to decode TLV-encoded attribute values
-def decode_tlv_value(bytes : Bytes)
-  parsed = TLV::Any.from_slice(bytes)
-  parsed.value
+def decode_tlv_value(value : TLV::Any)
+  value.value
 end
 
 # Helper to parse TLV arrays - returns the value, which should be an Array for list types
-def parse_tlv_array(bytes : Bytes)
-  parsed = TLV::Any.from_slice(bytes)
-  parsed.value.as(Array(TLV::Any))
+def parse_tlv_array(value : TLV::Any)
+  value.as_list
 end
 
 # Log level for the suite. Defaults to :warn to keep output quiet; set

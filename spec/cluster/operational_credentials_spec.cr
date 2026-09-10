@@ -8,16 +8,16 @@ def build_op_creds_cluster(endpoint_id : Matter::DataType::EndpointNumber = Matt
   Matter::Cluster::OperationalCredentialsCluster.new(fabric_table, endpoint_id, nil)
 end
 
-def create_attestation_request_tlv(nonce : Bytes) : Bytes
+def create_attestation_request_tlv(nonce : Bytes) : TLV::Any
   Matter::Cluster::Definitions::OperationalCredentials::AttestationRequest.new(
     attestation_nonce: nonce
-  ).to_slice
+  ).to_tlv(nil)
 end
 
-def create_certificate_chain_request_tlv(cert_type : UInt8) : Bytes
+def create_certificate_chain_request_tlv(cert_type : UInt8) : TLV::Any
   Matter::Cluster::Definitions::OperationalCredentials::CertificateChainRequest.new(
     certificate_type: Matter::Cluster::Definitions::OperationalCredentials::CertificateChainType.new(cert_type)
-  ).to_slice
+  ).to_tlv(nil)
 end
 
 # Helper to create a valid TLV certificate with a public key for testing (root cert format)
@@ -41,41 +41,41 @@ def create_test_tlv_certificate(public_key : Bytes, fabric_id : UInt64 = 0x1_u64
   ).to_slice
 end
 
-def create_csr_request_tlv(nonce : Bytes, is_for_update : Bool? = nil) : Bytes
+def create_csr_request_tlv(nonce : Bytes, is_for_update : Bool? = nil) : TLV::Any
   Matter::Cluster::Definitions::OperationalCredentials::CsrRequest.new(
     csr_nonce: nonce,
     is_for_update_noc: is_for_update
-  ).to_slice
+  ).to_tlv(nil)
 end
 
-def create_add_noc_request_tlv(noc : Bytes, icac : Bytes?, ipk : Bytes, admin_subject : UInt64, admin_vendor : UInt16) : Bytes
+def create_add_noc_request_tlv(noc : Bytes, icac : Bytes?, ipk : Bytes, admin_subject : UInt64, admin_vendor : UInt16) : TLV::Any
   Matter::Cluster::Definitions::OperationalCredentials::AddNocRequest.new(
     noc_value: noc,
     icac_value: icac,
     ipk_value: ipk,
     case_admin_subject: admin_subject,
     admin_vendor_id: admin_vendor
-  ).to_slice
+  ).to_tlv(nil)
 end
 
-def create_update_noc_request_tlv(noc : Bytes, icac : Bytes?, fabric_index : UInt8) : Bytes
+def create_update_noc_request_tlv(noc : Bytes, icac : Bytes?, fabric_index : UInt8) : TLV::Any
   Matter::Cluster::Definitions::OperationalCredentials::UpdateNocRequest.new(
     noc_value: noc,
     fabric_index: fabric_index,
     icac_value: icac
-  ).to_slice
+  ).to_tlv(nil)
 end
 
-def create_add_trusted_root_cert_request_tlv(cert : Bytes) : Bytes
+def create_add_trusted_root_cert_request_tlv(cert : Bytes) : TLV::Any
   Matter::Cluster::Definitions::OperationalCredentials::AddTrustedRootCertificateRequest.new(
     root_certificate: cert
-  ).to_slice
+  ).to_tlv(nil)
 end
 
-def create_remove_fabric_request_tlv(fabric_index : UInt8) : Bytes
+def create_remove_fabric_request_tlv(fabric_index : UInt8) : TLV::Any
   Matter::Cluster::Definitions::OperationalCredentials::RemoveFabricRequest.new(
     fabric_index: fabric_index
-  ).to_slice
+  ).to_tlv(nil)
 end
 
 # Helper to create a mock NOC with node_id and fabric_id
@@ -109,11 +109,11 @@ def create_mock_noc_with_key(node_id : UInt64, fabric_id : UInt64, public_key : 
 end
 
 # Helper to create UpdateFabricLabel request TLV
-def create_update_fabric_label_request(label : String, fabric_index : UInt8) : Bytes
+def create_update_fabric_label_request(label : String, fabric_index : UInt8) : TLV::Any
   Matter::Cluster::Definitions::OperationalCredentials::UpdateFabricLabelRequest.new(
     label: label,
     fabric_index: fabric_index
-  ).to_slice
+  ).to_tlv(nil)
 end
 
 module OpCredsTestHelpers
@@ -219,9 +219,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       cluster = build_op_creds_cluster(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_NOCS)
-      value.should be_a(Bytes)
-      # Empty array encoded as TLV: 0x16 (array start) + 0x18 (end container)
-      value.as(Bytes).should eq(Bytes[0x16, 0x18])
+      value.should be_a(TLV::Any)
+      value.as(TLV::Any).as_list.should be_empty
     end
 
     it "reads Fabrics attribute" do
@@ -229,7 +228,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       cluster = build_op_creds_cluster(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_FABRICS)
-      value.should be_a(Bytes)
+      value.should be_a(TLV::Any)
     end
 
     it "reads SupportedFabrics attribute" do
@@ -237,8 +236,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       cluster = build_op_creds_cluster(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_SUPPORTED_FABRICS)
-      value.should be_a(Bytes)
-      decode_tlv_value(value.as(Bytes)).should eq(16_u8)
+      value.should be_a(TLV::Any)
+      value.as(TLV::Any).value.should eq(16_u8)
     end
 
     it "reads CommissionedFabrics attribute" do
@@ -246,8 +245,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       cluster = build_op_creds_cluster(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_COMMISSIONED_FABRICS)
-      value.should be_a(Bytes)
-      decode_tlv_value(value.as(Bytes)).should eq(0_u8)
+      value.should be_a(TLV::Any)
+      value.as(TLV::Any).value.should eq(0_u8)
     end
 
     it "reads TrustedRootCertificates attribute" do
@@ -255,7 +254,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       cluster = build_op_creds_cluster(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_TRUSTED_ROOT_CERTIFICATES)
-      value.should be_a(Bytes)
+      value.should be_a(TLV::Any)
     end
 
     it "reads CurrentFabricIndex attribute when not set" do
@@ -263,17 +262,17 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       cluster = build_op_creds_cluster(endpoint_id)
 
       value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_CURRENT_FABRIC_INDEX)
-      value.should be_a(Bytes)
-      decode_tlv_value(value.as(Bytes)).should eq(0_u8)
+      value.should be_a(TLV::Any)
+      value.as(TLV::Any).value.should eq(0_u8)
     end
 
     it "returns status for unsupported attribute write" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = build_op_creds_cluster(endpoint_id)
 
-      status = cluster.write_attribute(
+      status = write(cluster,
         Matter::Cluster::OperationalCredentialsCluster::ATTR_SUPPORTED_FABRICS,
-        Bytes[32]
+        32_u8
       )
 
       status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedWrite)
@@ -375,7 +374,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       nonce = Bytes.new(32, 0x42_u8)
       command_data = create_attestation_request_tlv(nonce)
-      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_ATTESTATION_REQUEST, command_data)
+      result = invoke(cluster, Matter::Cluster::OperationalCredentialsCluster::CMD_ATTESTATION_REQUEST, command_data)
       result.should be_a(Matter::Cluster::CommandResponse)
     end
 
@@ -384,7 +383,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       cluster = build_op_creds_cluster(endpoint_id)
 
       command_data = create_certificate_chain_request_tlv(1_u8) # DACCertificate
-      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_CERTIFICATE_CHAIN_REQUEST, command_data)
+      result = invoke(cluster, Matter::Cluster::OperationalCredentialsCluster::CMD_CERTIFICATE_CHAIN_REQUEST, command_data)
       result.should be_a(Matter::Cluster::CommandResponse)
     end
 
@@ -394,7 +393,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       nonce = Bytes.new(32, 0x42_u8)
       command_data = create_csr_request_tlv(nonce)
-      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST, command_data)
+      result = invoke(cluster, Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST, command_data)
       result.should be_a(Matter::Cluster::CommandResponse)
     end
 
@@ -405,7 +404,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       noc = Bytes.new(100, 0x01_u8)
       ipk = Bytes.new(16, 0x02_u8)
       command_data = create_add_noc_request_tlv(noc, nil, ipk, 0x1234567890_u64, 0xFFF1_u16)
-      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC, command_data)
+      result = invoke(cluster, Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC, command_data)
       result.should be_a(Matter::Cluster::CommandResponse)
     end
 
@@ -415,7 +414,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       noc = Bytes.new(100, 0x01_u8)
       command_data = create_update_noc_request_tlv(noc, nil, 1_u8)
-      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_NOC, command_data)
+      result = invoke(cluster, Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_NOC, command_data)
       result.should be_a(Matter::Cluster::CommandResponse)
     end
 
@@ -425,7 +424,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       cert = Bytes.new(100, 0x01_u8)
       command_data = create_add_trusted_root_cert_request_tlv(cert)
-      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE, command_data)
+      result = invoke(cluster, Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE, command_data)
       result.should be_a(Matter::InteractionModel::Status)
     end
 
@@ -434,7 +433,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       cluster = build_op_creds_cluster(endpoint_id)
 
       command_data = create_remove_fabric_request_tlv(1_u8)
-      result = cluster.invoke_command(Matter::Cluster::OperationalCredentialsCluster::CMD_REMOVE_FABRIC, command_data)
+      result = invoke(cluster, Matter::Cluster::OperationalCredentialsCluster::CMD_REMOVE_FABRIC, command_data)
       result.should be_a(Matter::Cluster::CommandResponse)
     end
   end
@@ -538,12 +537,12 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Step 1: Generate CSR
         nonce = Bytes.new(32, 0x42_u8)
         csr_request_tlv = create_csr_request_tlv(nonce, false)
-        csr_result = cluster.invoke_command(
+        csr_result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           csr_request_tlv
         )
         csr_result.should be_a(Matter::Cluster::CommandResponse)
-        csr_result.as(Matter::Cluster::CommandResponse).data.size.should be > 0
+        csr_result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any).to_slice.size.should be > 0
 
         # Step 2: Add trusted root certificate
         # Create a valid TLV certificate with a public key
@@ -552,7 +551,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         (1...65).each { |i| root_public_key[i] = i.to_u8 }
         root_cert = create_test_tlv_certificate(root_public_key)
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
-        root_result = cluster.invoke_command(
+        root_result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           add_root_tlv
         )
@@ -575,7 +574,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           0xABCDEF0123456789_u64,
           0xFFF1_u16
         )
-        noc_result = cluster.invoke_command(
+        noc_result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           add_noc_tlv
         )
@@ -603,7 +602,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Add trusted root first
         root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           add_root_tlv
         )
@@ -614,7 +613,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         ipk = Bytes.new(16, 0x02_u8)
         add_noc_tlv = create_add_noc_request_tlv(noc_bytes, nil, ipk, 0xABCD_u64, 0xFFF1_u16)
 
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           add_noc_tlv
         )
@@ -622,7 +621,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Should return error response (MissingCsr)
         result.should be_a(Matter::Cluster::CommandResponse)
         # Parse response and check status
-        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        parsed = result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any)
         response = parsed.value.as(TLV::Structure)
         status = response[0_u8].value.as(Int)
         status.should eq(4) # MissingCsr
@@ -638,7 +637,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Generate CSR
         nonce = Bytes.new(32, 0x42_u8)
         csr_request_tlv = create_csr_request_tlv(nonce, false)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           csr_request_tlv
         )
@@ -649,14 +648,14 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         ipk = Bytes.new(16, 0x02_u8)
         add_noc_tlv = create_add_noc_request_tlv(noc_bytes, nil, ipk, 0xABCD_u64, 0xFFF1_u16)
 
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           add_noc_tlv
         )
 
         # Should return error response (InvalidNoc - root cert not set)
         result.should be_a(Matter::Cluster::CommandResponse)
-        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        parsed = result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any)
         response = parsed.value.as(TLV::Structure)
         status = response[0_u8].value.as(Int)
         status.should eq(3) # InvalidNoc
@@ -675,14 +674,14 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Initial commissioning
         nonce = Bytes.new(32, 0x42_u8)
         csr_request_tlv = create_csr_request_tlv(nonce, false)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           csr_request_tlv
         )
 
         root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           add_root_tlv
         )
@@ -691,7 +690,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         ipk = Bytes.new(16, 0x02_u8)
         add_noc_tlv = create_add_noc_request_tlv(original_noc, nil, ipk, 0xABCD_u64, 0xFFF1_u16)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           add_noc_tlv
         )
@@ -708,7 +707,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Step 1: Generate CSR for update
         update_nonce = Bytes.new(32, 0x99_u8)
         update_csr_request_tlv = create_csr_request_tlv(update_nonce, true) # is_for_update = true
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           update_csr_request_tlv,
           session_id: 54321_u64,
@@ -719,7 +718,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         new_noc = create_mock_noc(0xFEDCBA0987654321_u64, 0x0011223344556677_u64)
 
         update_noc_tlv = create_update_noc_request_tlv(new_noc, nil, initial_fabric_index)
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_NOC,
           update_noc_tlv,
           session_id: 54321_u64,
@@ -729,7 +728,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         result.should be_a(Matter::Cluster::CommandResponse)
 
         # Parse response to check status
-        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        parsed = result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any)
         response = parsed.value.as(TLV::Structure)
         status = response[0_u8].value.as(Int)
         status.should eq(0) # Success
@@ -753,13 +752,13 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Initial commissioning
         nonce1 = Bytes.new(32, 0x11_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           create_csr_request_tlv(nonce1, false)
         )
 
         root_public_key1 = Bytes.new(65); root_public_key1[0] = 0x04_u8; (1...65).each { |i| root_public_key1[i] = i.to_u8 }; root_cert1 = create_test_tlv_certificate(root_public_key1, 0xAAAAAAAAAAAAAAAA_u64)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert1)
         )
@@ -767,7 +766,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         noc1 = create_mock_noc(0x1111111111111111_u64, 0xAAAAAAAAAAAAAAAA_u64)
 
         ipk1 = Bytes.new(16, 0x01_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           create_add_noc_request_tlv(noc1, nil, ipk1, 0xABCD_u64, 0xFFF1_u16)
         )
@@ -783,7 +782,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Generate CSR for update
         nonce = Bytes.new(32, 0x42_u8)
         csr_request_tlv = create_csr_request_tlv(nonce, true)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           csr_request_tlv
         )
@@ -791,7 +790,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Try to add trusted root (not allowed for updates)
         root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           add_root_tlv
         )
@@ -800,14 +799,14 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         noc_bytes = create_mock_noc(0x2222222222222222_u64, 0xAAAAAAAAAAAAAAAA_u64)
 
         update_noc_tlv = create_update_noc_request_tlv(noc_bytes, nil, fabric_index)
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_NOC,
           update_noc_tlv
         )
 
         # Should return InvalidNoc error (root cert cannot be set for updates)
         result.should be_a(Matter::Cluster::CommandResponse)
-        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        parsed = result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any)
         response = parsed.value.as(TLV::Structure)
         status = response[0_u8].value.as(Int)
         status.should eq(3) # InvalidNoc
@@ -825,14 +824,14 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Complete full commissioning
         nonce = Bytes.new(32, 0x42_u8)
         csr_request_tlv = create_csr_request_tlv(nonce, false)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           csr_request_tlv
         )
 
         root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           add_root_tlv
         )
@@ -841,7 +840,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         ipk = Bytes.new(16, 0x02_u8)
         add_noc_tlv = create_add_noc_request_tlv(noc_bytes, nil, ipk, 0xABCD_u64, 0xFFF1_u16)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           add_noc_tlv
         )
@@ -849,7 +848,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Try to call CSR again in same failsafe - should fail
         new_nonce = Bytes.new(32, 0x99_u8)
         new_csr_request_tlv = create_csr_request_tlv(new_nonce, false)
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           new_csr_request_tlv
         )
@@ -872,7 +871,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Generate initial CSR
         nonce = Bytes.new(32, 0x42_u8)
         csr_request_tlv = create_csr_request_tlv(nonce, false)
-        result1 = cluster.invoke_command(
+        result1 = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           csr_request_tlv
         )
@@ -886,13 +885,13 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Generate new CSR - should succeed
         new_nonce = Bytes.new(32, 0x99_u8)
         new_csr_request_tlv = create_csr_request_tlv(new_nonce, false)
-        result2 = cluster.invoke_command(
+        result2 = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           new_csr_request_tlv
         )
 
         result2.should be_a(Matter::Cluster::CommandResponse)
-        result2.as(Matter::Cluster::CommandResponse).data.size.should be > 20 # Valid CSR response
+        result2.as(Matter::Cluster::CommandResponse).response.as(TLV::Any).to_slice.size.should be > 20 # Valid CSR response
       end
     end
 
@@ -906,13 +905,13 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster.failsafe_armed = true
 
         nonce1 = Bytes.new(32, 0x11_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           create_csr_request_tlv(nonce1, false)
         )
 
         root_public_key1 = Bytes.new(65); root_public_key1[0] = 0x04_u8; (1...65).each { |i| root_public_key1[i] = i.to_u8 }; root_cert1 = create_test_tlv_certificate(root_public_key1, 0xAAAAAAAAAAAAAAAA_u64)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert1)
         )
@@ -920,7 +919,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         noc1 = create_mock_noc(0x1111111111111111_u64, 0xAAAAAAAAAAAAAAAA_u64)
 
         ipk1 = Bytes.new(16, 0x01_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           create_add_noc_request_tlv(noc1, nil, ipk1, 0xABCD_u64, 0xFFF1_u16)
         )
@@ -932,13 +931,13 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Add second fabric
         nonce2 = Bytes.new(32, 0x22_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           create_csr_request_tlv(nonce2, false)
         )
 
         root_public_key2 = Bytes.new(65); root_public_key2[0] = 0x04_u8; (1...65).each { |i| root_public_key2[i] = (i + 1).to_u8 }; root_cert2 = create_test_tlv_certificate(root_public_key2, 0xBBBBBBBBBBBBBBBB_u64)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert2)
         )
@@ -946,7 +945,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         noc2 = create_mock_noc(0x2222222222222222_u64, 0xBBBBBBBBBBBBBBBB_u64)
 
         ipk2 = Bytes.new(16, 0x02_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           create_add_noc_request_tlv(noc2, nil, ipk2, 0xDEF0_u64, 0xFFF2_u16)
         )
@@ -971,13 +970,13 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster.failsafe_armed = true
 
         nonce1 = Bytes.new(32, 0x11_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           create_csr_request_tlv(nonce1, false)
         )
 
         root_public_key1 = Bytes.new(65); root_public_key1[0] = 0x04_u8; (1...65).each { |i| root_public_key1[i] = i.to_u8 }; root_cert1 = create_test_tlv_certificate(root_public_key1, 0xAAAAAAAAAAAAAAAA_u64)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert1)
         )
@@ -987,7 +986,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         noc1 = create_mock_noc(0x1111111111111111_u64, same_fabric_id)
 
         ipk1 = Bytes.new(16, 0x01_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           create_add_noc_request_tlv(noc1, nil, ipk1, 0xABCD_u64, 0xFFF1_u16)
         )
@@ -998,13 +997,13 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster.failsafe_armed = true
 
         nonce2 = Bytes.new(32, 0x22_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           create_csr_request_tlv(nonce2, false)
         )
 
         root_public_key2 = Bytes.new(65); root_public_key2[0] = 0x04_u8; (1...65).each { |i| root_public_key2[i] = (i + 1).to_u8 }; root_cert2 = create_test_tlv_certificate(root_public_key2, 0xBBBBBBBBBBBBBBBB_u64)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert2)
         )
@@ -1012,14 +1011,14 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         noc2 = create_mock_noc(0x2222222222222222_u64, same_fabric_id)
 
         ipk2 = Bytes.new(16, 0x02_u8)
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           create_add_noc_request_tlv(noc2, nil, ipk2, 0xDEF0_u64, 0xFFF2_u16)
         )
 
         # Should succeed because (root_public_key, fabric_id) is unique.
         result.should be_a(Matter::Cluster::CommandResponse)
-        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        parsed = result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any)
         response = parsed.value.as(TLV::Structure)
         status = response[0_u8].value.as(Int)
         status.should eq(0_u8) # Success
@@ -1035,13 +1034,13 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster.failsafe_armed = true
 
         nonce1 = Bytes.new(32, 0x11_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           create_csr_request_tlv(nonce1, false)
         )
 
         root_public_key1 = Bytes.new(65); root_public_key1[0] = 0x04_u8; (1...65).each { |i| root_public_key1[i] = i.to_u8 }; root_cert1 = create_test_tlv_certificate(root_public_key1, 0xAAAAAAAAAAAAAAAA_u64)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert1)
         )
@@ -1050,7 +1049,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         noc1 = create_mock_noc(0x1111111111111111_u64, same_fabric_id)
 
         ipk1 = Bytes.new(16, 0x01_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           create_add_noc_request_tlv(noc1, nil, ipk1, 0xABCD_u64, 0xFFF1_u16)
         )
@@ -1061,27 +1060,27 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster.failsafe_armed = true
 
         nonce2 = Bytes.new(32, 0x22_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           create_csr_request_tlv(nonce2, false)
         )
 
         # Re-use the same root cert.
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert1)
         )
 
         noc2 = create_mock_noc(0x2222222222222222_u64, same_fabric_id)
         ipk2 = Bytes.new(16, 0x02_u8)
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           create_add_noc_request_tlv(noc2, nil, ipk2, 0xDEF0_u64, 0xFFF2_u16)
         )
 
         # Should return FabricConflict error
         result.should be_a(Matter::Cluster::CommandResponse)
-        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        parsed = result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any)
         response = parsed.value.as(TLV::Structure)
         status = response[0_u8].value.as(Int)
         status.should eq(9_u8) # FabricConflict
@@ -1100,13 +1099,13 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster.failsafe_armed = true
 
         nonce = Bytes.new(32, 0x42_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           create_csr_request_tlv(nonce, false)
         )
 
         root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert)
         )
@@ -1114,7 +1113,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         noc = create_mock_noc(0x1234567890ABCDEF_u64, 0x0011223344556677_u64)
 
         ipk = Bytes.new(16, 0x02_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           create_add_noc_request_tlv(noc, nil, ipk, 0xABCD_u64, 0xFFF1_u16)
         )
@@ -1123,7 +1122,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster.session_fabric_index = fabric_index
 
         # Update label
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_FABRIC_LABEL,
           create_update_fabric_label_request("MyFabricLabel", fabric_index)
         )
@@ -1148,13 +1147,13 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           cluster.failsafe_armed = true
 
           nonce = Bytes.new(32, i.to_u8)
-          cluster.invoke_command(
+          invoke(cluster,
             Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
             create_csr_request_tlv(nonce, false)
           )
 
           root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |j| root_public_key[j] = j.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
-          cluster.invoke_command(
+          invoke(cluster,
             Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
             create_add_trusted_root_cert_request_tlv(root_cert)
           )
@@ -1162,7 +1161,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           noc = create_mock_noc(0x1111111111111111_u64 + i, 0xAAAAAAAAAAAAAAAA_u64 + i)
 
           ipk = Bytes.new(16, i.to_u8)
-          cluster.invoke_command(
+          invoke(cluster,
             Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
             create_add_noc_request_tlv(noc, nil, ipk, 0xABCD_u64, 0xFFF1_u16)
           )
@@ -1172,7 +1171,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         fabric1_index = cluster.fabrics[0].fabric_index
         cluster.session_fabric_index = fabric1_index
 
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_FABRIC_LABEL,
           create_update_fabric_label_request("SharedLabel", fabric1_index)
         )
@@ -1181,14 +1180,14 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         fabric2_index = cluster.fabrics[1].fabric_index
         cluster.session_fabric_index = fabric2_index
 
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_FABRIC_LABEL,
           create_update_fabric_label_request("SharedLabel", fabric2_index) # Same label!
         )
 
         # Should return LabelConflict error
         result.should be_a(Matter::Cluster::CommandResponse)
-        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        parsed = result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any)
         response = parsed.value.as(TLV::Structure)
         status = response[0_u8].value.as(Int)
         status.should eq(10_u8) # LabelConflict
@@ -1212,7 +1211,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Step 1: Generate CSR
         nonce = Bytes.new(32, 0x42_u8)
         csr_request_tlv = create_csr_request_tlv(nonce, false)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           csr_request_tlv
         )
@@ -1223,7 +1222,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         (1...65).each { |i| root_public_key[i] = i.to_u8 }
         root_cert = create_test_tlv_certificate(root_public_key)
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           add_root_tlv
         )
@@ -1239,14 +1238,14 @@ describe Matter::Cluster::OperationalCredentialsCluster do
           0xABCDEF0123456789_u64,
           0xFFF1_u16
         )
-        noc_result = cluster.invoke_command(
+        noc_result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           add_noc_tlv
         )
 
         # Verify AddNOC succeeded
         noc_result.should be_a(Matter::Cluster::CommandResponse)
-        parsed = TLV::Any.from_slice(noc_result.as(Matter::Cluster::CommandResponse).data)
+        parsed = noc_result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any)
         response = parsed.value.as(TLV::Structure)
         status = response[0_u8].value.as(Int)
         status.should eq(0) # Success
@@ -1260,22 +1259,9 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # NOW TEST THE ACTUAL ISSUE: Read the Fabrics attribute
         # This is what the iPhone does after commissioning
         fabrics_value = cluster.read_attribute(Matter::Cluster::OperationalCredentialsCluster::ATTR_FABRICS)
-        fabrics_value.should be_a(Bytes)
+        fabrics_value.should be_a(TLV::Any)
 
-        fabrics_bytes = fabrics_value.as(Bytes)
-
-        # The attribute should NOT be empty
-        fabrics_bytes.size.should be > 0
-        fabrics_bytes.should_not eq(Bytes.new(0))
-
-        # Parse the TLV to verify it contains the fabric data
-        if fabrics_bytes.size > 0
-          fabrics_parsed = TLV::Any.from_slice(fabrics_bytes)
-
-          # Should contain an array with one fabric
-          fabrics_array = fabrics_parsed.value.as(Array(TLV::Any))
-          fabrics_array.size.should eq(1)
-        end
+        fabrics_value.as(TLV::Any).as_list.size.should eq(1)
       end
     end
 
@@ -1292,7 +1278,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Request CSR first
         nonce = Bytes.new(32, 0_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           create_csr_request_tlv(nonce, false)
         )
@@ -1306,7 +1292,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         tlv_cert = create_test_tlv_certificate(public_key, 0x1234567890_u64)
 
         # Add trusted root certificate (TLV format)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(tlv_cert)
         )
@@ -1316,14 +1302,14 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Invoke AddNOC - should successfully extract public key from TLV certificate
         ipk = Bytes.new(16, 0_u8)
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           create_add_noc_request_tlv(noc, nil, ipk, 0xABCD_u64, 0xFFF1_u16)
         )
 
         # Should succeed - verifying that TLV certificate processing worked
         result.should be_a(Matter::Cluster::CommandResponse)
-        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        parsed = result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any)
         response = parsed.value.as(TLV::Structure)
         status = response[0_u8].value.as(Int)
         status.should eq(0) # Success
@@ -1345,7 +1331,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Request CSR
         nonce = Bytes.new(32, 0_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           create_csr_request_tlv(nonce, false)
         )
@@ -1374,7 +1360,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         public_key_bytes = pkey.public_key_bytes
 
         # Add DER root certificate
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(der_cert)
         )
@@ -1384,14 +1370,14 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Invoke AddNOC - should successfully extract public key from DER certificate
         ipk = Bytes.new(16, 1_u8)
-        result = cluster.invoke_command(
+        result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           create_add_noc_request_tlv(noc, nil, ipk, 0xBCDE_u64, 0xFFF2_u16)
         )
 
         # Should succeed - verifying that DER certificate processing worked
         result.should be_a(Matter::Cluster::CommandResponse)
-        parsed = TLV::Any.from_slice(result.as(Matter::Cluster::CommandResponse).data)
+        parsed = result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any)
         response = parsed.value.as(TLV::Structure)
         status = response[0_u8].value.as(Int)
         status.should eq(0) # Success
@@ -1413,7 +1399,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Request CSR
         nonce = Bytes.new(32, 0_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
           create_csr_request_tlv(nonce, false)
         )
@@ -1426,7 +1412,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Create TLV root certificate
         tlv_cert = create_test_tlv_certificate(public_key, 0x1_u64)
 
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(tlv_cert)
         )
@@ -1435,7 +1421,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         noc = create_mock_noc_with_key(0x1_u64, 0x1_u64, public_key)
 
         ipk = Bytes.new(16, 0_u8)
-        cluster.invoke_command(
+        invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
           create_add_noc_request_tlv(noc, nil, ipk, 0xDEAD_u64, 0xBEEF_u16)
         )

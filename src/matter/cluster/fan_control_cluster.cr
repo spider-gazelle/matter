@@ -82,6 +82,22 @@ module Matter
         Decrease = 1
       end
 
+      struct StepRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property direction : StepDirection
+
+        @[TLV::Field(tag: 1, optional: true)]
+        property wrap : Bool?
+
+        @[TLV::Field(tag: 2, optional: true)]
+        property lowest_off : Bool?
+
+        def initialize(@direction : StepDirection, @wrap : Bool? = nil, @lowest_off : Bool? = nil)
+        end
+      end
+
       # Rock support bitmap
       @[Flags]
       enum RockSupport : UInt8
@@ -304,54 +320,54 @@ module Matter
         cmds
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
         case attribute_id
         when ATTR_FAN_MODE
-          @fan_mode.value.to_u8.to_tlv
+          tlv(@fan_mode.value.to_u8)
         when ATTR_FAN_MODE_SEQUENCE
-          @fan_mode_sequence.value.to_u8.to_tlv
+          tlv(@fan_mode_sequence.value.to_u8)
         when ATTR_PERCENT_SETTING
           if setting = @percent_setting
-            setting.to_tlv
+            tlv(setting)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_PERCENT_CURRENT
-          @percent_current.to_tlv
+          tlv(@percent_current)
         when ATTR_SPEED_MAX
-          @speed_max.to_tlv
+          tlv(@speed_max)
         when ATTR_SPEED_SETTING
           if setting = @speed_setting
-            setting.to_tlv
+            tlv(setting)
           else
-            nil.to_tlv
+            tlv(nil)
           end
         when ATTR_SPEED_CURRENT
-          @speed_current.to_tlv
+          tlv(@speed_current)
         when ATTR_ROCK_SUPPORT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.rocking?
-          @rock_support.value.to_tlv
+          tlv(@rock_support.value)
         when ATTR_ROCK_SETTING
           return InteractionModel::Status.unsupported_attribute unless @feature_map.rocking?
-          @rock_setting.value.to_tlv
+          tlv(@rock_setting.value)
         when ATTR_WIND_SUPPORT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.wind?
-          @wind_support.value.to_tlv
+          tlv(@wind_support.value)
         when ATTR_WIND_SETTING
           return InteractionModel::Status.unsupported_attribute unless @feature_map.wind?
-          @wind_setting.value.to_tlv
+          tlv(@wind_setting.value)
         when ATTR_AIRFLOW_DIRECTION
           return InteractionModel::Status.unsupported_attribute unless @feature_map.airflow_direction?
-          @airflow_direction.value.to_u8.to_tlv
+          tlv(@airflow_direction.value.to_u8)
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_FAN_MODE
-          mode_value = decode_u8(value)
+          mode_value = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless mode_value
 
           return InteractionModel::Status.constraint_error if mode_value > 6_u8
@@ -384,7 +400,7 @@ module Matter
 
           InteractionModel::Status.success
         when ATTR_PERCENT_SETTING
-          new_percent = decode_u8(value)
+          new_percent = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless new_percent
 
           return InteractionModel::Status.constraint_error if new_percent > 100_u8
@@ -420,7 +436,7 @@ module Matter
 
           InteractionModel::Status.success
         when ATTR_SPEED_SETTING
-          new_speed = decode_u8(value)
+          new_speed = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless new_speed
 
           return InteractionModel::Status.constraint_error if new_speed > @speed_max
@@ -450,7 +466,7 @@ module Matter
           InteractionModel::Status.success
         when ATTR_ROCK_SETTING
           return InteractionModel::Status.unsupported_attribute unless @feature_map.rocking?
-          new_setting = decode_u8(value)
+          new_setting = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless new_setting
 
           # Validate against rock_support
@@ -463,7 +479,7 @@ module Matter
           InteractionModel::Status.success
         when ATTR_WIND_SETTING
           return InteractionModel::Status.unsupported_attribute unless @feature_map.wind?
-          new_setting = decode_u8(value)
+          new_setting = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless new_setting
 
           # Validate against wind_support
@@ -476,7 +492,7 @@ module Matter
           InteractionModel::Status.success
         when ATTR_AIRFLOW_DIRECTION
           return InteractionModel::Status.unsupported_attribute unless @feature_map.airflow_direction?
-          direction_value = decode_u8(value)
+          direction_value = narrow_u8?(value)
           return InteractionModel::Status.invalid_data_type unless direction_value
 
           return InteractionModel::Status.constraint_error if direction_value > 1_u8
@@ -490,7 +506,7 @@ module Matter
         end
       end
 
-      def invoke_command(command_id : UInt32, command_data : Bytes) : Bytes | InteractionModel::Status
+      protected def handle_command(command_id : UInt32, command_data : TLV::Any?) : Cluster::CommandResponse | InteractionModel::Status
         case command_id
         when CMD_STEP
           return InteractionModel::Status.unsupported_command unless @feature_map.step?
@@ -500,20 +516,15 @@ module Matter
         end
       end
 
-      protected def encode_feature_map_global : Bytes
-        @feature_map.value.to_tlv
+      protected def feature_map_tlv : TLV::Any
+        tlv(@feature_map.value)
       end
 
-      private def handle_step_command(data : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.invalid_data_type if data.size < 1
-
-        direction = StepDirection.from_value(data[0].to_i)
-
-        # Optional wrap parameter (defaults to false)
-        wrap = data.size > 1 && data[1] != 0
-
-        # Optional lowest_off parameter (defaults to true)
-        lowest_off = data.size <= 2 || data[2] != 0
+      private def handle_step_command(data : TLV::Any?) : InteractionModel::Status
+        request = decode(data, StepRequest)
+        direction = request.direction
+        wrap = request.wrap || false
+        lowest_off = request.lowest_off.nil? ? true : request.lowest_off
 
         old_percent = @percent_setting
         old_mode = @fan_mode

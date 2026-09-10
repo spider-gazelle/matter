@@ -380,44 +380,44 @@ module Matter
 
       # Report the cluster's features — controllers decide whether a node is
       # battery powered from this (FeatureMap BAT bit + an Active status).
-      protected def encode_feature_map_global : Bytes
-        @feature_map.value.to_tlv
+      protected def feature_map_tlv : TLV::Any
+        tlv(@feature_map.value)
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
         case attribute_id
         when ATTR_STATUS
-          @status.value.to_u8.to_tlv
+          tlv(@status.value.to_u8)
         when ATTR_ORDER
-          @order.to_tlv
+          tlv(@order)
         when ATTR_DESCRIPTION
-          encode_string(@description)
+          tlv(@description)
           # Wired feature attributes
         when ATTR_WIRED_CURRENT_TYPE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.wired?
           if current_type = @wired_current_type
-            current_type.value.to_u8.to_tlv
+            tlv(current_type.value.to_u8)
           else
-            WiredCurrentType::AC.value.to_u8.to_tlv
+            tlv(WiredCurrentType::AC.value.to_u8)
           end
         when ATTR_WIRED_ASSESSED_INPUT_VOLTAGE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.wired?
           if voltage = @wired_assessed_input_voltage
-            voltage.to_tlv
+            tlv(voltage)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_WIRED_ASSESSED_INPUT_FREQUENCY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.wired?
           if freq = @wired_assessed_input_frequency
-            freq.to_tlv
+            tlv(freq)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_WIRED_PRESENT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.wired?
           if present = @wired_present
-            present.to_tlv
+            tlv(present)
           else
             InteractionModel::Status.unsupported_attribute
           end
@@ -425,49 +425,49 @@ module Matter
         when ATTR_BAT_CHARGE_LEVEL
           return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
           if level = @bat_charge_level
-            level.value.to_u8.to_tlv
+            tlv(level.value.to_u8)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_REPLACEMENT_NEEDED
           return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
           if needed = @bat_replacement_needed
-            needed.to_tlv
+            tlv(needed)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_REPLACEABILITY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
           if replaceability = @bat_replaceability
-            replaceability.value.to_u8.to_tlv
+            tlv(replaceability.value.to_u8)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_VOLTAGE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
           if voltage = @bat_voltage
-            voltage.to_tlv
+            tlv(voltage)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_PERCENT_REMAINING
           return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
           if percent = @bat_percent_remaining
-            percent.to_tlv
+            tlv(percent)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_TIME_REMAINING
           return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
           if time = @bat_time_remaining
-            time.to_tlv
+            tlv(time)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_PRESENT
           return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
           if present = @bat_present
-            present.to_tlv
+            tlv(present)
           else
             InteractionModel::Status.unsupported_attribute
           end
@@ -475,14 +475,14 @@ module Matter
         when ATTR_BAT_REPLACEMENT_DESCRIPTION
           return InteractionModel::Status.unsupported_attribute unless @feature_map.replaceable?
           if desc = @bat_replacement_description
-            encode_string(desc)
+            tlv(desc)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_QUANTITY
           return InteractionModel::Status.unsupported_attribute unless @feature_map.replaceable?
           if quantity = @bat_quantity
-            quantity.to_tlv
+            tlv(quantity)
           else
             InteractionModel::Status.unsupported_attribute
           end
@@ -490,21 +490,21 @@ module Matter
         when ATTR_BAT_CHARGE_STATE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.rechargeable?
           if state = @bat_charge_state
-            state.value.to_u8.to_tlv
+            tlv(state.value.to_u8)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_TIME_TO_FULL_CHARGE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.rechargeable?
           if time = @bat_time_to_full_charge
-            time.to_tlv
+            tlv(time)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_FUNCTIONAL_WHILE_CHARGING
           return InteractionModel::Status.unsupported_attribute unless @feature_map.rechargeable?
           if functional = @bat_functional_while_charging
-            functional.to_tlv
+            tlv(functional)
           else
             InteractionModel::Status.unsupported_attribute
           end
@@ -577,12 +577,6 @@ module Matter
       def on_replacement_needed_changed(&block : Bool?, Bool -> Nil)
         @on_replacement_needed_changed = block
       end
-
-      private def encode_string(value : String) : Bytes
-        value.to_tlv
-      end
-
-      # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
     end
   end
 end

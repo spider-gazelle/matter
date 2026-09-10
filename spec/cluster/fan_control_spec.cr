@@ -105,8 +105,8 @@ describe Matter::Cluster::FanControlCluster do
         fan_mode: Matter::Cluster::FanControlCluster::FanMode::High
       )
       bytes = cluster.read_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(3_u8) # High = 3
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should eq(3_u8) # High = 3
     end
 
     it "reads FanModeSequence" do
@@ -115,8 +115,8 @@ describe Matter::Cluster::FanControlCluster do
         fan_mode_sequence: Matter::Cluster::FanControlCluster::FanModeSequence::OffLowHigh
       )
       bytes = cluster.read_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE_SEQUENCE)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(1_u8) # OffLowHigh = 1
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should eq(1_u8) # OffLowHigh = 1
     end
 
     it "reads PercentSetting" do
@@ -125,8 +125,8 @@ describe Matter::Cluster::FanControlCluster do
         percent_setting: 50_u8
       )
       bytes = cluster.read_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(50_u8)
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should eq(50_u8)
     end
 
     it "reads PercentCurrent" do
@@ -135,8 +135,8 @@ describe Matter::Cluster::FanControlCluster do
         percent_current: 75_u8
       )
       bytes = cluster.read_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_CURRENT)
-      bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(75_u8)
+      bytes.should be_a(TLV::Any)
+      bytes.as(TLV::Any).value.should eq(75_u8)
     end
 
     it "marks fanMode as writable" do
@@ -162,9 +162,9 @@ describe Matter::Cluster::FanControlCluster do
           fan_mode: Matter::Cluster::FanControlCluster::FanMode::Off
         )
 
-        status = cluster.write_attribute(
+        status = write(cluster,
           Matter::Cluster::FanControlCluster::ATTR_FAN_MODE,
-          Bytes[1] # Low
+          1_u8 # Low
         )
         status.should be_a(Matter::InteractionModel::Status)
         status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::Success)
@@ -177,9 +177,9 @@ describe Matter::Cluster::FanControlCluster do
           fan_mode_sequence: Matter::Cluster::FanControlCluster::FanModeSequence::OffLowHigh
         )
 
-        status = cluster.write_attribute(
+        status = write(cluster,
           Matter::Cluster::FanControlCluster::ATTR_FAN_MODE,
-          Bytes[2] # Medium - not supported
+          2_u8 # Medium - not supported
         )
         status.should be_a(Matter::InteractionModel::Status)
         status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
@@ -189,9 +189,9 @@ describe Matter::Cluster::FanControlCluster do
       it "rejects invalid fan mode value" do
         cluster = Matter::Cluster::FanControlCluster.new(endpoint_id)
 
-        status = cluster.write_attribute(
+        status = write(cluster,
           Matter::Cluster::FanControlCluster::ATTR_FAN_MODE,
-          Bytes[7] # Invalid value
+          7_u8 # Invalid value
         )
         status.should be_a(Matter::InteractionModel::Status)
         status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
@@ -205,9 +205,9 @@ describe Matter::Cluster::FanControlCluster do
           percent_current: 75_u8
         )
 
-        cluster.write_attribute(
+        write(cluster,
           Matter::Cluster::FanControlCluster::ATTR_FAN_MODE,
-          Bytes[0] # Off
+          0_u8 # Off
         )
         cluster.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Off)
         cluster.percent_setting.should eq(0_u8)
@@ -227,9 +227,9 @@ describe Matter::Cluster::FanControlCluster do
           new_mode = new
         end
 
-        cluster.write_attribute(
+        write(cluster,
           Matter::Cluster::FanControlCluster::ATTR_FAN_MODE,
-          Bytes[1] # Low
+          1_u8 # Low
         )
         old_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Off)
         new_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Low)
@@ -240,9 +240,9 @@ describe Matter::Cluster::FanControlCluster do
       it "writes valid percent setting" do
         cluster = Matter::Cluster::FanControlCluster.new(endpoint_id)
 
-        status = cluster.write_attribute(
+        status = write(cluster,
           Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING,
-          Bytes[50]
+          50_u8
         )
         status.should be_a(Matter::InteractionModel::Status)
         status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::Success)
@@ -253,9 +253,9 @@ describe Matter::Cluster::FanControlCluster do
       it "rejects percent setting > 100" do
         cluster = Matter::Cluster::FanControlCluster.new(endpoint_id)
 
-        status = cluster.write_attribute(
+        status = write(cluster,
           Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING,
-          Bytes[101]
+          101_u8
         )
         status.should be_a(Matter::InteractionModel::Status)
         status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
@@ -268,9 +268,9 @@ describe Matter::Cluster::FanControlCluster do
           percent_setting: 75_u8
         )
 
-        cluster.write_attribute(
+        write(cluster,
           Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING,
-          Bytes[0]
+          0_u8
         )
         cluster.percent_setting.should eq(0_u8)
         cluster.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Off)
@@ -282,9 +282,9 @@ describe Matter::Cluster::FanControlCluster do
           fan_mode: Matter::Cluster::FanControlCluster::FanMode::Off
         )
 
-        cluster.write_attribute(
+        write(cluster,
           Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING,
-          Bytes[50]
+          50_u8
         )
         cluster.percent_setting.should eq(50_u8)
         cluster.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Low)
@@ -300,9 +300,9 @@ describe Matter::Cluster::FanControlCluster do
           new_percent = new
         end
 
-        cluster.write_attribute(
+        write(cluster,
           Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING,
-          Bytes[50]
+          50_u8
         )
         old_percent.should eq(0_u8)
         new_percent.should eq(50_u8)
@@ -311,9 +311,9 @@ describe Matter::Cluster::FanControlCluster do
 
     it "returns error for read-only attributes" do
       cluster = Matter::Cluster::FanControlCluster.new(endpoint_id)
-      status = cluster.write_attribute(
+      status = write(cluster,
         Matter::Cluster::FanControlCluster::ATTR_FAN_MODE_SEQUENCE,
-        Bytes[1]
+        1_u8
       )
       status.should be_a(Matter::InteractionModel::Status)
       status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedWrite)
@@ -321,7 +321,7 @@ describe Matter::Cluster::FanControlCluster do
 
     it "returns error for unsupported attributes" do
       cluster = Matter::Cluster::FanControlCluster.new(endpoint_id)
-      status = cluster.write_attribute(0x9999_u32, Bytes[1])
+      status = write(cluster, 0x9999_u32, 1_u8)
       status.should be_a(Matter::InteractionModel::Status)
       status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
@@ -369,30 +369,30 @@ describe Matter::Cluster::FanControlCluster do
       )
 
       # Turn on to low speed
-      fan.write_attribute(
+      write(fan,
         Matter::Cluster::FanControlCluster::ATTR_FAN_MODE,
-        Bytes[1] # Low
+        1_u8 # Low
       )
       fan.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Low)
 
       # Increase to medium
-      fan.write_attribute(
+      write(fan,
         Matter::Cluster::FanControlCluster::ATTR_FAN_MODE,
-        Bytes[2] # Medium
+        2_u8 # Medium
       )
       fan.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Medium)
 
       # Increase to high
-      fan.write_attribute(
+      write(fan,
         Matter::Cluster::FanControlCluster::ATTR_FAN_MODE,
-        Bytes[3] # High
+        3_u8 # High
       )
       fan.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::High)
 
       # Turn off
-      fan.write_attribute(
+      write(fan,
         Matter::Cluster::FanControlCluster::ATTR_FAN_MODE,
-        Bytes[0] # Off
+        0_u8 # Off
       )
       fan.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Off)
     end
@@ -405,14 +405,14 @@ describe Matter::Cluster::FanControlCluster do
       )
 
       # Can use Low and High
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, Bytes[1]) # Low
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, 1_u8) # Low
       fan.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Low)
 
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, Bytes[3]) # High
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, 3_u8) # High
       fan.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::High)
 
       # Cannot use Medium
-      status = fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, Bytes[2])
+      status = write(fan, Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, 2_u8)
       status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
     end
 
@@ -424,9 +424,9 @@ describe Matter::Cluster::FanControlCluster do
       )
 
       # Set to Auto mode
-      fan.write_attribute(
+      write(fan,
         Matter::Cluster::FanControlCluster::ATTR_FAN_MODE,
-        Bytes[5] # Auto
+        5_u8 # Auto
       )
       fan.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Auto)
     end
@@ -437,12 +437,12 @@ describe Matter::Cluster::FanControlCluster do
         speed_max: 4_u8
       )
 
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[50])
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, 50_u8)
       fan.percent_setting.should eq(50_u8)
       fan.speed_setting.should eq(2_u8)
       fan.speed_current.should eq(2_u8)
 
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[100])
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, 100_u8)
       fan.speed_setting.should eq(4_u8)
     end
 
@@ -452,12 +452,12 @@ describe Matter::Cluster::FanControlCluster do
         speed_max: 4_u8
       )
 
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_SPEED_SETTING, Bytes[3])
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_SPEED_SETTING, 3_u8)
       fan.speed_setting.should eq(3_u8)
       fan.percent_setting.should eq(75_u8)
       fan.percent_current.should eq(75_u8)
 
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_SPEED_SETTING, Bytes[0])
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_SPEED_SETTING, 0_u8)
       fan.percent_setting.should eq(0_u8)
       fan.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Off)
     end
@@ -473,7 +473,7 @@ describe Matter::Cluster::FanControlCluster do
         received_percent = new_val
       end
 
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_SPEED_SETTING, Bytes[2])
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_SPEED_SETTING, 2_u8)
       received_percent.should eq(50_u8)
     end
 
@@ -488,7 +488,7 @@ describe Matter::Cluster::FanControlCluster do
         received_speed = new_val
       end
 
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[75])
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, 75_u8)
       received_speed.should eq(3_u8)
     end
 
@@ -497,16 +497,16 @@ describe Matter::Cluster::FanControlCluster do
       fan = Matter::Cluster::FanControlCluster.new(endpoint_id)
 
       # Set to 25% speed
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[25])
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, 25_u8)
       fan.percent_setting.should eq(25_u8)
       fan.percent_current.should eq(25_u8)
 
       # Increase to 75%
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[75])
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, 75_u8)
       fan.percent_setting.should eq(75_u8)
 
       # Turn off via percent
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[0])
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, 0_u8)
       fan.percent_setting.should eq(0_u8)
       fan.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Off)
     end
@@ -525,10 +525,10 @@ describe Matter::Cluster::FanControlCluster do
       end
 
       # Multiple state changes
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, Bytes[1]) # Low
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[50])
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, Bytes[3]) # High
-      fan.write_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, Bytes[0]) # Off
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, 1_u8) # Low
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, 50_u8)
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, 3_u8) # High
+      write(fan, Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, 0_u8) # Off
 
       mode_changes.should eq([
         "Off -> Low",

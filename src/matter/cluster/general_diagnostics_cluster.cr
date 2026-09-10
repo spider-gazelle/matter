@@ -185,44 +185,44 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_NETWORK_INTERFACES
-          @network_interfaces.to_tlv
+          tlv(@network_interfaces)
         when ATTR_REBOOT_COUNT
-          @reboot_count.to_tlv
+          tlv(@reboot_count)
         when ATTR_UP_TIME
           # Calculate uptime in seconds since start
-          (Time.utc - @start_time).total_seconds.to_u64.to_tlv
+          tlv((Time.utc - @start_time).total_seconds.to_u64)
         when ATTR_TOTAL_OPERATIONAL_HOURS
           # Calculate hours from uptime
           uptime_hours = ((Time.utc - @start_time).total_hours).to_u32
-          (@total_operational_hours + uptime_hours).to_tlv
+          tlv((@total_operational_hours + uptime_hours))
         when ATTR_BOOT_REASON
-          @boot_reason.value.to_tlv
+          tlv(@boot_reason.value)
         when ATTR_ACTIVE_HARDWARE_FAULTS
-          @active_hardware_faults.map(&.value).to_tlv
+          tlv(@active_hardware_faults.map(&.value))
         when ATTR_ACTIVE_RADIO_FAULTS
-          @active_radio_faults.map(&.value).to_tlv
+          tlv(@active_radio_faults.map(&.value))
         when ATTR_ACTIVE_NETWORK_FAULTS
-          @active_network_faults.map(&.value).to_tlv
+          tlv(@active_network_faults.map(&.value))
         when ATTR_TEST_EVENT_TRIGGERS_ENABLED
-          @test_event_triggers_enabled.to_tlv
+          tlv(@test_event_triggers_enabled)
         when GLOBAL_FEATURE_MAP
-          0_u32.to_tlv # No features
+          tlv(0_u32) # No features
         when GLOBAL_ATTRIBUTE_LIST
-          encode_attribute_list
+          build_attribute_list
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         # All attributes are read-only
         super
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_TEST_EVENT_TRIGGER
           # TestEventTrigger requires test mode to be enabled
@@ -240,8 +240,8 @@ module Matter
       end
 
       # Helper to encode attribute list
-      private def encode_attribute_list : Bytes
-        [
+      private def build_attribute_list : TLV::Any
+        tlv([
           ATTR_NETWORK_INTERFACES,
           ATTR_REBOOT_COUNT,
           ATTR_UP_TIME,
@@ -254,7 +254,7 @@ module Matter
           GLOBAL_CLUSTER_REVISION,
           GLOBAL_FEATURE_MAP,
           GLOBAL_ATTRIBUTE_LIST,
-        ].to_tlv
+        ])
       end
     end
   end

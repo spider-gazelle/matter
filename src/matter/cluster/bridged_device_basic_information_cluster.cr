@@ -318,99 +318,99 @@ module Matter
         ]
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_REACHABLE
-          encode_tlv_bool(@reachable)
+          tlv(@reachable)
         when ATTR_VENDOR_NAME
           if value = @vendor_name
-            encode_tlv_string(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_VENDOR_ID
           if value = @vendor_id
-            encode_tlv_uint16(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_PRODUCT_NAME
           if value = @product_name
-            encode_tlv_string(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_PRODUCT_ID
           if value = @product_id
-            encode_tlv_uint16(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_NODE_LABEL
-          encode_tlv_string(@node_label || "")
+          tlv(@node_label || "")
         when ATTR_HARDWARE_VERSION
           if value = @hardware_version
-            encode_tlv_uint16(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_HARDWARE_VERSION_STRING
           if value = @hardware_version_string
-            encode_tlv_string(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_SOFTWARE_VERSION
           if value = @software_version
-            encode_tlv_uint32(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_SOFTWARE_VERSION_STRING
           if value = @software_version_string
-            encode_tlv_string(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_MANUFACTURING_DATE
           if value = @manufacturing_date
-            encode_tlv_string(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_PART_NUMBER
           if value = @part_number
-            encode_tlv_string(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_PRODUCT_URL
           if value = @product_url
-            encode_tlv_string(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_PRODUCT_LABEL
           if value = @product_label
-            encode_tlv_string(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_SERIAL_NUMBER
           if value = @serial_number
-            encode_tlv_string(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_UNIQUE_ID
           if value = @unique_id
-            encode_tlv_string(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_PRODUCT_APPEARANCE
           if value = @product_appearance
-            value.to_slice
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
@@ -419,10 +419,10 @@ module Matter
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_NODE_LABEL
-          str = decode_string(value)
+          str = decode?(value, String)
           return InteractionModel::Status.invalid_data_type unless str
 
           # Validate max length (32 chars per Matter spec)
@@ -509,21 +509,6 @@ module Matter
       end
 
       # TLV encoding helpers
-      private def encode_tlv_string(value : String) : Bytes
-        TLV::Any.new(value, nil).to_slice
-      end
-
-      private def encode_tlv_uint16(value : UInt16) : Bytes
-        TLV::Any.new(value, nil).to_slice
-      end
-
-      private def encode_tlv_uint32(value : UInt32) : Bytes
-        TLV::Any.new(value, nil).to_slice
-      end
-
-      private def encode_tlv_bool(value : Bool) : Bytes
-        TLV::Any.new(value, nil).to_slice
-      end
     end
   end
 end

@@ -95,21 +95,21 @@ module Matter
         [] of CommandMetadata
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_DEFAULT_OTA_PROVIDERS
           # Return empty list - no default OTA providers configured
-          ([] of UInt8).to_tlv
+          tlv(([] of UInt8))
         when ATTR_UPDATE_POSSIBLE
-          @update_possible.to_tlv
+          tlv(@update_possible)
         when ATTR_UPDATE_STATE
-          @update_state.value.to_tlv
+          tlv(@update_state.value)
         when ATTR_UPDATE_STATE_PROGRESS
-          @update_state_progress.to_tlv
+          tlv(@update_state_progress)
         when GLOBAL_FEATURE_MAP
-          0_u32.to_tlv # No features
+          tlv(0_u32) # No features
         when GLOBAL_ATTRIBUTE_LIST
-          [
+          tlv([
             ATTR_DEFAULT_OTA_PROVIDERS,
             ATTR_UPDATE_POSSIBLE,
             ATTR_UPDATE_STATE,
@@ -117,13 +117,13 @@ module Matter
             GLOBAL_CLUSTER_REVISION,
             GLOBAL_FEATURE_MAP,
             GLOBAL_ATTRIBUTE_LIST,
-          ].to_tlv
+          ])
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
         case attribute_id
         when ATTR_DEFAULT_OTA_PROVIDERS
           # Accept writes but don't actually store them for minimal implementation
@@ -135,7 +135,7 @@ module Matter
         end
       end
 
-      protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
+      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_ANNOUNCE_OTA_PROVIDER
           # AnnounceOTAProvider is optional

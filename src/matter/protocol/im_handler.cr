@@ -15,62 +15,6 @@ module Matter
         clusters[{0_u16, Cluster::AccessControlCluster::CLUSTER_ID}]?.as?(Cluster::AccessControlCluster)
       end
 
-      # Extract raw value bytes from a TLV::Any, stripping the TLV header.
-      # Clusters expect raw value bytes (e.g. 1 byte for UInt8), not TLV-encoded data.
-      private def self.tlv_value_bytes(tlv : TLV::Any) : Bytes
-        case val = tlv.value
-        when UInt8
-          Bytes[val]
-        when UInt16
-          io = IO::Memory.new(2)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when UInt32
-          io = IO::Memory.new(4)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when UInt64
-          io = IO::Memory.new(8)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when Int8
-          Bytes[val.unsafe_as(UInt8)]
-        when Int16
-          io = IO::Memory.new(2)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when Int32
-          io = IO::Memory.new(4)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when Int64
-          io = IO::Memory.new(8)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when Bool
-          Bytes[val ? 1_u8 : 0_u8]
-        when Float32
-          io = IO::Memory.new(4)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when Float64
-          io = IO::Memory.new(8)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when String
-          val.to_slice
-        when Bytes
-          val
-        when Nil
-          # TLV Null — return a single byte with the TLV null type marker
-          # so clusters can detect null vs empty
-          Bytes[InteractionModel::TLV_NULL_MARKER]
-        else
-          # For complex types (arrays, lists, structures), fall back to TLV encoding
-          tlv.to_slice
-        end
-      end
-
       private def self.authorized?(
         clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
         required : Cluster::Definitions::AccessControl::EntryPrivilege,
@@ -263,7 +207,7 @@ module Matter
         path : InteractionModel::AttributePath,
         endpoint_id : UInt16,
         cluster_id : UInt32,
-      ) : InteractionModel::Status | Bytes
+      ) : InteractionModel::Status | TLV::Any
         cluster.read_attribute(attribute_id, fabric_index)
       rescue ex
         Log.error(exception: ex) do
@@ -278,7 +222,7 @@ module Matter
       private def self.safe_invoke_command(
         cluster : Cluster::Base,
         path : InteractionModel::CommandPath,
-        fields : Bytes,
+        fields : TLV::Any?,
         session_id : UInt64?,
         is_case_session : Bool,
         fabric_index : UInt8?,
@@ -293,7 +237,7 @@ module Matter
 
       private def self.build_attribute_report(
         path : InteractionModel::AttributePath,
-        result : InteractionModel::Status | Bytes,
+        result : InteractionModel::Status | TLV::Any,
         cluster_id : UInt32,
         endpoint_id : UInt16,
         data_version : UInt32,
@@ -304,31 +248,12 @@ module Matter
           return InteractionModel::AttributeReportIB.new(attribute_status: attr_status)
         end
 
-        bytes = result.as(Bytes)
-        if bytes.empty?
-          # Empty bytes can't be parsed as TLV - treat as failure
-          Log.warn { "Empty bytes returned for attribute #{path.attribute} on cluster 0x#{cluster_id.to_s(16)} endpoint #{endpoint_id}" }
-          status_ib = InteractionModel::StatusIB.new(status: InteractionModel::StatusCode::Failure.value)
-          attr_status = InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
-          return InteractionModel::AttributeReportIB.new(attribute_status: attr_status)
-        end
-
-        begin
-          data = TLV::Any.from_slice(bytes)
-          attr_data = InteractionModel::AttributeDataIB.new(
-            path: path,
-            data: data,
-            data_version: data_version
-          )
-          InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
-        rescue ex
-          Log.error(exception: ex) do
-            "Failed to decode attribute TLV: #{path} bytes=#{bytes.hexstring}"
-          end
-          status_ib = InteractionModel::StatusIB.new(status: InteractionModel::StatusCode::Failure.value)
-          attr_status = InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
-          InteractionModel::AttributeReportIB.new(attribute_status: attr_status)
-        end
+        attr_data = InteractionModel::AttributeDataIB.new(
+          path: path,
+          data: result,
+          data_version: data_version
+        )
+        InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
       end
 
       # Parse WriteRequest from decrypted TLV payload
@@ -404,9 +329,9 @@ module Matter
           cluster.request_fabric_index = fabric_index
           cluster.request_peer_node_id = peer_subject_ids.try(&.first?)
 
-          # Write attribute to cluster (extract raw value bytes from TLV)
-          value_bytes = tlv_value_bytes(request.data)
-          status = cluster.write_attribute(attribute_id, value_bytes)
+          # Preserve the TLV type when passing the attribute to its cluster.
+          value = request.data
+          status = cluster.write_attribute(attribute_id, value)
 
           status_ib = InteractionModel::StatusIB.new(status: status.status.value, cluster_status: status.cluster_status)
           write_responses << InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
@@ -604,15 +529,7 @@ module Matter
             end
           end
 
-          # Convert command fields TLV::Any to bytes for cluster processing
-          fields_bytes = if fields = cmd_data.command_fields
-                           fields.to_slice
-                         else
-                           Bytes.empty
-                         end
-
-          # Invoke command on cluster (pass session info for authentication)
-          result = safe_invoke_command(cluster, path, fields_bytes, session_id, is_case_session, fabric_index)
+          result = safe_invoke_command(cluster, path, cmd_data.command_fields, session_id, is_case_session, fabric_index)
 
           if result.is_a?(InteractionModel::Status)
             # Error status
@@ -627,14 +544,9 @@ module Matter
               command: result.command_id # Use response command ID from cluster
             )
 
-            # Parse response data to TLV::Any if present
-            command_fields = unless result.data.empty?
-              TLV::Any.from_slice(result.data)
-            end
-
             cmd_response = InteractionModel::CommandDataIBTlv.new(
               command_path: response_path,
-              command_fields: command_fields
+              command_fields: result.response
             )
             invoke_responses << InteractionModel::InvokeResponseIB.new(command_data: cmd_response)
           end

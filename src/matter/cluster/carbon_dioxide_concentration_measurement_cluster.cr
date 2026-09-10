@@ -238,67 +238,67 @@ module Matter
         [] of CommandMetadata # No commands for concentration measurement cluster
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Bytes | InteractionModel::Status
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
         case attribute_id
         when ATTR_MEASUREMENT_MEDIUM
-          @measurement_medium.value.to_u8.to_tlv
+          tlv(@measurement_medium.value.to_u8)
         when ATTR_MEASURED_VALUE
           if value = @measured_value
-            encode_float(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_MIN_MEASURED_VALUE
           if value = @min_measured_value
-            encode_float(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_MAX_MEASURED_VALUE
           if value = @max_measured_value
-            encode_float(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_UNCERTAINTY
           if value = @uncertainty
-            encode_float(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_MEASUREMENT_UNIT
           if unit = @measurement_unit
-            unit.value.to_u8.to_tlv
+            tlv(unit.value.to_u8)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_LEVEL_VALUE
           if value = @level_value
-            value.value.to_u8.to_tlv
+            tlv(value.value.to_u8)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_PEAK_MEASURED_VALUE
           if value = @peak_measured_value
-            encode_float(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_PEAK_MEASURED_VALUE_WINDOW
           if value = @peak_measured_value_window
-            value.to_tlv
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_AVERAGE_MEASURED_VALUE
           if value = @average_measured_value
-            encode_float(value)
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
         when ATTR_AVERAGE_MEASURED_VALUE_WINDOW
           if value = @average_measured_value_window
-            value.to_tlv
+            tlv(value)
           else
             InteractionModel::Status.unsupported_attribute
           end
@@ -407,12 +407,7 @@ module Matter
         @on_average_measured_value_changed = block
       end
 
-      # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).
-
-      # encode_float uses TLV encoding for attribute responses
-      private def encode_float(value : Float32) : Bytes
-        value.to_tlv
-      end
+      # build_float uses TLV encoding for attribute responses
     end
   end
 end
