@@ -255,15 +255,16 @@ module Matter
 
         # For encrypted messages, dump packet header bytes to debug source_node_id parsing
         if data.size > 8
-          session_id_offset = 1 # After flags byte
+          session_id_offset = Codec::MessageCodec::SESSION_ID_OFFSET
           session_id_bytes = data[session_id_offset, 2]
           session_id = IO::ByteFormat::LittleEndian.decode(UInt16, session_id_bytes)
 
           if session_id != 0
+            flags = data[Codec::MessageCodec::FLAGS_OFFSET]
             Log.trace do
               "Encrypted packet header: first24=#{data[0, [24, data.size].min].hexstring} " \
-              "flags=0x#{data[0].to_s(16).rjust(2, '0')} " \
-              "has_source_node_id=#{(data[0] & 0x04) != 0} has_dest_node_id=#{(data[0] & 0x01) != 0} " \
+              "flags=#{Hex.u8(flags)} " \
+              "has_source_node_id=#{(flags & Codec::MessageCodec::PacketHeaderFlag::HasSourceNodeId.value) != 0} has_dest_node_id=#{(flags & Codec::MessageCodec::PacketHeaderFlag::HasDestNodeId.value) != 0} " \
               "session_id=#{session_id}"
             end
           end

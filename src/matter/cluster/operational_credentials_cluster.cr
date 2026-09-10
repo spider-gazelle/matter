@@ -626,7 +626,7 @@ module Matter
         when CMD_ADD_TRUSTED_ROOT_CERTIFICATE
           # AddTrustedRootCertificate has no response - return success status
           handle_add_trusted_root_certificate(fields)
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         else
           super
         end
@@ -673,20 +673,14 @@ module Matter
         # Validate failsafe is armed
         # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
         unless @failsafe_armed
-          return InteractionModel::Status.new(
-            InteractionModel::StatusCode::Failure,
-            NodeOperationalCertStatus::MissingCsr.value
-          )
+          return InteractionModel::Status.cluster_failure(NodeOperationalCertStatus::MissingCsr)
         end
 
         # Check if NOC already added/updated in current failsafe
         if @pending_credentials.noc_added_or_updated?
           # CSRRequest response payload cannot encode an error; failures must be
           # returned as a StatusIB in the InvokeResponse.
-          return InteractionModel::Status.new(
-            InteractionModel::StatusCode::Failure,
-            NodeOperationalCertStatus::MissingCsr.value
-          )
+          return InteractionModel::Status.cluster_failure(NodeOperationalCertStatus::MissingCsr)
         end
 
         # Generate new operational key pair

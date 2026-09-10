@@ -329,19 +329,19 @@ module Matter
         when ATTR_SPEED_CURRENT
           @speed_current.to_tlv
         when ATTR_ROCK_SUPPORT
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.rocking?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.rocking?
           @rock_support.value.to_tlv
         when ATTR_ROCK_SETTING
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.rocking?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.rocking?
           @rock_setting.value.to_tlv
         when ATTR_WIND_SUPPORT
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wind?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.wind?
           @wind_support.value.to_tlv
         when ATTR_WIND_SETTING
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wind?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.wind?
           @wind_setting.value.to_tlv
         when ATTR_AIRFLOW_DIRECTION
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.airflow_direction?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.airflow_direction?
           @airflow_direction.value.to_u8.to_tlv
         else
           super
@@ -352,15 +352,15 @@ module Matter
         case attribute_id
         when ATTR_FAN_MODE
           mode_value = decode_u8(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless mode_value
+          return InteractionModel::Status.invalid_data_type unless mode_value
 
-          return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if mode_value > 6_u8
+          return InteractionModel::Status.constraint_error if mode_value > 6_u8
 
           new_mode = FanMode.from_value(mode_value)
 
           # Validate mode is supported by sequence
           unless mode_supported?(new_mode, @fan_mode_sequence)
-            return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+            return InteractionModel::Status.constraint_error
           end
 
           old_mode = @fan_mode
@@ -382,12 +382,12 @@ module Matter
           @on_fan_mode_changed.try &.call(old_mode, new_mode)
           increment_version_and_notify(ATTR_FAN_MODE)
 
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         when ATTR_PERCENT_SETTING
           new_percent = decode_u8(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless new_percent
+          return InteractionModel::Status.invalid_data_type unless new_percent
 
-          return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if new_percent > 100_u8
+          return InteractionModel::Status.constraint_error if new_percent > 100_u8
 
           old_percent = @percent_setting
           old_speed = @speed_setting
@@ -418,12 +418,12 @@ module Matter
           end
           increment_version_and_notify(ATTR_PERCENT_SETTING)
 
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         when ATTR_SPEED_SETTING
           new_speed = decode_u8(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless new_speed
+          return InteractionModel::Status.invalid_data_type unless new_speed
 
-          return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if new_speed > @speed_max
+          return InteractionModel::Status.constraint_error if new_speed > @speed_max
 
           old_speed = @speed_setting
           old_percent = @percent_setting
@@ -447,44 +447,44 @@ module Matter
           end
           increment_version_and_notify(ATTR_SPEED_SETTING)
 
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         when ATTR_ROCK_SETTING
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.rocking?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.rocking?
           new_setting = decode_u8(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless new_setting
+          return InteractionModel::Status.invalid_data_type unless new_setting
 
           # Validate against rock_support
           invalid_bits = new_setting & ~@rock_support.value
-          return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if invalid_bits != 0
+          return InteractionModel::Status.constraint_error if invalid_bits != 0
 
           @rock_setting = RockSupport.from_value(new_setting)
           increment_version_and_notify(ATTR_ROCK_SETTING)
 
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         when ATTR_WIND_SETTING
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wind?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.wind?
           new_setting = decode_u8(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless new_setting
+          return InteractionModel::Status.invalid_data_type unless new_setting
 
           # Validate against wind_support
           invalid_bits = new_setting & ~@wind_support.value
-          return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if invalid_bits != 0
+          return InteractionModel::Status.constraint_error if invalid_bits != 0
 
           @wind_setting = WindSupport.from_value(new_setting)
           increment_version_and_notify(ATTR_WIND_SETTING)
 
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         when ATTR_AIRFLOW_DIRECTION
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.airflow_direction?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.airflow_direction?
           direction_value = decode_u8(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless direction_value
+          return InteractionModel::Status.invalid_data_type unless direction_value
 
-          return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError) if direction_value > 1_u8
+          return InteractionModel::Status.constraint_error if direction_value > 1_u8
 
           @airflow_direction = AirflowDirectionEnum.from_value(direction_value.to_i)
           increment_version_and_notify(ATTR_AIRFLOW_DIRECTION)
 
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         else
           super
         end
@@ -493,7 +493,7 @@ module Matter
       def invoke_command(command_id : UInt32, command_data : Bytes) : Bytes | InteractionModel::Status
         case command_id
         when CMD_STEP
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand) unless @feature_map.step?
+          return InteractionModel::Status.unsupported_command unless @feature_map.step?
           handle_step_command(command_data)
         else
           super
@@ -505,7 +505,7 @@ module Matter
       end
 
       private def handle_step_command(data : Bytes) : InteractionModel::Status
-        return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if data.size < 1
+        return InteractionModel::Status.invalid_data_type if data.size < 1
 
         direction = StepDirection.from_value(data[0].to_i)
 
@@ -575,7 +575,7 @@ module Matter
         end
 
         increment_version_and_notify(ATTR_PERCENT_SETTING)
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       end
 
       # Update the current fan speed percentage (read-only attribute updated by implementation)

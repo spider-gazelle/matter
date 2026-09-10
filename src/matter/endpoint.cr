@@ -66,7 +66,7 @@ module Matter
         # Check all required clusters are present
         device_type.required_server_clusters.each do |cluster_id|
           unless has_cluster?(cluster_id)
-            errors << "Missing required cluster 0x#{cluster_id.to_s(16).upcase.rjust(4, '0')} for device type #{device_type.name}"
+            errors << "Missing required cluster #{Hex.u16(cluster_id)} for device type #{device_type.name}"
           end
         end
 
@@ -104,7 +104,7 @@ module Matter
     # Read an attribute from a cluster on this endpoint
     def read_attribute(cluster_id : UInt32, attribute_id : UInt32) : InteractionModel::Status | Bytes
       cluster = get_cluster(cluster_id)
-      return InteractionModel::Status.new(InteractionModel::StatusCode::Failure) unless cluster
+      return InteractionModel::Status.failure unless cluster
 
       cluster.read_attribute(attribute_id)
     end
@@ -112,7 +112,7 @@ module Matter
     # Write an attribute to a cluster on this endpoint
     def write_attribute(cluster_id : UInt32, attribute_id : UInt32, value : Bytes) : InteractionModel::Status
       cluster = get_cluster(cluster_id)
-      return InteractionModel::Status.new(InteractionModel::StatusCode::Failure) unless cluster
+      return InteractionModel::Status.failure unless cluster
 
       cluster.write_attribute(attribute_id, value)
     end
@@ -120,7 +120,7 @@ module Matter
     # Invoke a command on a cluster on this endpoint
     def invoke_command(cluster_id : UInt32, command_id : UInt32, fields : Bytes = Bytes.new(0)) : InteractionModel::Status | Bytes
       cluster = get_cluster(cluster_id)
-      return InteractionModel::Status.new(InteractionModel::StatusCode::Failure) unless cluster
+      return InteractionModel::Status.failure unless cluster
 
       result = cluster.invoke_command(command_id, fields)
 
@@ -203,7 +203,7 @@ module Matter
     # Read an attribute from a cluster on an endpoint
     def read_attribute(endpoint_id : UInt16, cluster_id : UInt32, attribute_id : UInt32) : InteractionModel::Status | Bytes
       endpoint = get_endpoint(endpoint_id)
-      return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedEndpoint) unless endpoint
+      return InteractionModel::Status.unsupported_endpoint unless endpoint
 
       endpoint.read_attribute(cluster_id, attribute_id)
     end
@@ -211,7 +211,7 @@ module Matter
     # Write an attribute to a cluster on an endpoint
     def write_attribute(endpoint_id : UInt16, cluster_id : UInt32, attribute_id : UInt32, value : Bytes) : InteractionModel::Status
       endpoint = get_endpoint(endpoint_id)
-      return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedEndpoint) unless endpoint
+      return InteractionModel::Status.unsupported_endpoint unless endpoint
 
       endpoint.write_attribute(cluster_id, attribute_id, value)
     end
@@ -219,7 +219,7 @@ module Matter
     # Invoke a command on a cluster on an endpoint
     def invoke_command(endpoint_id : UInt16, cluster_id : UInt32, command_id : UInt32, fields : Bytes = Bytes.new(0)) : InteractionModel::Status | Bytes
       endpoint = get_endpoint(endpoint_id)
-      return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedEndpoint) unless endpoint
+      return InteractionModel::Status.unsupported_endpoint unless endpoint
 
       endpoint.invoke_command(cluster_id, command_id, fields)
     end

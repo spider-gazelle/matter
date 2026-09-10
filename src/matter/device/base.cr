@@ -547,12 +547,12 @@ module Matter
           return hostname if hostname.ends_with?(".local") && !hostname.empty?
         end
 
-        token = Random::Secure.rand(UInt64).to_s(16).upcase.rjust(16, '0')
+        token = Hex.node_id(Random::Secure.rand(UInt64))
         hostname = "#{token}.local"
         @storage_manager.storage.set(IDENTITY_CONTEXT, HOSTNAME_KEY, hostname)
         hostname
       rescue
-        "#{Random::Secure.rand(UInt64).to_s(16).upcase.rjust(16, '0')}.local"
+        "#{Hex.node_id(Random::Secure.rand(UInt64))}.local"
       end
 
       private def load_or_create_serial_number : String

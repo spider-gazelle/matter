@@ -94,7 +94,7 @@ module Matter
         Log.trace do
           "Encrypt: source_node_id=#{source_node_id} " \
           "message_counter=#{message_counter} session_id=#{packet_header.session_id} " \
-          "security_flags=0x#{security_flags.to_s(16).rjust(2, '0')} " \
+          "security_flags=#{Hex.u8(security_flags)} " \
           "nonce=#{nonce.hexstring} aad=#{aad.hexstring} " \
           "key=#{context.encryption_key.hexstring} payload_bytes=#{payload.size}"
         end
@@ -157,13 +157,14 @@ module Matter
           "message_counter=#{message_counter} session_id=#{packet_header.session_id} peer_session_id=#{context.peer_session_id}"
         end
 
-        # Use the raw security_flags byte from the packet header (byte 3)
-        # This is CRITICAL for AES-CCM nonce construction!
-        # matter.js does: const securityFlags = headerBytes[3]
+        # Use the raw security_flags byte from the packet header (the byte at
+        # Codec::MessageCodec::SECURITY_FLAGS_OFFSET). This is CRITICAL for
+        # AES-CCM nonce construction! matter.js does the same:
+        # const securityFlags = headerBytes[3]
         security_flags = packet_header.security_flags
 
         nonce = build_nonce(peer_node_id, message_counter, security_flags)
-        Log.trace { "Decrypt: security_flags=0x#{security_flags.to_s(16).rjust(2, '0')} nonce=#{nonce.hexstring}" }
+        Log.trace { "Decrypt: security_flags=#{Hex.u8(security_flags)} nonce=#{nonce.hexstring}" }
 
         # Build AAD from packet header
         # AAD = flags (1 byte) || session_id (2 bytes LE) || security_flags (1 byte) || message_counter (4 bytes LE)

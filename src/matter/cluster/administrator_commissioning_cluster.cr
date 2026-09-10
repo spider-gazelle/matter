@@ -414,17 +414,17 @@ module Matter
 
         begin
           open_commissioning_window(request, fabric_index, vendor_id)
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         rescue BusyError
-          InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
+          InteractionModel::Status.busy
         rescue PAKEParameterError
-          InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+          InteractionModel::Status.failure
         rescue
-          InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+          InteractionModel::Status.failure
         end
       rescue ex
         Log.error(exception: ex) { "OpenCommissioningWindow: failed to parse request (bytes=#{fields.hexstring})" }
-        InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+        InteractionModel::Status.failure
       end
 
       private def handle_open_basic_commissioning_window(fields : Bytes) : InteractionModel::Status
@@ -437,26 +437,26 @@ module Matter
 
         begin
           open_basic_commissioning_window(request, fabric_index, vendor_id)
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         rescue BusyError
-          InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
+          InteractionModel::Status.busy
         rescue
-          InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
+          InteractionModel::Status.busy
         end
       rescue ex
         Log.error(exception: ex) { "OpenBasicCommissioningWindow: failed to parse request (bytes=#{fields.hexstring})" }
-        InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+        InteractionModel::Status.failure
       end
 
       private def handle_revoke_commissioning(fields : Bytes) : InteractionModel::Status
         # RevokeCommissioning command has no parameters
 
         revoke_commissioning
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       rescue WindowNotOpenError
-        InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+        InteractionModel::Status.failure
       rescue
-        InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+        InteractionModel::Status.failure
       end
 
       # ========================================================================

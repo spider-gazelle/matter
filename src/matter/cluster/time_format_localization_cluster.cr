@@ -136,18 +136,18 @@ module Matter
         when ATTR_HOUR_FORMAT
           @hour_format.value.to_u8.to_tlv
         when ATTR_ACTIVE_CALENDAR_TYPE
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.calendar_format?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.calendar_format?
           if active = @active_calendar_type
             active.value.to_u8.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_SUPPORTED_CALENDAR_TYPES
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.calendar_format?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.calendar_format?
           if supported = @supported_calendar_types
             encode_array(supported.map(&.value.to_u8))
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         else
           super
@@ -158,11 +158,11 @@ module Matter
         case attribute_id
         when ATTR_HOUR_FORMAT
           hour_value = decode_u8(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless hour_value
+          return InteractionModel::Status.invalid_data_type unless hour_value
 
           # Validate hour format value
           unless hour_value.in?(0_u8, 1_u8, 255_u8)
-            return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+            return InteractionModel::Status.constraint_error
           end
 
           old_format = @hour_format
@@ -172,16 +172,16 @@ module Matter
           @on_hour_format_changed.try &.call(old_format, @hour_format)
           increment_version
 
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         when ATTR_ACTIVE_CALENDAR_TYPE
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.calendar_format?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.calendar_format?
           calendar_value = decode_u8(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless calendar_value
+          return InteractionModel::Status.invalid_data_type unless calendar_value
 
           # Validate calendar type value
           valid_values = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 255]
           unless valid_values.includes?(calendar_value)
-            return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+            return InteractionModel::Status.constraint_error
           end
 
           new_calendar = CalendarType.from_value(calendar_value)
@@ -189,7 +189,7 @@ module Matter
           # Validate new calendar type is in supported list
           if supported = @supported_calendar_types
             unless supported.includes?(new_calendar)
-              return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+              return InteractionModel::Status.constraint_error
             end
           end
 
@@ -200,7 +200,7 @@ module Matter
           @on_calendar_changed.try &.call(old_calendar, new_calendar)
           increment_version
 
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         else
           super
         end

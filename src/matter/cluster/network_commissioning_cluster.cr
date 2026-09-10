@@ -521,11 +521,11 @@ module Matter
         when ATTR_INTERFACE_ENABLED
           enabled = decode_bool(value)
           if enabled.nil?
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+            InteractionModel::Status.invalid_data_type
           else
             @interface_enabled = enabled
             increment_version
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+            InteractionModel::Status.success
           end
         else
           super

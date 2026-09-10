@@ -280,7 +280,7 @@ module Matter
         port : Int32 = 5540,
         ttl : Time::Span = 120.seconds,
       ) : Nil
-        commissioning_instance_id = @commissioning_instance_id ||= Random::Secure.rand(UInt64).to_s(16).upcase.rjust(16, '0')
+        commissioning_instance_id = @commissioning_instance_id ||= Hex.node_id(Random::Secure.rand(UInt64))
         instance = ServiceNames.commissioning_instance(commissioning_instance_id)
 
         # Track this service for query responses
@@ -670,7 +670,7 @@ module Matter
 
       private def operational_hostname(info : OperationalInfo) : String
         fabric_hex = info.compressed_fabric_id.hexstring.upcase
-        node_hex = info.node_id.to_s(16).upcase.rjust(16, '0')
+        node_hex = Hex.node_id(info.node_id)
         "#{fabric_hex}-#{node_hex}.local"
       end
 

@@ -129,7 +129,7 @@ module Matter
           # Accept writes but don't actually store them for minimal implementation
           # In a real implementation, this would update the provider list
           Log.debug { "Received write to DefaultOTAProviders (ignoring for minimal implementation)" }
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         else
           super
         end
@@ -141,7 +141,7 @@ module Matter
           # AnnounceOTAProvider is optional
           # For minimal implementation, just acknowledge receipt
           Log.debug { "Received AnnounceOTAProvider (ignoring for minimal implementation)" }
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         else
           super
         end

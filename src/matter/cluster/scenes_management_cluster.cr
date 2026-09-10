@@ -630,7 +630,7 @@ module Matter
         when CMD_COPY_SCENE
           Cluster::CommandResponse.new(CMD_COPY_SCENE_RESPONSE, handle_copy_scene(fields))
         else
-          InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand)
+          InteractionModel::Status.unsupported_command
         end
       end
 
@@ -741,7 +741,7 @@ module Matter
 
         scene_data = @scenes[key]?
         unless scene_data
-          return InteractionModel::Status.new(InteractionModel::StatusCode::NotFound)
+          return InteractionModel::Status.not_found
         end
 
         # Update scene info
@@ -760,10 +760,10 @@ module Matter
         # Legacy callback
         @on_recall_scene.try(&.call(req.group_id, req.scene_id))
 
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       rescue ex
         Log.error(exception: ex) { "Error recalling scene (bytes=#{fields.hexstring})" }
-        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+        InteractionModel::Status.invalid_command
       end
 
       # Handle GetSceneMembership command

@@ -117,10 +117,10 @@ module Matter
         case attribute_id
         when ATTR_IDENTIFY_TIME
           new_time = decode_u16(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless new_time
+          return InteractionModel::Status.invalid_data_type unless new_time
           @identify_time = new_time
           increment_version
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         else
           super
         end
@@ -154,10 +154,10 @@ module Matter
           @on_identify_stopped.try &.call
         end
 
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       rescue ex
         Log.error(exception: ex) { "Identify command TLV parsing error (bytes=#{fields.hexstring})" }
-        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+        InteractionModel::Status.invalid_command
       end
 
       # Handle TriggerEffect command
@@ -171,10 +171,10 @@ module Matter
 
         @on_trigger_effect.try &.call(effect, variant)
 
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       rescue ex
         Log.error(exception: ex) { "TriggerEffect command TLV parsing error (bytes=#{fields.hexstring})" }
-        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+        InteractionModel::Status.invalid_command
       end
 
       # Check if device is currently identifying

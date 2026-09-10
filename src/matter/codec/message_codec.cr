@@ -6,6 +6,19 @@ module Matter
       HEADER_VERSION   = UInt8.new(0x00)
       COMMON_VENDOR_ID = UInt16.new(0x0000)
 
+      # Header version lives in the top nibble of the packet header flags byte
+      VERSION_SHIFT = 4
+
+      # A protocol id is `vendor id << 16 | protocol number`
+      VENDOR_ID_MASK  = 0xFFFF0000_u32
+      VENDOR_ID_SHIFT =             16
+
+      # Byte offsets of the fixed part of the packet header
+      FLAGS_OFFSET           = 0
+      SESSION_ID_OFFSET      = 1
+      SECURITY_FLAGS_OFFSET  = 3
+      MESSAGE_COUNTER_OFFSET = 4
+
       enum SessionType : UInt8
         Unicast = 0
         Group   = 1
@@ -15,7 +28,6 @@ module Matter
         HasDestNodeId   = 0b00000001
         HasDestGroupId  = 0b00000010
         HasSourceNodeId = 0b00000100
-        Reserved        = 0b00001000
         VersionMask     = 0b11110000
       end
 
@@ -31,6 +43,7 @@ module Matter
         HasPrivacyEnhancements = 0b10000000
         IsControlMessage       = 0b01000000
         HasMessageExtension    = 0b00100000
+        SessionTypeMask        = 0b00000011
       end
 
       struct PacketHeader
@@ -93,7 +106,7 @@ module Matter
           destination_node_id : DataType::NodeId?,
           destination_group_id : DataType::GroupId?,
         ) : UInt8
-          flags = (HEADER_VERSION << 4).to_u8
+          flags = (HEADER_VERSION << VERSION_SHIFT).to_u8
 
           # Presence is based on nil-ness, not the ID value
           source_present = !source_node_id.nil?
@@ -102,7 +115,7 @@ module Matter
           flags |= PacketHeaderFlag::HasSourceNodeId.value if source_present
           flags |= PacketHeaderFlag::HasDestNodeId.value if dest_present
           flags |= PacketHeaderFlag::HasDestGroupId.value unless destination_group_id.nil?
-          Log.trace { "compute_flags: source=#{source_node_id.try(&.id) || "nil"}, dest=#{destination_node_id.try(&.id) || "nil"} -> flags=0x#{flags.to_s(16)}" }
+          Log.trace { "compute_flags: source=#{source_node_id.try(&.id) || "nil"}, dest=#{destination_node_id.try(&.id) || "nil"} -> flags=#{Hex.u8(flags)}" }
           flags
         end
 
@@ -167,7 +180,7 @@ module Matter
         end
 
         def encode_payload_header(payload_header : PayloadHeader, io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian)
-          vendor_id = (payload_header.protocol_id & 0xffff0000) >> 16
+          vendor_id = (payload_header.protocol_id & VENDOR_ID_MASK) >> VENDOR_ID_SHIFT
 
           flags = (payload_header.initiator_message? ? PayloadHeaderFlag::IsInitiatorMessage.value : 0) | \
             (payload_header.acknowledged_message_id.nil? ? 0 : PayloadHeaderFlag::IsAckMessage.value) | \
@@ -184,7 +197,7 @@ module Matter
 
         private def decode_packet_header(io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian) : PacketHeader
           flags = io.read_bytes(UInt8, byte_format)
-          version = (flags & PacketHeaderFlag::VersionMask.value) >> 4
+          version = (flags & PacketHeaderFlag::VersionMask.value) >> VERSION_SHIFT
 
           has_destination_node_id = (flags & PacketHeaderFlag::HasDestNodeId.value) != 0
           has_destination_group_id = (flags & PacketHeaderFlag::HasDestGroupId.value) != 0
@@ -201,7 +214,7 @@ module Matter
           destination_node_id = has_destination_node_id ? DataType::NodeId.new(io.read_bytes(UInt64, byte_format)) : nil
           destination_group_id = has_destination_group_id ? DataType::GroupId.new(io.read_bytes(UInt16, byte_format)) : nil
 
-          session_type = security_flags & 0b00000011
+          session_type = security_flags & SecurityFlag::SessionTypeMask.value
 
           raise Exception.new("Unsupported session type #{session_type}") if session_type != SessionType::Group.value && session_type != SessionType::Unicast.value
 
@@ -241,7 +254,7 @@ module Matter
           message_type = io.read_bytes(UInt8, byte_format)
           exchange_id = io.read_bytes(UInt16, byte_format)
           vendor_id = has_vendor_id ? io.read_bytes(UInt16, byte_format) : COMMON_VENDOR_ID
-          protocol_id = (vendor_id << 16) | io.read_bytes(UInt16, byte_format)
+          protocol_id = (vendor_id << VENDOR_ID_SHIFT) | io.read_bytes(UInt16, byte_format)
           acknowledged_message_id = is_acknowledge_message ? io.read_bytes(UInt32, byte_format) : nil
 
           PayloadHeader.new(exchange_id: exchange_id,

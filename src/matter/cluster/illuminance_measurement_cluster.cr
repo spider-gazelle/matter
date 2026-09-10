@@ -162,13 +162,13 @@ module Matter
           if tolerance = @tolerance
             tolerance.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_LIGHT_SENSOR_TYPE
           if sensor_type = @light_sensor_type
             sensor_type.value.to_u8.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         else
           super

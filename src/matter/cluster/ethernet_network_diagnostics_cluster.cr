@@ -187,19 +187,19 @@ module Matter
         when ATTR_FULL_DUPLEX
           @full_duplex.to_tlv
         when ATTR_PACKET_RX_COUNT
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.packet_counts?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.packet_counts?
           @packet_rx_count.to_tlv
         when ATTR_PACKET_TX_COUNT
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.packet_counts?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.packet_counts?
           @packet_tx_count.to_tlv
         when ATTR_TX_ERR_COUNT
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.error_counts?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.error_counts?
           @tx_err_count.to_tlv
         when ATTR_COLLISION_COUNT
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.error_counts?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.error_counts?
           @collision_count.to_tlv
         when ATTR_OVERRUN_COUNT
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.error_counts?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.error_counts?
           @overrun_count.to_tlv
         when ATTR_CARRIER_DETECT
           @carrier_detect.to_tlv
@@ -263,7 +263,7 @@ module Matter
         when CMD_RESET_COUNTS
           handle_reset_counts
         else
-          InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand)
+          InteractionModel::Status.unsupported_command
         end
       end
 
@@ -275,7 +275,7 @@ module Matter
         @overrun_count = 0_u64
         @reset_time = Time.utc
         increment_version
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       end
 
       # Public API: Increment packet counts

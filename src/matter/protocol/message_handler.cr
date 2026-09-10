@@ -664,7 +664,7 @@ module Matter
         packet_header_bytes = packet_header_io.rewind.to_slice
 
         # Extract security_flags from encoded header
-        actual_security_flags = packet_header_bytes[3]
+        actual_security_flags = packet_header_bytes[Codec::MessageCodec::SECURITY_FLAGS_OFFSET]
 
         # Determine source node id for nonce
         source_node_id = session.local_node_id.try(&.id) || 0_u64
@@ -1157,7 +1157,7 @@ module Matter
         packet_header_bytes = packet_header_io.rewind.to_slice
 
         # Extract security_flags from encoded header
-        actual_security_flags = packet_header_bytes[3]
+        actual_security_flags = packet_header_bytes[Codec::MessageCodec::SECURITY_FLAGS_OFFSET]
 
         # Determine source node id for nonce
         source_node_id = session.local_node_id.try(&.id) || 0_u64
@@ -1625,8 +1625,8 @@ module Matter
         Codec::MessageCodec::Base.encode_packet_header(packet_header, packet_header_io)
         packet_header_bytes = packet_header_io.rewind.to_slice
 
-        # Extract security_flags from the encoded header (byte 3) - like matter.js does
-        security_flags = packet_header_bytes[3]
+        # Extract security_flags from the encoded header - like matter.js does
+        security_flags = packet_header_bytes[Codec::MessageCodec::SECURITY_FLAGS_OFFSET]
 
         # Determine node_id for nonce (must match source_node_id in header)
         source_node_id = if packet_header.source_node_id
@@ -1769,7 +1769,7 @@ module Matter
 
         Log.debug { "  Received pA: #{p_a.size} bytes" }
         Log.trace { "  pA hex: #{p_a.hexstring}" }
-        Log.trace { "  pA first byte: 0x#{p_a[0].to_s(16).rjust(2, '0')}" } if p_a.size > 0
+        Log.trace { "  pA first byte: #{Hex.u8(p_a[0])}" } if p_a.size > 0
 
         # Get or create PASE responder
         responder = @pase_responder
@@ -2078,14 +2078,14 @@ module Matter
           return
         end
 
-        Log.warn { "StatusReport: general=0x#{general.to_s(16).rjust(4, '0')}, protocol=0x#{protocol.to_s(16).rjust(4, '0')} (peer=#{peer})" }
+        Log.warn { "StatusReport: general=#{Hex.u16(general)}, protocol=#{Hex.u16(protocol)} (peer=#{peer})" }
 
         # If this is an error, provide context-specific help
         return if general == 0
 
         if @case_responder
           Log.debug do
-            "StatusReport during CASE: protocol=0x#{protocol.to_s(16).rjust(4, '0')} " \
+            "StatusReport during CASE: protocol=#{Hex.u16(protocol)} " \
             "(e.g. 0x0002 NO_SHARED_TRUST_ROOTS; check ICAC/root trust)"
           end
         else

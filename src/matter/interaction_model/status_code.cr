@@ -43,18 +43,18 @@ module Matter
       Deprecated9E          = 0x9E
       Deprecated9F          = 0x9F
       DeprecatedA0          = 0xA0
+      DeprecatedA1          = 0xA1
+      DeprecatedA2          = 0xA2
+      DeprecatedA3          = 0xA3
+      DeprecatedA4          = 0xA4
+      DeprecatedA5          = 0xA5
+      DeprecatedA6          = 0xA6
+      DeprecatedA7          = 0xA7
+      DeprecatedA8          = 0xA8
 
-      # Cluster-specific errors (0xC0-0xFF range)
-      # These are defined in Matter spec section 8.5.2
-      UnsupportedCluster = 0xC3 # Request is for a cluster that doesn't exist on the endpoint
-      DeprecatedA1       = 0xA1
-      DeprecatedA2       = 0xA2
-      DeprecatedA3       = 0xA3
-      DeprecatedA4       = 0xA4
-      DeprecatedA5       = 0xA5
-      DeprecatedA6       = 0xA6
-      DeprecatedA7       = 0xA7
-      DeprecatedA8       = 0xA8
+      # Request is for a cluster that doesn't exist on the endpoint (a general
+      # status code that happens to sit inside the 0xC0-0xFF range)
+      UnsupportedCluster = 0xC3
 
       # Cluster-specific range 0xC0-0xFF
       # Applications can define cluster-specific error codes in this range
@@ -63,51 +63,41 @@ module Matter
         self == Success
       end
 
-      def to_s : String
+      # Human readable label. `Enum#to_s` and `Enum#to_s(io)` are independent in
+      # the stdlib (single-value interpolation calls the former, `IO#<<` and
+      # `Log` the latter), so both are overridden to share this label.
+      def label : String
         case self
-        when Success
-          "Success"
-        when Failure
-          "Failure"
-        when InvalidSubscription
-          "Invalid Subscription"
-        when UnsupportedAccess
-          "Unsupported Access"
-        when UnsupportedEndpoint
-          "Unsupported Endpoint"
-        when InvalidAction
-          "Invalid Action"
-        when UnsupportedCommand
-          "Unsupported Command"
-        when InvalidCommand
-          "Invalid Command"
-        when UnsupportedAttribute
-          "Unsupported Attribute"
-        when ConstraintError
-          "Constraint Error"
-        when UnsupportedWrite
-          "Unsupported Write"
-        when ResourceExhausted
-          "Resource Exhausted"
-        when NotFound
-          "Not Found"
-        when UnreportableAttribute
-          "Unreportable Attribute"
-        when InvalidDataType
-          "Invalid Data Type"
-        when UnsupportedRead
-          "Unsupported Read"
-        when DataVersionMismatch
-          "Data Version Mismatch"
-        when Timeout
-          "Timeout"
-        when Busy
-          "Busy"
-        when UnsupportedCluster
-          "Unsupported Cluster"
-        else
-          "Unknown Status (0x#{value.to_s(16)})"
+        when Success               then "Success"
+        when Failure               then "Failure"
+        when InvalidSubscription   then "Invalid Subscription"
+        when UnsupportedAccess     then "Unsupported Access"
+        when UnsupportedEndpoint   then "Unsupported Endpoint"
+        when InvalidAction         then "Invalid Action"
+        when UnsupportedCommand    then "Unsupported Command"
+        when InvalidCommand        then "Invalid Command"
+        when UnsupportedAttribute  then "Unsupported Attribute"
+        when ConstraintError       then "Constraint Error"
+        when UnsupportedWrite      then "Unsupported Write"
+        when ResourceExhausted     then "Resource Exhausted"
+        when NotFound              then "Not Found"
+        when UnreportableAttribute then "Unreportable Attribute"
+        when InvalidDataType       then "Invalid Data Type"
+        when UnsupportedRead       then "Unsupported Read"
+        when DataVersionMismatch   then "Data Version Mismatch"
+        when Timeout               then "Timeout"
+        when Busy                  then "Busy"
+        when UnsupportedCluster    then "Unsupported Cluster"
+        else                            "Unknown Status (#{Hex.u8(value)})"
         end
+      end
+
+      def to_s : String
+        label
+      end
+
+      def to_s(io : IO) : Nil
+        io << label
       end
     end
 
@@ -119,15 +109,35 @@ module Matter
       def initialize(@status : StatusCode, @cluster_status : UInt8? = nil)
       end
 
+      # One factory per usable status code: `Status.success`,
+      # `Status.unsupported_attribute`, `Status.invalid_data_type`, ...
+      # Deprecated and reserved members are excluded.
+      {% for member in StatusCode.constants %}
+        {% unless member.stringify.starts_with?("Deprecated") || member.stringify.starts_with?("Reserved") %}
+          def self.{{ member.underscore }} : Status
+            new(StatusCode::{{ member }})
+          end
+        {% end %}
+      {% end %}
+
+      # `Failure` carrying a cluster-specific status code
+      def self.cluster_failure(code : UInt8) : Status
+        new(StatusCode::Failure, code)
+      end
+
+      # :ditto:
+      def self.cluster_failure(code : Enum) : Status
+        new(StatusCode::Failure, code.value.to_u8)
+      end
+
       def success?
         @status.success?
       end
 
-      def to_s : String
+      def to_s(io : IO) : Nil
+        io << @status
         if cluster_status = @cluster_status
-          "#{@status} (cluster: 0x#{cluster_status.to_s(16)})"
-        else
-          @status.to_s
+          io << " (cluster: " << Hex.u8(cluster_status) << ")"
         end
       end
     end

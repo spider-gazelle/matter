@@ -394,119 +394,119 @@ module Matter
           encode_string(@description)
           # Wired feature attributes
         when ATTR_WIRED_CURRENT_TYPE
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wired?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.wired?
           if current_type = @wired_current_type
             current_type.value.to_u8.to_tlv
           else
             WiredCurrentType::AC.value.to_u8.to_tlv
           end
         when ATTR_WIRED_ASSESSED_INPUT_VOLTAGE
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wired?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.wired?
           if voltage = @wired_assessed_input_voltage
             voltage.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_WIRED_ASSESSED_INPUT_FREQUENCY
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wired?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.wired?
           if freq = @wired_assessed_input_frequency
             freq.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_WIRED_PRESENT
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.wired?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.wired?
           if present = @wired_present
             present.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
           # Battery feature attributes
         when ATTR_BAT_CHARGE_LEVEL
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.battery?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
           if level = @bat_charge_level
             level.value.to_u8.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_REPLACEMENT_NEEDED
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.battery?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
           if needed = @bat_replacement_needed
             needed.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_REPLACEABILITY
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.battery?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
           if replaceability = @bat_replaceability
             replaceability.value.to_u8.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_VOLTAGE
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.battery?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
           if voltage = @bat_voltage
             voltage.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_PERCENT_REMAINING
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.battery?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
           if percent = @bat_percent_remaining
             percent.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_TIME_REMAINING
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.battery?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
           if time = @bat_time_remaining
             time.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_PRESENT
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.battery?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
           if present = @bat_present
             present.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
           # Replaceable feature attributes
         when ATTR_BAT_REPLACEMENT_DESCRIPTION
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.replaceable?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.replaceable?
           if desc = @bat_replacement_description
             encode_string(desc)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_QUANTITY
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.replaceable?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.replaceable?
           if quantity = @bat_quantity
             quantity.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
           # Rechargeable feature attributes
         when ATTR_BAT_CHARGE_STATE
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.rechargeable?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.rechargeable?
           if state = @bat_charge_state
             state.value.to_u8.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_TIME_TO_FULL_CHARGE
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.rechargeable?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.rechargeable?
           if time = @bat_time_to_full_charge
             time.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_BAT_FUNCTIONAL_WHILE_CHARGING
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless @feature_map.rechargeable?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.rechargeable?
           if functional = @bat_functional_while_charging
             functional.to_tlv
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         else
           super

@@ -442,9 +442,9 @@ module Matter
           if mode = decode_u8(value)
             @mode = Mode.from_value(mode)
             increment_version
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+            InteractionModel::Status.success
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+            InteractionModel::Status.invalid_data_type
           end
         else
           super
@@ -473,7 +473,7 @@ module Matter
         end
         @operational_status = OperationalStatus::GlobalLiftMoving
         increment_version
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       end
 
       private def handle_down_or_close
@@ -483,13 +483,13 @@ module Matter
         end
         @operational_status = OperationalStatus::GlobalLiftMoving
         increment_version
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       end
 
       private def handle_stop_motion
         @operational_status = OperationalStatus::None
         increment_version
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       end
 
       private def handle_go_to_lift_percentage(fields : Bytes)
@@ -500,10 +500,10 @@ module Matter
             @target_position_lift_percent100ths = percentage
             @operational_status = OperationalStatus::GlobalLiftMoving
             increment_version
-            return InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+            return InteractionModel::Status.success
           end
         end
-        InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+        InteractionModel::Status.constraint_error
       end
 
       # NOTE: Attributes are returned as TLV-encoded bytes (use `value.to_tlv`).

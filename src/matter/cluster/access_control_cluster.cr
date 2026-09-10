@@ -446,10 +446,10 @@ module Matter
 
         increment_version
         Log.debug { "decode_acl_list: wrote #{new_acl.size} ACL entries" }
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       rescue ex
         Log.error(exception: ex) { "Failed to decode ACL list (bytes=#{value.hexstring})" }
-        InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+        InteractionModel::Status.constraint_error
       end
 
       # Helper to extract ACL array from various TLV structures
@@ -528,10 +528,10 @@ module Matter
         end
 
         increment_version
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       rescue ex
         Log.error(exception: ex) { "Failed to decode extension list (bytes=#{value.hexstring})" }
-        InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+        InteractionModel::Status.constraint_error
       end
     end
   end
