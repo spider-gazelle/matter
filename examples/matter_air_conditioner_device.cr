@@ -28,7 +28,7 @@ module MatterAirConditioner
 
   class Device < Matter::Device::Base
     DEVICE_NAME  = "Crystal Air Conditioner"
-    STORAGE_FILE = "matter_air_conditioner_storage.json"
+    STORAGE_FILE = "matter_air_conditioner_storage.yml"
 
     UPDATE_INTERVAL_SECONDS =       10
     MIN_TEMP_C              =     15.0
@@ -58,7 +58,7 @@ module MatterAirConditioner
     @running : Bool = false
 
     def initialize
-      super(ip_addresses: Matter::Network.local_ip_addresses)
+      super(Matter::Storage::YamlFile.new(STORAGE_FILE), ip_addresses: Matter::Network.local_ip_addresses)
     end
 
     def device_name : String
@@ -113,10 +113,6 @@ module MatterAirConditioner
 
     def temperature : Matter::Cluster::TemperatureMeasurementCluster
       @temperature.as(Matter::Cluster::TemperatureMeasurementCluster)
-    end
-
-    protected def build_storage_manager : Matter::Storage::Manager
-      Matter::Storage::Manager.new(Matter::Storage::JsonFileBackend.new(STORAGE_FILE))
     end
 
     protected def endpoint_device_types : Hash(UInt16, UInt32)
@@ -598,7 +594,7 @@ module MatterAirConditioner
 
       puts "Performing factory reset..."
       shutdown!
-      File.delete(STORAGE_FILE) if File.exists?(STORAGE_FILE)
+      persistence.reset!
       puts "Factory reset complete."
       puts "Please restart the application."
       exit(0)

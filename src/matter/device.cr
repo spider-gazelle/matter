@@ -6,5 +6,6 @@ module Matter
   end
 end
 
+require "./device/persistence"
 require "./device/lifecycle_manager"
 require "./device/base"

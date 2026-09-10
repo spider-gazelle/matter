@@ -4,7 +4,7 @@ require "../src/matter"
 module MatterLevelControl
   class Device < Matter::Device::Base
     DEVICE_NAME  = "Crystal Level Control"
-    STORAGE_FILE = "matter_level_control_storage.json"
+    STORAGE_FILE = "matter_level_control_storage.yml"
 
     VENDOR_ID      = Matter::SetupPayload.test_vendor_id
     PRODUCT_ID     = rand(0x0001_u16..0xFFFF_u16)
@@ -19,7 +19,7 @@ module MatterLevelControl
     @scenes_management : Matter::Cluster::ScenesManagementCluster? = nil
 
     def initialize
-      super(ip_addresses: Matter::Network.local_ip_addresses)
+      super(Matter::Storage::YamlFile.new(STORAGE_FILE), ip_addresses: Matter::Network.local_ip_addresses)
     end
 
     def device_name : String
@@ -66,10 +66,6 @@ module MatterLevelControl
 
     def level_control : Matter::Cluster::LevelControlCluster
       @level_control.as(Matter::Cluster::LevelControlCluster)
-    end
-
-    protected def build_storage_manager : Matter::Storage::Manager
-      Matter::Storage::Manager.new(Matter::Storage::JsonFileBackend.new(STORAGE_FILE))
     end
 
     protected def device_clusters : Array(Matter::Cluster::Base)
@@ -345,7 +341,7 @@ module MatterLevelControl
 
       puts "Performing factory reset..."
       shutdown!
-      File.delete(STORAGE_FILE) if File.exists?(STORAGE_FILE)
+      persistence.reset!
       puts "Factory reset complete."
       puts "Please restart the application."
       exit(0)

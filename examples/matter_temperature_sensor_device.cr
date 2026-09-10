@@ -11,7 +11,7 @@ require "../src/matter"
 module MatterTemperatureSensor
   class Device < Matter::Device::Base
     DEVICE_NAME  = "Crystal Temperature Sensor"
-    STORAGE_FILE = "matter_temperature_sensor_storage.json"
+    STORAGE_FILE = "matter_temperature_sensor_storage.yml"
 
     UPDATE_INTERVAL_SECONDS =       10
     MIN_TEMP_C              =     15.0
@@ -30,7 +30,7 @@ module MatterTemperatureSensor
     @running : Bool = false
 
     def initialize
-      super(ip_addresses: Matter::Network.local_ip_addresses)
+      super(Matter::Storage::YamlFile.new(STORAGE_FILE), ip_addresses: Matter::Network.local_ip_addresses)
     end
 
     def device_name : String
@@ -73,10 +73,6 @@ module MatterTemperatureSensor
 
     def temperature : Matter::Cluster::TemperatureMeasurementCluster
       @temperature.as(Matter::Cluster::TemperatureMeasurementCluster)
-    end
-
-    protected def build_storage_manager : Matter::Storage::Manager
-      Matter::Storage::Manager.new(Matter::Storage::JsonFileBackend.new(STORAGE_FILE))
     end
 
     protected def device_clusters : Array(Matter::Cluster::Base)
@@ -319,7 +315,7 @@ module MatterTemperatureSensor
 
       puts "Performing factory reset..."
       shutdown!
-      File.delete(STORAGE_FILE) if File.exists?(STORAGE_FILE)
+      persistence.reset!
       puts "Factory reset complete."
       puts "Please restart the application."
       exit(0)

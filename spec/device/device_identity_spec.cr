@@ -3,10 +3,8 @@ require "../../src/matter/device/base"
 
 # Test device that uses default serial_number and unique_id (auto-generated)
 class TestDeviceWithDefaults < Matter::Device::Base
-  getter storage_backend : Matter::Storage::MemoryBackend
-
-  def initialize(@storage_backend : Matter::Storage::MemoryBackend = Matter::Storage::MemoryBackend.new)
-    super()
+  def initialize(backend : Matter::Storage::Backend = Matter::Storage::Memory.new)
+    super(backend)
   end
 
   def device_name : String
@@ -33,10 +31,6 @@ class TestDeviceWithDefaults < Matter::Device::Base
     Matter::DeviceType::ROOT_NODE
   end
 
-  protected def build_storage_manager : Matter::Storage::Manager
-    Matter::Storage::Manager.new(@storage_backend)
-  end
-
   protected def device_clusters : Array(Matter::Cluster::Base)
     [] of Matter::Cluster::Base
   end
@@ -52,7 +46,7 @@ class TestDeviceWithCustomIdentity < Matter::Device::Base
   CUSTOM_UNIQUE = "custom-unique-id-456"
 
   def initialize
-    super()
+    super(Matter::Storage::Memory.new)
   end
 
   def device_name : String
@@ -87,10 +81,6 @@ class TestDeviceWithCustomIdentity < Matter::Device::Base
     CUSTOM_UNIQUE
   end
 
-  protected def build_storage_manager : Matter::Storage::Manager
-    Matter::Storage::Manager.new(Matter::Storage::MemoryBackend.new)
-  end
-
   protected def device_clusters : Array(Matter::Cluster::Base)
     [] of Matter::Cluster::Base
   end
@@ -101,11 +91,11 @@ class TestDeviceWithCustomIdentity < Matter::Device::Base
 end
 
 # Storage backend whose identity reads fail, as a corrupt store would.
-class FailingIdentityBackend < Matter::Storage::MemoryBackend
-  IDENTITY_CONTEXT = ["device_identity"] of String
-
-  def get(contexts : Array(String), key : String) : Matter::Storage::LegacyType
-    raise Matter::StorageError.new("identity store unavailable") if contexts == IDENTITY_CONTEXT
+class FailingIdentityBackend < Matter::Storage::Memory
+  def read(collection : String, id : String) : Matter::Storage::Document?
+    if collection == Matter::Storage::Collections::DEVICE && id == Matter::Device::Persistence::IDENTITY_ID
+      raise Matter::StorageError.new("identity store unavailable")
+    end
     super
   end
 end
@@ -132,7 +122,7 @@ describe "Device Identity" do
     end
 
     it "persists serial number across device instances" do
-      backend = Matter::Storage::MemoryBackend.new
+      backend = Matter::Storage::Memory.new
 
       device1 = TestDeviceWithDefaults.new(backend)
       serial1 = device1.basic_info.serial_number
@@ -160,7 +150,7 @@ describe "Device Identity" do
     end
 
     it "persists unique_id across device instances" do
-      backend = Matter::Storage::MemoryBackend.new
+      backend = Matter::Storage::Memory.new
 
       device1 = TestDeviceWithDefaults.new(backend)
       unique_id1 = device1.basic_info.unique_id
@@ -188,7 +178,7 @@ describe "Device Identity" do
     end
 
     it "persists hostname across device instances" do
-      backend = Matter::Storage::MemoryBackend.new
+      backend = Matter::Storage::Memory.new
 
       device1 = TestDeviceWithDefaults.new(backend)
       hostname1 = device1.hostname

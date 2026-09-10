@@ -4,14 +4,14 @@ require "../src/matter"
 # Matter Switch Device Example
 #
 # - Presents as an On/Off Light (endpoint 1)
-# - Persists state via per-cluster JSON persistence (single storage file)
+# - Persists state in a single YAML storage file
 # - Supports commissioning and operational modes
 # - Works with real Matter controllers (iPhone, chip-tool, etc.)
 
 module MatterSwitch
   class Device < Matter::Device::Base
     DEVICE_NAME  = "Crystal Switch"
-    STORAGE_FILE = "matter_switch_storage.json"
+    STORAGE_FILE = "matter_switch_storage.yml"
 
     VENDOR_ID      = Matter::SetupPayload.test_vendor_id
     PRODUCT_ID     = rand(0x0001_u16..0xFFFF_u16)
@@ -25,7 +25,7 @@ module MatterSwitch
     @scenes_management : Matter::Cluster::ScenesManagementCluster? = nil
 
     def initialize
-      super(ip_addresses: Matter::Network.local_ip_addresses)
+      super(Matter::Storage::YamlFile.new(STORAGE_FILE), ip_addresses: Matter::Network.local_ip_addresses)
     end
 
     def device_name : String
@@ -68,10 +68,6 @@ module MatterSwitch
 
     def switch : Matter::Cluster::OnOffCluster
       @switch.as(Matter::Cluster::OnOffCluster)
-    end
-
-    protected def build_storage_manager : Matter::Storage::Manager
-      Matter::Storage::Manager.new(Matter::Storage::JsonFileBackend.new(STORAGE_FILE))
     end
 
     protected def device_clusters : Array(Matter::Cluster::Base)
@@ -291,7 +287,7 @@ module MatterSwitch
 
       puts "🔄 Performing factory reset..."
       shutdown!
-      File.delete(STORAGE_FILE) if File.exists?(STORAGE_FILE)
+      persistence.reset!
       puts "✅ Factory reset complete"
       puts "🔄 Please restart the application"
       exit(0)
