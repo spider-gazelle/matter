@@ -1,3 +1,5 @@
+require "./node_id"
+
 module Matter
   module DataType
     class SubjectId < NodeId

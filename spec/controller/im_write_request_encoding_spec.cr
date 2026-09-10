@@ -1,4 +1,5 @@
 require "../spec_helper"
+require "../../src/matter/controller"
 
 describe "IM write request encoding" do
   it "round-trips a WriteRequest and yields attribute value bytes usable by clusters" do

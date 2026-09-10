@@ -1,3 +1,6 @@
+require "./base"
+require "./type"
+
 module Matter
   module Storage
     class MemoryBackend < Base

@@ -1,4 +1,5 @@
 require "../spec_helper"
+require "../../src/matter/controller"
 
 describe Matter::Controller::Clusters::AccessControl do
   it "parses ACL JSON and encodes TLV accepted by AccessControlCluster" do
