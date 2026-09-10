@@ -10,17 +10,16 @@ describe Matter::DataType::NodeId do
       node_id.id.should eq(0x10001_u64)
     end
 
-    it "creates a valid NodeId from bytes" do
-      node_id = Matter::DataType::NodeId.new(0x123456789ABCDEF0_u64)
-      node_id.id.should eq(0x123456789ABCDEF0_u64)
+    it "is a value type" do
+      Matter::DataType::NodeId.new(0x10001_u64).should eq(Matter::DataType::NodeId.new(0x10001_u64))
+      Matter::DataType::NodeId.new(0x10001_u64).hash.should eq(Matter::DataType::NodeId.new(0x10001_u64).hash)
     end
   end
 
   describe "hexstring" do
-    it "returns correct hexstring representation" do
+    it "returns the 16 uppercase digit big-endian form" do
       node_id = Matter::DataType::NodeId.new(0x10001_u64)
-      # The hexstring method uses BigEndian encoding
-      node_id.hexstring.size.should be > 0
+      node_id.hexstring.should eq("0000000000010001")
     end
   end
 
@@ -67,21 +66,33 @@ describe Matter::DataType::NodeId do
     end
   end
 
-  describe "TLV serialization" do
-    it "serializes to TLV slice" do
+  describe "big-endian bytes" do
+    it "serializes to 8 big-endian bytes" do
       node_id = Matter::DataType::NodeId.new(0x123456789ABCDEF0_u64)
-      slice = node_id.to_slice
+      node_id.to_be_bytes.should eq(Bytes[0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0])
+    end
 
-      # Should produce a valid TLV encoding
-      slice.size.should be > 0
+    it "round-trips" do
+      original = Matter::DataType::NodeId.new(0x123456789ABCDEF0_u64)
+      Matter::DataType::NodeId.from_be_bytes(original.to_be_bytes).should eq(original)
+    end
+
+    it "rejects short slices" do
+      expect_raises(ArgumentError, "NodeId slice must be at least 8 bytes") do
+        Matter::DataType::NodeId.from_be_bytes(Bytes[1, 2, 3])
+      end
+    end
+  end
+
+  describe "TLV serialization" do
+    it "encodes as a bare unsigned integer" do
+      node_id = Matter::DataType::NodeId.new(0x123456789ABCDEF0_u64)
+      TLV::Any.from_slice(node_id.to_slice).value.should eq(0x123456789ABCDEF0_u64)
     end
 
     it "round-trips through TLV" do
       original = Matter::DataType::NodeId.new(0x123456789ABCDEF0_u64)
-      slice = original.to_slice
-
-      decoded = Matter::DataType::NodeId.new(slice)
-      decoded.id.should eq(original.id)
+      Matter::DataType::NodeId.from_slice(original.to_slice).should eq(original)
     end
   end
 
@@ -107,12 +118,17 @@ describe Matter::DataType::NodeId do
       node_id.case_authenticated_tag?.should be_false
     end
 
+    it "returns false for a CAT prefix that is off by one" do
+      Matter::DataType::NodeId.new(0xFFFFFFFC12345678_u64).case_authenticated_tag?.should be_false
+      Matter::DataType::NodeId.new(0xFFFFFFFE12345678_u64).case_authenticated_tag?.should be_false
+    end
+
     it "extracts CaseAuthenticatedTag from NodeId" do
       original_cat = Matter::DataType::CaseAuthenticatedTag.new(0xABCD1234_u32)
       node_id = Matter::DataType::NodeId.from_case_authenticated_tag(original_cat)
 
       extracted_cat = node_id.extract_as_case_authenticated_tag
-      extracted_cat.value.should eq(original_cat.value)
+      extracted_cat.should eq(original_cat)
       extracted_cat.identity_value.should eq(0xABCD_u16)
       extracted_cat.version.should eq(0x1234_u16)
     end
@@ -125,8 +141,9 @@ describe Matter::DataType::NodeId do
       end
     end
 
-    it "has correct CAT_PREFIX constant" do
+    it "has correct CAT constants" do
       Matter::DataType::NodeId::CAT_PREFIX.should eq(0xFFFFFFFD00000000_u64)
+      Matter::DataType::NodeId::CAT_VALUE_MASK.should eq(0x00000000FFFFFFFF_u64)
     end
   end
 end
