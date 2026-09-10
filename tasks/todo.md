@@ -62,7 +62,7 @@ Rule (user, applies to all phases): no magic numbers; named constants/enums, enu
 ## Phase 3: Storage
 Document model: `Type = Nil | Bool | Int64 | UInt64 | Float64 | String | Bytes | Time | Array | Hash`;
 collections `fabrics`, `sessions`, `subscriptions`, `device`, `clusters`, `app`, `meta` (schema in plan).
-- [ ] Step 1: dependency-free core: `Backend` interface, Memory/YamlFile/JsonFile over `FileBackend`,
+- [x] Step 1: dependency-free core: `Backend` interface, Memory/YamlFile/JsonFile over `FileBackend`,
       `Record` macro, `Migrator` + `bin/matter-storage` CLI, shared backend contract spec
 - [ ] Step 2: Fabric/session/subscription/cluster records; `Device::Persistence` (dirty tracking, debounce,
       identity, app documents, orphan cleanup, `reset!`); `Device::Base.new(storage:)`; examples on YAML;
