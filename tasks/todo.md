@@ -89,10 +89,14 @@ Detailed implementation and verification plan: [phase4-plan.md](phase4-plan.md).
       colour typo, counter specs moved, signed→unsigned width assertion)
 
 ## Phase 5: Cluster DSL
-- [ ] Macros on `Cluster::Base` (cluster/feature/attribute/command/event, persist)
-- [ ] Fold definitions into clusters; migrate smallest first
-- [ ] Fill stubbed handlers
-- [ ] `./test`
+Detailed plan: [phase5-plan.md](phase5-plan.md).
+- [ ] Step 1: DSL core (`cluster`/`feature`/`conflicts`/`attribute`/`command`/`event` macros, generated
+      accessors, tables, dispatch, global lists, validation, persistence) proven on boolean_state, on_off,
+      level_control; `spec/cluster/dsl_spec.cr`
+- [ ] Step 2: migrate the remaining 33 clusters smallest first (facade clusters: declarations only)
+- [ ] Step 3: definitions folded into clusters, `EntryPrivilege` to interaction_model, class/file rename
+      (`Cluster::OnOff`), `Cluster::Registry`, global-list ordering re-baselined
+- [ ] `./test` green at each step end; iOS smoke test by the user at the end
 
 ## Phase 6: Device model and protocol decomposition
 - [ ] Endpoint/Node model + `ClusterRegistry`
