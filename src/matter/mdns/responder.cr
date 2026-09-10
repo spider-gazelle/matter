@@ -21,24 +21,44 @@ module Matter
       DEFAULT_TTL           = 120.seconds
       ANNOUNCEMENT_INTERVAL = 30.seconds # Re-announce services every 30 seconds
 
+      # A newly (re)advertised service is announced this many times, this far apart,
+      # so controllers that missed the first multicast still pick it up quickly.
+      ANNOUNCEMENT_BURST_COUNT    = 3
+      ANNOUNCEMENT_BURST_INTERVAL = 1.second
+
+      # DNS QTYPE matching any record type (RFC 1035 §3.2.3)
+      QTYPE_ANY = 255_u16
+
+      # {service_type, port, txt_records, commissioning_info, hostname}
+      alias AdvertisedService = {ServiceType, Int32, Hash(String, String), CommissioningInfo?, String}
+
       getter socket_ipv4 : UDPSocket?
       getter socket_ipv6 : UDPSocket?
       getter port : Int32
       getter hostname : String
       getter ip_addresses : Array(Socket::IPAddress)
+      getter announcement_burst_interval : Time::Span
 
       @running : Bool
 
-      # Currently advertised services (for responding to queries)
-      # Key: instance name, Value: {service_type, port, txt_records, commissioning_info, hostname}
-      @advertised_services : Hash(String, {ServiceType, Int32, Hash(String, String), CommissioningInfo?, String})
+      # Currently advertised services (for responding to queries), keyed by instance name
+      @advertised_services : Hash(String, AdvertisedService)
       @commissioning_instance_id : String? = nil
+
+      # In-flight announcement bursts, keyed by instance name. Closing the channel
+      # cancels the burst.
+      @announcement_bursts : Hash(String, Channel(Nil))
 
       # Callback for received queries
       # Signature: (query : DNS::Packet, peer_address : Socket::IPAddress) -> Nil
       property on_query : Proc(DNS::Packet, Socket::IPAddress, Nil)?
 
-      def initialize(@port : Int32 = MDNS_PORT, @hostname : String = "matter-device.local", @ip_addresses : Array(Socket::IPAddress) = [] of Socket::IPAddress)
+      def initialize(
+        @port : Int32 = MDNS_PORT,
+        @hostname : String = "matter-device.local",
+        @ip_addresses : Array(Socket::IPAddress) = [] of Socket::IPAddress,
+        @announcement_burst_interval : Time::Span = ANNOUNCEMENT_BURST_INTERVAL,
+      )
         # Create IPv4 socket
         @socket_ipv4 = begin
           sock = UDPSocket.new(:inet)
@@ -77,7 +97,16 @@ module Matter
 
         # Ensure at least one socket was created successfully
         raise "Failed to create any mDNS socket" if @socket_ipv4.nil? && @socket_ipv6.nil?
-        @advertised_services = Hash(String, {ServiceType, Int32, Hash(String, String), CommissioningInfo?, String}).new
+        @advertised_services = Hash(String, AdvertisedService).new
+        @announcement_bursts = Hash(String, Channel(Nil)).new
+      end
+
+      # The commissioning info currently being advertised, if any.
+      def advertised_commissioning_info : CommissioningInfo?
+        @advertised_services.each_value do |(service_type, _, _, commissioning_info, _)|
+          return commissioning_info if service_type.commissioning?
+        end
+        nil
       end
 
       # Returns the current commissioning DNS-SD instance name (e.g. `DD200C20D25AE5F7._matterc._udp.local`)
@@ -99,23 +128,12 @@ module Matter
 
         # Update any existing commissioning services and re-announce them so controllers
         # see the new SRV target/AAAA records.
-        @advertised_services.each do |instance, (service_type, port, txt_records, commissioning_info, existing_hostname)|
+        @advertised_services.each do |instance, (service_type, port, txt_records, commissioning_info, _)|
           next unless service_type.commissioning?
-          next unless commissioning_info
 
-          @advertised_services[instance] = {service_type, port, txt_records, commissioning_info, normalized}
-
-          records = build_commissioning_records(
-            info: commissioning_info,
-            service: ServiceNames::COMMISSIONING,
-            instance: instance,
-            port: port,
-            txt_records: txt_records,
-            ttl: DEFAULT_TTL,
-            hostname: normalized
-          )
-
-          send_announcement(records)
+          service = {service_type, port, txt_records, commissioning_info, normalized}
+          @advertised_services[instance] = service
+          send_announcement(service_records(instance, service))
         end
       end
 
@@ -162,6 +180,7 @@ module Matter
       # Stop listening
       def stop : Nil
         @running = false
+        cancel_announcement_bursts
 
         # Leave IPv4 multicast group
         if sock4 = @socket_ipv4
@@ -215,38 +234,44 @@ module Matter
 
         Log.debug { "Re-announcing #{@advertised_services.size} service(s)" }
 
-        @advertised_services.each do |instance, (service_type, port, txt_records, commissioning_info, hostname)|
-          begin
-            if commissioning_info
-              # Commissioning service - need to build full records with subtypes
-              service = ServiceNames::COMMISSIONING
-              records = build_commissioning_records(
-                info: commissioning_info,
-                service: service,
-                instance: instance,
-                port: port,
-                txt_records: txt_records,
-                ttl: DEFAULT_TTL,
-                hostname: hostname
-              )
-            else
-              # Operational service - simpler records
-              service = ServiceNames.service_name(service_type)
-              records = build_service_records(
-                service: service,
-                instance: instance,
-                port: port,
-                txt_records: txt_records,
-                ttl: DEFAULT_TTL,
-                hostname: hostname
-              )
-            end
-
-            send_announcement(records)
-          rescue ex
-            Log.warn(exception: ex) { "Failed to re-announce service #{instance}" }
-          end
+        @advertised_services.each do |instance, service|
+          send_announcement(service_records(instance, service))
+        rescue ex
+          Log.warn(exception: ex) { "Failed to re-announce service #{instance}" }
         end
+      end
+
+      # Announce a service now and repeat the announcement ANNOUNCEMENT_BURST_COUNT
+      # times in total, ANNOUNCEMENT_BURST_INTERVAL apart. Any burst already running
+      # for the instance is cancelled first.
+      private def announce_burst(instance : String, records : Array(DNS::Packet::ResourceRecord)) : Nil
+        cancel_announcement_burst(instance)
+        send_announcement(records)
+
+        cancel = Channel(Nil).new
+        @announcement_bursts[instance] = cancel
+
+        spawn do
+          (ANNOUNCEMENT_BURST_COUNT - 1).times do
+            select
+            when cancel.receive?
+              break
+            when timeout(@announcement_burst_interval)
+              send_announcement(records)
+            end
+          end
+        ensure
+          @announcement_bursts.delete(instance) if @announcement_bursts[instance]?.same?(cancel)
+        end
+      end
+
+      private def cancel_announcement_burst(instance : String) : Nil
+        @announcement_bursts.delete(instance).try(&.close)
+      end
+
+      private def cancel_announcement_bursts : Nil
+        @announcement_bursts.each_value(&.close)
+        @announcement_bursts.clear
       end
 
       # Advertise commissioning service
@@ -255,25 +280,14 @@ module Matter
         port : Int32 = 5540,
         ttl : Time::Span = 120.seconds,
       ) : Nil
-        service = ServiceNames::COMMISSIONING
         commissioning_instance_id = @commissioning_instance_id ||= Random::Secure.rand(UInt64).to_s(16).upcase.rjust(16, '0')
         instance = ServiceNames.commissioning_instance(commissioning_instance_id)
-        hostname = @hostname
 
         # Track this service for query responses
-        @advertised_services[instance] = {ServiceType::Commissioning, port, info.to_txt_records, info, hostname}
+        service = {ServiceType::Commissioning, port, info.to_txt_records, info, @hostname}
+        @advertised_services[instance] = service
 
-        records = build_commissioning_records(
-          info: info,
-          service: service,
-          instance: instance,
-          port: port,
-          txt_records: info.to_txt_records,
-          ttl: ttl,
-          hostname: hostname
-        )
-
-        send_announcement(records)
+        announce_burst(instance, service_records(instance, service, ttl))
       end
 
       # Advertise operational service
@@ -282,23 +296,13 @@ module Matter
         port : Int32 = 5540,
         ttl : Time::Span = 120.seconds,
       ) : Nil
-        service = ServiceNames::OPERATIONAL
         instance = ServiceNames.operational_instance(info.compressed_fabric_id, info.node_id)
-        hostname = operational_hostname(info)
 
         # Track this service for query responses
-        @advertised_services[instance] = {ServiceType::Operational, port, info.to_txt_records, nil, hostname}
+        service = {ServiceType::Operational, port, info.to_txt_records, nil, operational_hostname(info)}
+        @advertised_services[instance] = service
 
-        records = build_service_records(
-          service: service,
-          instance: instance,
-          port: port,
-          txt_records: info.to_txt_records,
-          ttl: ttl,
-          hostname: hostname
-        )
-
-        send_announcement(records)
+        announce_burst(instance, service_records(instance, service, ttl))
       end
 
       # Stop all commissioning advertisements
@@ -327,6 +331,7 @@ module Matter
         service = ServiceNames.service_name(service_type)
 
         # Remove from advertised services
+        cancel_announcement_burst(instance)
         @advertised_services.delete(instance)
 
         # Build PTR record with TTL=0
@@ -370,6 +375,60 @@ module Matter
         send_announcement(records)
       end
 
+      # Every name a controller may browse (PTR query) to find a commissioning
+      # service: the service itself plus the Matter discovery subtypes
+      # (_V<vendor>, _T<device type>, _S<short>, _L<long discriminator>, _CM).
+      private def commissioning_browse_names(service : String, info : CommissioningInfo) : Array(String)
+        [
+          service,
+          ServiceNames.vendor_subtype(info.vendor_id),
+          ServiceNames.device_type_subtype(info.device_type),
+          ServiceNames.short_discriminator_subtype(info.discriminator),
+          ServiceNames.long_discriminator_subtype(info.discriminator),
+          ServiceNames.commissioning_mode_subtype,
+        ]
+      end
+
+      # Names a PTR query may use to browse for an advertised service.
+      private def browse_names(service : AdvertisedService) : Array(String)
+        service_type, _, _, commissioning_info, _ = service
+        service_name = ServiceNames.service_name(service_type)
+        return [service_name] unless commissioning_info
+        commissioning_browse_names(service_name, commissioning_info)
+      end
+
+      # DNS names compare case-insensitively (RFC 6762 §16).
+      private def dns_name_matches?(name : String, other : String) : Bool
+        name.compare(other, case_insensitive: true).zero?
+      end
+
+      # All records (PTR/SRV/TXT/A/AAAA) describing an advertised service.
+      private def service_records(instance : String, service : AdvertisedService, ttl : Time::Span = DEFAULT_TTL) : Array(DNS::Packet::ResourceRecord)
+        service_type, port, txt_records, commissioning_info, hostname = service
+        service_name = ServiceNames.service_name(service_type)
+
+        if commissioning_info
+          build_commissioning_records(
+            info: commissioning_info,
+            service: service_name,
+            instance: instance,
+            port: port,
+            txt_records: txt_records,
+            ttl: ttl,
+            hostname: hostname
+          )
+        else
+          build_service_records(
+            service: service_name,
+            instance: instance,
+            port: port,
+            txt_records: txt_records,
+            ttl: ttl,
+            hostname: hostname
+          )
+        end
+      end
+
       private def build_commissioning_records(
         info : CommissioningInfo,
         service : String,
@@ -380,31 +439,17 @@ module Matter
         hostname : String,
       ) : Array(DNS::Packet::ResourceRecord)
         records = [] of DNS::Packet::ResourceRecord
+        browse_names = commissioning_browse_names(service, info)
 
-        # Build subtype names
-        vendor_sub = ServiceNames.vendor_subtype(info.vendor_id)
-        device_type_sub = ServiceNames.device_type_subtype(info.device_type)
-        short_disc_sub = ServiceNames.short_discriminator_subtype(info.discriminator)
-        long_disc_sub = ServiceNames.long_discriminator_subtype(info.discriminator)
-        commissioning_mode_sub = ServiceNames.commissioning_mode_subtype
+        # PTR records from _services._dns-sd._udp.local to the service and all subtypes (for browse lists)
+        browse_names.each do |name|
+          records << RecordBuilder.build_ptr(ServiceNames::SERVICE_DISCOVERY, name, ttl)
+        end
 
-        # PTR records from _services._dns-sd._udp.local to all subtypes (for browse lists)
-        records << RecordBuilder.build_ptr(ServiceNames::SERVICE_DISCOVERY, service, ttl)
-        records << RecordBuilder.build_ptr(ServiceNames::SERVICE_DISCOVERY, vendor_sub, ttl)
-        records << RecordBuilder.build_ptr(ServiceNames::SERVICE_DISCOVERY, device_type_sub, ttl)
-        records << RecordBuilder.build_ptr(ServiceNames::SERVICE_DISCOVERY, short_disc_sub, ttl)
-        records << RecordBuilder.build_ptr(ServiceNames::SERVICE_DISCOVERY, long_disc_sub, ttl)
-        records << RecordBuilder.build_ptr(ServiceNames::SERVICE_DISCOVERY, commissioning_mode_sub, ttl)
-
-        # PTR records from service -> instance
-        records << RecordBuilder.build_ptr(service, instance, ttl)
-
-        # PTR records from subtypes -> instance (for subtype browsing)
-        records << RecordBuilder.build_ptr(vendor_sub, instance, ttl)
-        records << RecordBuilder.build_ptr(device_type_sub, instance, ttl)
-        records << RecordBuilder.build_ptr(short_disc_sub, instance, ttl)
-        records << RecordBuilder.build_ptr(long_disc_sub, instance, ttl)
-        records << RecordBuilder.build_ptr(commissioning_mode_sub, instance, ttl)
+        # PTR records from service and subtypes -> instance (for service and subtype browsing)
+        browse_names.each do |name|
+          records << RecordBuilder.build_ptr(name, instance, ttl)
+        end
 
         # SRV record: instance -> hostname:port
         records << RecordBuilder.build_srv(instance, port, hostname, ttl)
@@ -561,15 +606,17 @@ module Matter
         end
       end
 
-      private def process_query(query : DNS::Packet) : Nil
-        # Check if any questions match our advertised services
+      # Answer every question in `query` that concerns an advertised service:
+      # service/subtype browsing (PTR), instance details (SRV/TXT) and host
+      # addresses (A/AAAA).
+      def process_query(query : DNS::Packet) : Nil
         query.questions.each do |question|
           Log.debug { "Processing question: name=#{question.name}, type=#{question.type}" }
           # Check for service type queries (PTR or ANY)
-          if question.type == RecordBuilder::TYPE_PTR || question.type == 255 # 255 = ANY
+          if question.type == RecordBuilder::TYPE_PTR || question.type == QTYPE_ANY
             check_service_query(question.name)
 
-            if question.type == 255
+            if question.type == QTYPE_ANY
               # For ANY queries, also check if it's an instance-specific query and/or
               # a hostname query.
               check_instance_query(question.name)
@@ -595,73 +642,28 @@ module Matter
         end
       end
 
-      private def check_service_query(service_name : String) : Nil
-        # Check if query matches our service types
-        @advertised_services.each do |instance, (service_type, port, txt_records, comm_info, hostname)|
-          expected_service = ServiceNames.service_name(service_type)
+      # Answer a browse (PTR) query naming an advertised service or one of its subtypes.
+      private def check_service_query(query_name : String) : Nil
+        @advertised_services.each do |instance, service|
+          next unless browse_names(service).any? { |name| dns_name_matches?(name, query_name) }
 
-          if service_name == expected_service
-            Log.debug { "Query matches our service: #{service_name}, sending response for instance: #{instance}" }
-            # Respond with our service (with all PTR records for commissioning)
-            records = if info = comm_info
-                        build_commissioning_records(
-                          info: info,
-                          service: expected_service,
-                          instance: instance,
-                          port: port,
-                          txt_records: txt_records,
-                          ttl: DEFAULT_TTL,
-                          hostname: hostname
-                        )
-                      else
-                        build_service_records(
-                          service: expected_service,
-                          instance: instance,
-                          port: port,
-                          txt_records: txt_records,
-                          ttl: DEFAULT_TTL,
-                          hostname: hostname
-                        )
-                      end
-            send_announcement(records)
-          end
+          Log.debug { "Query matches our service: #{query_name}, sending response for instance: #{instance}" }
+          send_announcement(service_records(instance, service))
         end
       end
 
-      private def check_instance_query(instance_name : String) : Nil
-        # Check if query matches one of our advertised instances
-        if service_info = @advertised_services[instance_name]?
-          service_type, port, txt_records, comm_info, hostname = service_info
-          service = ServiceNames.service_name(service_type)
+      # Answer a query naming an advertised instance directly.
+      private def check_instance_query(query_name : String) : Nil
+        @advertised_services.each do |instance, service|
+          next unless dns_name_matches?(instance, query_name)
 
-          # Respond with our instance (with all PTR records for commissioning)
-          records = if info = comm_info
-                      build_commissioning_records(
-                        info: info,
-                        service: service,
-                        instance: instance_name,
-                        port: port,
-                        txt_records: txt_records,
-                        ttl: DEFAULT_TTL,
-                        hostname: hostname
-                      )
-                    else
-                      build_service_records(
-                        service: service,
-                        instance: instance_name,
-                        port: port,
-                        txt_records: txt_records,
-                        ttl: DEFAULT_TTL,
-                        hostname: hostname
-                      )
-                    end
-          send_announcement(records)
+          send_announcement(service_records(instance, service))
         end
       end
 
       private def advertised_hostname_for(name : String) : String?
         @advertised_services.each_value do |(_, _, _, _, hostname)|
-          return hostname if hostname == name
+          return hostname if dns_name_matches?(hostname, name)
         end
         nil
       end

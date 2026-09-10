@@ -1,7 +1,27 @@
-require "./service_description"
-
 module Matter
   module MDNS
+    # Commissioning Mode (CM TXT key) for commissionable-node mDNS advertisement
+    enum CommissioningMode : UInt8
+      Disabled = 0 # Not accepting commissioning
+      Basic    = 1 # Basic commissioning window (default passcode)
+      Enhanced = 2 # Enhanced commissioning window (custom verifier)
+    end
+
+    # Pairing Hint Bitmap (PH TXT key, 20 bits total)
+    #
+    # RFC: Matter Core Spec §4.3.1 - Commissioning Discovery
+    @[Flags]
+    enum PairingHint : UInt32
+      PowerCycle         = 0x0001 # Pair by power cycling the device
+      DeviceManual       = 0x0002 # See device manual for pairing instructions
+      DeviceManufacturer = 0x0004 # See manufacturer website
+      NFC                = 0x0008 # Use NFC
+      QRCode             = 0x0010 # Scan QR code
+      Bluetooth          = 0x0020 # Use Bluetooth
+      ThirdPartyApp      = 0x0040 # Use third-party app
+      # Bits 7-19 reserved
+    end
+
     # Matter mDNS service types
     enum ServiceType
       # Commissioning service (_matterc._udp.local)

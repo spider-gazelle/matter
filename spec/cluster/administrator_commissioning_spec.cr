@@ -153,6 +153,57 @@ module Matter::Cluster
       end
     end
 
+    describe "commissioning advertising callback" do
+      it "asks for the device discriminator when a basic window opens" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        requests = [] of {UInt16?, Matter::MDNS::CommissioningMode}
+        cluster.on_start_commissioning_advertising = ->(discriminator : UInt16?, mode : Matter::MDNS::CommissioningMode) do
+          requests << {discriminator, mode}
+        end
+
+        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(commissioning_timeout: 900_u16)
+        cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
+
+        requests.should eq([{nil, Matter::MDNS::CommissioningMode::Basic}])
+        cluster.close
+      end
+
+      it "asks for the requested discriminator when an enhanced window opens" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        requests = [] of {UInt16?, Matter::MDNS::CommissioningMode}
+        cluster.on_start_commissioning_advertising = ->(discriminator : UInt16?, mode : Matter::MDNS::CommissioningMode) do
+          requests << {discriminator, mode}
+        end
+
+        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+          commissioning_timeout: 900_u16,
+          pake_passcode_verifier: Bytes.new(97, 0xAB_u8),
+          discriminator: 1234_u16,
+          iterations: 10000_u32,
+          salt: Bytes.new(32, 0xCD_u8)
+        )
+        cluster.open_commissioning_window(request, 1_u8, 0x1234_u16)
+
+        requests.should eq([{1234_u16, Matter::MDNS::CommissioningMode::Enhanced}])
+        cluster.close
+      end
+
+      it "stops advertising when the window is revoked" do
+        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        stops = 0
+        cluster.on_stop_commissioning_advertising = -> { stops += 1 }
+
+        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(commissioning_timeout: 900_u16)
+        cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
+        cluster.revoke_commissioning
+
+        stops.should eq(1)
+      end
+    end
+
     describe "command parsing with TLV" do
       describe "OpenCommissioningWindow" do
         it "parses valid TLV-encoded command and opens window" do

@@ -94,16 +94,6 @@ module Matter
       property admin_vendor_id : UInt16?
 
       # ========================================================================
-      # Device Information (for DNS-SD advertising)
-      # ========================================================================
-
-      property device_name : String = "Matter Device"
-      property device_type : UInt32 = 0_u32             # Unknown device type
-      property vendor_id : UInt16 = 0xFFF1_u16          # Test vendor ID
-      property product_id : UInt16 = 0x8000_u16         # Test product ID
-      property addresses : Array(String) = [] of String # IP addresses to advertise
-
-      # ========================================================================
       # Window State (for backward compatibility with cluster/ version)
       # ========================================================================
 
@@ -127,7 +117,6 @@ module Matter
       @commissioning_timeout_channel : Channel(Nil)?
       @minimum_commissioning_timeout : UInt16
       @maximum_commissioning_timeout : UInt16
-      @mdns_advertiser : MDNS::Advertiser?
       @window_start_time : Time?
       @window_expiry_time : Time?
 
@@ -141,9 +130,10 @@ module Matter
       property on_stop_pase_server : Proc(Nil)?
       property on_close_failsafe : Proc(Nil)?
 
-      # mDNS advertising integration.
-      # If set, the cluster will not use the legacy `MDNS::Advertiser` implementation.
-      property on_start_commissioning_advertising : Proc(UInt16, MDNS::CommissioningMode, Nil)? # (discriminator, mode) -> nil
+      # mDNS advertising integration (installed by the device).
+      # The discriminator is nil for a basic window: the device advertises its own
+      # discriminator. An enhanced window carries the administrator-requested one.
+      property on_start_commissioning_advertising : Proc(UInt16?, MDNS::CommissioningMode, Nil)? # (discriminator, mode) -> nil
       property on_stop_commissioning_advertising : Proc(Nil)?
 
       # ========================================================================
@@ -174,7 +164,6 @@ module Matter
         @commissioning_timeout_channel = nil
         @minimum_commissioning_timeout = minimum_timeout
         @maximum_commissioning_timeout = maximum_timeout
-        @mdns_advertiser = nil
         @window_start_time = nil
         @window_expiry_time = nil
 
@@ -369,13 +358,13 @@ module Matter
         end
 
         # Initialize commissioning window
-        # Note: Basic commissioning doesn't include discriminator in request, use default
+        # Note: Basic commissioning doesn't include a discriminator in the request;
+        # the device advertises its own discriminator.
         initialize_commissioning_window(
           timeout: request.commissioning_timeout,
           status: CommissioningWindowStatus::BasicWindowOpen,
           admin_fabric_index: session_fabric_index,
-          admin_vendor_id: session_vendor_id,
-          discriminator: 0_u16
+          admin_vendor_id: session_vendor_id
         )
 
         # Configure PASE server with default PIN (if callback provided)
@@ -533,15 +522,7 @@ module Matter
 
       # Close and cleanup (for testing/shutdown)
       def close : Nil
-        if window_open?
-          close_commissioning_window
-        end
-
-        # Cleanup advertiser
-        if advertiser = @mdns_advertiser
-          advertiser.close
-          @mdns_advertiser = nil
-        end
+        close_commissioning_window if window_open?
       end
 
       # ========================================================================
@@ -597,7 +578,7 @@ module Matter
         status : CommissioningWindowStatus,
         admin_fabric_index : UInt8?,
         admin_vendor_id : UInt16?,
-        discriminator : UInt16 = 0_u16,
+        discriminator : UInt16? = nil,
       ) : Nil
         # Set attributes
         @window_status = status
@@ -651,8 +632,9 @@ module Matter
         close_commissioning_window
       end
 
-      # Start mDNS advertising for commissioning window
-      private def start_mdns_advertising(discriminator : UInt16) : Nil
+      # Start mDNS advertising for commissioning window.
+      # A nil discriminator (basic window) lets the device advertise its own.
+      private def start_mdns_advertising(discriminator : UInt16?) : Nil
         # Determine commissioning mode
         mode = case @window_status
                when CommissioningWindowStatus::BasicWindowOpen
@@ -665,33 +647,7 @@ module Matter
 
         if callback = @on_start_commissioning_advertising
           callback.call(discriminator, mode)
-          Log.info { "Requested commissioning mDNS advertising via callback (discriminator=#{discriminator} mode=#{mode})" }
-          return
-        end
-
-        return if @addresses.empty?
-
-        begin
-          # Create service description
-          description = MDNS::CommissionableServiceDescription.new(
-            name: @device_name,
-            device_type: @device_type,
-            vendor_id: @vendor_id,
-            product_id: @product_id,
-            discriminator: discriminator,
-            mode: mode
-          )
-
-          # Create advertisement
-          advertisement = MDNS::CommissionableAdvertisement.new(description, @addresses)
-
-          # Create and start advertiser if needed
-          mdns_advertiser = @mdns_advertiser ||= MDNS::Advertiser.new(Socket::Family::INET)
-          mdns_advertiser.start_advertising(advertisement)
-
-          Log.info { "Started mDNS advertising: discriminator=#{discriminator}, mode=#{mode}" }
-        rescue ex
-          Log.error(exception: ex) { "Failed to start mDNS advertising (discriminator=#{discriminator} mode=#{mode} addresses=#{@addresses.map(&.to_s).join(",")})" }
+          Log.info { "Requested commissioning mDNS advertising (discriminator=#{discriminator || "device"} mode=#{mode})" }
         end
       end
 
@@ -699,13 +655,7 @@ module Matter
       private def stop_mdns_advertising : Nil
         if callback = @on_stop_commissioning_advertising
           callback.call
-          Log.info { "Requested commissioning mDNS stop via callback" }
-          return
-        end
-
-        if advertiser = @mdns_advertiser
-          advertiser.stop_advertising
-          Log.info { "Stopped mDNS advertising" }
+          Log.info { "Requested commissioning mDNS stop" }
         end
       end
 

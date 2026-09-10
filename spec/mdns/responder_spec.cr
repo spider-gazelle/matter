@@ -3,6 +3,81 @@ require "../../src/matter/mdns/responder"
 require "../../src/matter/mdns/service_type"
 require "../../src/matter/mdns/record_builder"
 
+# Captures multicast packets instead of sending them so specs can inspect
+# announcements and query responses.
+class RecordingResponder < Matter::MDNS::Responder
+  getter sent = [] of DNS::Packet
+
+  private def send_multicast(packet : DNS::Packet) : Nil
+    @sent << packet
+  end
+end
+
+# Decode a DNS label-encoded name (as stored in PTR/SRV resource data)
+private def decode_dns_name(io : IO) : String
+  labels = [] of String
+  while (length = io.read_byte) && length > 0
+    labels << io.read_string(length)
+  end
+  labels.join('.')
+end
+
+# Instance name a PTR record points at
+private def ptr_target(record : DNS::Packet::ResourceRecord) : String
+  decode_dns_name(IO::Memory.new(record.resource_data))
+end
+
+# key=value pairs of a TXT record
+private def txt_entries(record : DNS::Packet::ResourceRecord) : Hash(String, String)
+  io = IO::Memory.new(record.resource_data)
+  entries = {} of String => String
+  while (length = io.read_byte) && length > 0
+    key, _, value = io.read_string(length).partition('=')
+    entries[key] = value
+  end
+  entries
+end
+
+private def ptr_records(packet : DNS::Packet) : Array(DNS::Packet::ResourceRecord)
+  packet.answers.select { |record| record.type == Matter::MDNS::RecordBuilder::TYPE_PTR }
+end
+
+private def txt_record(packet : DNS::Packet) : DNS::Packet::ResourceRecord
+  packet.additionals.find! { |record| record.type == Matter::MDNS::RecordBuilder::TYPE_TXT }
+end
+
+private def query_for(name : String, type : UInt16) : DNS::Packet
+  question = DNS::Packet::Question.new(name: name, type: type, class_code: Matter::MDNS::RecordBuilder::CLASS_IN)
+  DNS::Packet.new(id: 0_u16, questions: [question])
+end
+
+private def commissioning_info(discriminator : UInt16, mode : Matter::MDNS::CommissioningMode = Matter::MDNS::CommissioningMode::Enhanced) : Matter::MDNS::CommissioningInfo
+  Matter::MDNS::CommissioningInfo.new(
+    device_name: "TestDevice",
+    vendor_id: 0xFFF1_u16,
+    product_id: 0x8001_u16,
+    discriminator: discriminator,
+    device_type: 15_u16,
+    commissioning_mode: mode
+  )
+end
+
+# Poll until the condition holds or the timeout elapses
+private def wait_for(timeout : Time::Span, &condition : -> Bool) : Nil
+  deadline = Time.monotonic + timeout
+  until condition.call || Time.monotonic >= deadline
+    sleep 5.milliseconds
+  end
+end
+
+private def recording_responder(burst_interval : Time::Span = Matter::MDNS::Responder::ANNOUNCEMENT_BURST_INTERVAL) : RecordingResponder
+  RecordingResponder.new(
+    hostname: "test-device.local",
+    ip_addresses: [Socket::IPAddress.new("192.168.1.100", 0)],
+    announcement_burst_interval: burst_interval
+  )
+end
+
 describe Matter::MDNS::Responder do
   describe "initialization" do
     it "creates a responder with default settings" do
@@ -497,6 +572,158 @@ describe Matter::MDNS::Responder do
 
       # Both services should be tracked
       responder.stop
+    end
+  end
+  describe "commissioning subtypes" do
+    # Discriminator 2048 = 0x800: short discriminator (upper 4 bits) is 8
+    it "announces PTR records for the service and every discovery subtype" do
+      require_udp_sockets!
+      responder = recording_responder
+      responder.advertise_commissioning(commissioning_info(2048_u16), port: 5540)
+
+      responder.sent.size.should eq(1)
+      instance = responder.commissioning_instance_name.as(String)
+      instance.should match(/\A[0-9A-F]{16}\._matterc\._udp\.local\z/)
+
+      instance_ptrs = ptr_records(responder.sent.first).select { |record| ptr_target(record) == instance }
+      instance_ptrs.map(&.name).sort!.should eq([
+        "_CM._sub._matterc._udp.local",
+        "_L2048._sub._matterc._udp.local",
+        "_S8._sub._matterc._udp.local",
+        "_T15._sub._matterc._udp.local",
+        "_V65521._sub._matterc._udp.local",
+        "_matterc._udp.local",
+      ])
+    end
+
+    it "answers PTR queries for each subtype and the base service" do
+      require_udp_sockets!
+      responder = recording_responder
+      responder.advertise_commissioning(commissioning_info(2048_u16), port: 5540)
+      instance = responder.commissioning_instance_name.as(String)
+
+      {
+        "_matterc._udp.local",
+        "_L2048._sub._matterc._udp.local",
+        "_S8._sub._matterc._udp.local",
+        "_CM._sub._matterc._udp.local",
+        "_T15._sub._matterc._udp.local",
+        "_V65521._sub._matterc._udp.local",
+      }.each do |name|
+        responder.sent.clear
+        responder.process_query(query_for(name, Matter::MDNS::RecordBuilder::TYPE_PTR))
+
+        responder.sent.size.should eq(1)
+        answer = ptr_records(responder.sent.first).find { |record| record.name == name }
+        answer.should_not be_nil
+        ptr_target(answer.as(DNS::Packet::ResourceRecord)).should eq(instance)
+      end
+    end
+
+    it "matches subtype queries case-insensitively" do
+      require_udp_sockets!
+      responder = recording_responder
+      responder.advertise_commissioning(commissioning_info(2048_u16), port: 5540)
+      responder.sent.clear
+
+      responder.process_query(query_for("_l2048._sub._matterc._udp.local", Matter::MDNS::RecordBuilder::TYPE_PTR))
+
+      responder.sent.size.should eq(1)
+    end
+
+    it "ignores PTR queries for subtypes it does not advertise" do
+      require_udp_sockets!
+      responder = recording_responder
+      responder.advertise_commissioning(commissioning_info(2048_u16), port: 5540)
+      responder.sent.clear
+
+      responder.process_query(query_for("_L2049._sub._matterc._udp.local", Matter::MDNS::RecordBuilder::TYPE_PTR))
+      responder.process_query(query_for("_S9._sub._matterc._udp.local", Matter::MDNS::RecordBuilder::TYPE_PTR))
+      responder.process_query(query_for("_http._tcp.local", Matter::MDNS::RecordBuilder::TYPE_PTR))
+
+      responder.sent.should be_empty
+    end
+
+    it "answers SRV and TXT queries for the instance name" do
+      require_udp_sockets!
+      responder = recording_responder
+      responder.advertise_commissioning(commissioning_info(2048_u16), port: 5540)
+      instance = responder.commissioning_instance_name.as(String)
+
+      {Matter::MDNS::RecordBuilder::TYPE_SRV, Matter::MDNS::RecordBuilder::TYPE_TXT}.each do |type|
+        responder.sent.clear
+        responder.process_query(query_for(instance, type))
+
+        responder.sent.size.should eq(1)
+        response = responder.sent.first
+        response.additionals.any? { |record| record.type == type && record.name == instance }.should be_true
+      end
+    end
+
+    it "advertises a new discriminator and instance after stop_commissioning" do
+      require_udp_sockets!
+      responder = recording_responder
+      responder.advertise_commissioning(commissioning_info(100_u16, Matter::MDNS::CommissioningMode::Basic), port: 5540)
+      first_instance = responder.commissioning_instance_name.as(String)
+
+      responder.stop_commissioning
+      responder.commissioning_instance_name.should be_nil
+      goodbye = responder.sent.last
+      goodbye.answers.map(&.ttl).should eq([0.seconds])
+      ptr_target(goodbye.answers.first).should eq(first_instance)
+
+      responder.sent.clear
+      responder.advertise_commissioning(commissioning_info(200_u16, Matter::MDNS::CommissioningMode::Enhanced), port: 5540)
+
+      second_instance = responder.commissioning_instance_name.as(String)
+      second_instance.should match(/\A[0-9A-F]{16}\._matterc\._udp\.local\z/)
+      second_instance.should_not eq(first_instance)
+
+      announcement = responder.sent.first
+      ptr_records(announcement).map(&.name).should contain("_L200._sub._matterc._udp.local")
+      ptr_records(announcement).map(&.name).should_not contain("_L100._sub._matterc._udp.local")
+      txt = txt_entries(txt_record(announcement))
+      txt["CM"].should eq(Matter::MDNS::CommissioningMode::Enhanced.value.to_s)
+      txt["D"].should eq("200")
+      responder.advertised_commissioning_info.try(&.discriminator).should eq(200_u16)
+    end
+  end
+
+  describe "announcement burst" do
+    it "repeats the commissioning announcement ANNOUNCEMENT_BURST_COUNT times" do
+      require_udp_sockets!
+      responder = recording_responder(burst_interval: 10.milliseconds)
+      responder.advertise_commissioning(commissioning_info(2048_u16), port: 5540)
+
+      # First announcement is sent synchronously
+      responder.sent.size.should eq(1)
+
+      wait_for(200.milliseconds) { responder.sent.size == Matter::MDNS::Responder::ANNOUNCEMENT_BURST_COUNT }
+      responder.sent.size.should eq(Matter::MDNS::Responder::ANNOUNCEMENT_BURST_COUNT)
+      responder.sent.map { |packet| ptr_records(packet).map(&.name) }.uniq!.size.should eq(1)
+    end
+
+    it "repeats the operational announcement ANNOUNCEMENT_BURST_COUNT times" do
+      require_udp_sockets!
+      responder = recording_responder(burst_interval: 10.milliseconds)
+      info = Matter::MDNS::OperationalInfo.new(compressed_fabric_id: Bytes.new(8, 0x11_u8), node_id: 1_u64)
+      responder.advertise_operational(info, port: 5540)
+
+      responder.sent.size.should eq(1)
+      wait_for(200.milliseconds) { responder.sent.size == Matter::MDNS::Responder::ANNOUNCEMENT_BURST_COUNT }
+      responder.sent.size.should eq(Matter::MDNS::Responder::ANNOUNCEMENT_BURST_COUNT)
+    end
+
+    it "cancels the burst on stop_commissioning" do
+      require_udp_sockets!
+      responder = recording_responder(burst_interval: 10.milliseconds)
+      responder.advertise_commissioning(commissioning_info(2048_u16), port: 5540)
+      responder.stop_commissioning
+
+      # announcement + goodbye only; no further burst announcements
+      sleep 50.milliseconds
+      responder.sent.size.should eq(2)
+      responder.sent.last.answers.map(&.ttl).should eq([0.seconds])
     end
   end
 end
