@@ -30,7 +30,7 @@ describe Matter::DeviceType do
       dt.requires_cluster?(0x001D_u32).should be_true          # Descriptor
       dt.requires_cluster?(0x0003_u32).should be_true          # Identify
       dt.requires_cluster?(0x0004_u32).should be_true          # Groups
-      dt.requires_cluster?(0x0062_u32).should be_true          # Scenes Management
+      dt.supports_optional_cluster?(0x0062_u32).should be_true # Scenes Management
       dt.requires_cluster?(0x0006_u32).should be_true          # On/Off
       dt.supports_optional_cluster?(0x0008_u32).should be_true # Level Control
     end
@@ -227,6 +227,19 @@ describe Matter::Endpoint do
       endpoint.validate.should be_empty
     end
 
+    it "validates on/off light endpoint without the optional Scenes Management cluster" do
+      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+      endpoint = Matter::Endpoint.new(endpoint_id, Matter::DeviceType.on_off_light)
+
+      endpoint.add_cluster(Matter::Cluster::DescriptorCluster.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::IdentifyCluster.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::GroupsCluster.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint_id))
+
+      endpoint.validate.should be_empty
+      endpoint.valid?.should be_true
+    end
+
     it "validates incomplete endpoint" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       device_type = Matter::DeviceType.on_off_light
@@ -238,7 +251,7 @@ describe Matter::Endpoint do
       endpoint.valid?.should be_false
       errors = endpoint.validate
       errors.should_not be_empty
-      # Should be missing Descriptor, Identify, Groups, Scenes
+      # Should be missing Descriptor, Identify, Groups
       errors.size.should be >= 3
       errors.any? { |e| e.includes?("0x001D") || e.includes?("Descriptor") }.should be_true
       errors.any? { |e| e.includes?("0x0003") || e.includes?("Identify") }.should be_true

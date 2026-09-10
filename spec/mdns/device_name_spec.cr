@@ -9,7 +9,7 @@ describe Matter::MDNS::CommissioningInfo do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8004_u16,
         discriminator: 3840_u16,
-        device_type: 259_u16, # On/Off Light Switch
+        device_type: 259_u32, # On/Off Light Switch
         commissioning_mode: Matter::MDNS::CommissioningMode::Basic
       )
 
@@ -25,7 +25,7 @@ describe Matter::MDNS::CommissioningInfo do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 1234_u16,
-        device_type: 256_u16, # On/Off Light
+        device_type: 256_u32, # On/Off Light
         commissioning_mode: Matter::MDNS::CommissioningMode::Enhanced
       )
 
@@ -51,7 +51,7 @@ describe Matter::MDNS::CommissioningInfo do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 1234_u16,
-        device_type: 256_u16,
+        device_type: 256_u32,
         commissioning_mode: Matter::MDNS::CommissioningMode::Basic,
         pairing_hint: 33_u16 # QR Code + Power Cycle
       )
@@ -67,7 +67,7 @@ describe Matter::MDNS::CommissioningInfo do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 1234_u16,
-        device_type: 256_u16,
+        device_type: 256_u32,
         commissioning_mode: Matter::MDNS::CommissioningMode::Basic,
         pairing_hint: 4_u16,
         pairing_instruction: "Press button for 5 seconds"
@@ -105,7 +105,7 @@ describe "End-to-end device name flow" do
       vendor_id: 0xFFF1_u16,
       product_id: 0x8004_u16,
       discriminator: 3840_u16,
-      device_type: 259_u16,
+      device_type: 259_u32,
       commissioning_mode: Matter::MDNS::CommissioningMode::Basic
     )
 

@@ -42,8 +42,8 @@ module MatterLevelControl
       SETUP_PIN_CODE
     end
 
-    def primary_device_type_id : UInt16
-      Matter::DeviceTypes::DIMMABLE_LIGHT
+    def primary_device_type_id : UInt32
+      Matter::DeviceType::DIMMABLE_LIGHT
     end
 
     def vendor_name : String

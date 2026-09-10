@@ -25,8 +25,8 @@ class TestBridgeDevice < Matter::Device::Base
     20202021_u32
   end
 
-  def primary_device_type_id : UInt16
-    Matter::DeviceTypes::ROOT_NODE
+  def primary_device_type_id : UInt32
+    Matter::DeviceType::ROOT_NODE
   end
 
   protected def build_storage_manager : Matter::Storage::Manager
@@ -60,7 +60,7 @@ describe "Dynamic Endpoint Management" do
 
       result = device.add_endpoint(
         endpoint_id: endpoint_id,
-        device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+        device_type: Matter::DeviceType::ON_OFF_LIGHT,
         clusters: [on_off, bridged_info]
       )
 
@@ -77,7 +77,7 @@ describe "Dynamic Endpoint Management" do
       descriptor = device.message_handler.clusters[{endpoint_id, Matter::Cluster::DescriptorCluster::CLUSTER_ID}]
         .as(Matter::Cluster::DescriptorCluster)
       descriptor.device_type_list.size.should eq(1)
-      descriptor.device_type_list[0].device_type.should eq(Matter::DeviceTypes::ON_OFF_LIGHT.to_u32)
+      descriptor.device_type_list[0].device_type.should eq(Matter::DeviceType::ON_OFF_LIGHT)
 
       # Verify descriptor has server list populated
       descriptor.server_list.should contain(Matter::Cluster::OnOffCluster::CLUSTER_ID)
@@ -94,7 +94,7 @@ describe "Dynamic Endpoint Management" do
 
       device.add_endpoint(
         endpoint_id: endpoint_id,
-        device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+        device_type: Matter::DeviceType::ON_OFF_LIGHT,
         clusters: [on_off]
       )
 
@@ -114,7 +114,7 @@ describe "Dynamic Endpoint Management" do
       # First add should succeed
       result1 = device.add_endpoint(
         endpoint_id: endpoint_id,
-        device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+        device_type: Matter::DeviceType::ON_OFF_LIGHT,
         clusters: [on_off1]
       )
       result1.should be_true
@@ -123,7 +123,7 @@ describe "Dynamic Endpoint Management" do
       on_off2 = Matter::Cluster::OnOffCluster.new(endpoint)
       result2 = device.add_endpoint(
         endpoint_id: endpoint_id,
-        device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+        device_type: Matter::DeviceType::ON_OFF_LIGHT,
         clusters: [on_off2]
       )
       result2.should be_false
@@ -137,7 +137,7 @@ describe "Dynamic Endpoint Management" do
 
       result = device.add_endpoint(
         endpoint_id: 0_u16,
-        device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+        device_type: Matter::DeviceType::ON_OFF_LIGHT,
         clusters: [on_off]
       )
 
@@ -153,7 +153,7 @@ describe "Dynamic Endpoint Management" do
       expect_raises(ArgumentError, /endpoint_id/) do
         device.add_endpoint(
           endpoint_id: 1_u16, # Mismatched!
-          device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+          device_type: Matter::DeviceType::ON_OFF_LIGHT,
           clusters: [on_off]
         )
       end
@@ -171,7 +171,7 @@ describe "Dynamic Endpoint Management" do
 
       device.add_endpoint(
         endpoint_id: endpoint_id,
-        device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+        device_type: Matter::DeviceType::ON_OFF_LIGHT,
         clusters: [on_off, bridged_info]
       )
 
@@ -197,7 +197,7 @@ describe "Dynamic Endpoint Management" do
 
       device.add_endpoint(
         endpoint_id: endpoint_id,
-        device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+        device_type: Matter::DeviceType::ON_OFF_LIGHT,
         clusters: [on_off]
       )
 
@@ -240,7 +240,7 @@ describe "Dynamic Endpoint Management" do
         on_off = Matter::Cluster::OnOffCluster.new(endpoint)
         device.add_endpoint(
           endpoint_id: endpoint_id,
-          device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+          device_type: Matter::DeviceType::ON_OFF_LIGHT,
           clusters: [on_off]
         )
       end
@@ -261,7 +261,7 @@ describe "Dynamic Endpoint Management" do
         on_off = Matter::Cluster::OnOffCluster.new(endpoint)
         device.add_endpoint(
           endpoint_id: endpoint_id,
-          device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+          device_type: Matter::DeviceType::ON_OFF_LIGHT,
           clusters: [on_off]
         )
       end
@@ -286,7 +286,7 @@ describe "Dynamic Endpoint Management" do
         on_off = Matter::Cluster::OnOffCluster.new(endpoint)
         device.add_endpoint(
           endpoint_id: endpoint_id,
-          device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+          device_type: Matter::DeviceType::ON_OFF_LIGHT,
           clusters: [on_off]
         )
       end
@@ -303,7 +303,7 @@ describe "Dynamic Endpoint Management" do
         on_off = Matter::Cluster::OnOffCluster.new(endpoint)
         device.add_endpoint(
           endpoint_id: endpoint_id,
-          device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+          device_type: Matter::DeviceType::ON_OFF_LIGHT,
           clusters: [on_off]
         )
       end
@@ -323,7 +323,7 @@ describe "Dynamic Endpoint Management" do
         on_off = Matter::Cluster::OnOffCluster.new(endpoint)
         device.add_endpoint(
           endpoint_id: endpoint_id,
-          device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+          device_type: Matter::DeviceType::ON_OFF_LIGHT,
           clusters: [on_off]
         )
       end
@@ -345,7 +345,7 @@ describe "Dynamic Endpoint Management" do
       on_off = Matter::Cluster::OnOffCluster.new(endpoint)
       device.add_endpoint(
         endpoint_id: 2_u16,
-        device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+        device_type: Matter::DeviceType::ON_OFF_LIGHT,
         clusters: [on_off]
       )
 
@@ -369,7 +369,7 @@ describe "Dynamic Endpoint Management" do
       # (verified by debug log: "notify_subscriptions: endpoint=0, cluster=0x1d, attr=0x3")
       result = device.add_endpoint(
         endpoint_id: endpoint_id,
-        device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+        device_type: Matter::DeviceType::ON_OFF_LIGHT,
         clusters: [on_off]
       )
 
@@ -390,7 +390,7 @@ describe "Dynamic Endpoint Management" do
 
       device.add_endpoint(
         endpoint_id: endpoint_id,
-        device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+        device_type: Matter::DeviceType::ON_OFF_LIGHT,
         clusters: [on_off]
       )
 
@@ -413,7 +413,7 @@ describe "Dynamic Endpoint Management" do
         on_off = Matter::Cluster::OnOffCluster.new(endpoint)
         device.add_endpoint(
           endpoint_id: endpoint_id,
-          device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+          device_type: Matter::DeviceType::ON_OFF_LIGHT,
           clusters: [on_off]
         )
       end
@@ -451,7 +451,7 @@ describe "Dynamic Endpoint Management" do
         on_off = Matter::Cluster::OnOffCluster.new(endpoint)
         device.add_endpoint(
           endpoint_id: endpoint_id,
-          device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+          device_type: Matter::DeviceType::ON_OFF_LIGHT,
           clusters: [on_off]
         )
       end

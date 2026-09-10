@@ -43,8 +43,8 @@ module MatterAmbientLightSensor
       SETUP_PIN_CODE
     end
 
-    def primary_device_type_id : UInt16
-      Matter::DeviceTypes::LIGHT_SENSOR
+    def primary_device_type_id : UInt32
+      Matter::DeviceType::LIGHT_SENSOR
     end
 
     def vendor_name : String

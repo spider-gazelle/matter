@@ -1,6 +1,5 @@
 require "./spec_helper"
 require "../src/matter/cluster/descriptor_cluster"
-require "../src/matter/constants/device_types"
 
 describe "DeviceType encoding for HomeKit compatibility" do
   describe "device_type_list attribute" do
@@ -10,7 +9,7 @@ describe "DeviceType encoding for HomeKit compatibility" do
 
       # Add On/Off Light device type (0x0100)
       descriptor.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
-        device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+        device_type: Matter::DeviceType::ON_OFF_LIGHT,
         revision: 2_u16
       )
 
@@ -19,7 +18,6 @@ describe "DeviceType encoding for HomeKit compatibility" do
       result.should be_a(Bytes)
 
       bytes = result.as(Bytes)
-      puts "device_type_list TLV encoding: #{bytes.hexstring}"
 
       # Decode the TLV to verify structure
       # Should be an array containing one struct with device_type=0x0100 and revision=2
@@ -36,7 +34,7 @@ describe "DeviceType encoding for HomeKit compatibility" do
 
       # Add Root Node device type (0x0016)
       descriptor.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
-        device_type: Matter::DeviceTypes::ROOT_NODE.to_u32,
+        device_type: Matter::DeviceType::ROOT_NODE,
         revision: 1_u16
       )
 
@@ -44,7 +42,6 @@ describe "DeviceType encoding for HomeKit compatibility" do
       result.should be_a(Bytes)
 
       bytes = result.as(Bytes)
-      puts "Root Node device_type_list TLV encoding: #{bytes.hexstring}"
 
       # Device type is always uint32 per Matter spec
       # Format: 26 (uint32) 00 (context tag 0) 16000000 (value 22 LE as uint32)
@@ -58,18 +55,21 @@ describe "DeviceType encoding for HomeKit compatibility" do
       # Add mandatory clusters for On/Off Light
       descriptor.server_list << 0x0003_u32 # Identify
       descriptor.server_list << 0x0004_u32 # Groups
-      descriptor.server_list << 0x0005_u32 # Scenes
+      descriptor.server_list << 0x0062_u32 # Scenes Management
       descriptor.server_list << 0x0006_u32 # OnOff
 
       # Read the server_list attribute (0x0001)
       result = descriptor.read_attribute(0x0001_u32)
       result.should be_a(Bytes)
 
-      bytes = result.as(Bytes)
-      puts "server_list TLV encoding: #{bytes.hexstring}"
-
-      # Should contain all cluster IDs
-      # Identify = 0x0003, Groups = 0x0004, Scenes = 0x0005, OnOff = 0x0006
+      # Cluster ids use the compact TLV width: 04 (anonymous uint8) + value
+      hex = result.as(Bytes).hexstring
+      hex.should start_with("16") # array
+      hex.should contain("0403")  # Identify
+      hex.should contain("0404")  # Groups
+      hex.should contain("0462")  # Scenes Management
+      hex.should contain("0406")  # OnOff
+      hex.should end_with("18")   # end of container
     end
   end
 
@@ -86,11 +86,8 @@ describe "DeviceType encoding for HomeKit compatibility" do
       result = on_off.read_attribute(0xFFFC_u32)
       result.should be_a(Bytes)
 
-      bytes = result.as(Bytes)
-      puts "OnOff FeatureMap TLV encoding: #{bytes.hexstring}"
-
-      # Should contain 0x01 (LIGHTING feature)
-      # The value should be UInt32 with value 1
+      # Compact TLV: 04 (anonymous uint8) + LIGHTING bit set
+      result.as(Bytes).hexstring.should eq("0401")
     end
 
     it "encodes OnOff cluster without LIGHTING feature" do
@@ -104,10 +101,8 @@ describe "DeviceType encoding for HomeKit compatibility" do
       result = on_off.read_attribute(0xFFFC_u32)
       result.should be_a(Bytes)
 
-      bytes = result.as(Bytes)
-      puts "OnOff FeatureMap (no features) TLV encoding: #{bytes.hexstring}"
-
-      # Should contain 0x00 (no features)
+      # Compact TLV: 04 (anonymous uint8) + no bits set
+      result.as(Bytes).hexstring.should eq("0400")
     end
   end
 

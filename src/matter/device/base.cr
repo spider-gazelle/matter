@@ -6,7 +6,6 @@ require "./lifecycle_manager"
 
 require "../mdns/responder"
 require "../mdns/service_type"
-require "../constants/device_types"
 require "../datatype/endpoint_number"
 
 require "../cluster/descriptor_cluster"
@@ -181,7 +180,7 @@ module Matter
       abstract def product_id : UInt16
       abstract def discriminator : UInt16
       abstract def setup_pin : UInt32
-      abstract def primary_device_type_id : UInt16
+      abstract def primary_device_type_id : UInt32
 
       # ------------------------------------------------------------------------
       # Optional identity / BasicInformation fields
@@ -235,7 +234,7 @@ module Matter
 
       # Map endpoint -> device type ID for DescriptorCluster population.
       protected def endpoint_device_types : Hash(UInt16, UInt32)
-        {1_u16 => primary_device_type_id.to_u32} of UInt16 => UInt32
+        {1_u16 => primary_device_type_id} of UInt16 => UInt32
       end
 
       protected def endpoint_device_type_revision(endpoint_id : UInt16) : UInt16
@@ -508,7 +507,7 @@ module Matter
           descriptor.device_type_list.clear
           if endpoint_id == 0_u16
             descriptor.device_type_list << Cluster::DescriptorCluster::DeviceTypeStruct.new(
-              device_type: DeviceTypes::ROOT_NODE.to_u32,
+              device_type: DeviceType::ROOT_NODE,
               revision: 1_u16
             )
           end

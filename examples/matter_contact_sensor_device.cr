@@ -41,8 +41,8 @@ module MatterContactSensor
       SETUP_PIN_CODE
     end
 
-    def primary_device_type_id : UInt16
-      Matter::DeviceTypes::CONTACT_SENSOR
+    def primary_device_type_id : UInt32
+      Matter::DeviceType::CONTACT_SENSOR
     end
 
     def vendor_name : String

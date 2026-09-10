@@ -71,7 +71,7 @@ describe Matter::Device::LifecycleManager do
           vendor_id: 0xFFF1_u16,
           product_id: 0x8000_u16,
           discriminator: 3840_u16,
-          device_type: 0_u16,
+          device_type: 0_u32,
           commissioning_mode: Matter::MDNS::CommissioningMode::Basic
         )
       },

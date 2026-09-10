@@ -48,8 +48,8 @@ module MatterSwitch
       SETUP_PIN_CODE
     end
 
-    def primary_device_type_id : UInt16
-      Matter::DeviceTypes::ON_OFF_LIGHT
+    def primary_device_type_id : UInt32
+      Matter::DeviceType::ON_OFF_LIGHT
     end
 
     def vendor_name : String
