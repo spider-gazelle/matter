@@ -281,6 +281,17 @@ describe Matter::Storage::Record do
       end
     end
 
+    it "reads an enum stored by value, as legacy imports are" do
+      document = RecordSpec::Everything.new.to_document
+      document["color"] = RecordSpec::Color::Blue.value.to_i64
+      RecordSpec::Everything.from_document(document).color.should eq(RecordSpec::Color::Blue)
+
+      document["color"] = RecordSpec::Color.values.size.to_i64
+      expect_raises(Matter::StorageError, /Field color: #{RecordSpec::Color.values.size} is not a value of RecordSpec::Color/) do
+        RecordSpec::Everything.from_document(document)
+      end
+    end
+
     it "raises on a hash key that is not an integer" do
       document = RecordSpec::Everything.new.to_document
       document["by_id"] = Matter::Storage::Document{"seven" => "7"}

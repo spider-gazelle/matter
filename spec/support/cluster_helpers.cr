@@ -105,7 +105,7 @@ end
 def expect_status(result : Matter::InteractionModel::Status | Matter::Cluster::CommandResponse, expected : Matter::InteractionModel::StatusCode, file = __FILE__, line = __LINE__) : Matter::InteractionModel::Status
   case result
   in Matter::InteractionModel::Status
-    result.status.should eq(expected), file, line
+    result.status.should eq(expected), file: file, line: line
     result
   in Matter::Cluster::CommandResponse
     fail "expected status #{expected}, got CommandResponse(0x#{result.command_id.to_s(16)})", file, line

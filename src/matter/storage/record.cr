@@ -32,8 +32,9 @@ module Matter
     # ```
     #
     # Supported field types: `Bool`, `String`, every fixed-width `Int`
-    # (range-checked on read), `Float32`/`Float64`, `Bytes`, `Time`, enums (by
-    # member name), other `Record`s, `Array(T)` and `Hash(K, T)` where `K` is
+    # (range-checked on read), `Float32`/`Float64`, `Bytes`, `Time`, enums
+    # (written by member name, read by name or by value), other `Record`s,
+    # `Array(T)` and `Hash(K, T)` where `K` is
     # `String` or an `Int` type, and nilable variants of any of these. `nil`
     # values are omitted from the document; missing keys become `nil` for
     # nilable fields, the ivar's default value when it has one, and otherwise
@@ -170,8 +171,15 @@ module Matter
           number = value.as?(Float64) || value.as?(Int64) || value.as?(UInt64) || type_error(field, T, value)
           T.new(number)
         {% elsif T <= Enum %}
-          name = value.as?(String) || type_error(field, T, value)
-          T.parse?(name) || raise StorageError.new("Field #{field}: #{name.inspect} is not a member of #{T}")
+          case value
+          in String
+            T.parse?(value) || raise StorageError.new("Field #{field}: #{value.inspect} is not a member of #{T}")
+          in Int64, UInt64
+            # Stores imported from the legacy format hold enums by value.
+            T.from_value?(value) || raise StorageError.new("Field #{field}: #{value} is not a value of #{T}")
+          in Type
+            type_error(field, T, value)
+          end
         {% elsif T <= Record %}
           T.from_document(value.as?(Document) || type_error(field, T, value))
         {% elsif T <= Array %}
