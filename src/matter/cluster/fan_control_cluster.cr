@@ -17,46 +17,25 @@ module Matter
     #
     # Specification: Matter 1.4 § 4.4
     class FanControlCluster < Base
-      CLUSTER_ID = 0x0202_u32
+      cluster 0x0202, revision: 5
 
-      # Feature flags
-      @[Flags]
-      enum Feature : UInt32
-        MultiSpeed       = 0x01 # SPD - Multi-speed fan control
-        Auto             = 0x02 # AUTO - Automatic mode support
-        Rocking          = 0x04 # RCK - Rocking movement support
-        Wind             = 0x08 # WND - Wind emulation support
-        Step             = 0x10 # STEP - Step command support
-        AirflowDirection = 0x20 # DIR - Airflow direction attribute
-      end
+      feature :multi_speed, bit: 0       # SPD - Multi-speed fan control
+      feature :auto, bit: 1              # AUTO - Automatic mode support
+      feature :rocking, bit: 2           # RCK - Rocking movement support
+      feature :wind, bit: 3              # WND - Wind emulation support
+      feature :step, bit: 4              # STEP - Step command support
+      feature :airflow_direction, bit: 5 # DIR - Airflow direction attribute
 
-      # Attributes - Required
-      ATTR_FAN_MODE          = 0x0000_u32
-      ATTR_FAN_MODE_SEQUENCE = 0x0001_u32
-      ATTR_PERCENT_SETTING   = 0x0002_u32
-      ATTR_PERCENT_CURRENT   = 0x0003_u32
+      # Bounds of the percent attributes
+      PERCENT_OFF       =   0_u8
+      PERCENT_LOWEST_ON =   1_u8
+      PERCENT_MAX       = 100_u8
 
-      # Attributes - MultiSpeed feature
-      ATTR_SPEED_MAX     = 0x0004_u32
-      ATTR_SPEED_SETTING = 0x0005_u32
-      ATTR_SPEED_CURRENT = 0x0006_u32
-
-      # Attributes - Rocking feature
-      ATTR_ROCK_SUPPORT = 0x0007_u32
-      ATTR_ROCK_SETTING = 0x0008_u32
-
-      # Attributes - Wind feature
-      ATTR_WIND_SUPPORT = 0x0009_u32
-      ATTR_WIND_SETTING = 0x000A_u32
-
-      # Attributes - AirflowDirection feature
-      ATTR_AIRFLOW_DIRECTION = 0x000B_u32
-
-      # Commands
-      CMD_STEP = 0x00_u32
+      # SpeedMax is at least one speed step
+      SPEED_MAX_MIN = 1_u8
 
       # Fan mode values
-      enum FanMode
+      enum FanMode : UInt8
         Off    = 0
         Low    = 1
         Medium = 2
@@ -67,7 +46,7 @@ module Matter
       end
 
       # Fan mode sequence values (indicates which modes are supported)
-      enum FanModeSequence
+      enum FanModeSequence : UInt8
         OffLowMedHigh     = 0 # Fan supports: Off, Low, Medium, High
         OffLowHigh        = 1 # Fan supports: Off, Low, High
         OffLowMedHighAuto = 2 # Fan supports: Off, Low, Medium, High, Auto
@@ -77,7 +56,7 @@ module Matter
       end
 
       # Step direction for Step command
-      enum StepDirection
+      enum StepDirection : UInt8
         Increase = 0
         Decrease = 1
       end
@@ -114,49 +93,39 @@ module Matter
       end
 
       # Airflow direction values
-      enum AirflowDirectionEnum
+      enum AirflowDirectionEnum : UInt8
         Forward = 0
         Reverse = 1
       end
 
-      # Feature map
-      property feature_map : Feature
+      attribute 0x0000, :fan_mode, FanMode, default: FanMode::Off, writable: true
+      attribute 0x0001, :fan_mode_sequence, FanModeSequence, default: FanModeSequence::OffLowMedHigh, fixed: true
+      attribute 0x0002, :percent_setting, UInt8, default: PERCENT_OFF, nullable: true, writable: true, max: PERCENT_MAX
+      attribute 0x0003, :percent_current, UInt8, default: PERCENT_OFF, max: PERCENT_MAX
+      attribute 0x0004, :speed_max, UInt8, default: PERCENT_MAX, fixed: true, min: SPEED_MAX_MIN, max: PERCENT_MAX, requires: :multi_speed
+      attribute 0x0005, :speed_setting, UInt8, default: PERCENT_OFF, nullable: true, writable: true, requires: :multi_speed
+      attribute 0x0006, :speed_current, UInt8, default: PERCENT_OFF, requires: :multi_speed
+      attribute 0x0007, :rock_support, RockSupport, default: RockSupport::None, fixed: true, requires: :rocking
+      attribute 0x0008, :rock_setting, RockSupport, default: RockSupport::None, writable: true, requires: :rocking
+      attribute 0x0009, :wind_support, WindSupport, default: WindSupport::None, fixed: true, requires: :wind
+      attribute 0x000A, :wind_setting, WindSupport, default: WindSupport::None, writable: true, requires: :wind
+      attribute 0x000B, :airflow_direction, AirflowDirectionEnum, default: AirflowDirectionEnum::Forward, writable: true, requires: :airflow_direction
 
-      # Required attributes
-      property fan_mode : FanMode
-      property fan_mode_sequence : FanModeSequence
-      property percent_setting : UInt8?
-      property percent_current : UInt8
+      command 0x00, :step, request: StepRequest, requires: :step
 
-      # MultiSpeed feature attributes
-      property speed_max : UInt8
-      property speed_setting : UInt8?
-      property speed_current : UInt8
-
-      # Rocking feature attributes
-      property rock_support : RockSupport
-      property rock_setting : RockSupport
-
-      # Wind feature attributes
-      property wind_support : WindSupport
-      property wind_setting : WindSupport
-
-      # AirflowDirection feature attribute
-      property airflow_direction : AirflowDirectionEnum
-
-      # Step command configuration
+      # Percent per Step command
       property step_percent : UInt8
 
       def initialize(endpoint_id : DataType::EndpointNumber,
                      @feature_map : Feature = Feature::None,
                      @fan_mode : FanMode = FanMode::Off,
                      @fan_mode_sequence : FanModeSequence = FanModeSequence::OffLowMedHigh,
-                     @percent_setting : UInt8? = 0_u8,
-                     @percent_current : UInt8 = 0_u8,
+                     @percent_setting : UInt8? = PERCENT_OFF,
+                     @percent_current : UInt8 = PERCENT_OFF,
                      # MultiSpeed feature
-                     @speed_max : UInt8 = 100_u8,
-                     @speed_setting : UInt8? = 0_u8,
-                     @speed_current : UInt8 = 0_u8,
+                     @speed_max : UInt8 = PERCENT_MAX,
+                     @speed_setting : UInt8? = PERCENT_OFF,
+                     @speed_current : UInt8 = PERCENT_OFF,
                      # Rocking feature
                      @rock_support : RockSupport = RockSupport::None,
                      @rock_setting : RockSupport = RockSupport::None,
@@ -172,460 +141,148 @@ module Matter
 
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
-        # Validate percent values (0-100)
         if setting = @percent_setting
-          raise ArgumentError.new("percent_setting must be between 0 and 100") if setting > 100_u8
+          raise ArgumentError.new("percent_setting must be between 0 and 100") if setting > PERCENT_MAX
         end
-        raise ArgumentError.new("percent_current must be between 0 and 100") if @percent_current > 100_u8
+        raise ArgumentError.new("percent_current must be between 0 and 100") if @percent_current > PERCENT_MAX
 
-        # Validate speed values
-        raise ArgumentError.new("speed_max must be at least 1") if @speed_max < 1_u8
+        raise ArgumentError.new("speed_max must be at least 1") if @speed_max < SPEED_MAX_MIN
         if setting = @speed_setting
           raise ArgumentError.new("speed_setting must be <= speed_max") if setting > @speed_max
         end
         raise ArgumentError.new("speed_current must be <= speed_max") if @speed_current > @speed_max
 
-        # Validate fan mode is supported by the sequence
-        validate_fan_mode(@fan_mode, @fan_mode_sequence)
-
-        # Auto mode requires Auto feature if used
-        if @fan_mode == FanMode::Auto && !@feature_map.auto?
-          # Allow it in sequences that support Auto, even without the feature flag
-          # The feature flag controls whether Auto behavior is automatic
+        unless mode_supported?(@fan_mode, @fan_mode_sequence)
+          raise ArgumentError.new("FanMode #{@fan_mode} not supported by FanModeSequence #{@fan_mode_sequence}")
         end
 
-        # Validate rocking settings against support
-        if @feature_map.rocking?
-          invalid_rock = @rock_setting.value & ~@rock_support.value
-          raise ArgumentError.new("rock_setting contains unsupported modes") if invalid_rock != 0
+        if @feature_map.rocking? && !(@rock_setting & ~@rock_support).none?
+          raise ArgumentError.new("rock_setting contains unsupported modes")
         end
 
-        # Validate wind settings against support
-        if @feature_map.wind?
-          invalid_wind = @wind_setting.value & ~@wind_support.value
-          raise ArgumentError.new("wind_setting contains unsupported modes") if invalid_wind != 0
+        if @feature_map.wind? && !(@wind_setting & ~@wind_support).none?
+          raise ArgumentError.new("wind_setting contains unsupported modes")
         end
       end
 
-      def name : String
-        "FanControl"
+      # ------------------------------------------------------------------------
+      # Write hooks
+      #
+      # The dependent attributes are brought in line before the written one is
+      # assigned, so its change callback observes a consistent cluster.
+      # ------------------------------------------------------------------------
+
+      before_write :fan_mode do |mode|
+        InteractionModel::Status.constraint_error unless mode_supported?(mode, @fan_mode_sequence)
       end
 
-      def attributes : Array(AttributeMetadata)
-        attrs = [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_FAN_MODE),
-            "fanMode",
-            :uint8,
-            writable: true
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_FAN_MODE_SEQUENCE),
-            "fanModeSequence",
-            :uint8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PERCENT_SETTING),
-            "percentSetting",
-            :uint8,
-            writable: true
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PERCENT_CURRENT),
-            "percentCurrent",
-            :uint8,
-            writable: false
-          ),
-        ]
-
-        # MultiSpeed feature attributes
-        if @feature_map.multi_speed?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_SPEED_MAX),
-            "speedMax",
-            :uint8,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_SPEED_SETTING),
-            "speedSetting",
-            :uint8,
-            writable: true
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_SPEED_CURRENT),
-            "speedCurrent",
-            :uint8,
-            writable: false
-          )
-        end
-
-        # Rocking feature attributes
-        if @feature_map.rocking?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_ROCK_SUPPORT),
-            "rockSupport",
-            :uint8,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_ROCK_SETTING),
-            "rockSetting",
-            :uint8,
-            writable: true
-          )
-        end
-
-        # Wind feature attributes
-        if @feature_map.wind?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_WIND_SUPPORT),
-            "windSupport",
-            :uint8,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_WIND_SETTING),
-            "windSetting",
-            :uint8,
-            writable: true
-          )
-        end
-
-        # AirflowDirection feature attribute
-        if @feature_map.airflow_direction?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_AIRFLOW_DIRECTION),
-            "airflowDirection",
-            :uint8,
-            writable: true
-          )
-        end
-
-        attrs
-      end
-
-      def commands : Array(CommandMetadata)
-        cmds = [] of CommandMetadata
-
-        # Step command (Step feature)
-        if @feature_map.step?
-          cmds << CommandMetadata.new(
-            DataType::CommandId.new(CMD_STEP),
-            "step"
-          )
-        end
-
-        cmds
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
-        case attribute_id
-        when ATTR_FAN_MODE
-          tlv(@fan_mode.value.to_u8)
-        when ATTR_FAN_MODE_SEQUENCE
-          tlv(@fan_mode_sequence.value.to_u8)
-        when ATTR_PERCENT_SETTING
-          if setting = @percent_setting
-            tlv(setting)
-          else
-            tlv(nil)
-          end
-        when ATTR_PERCENT_CURRENT
-          tlv(@percent_current)
-        when ATTR_SPEED_MAX
-          tlv(@speed_max)
-        when ATTR_SPEED_SETTING
-          if setting = @speed_setting
-            tlv(setting)
-          else
-            tlv(nil)
-          end
-        when ATTR_SPEED_CURRENT
-          tlv(@speed_current)
-        when ATTR_ROCK_SUPPORT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.rocking?
-          tlv(@rock_support.value)
-        when ATTR_ROCK_SETTING
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.rocking?
-          tlv(@rock_setting.value)
-        when ATTR_WIND_SUPPORT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.wind?
-          tlv(@wind_support.value)
-        when ATTR_WIND_SETTING
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.wind?
-          tlv(@wind_setting.value)
-        when ATTR_AIRFLOW_DIRECTION
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.airflow_direction?
-          tlv(@airflow_direction.value.to_u8)
-        else
-          super
+      after_write :fan_mode do
+        if @fan_mode.off?
+          sync_from_percent(PERCENT_OFF)
+          self.percent_setting = PERCENT_OFF
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        case attribute_id
-        when ATTR_FAN_MODE
-          mode_value = narrow_u8?(value)
-          return InteractionModel::Status.invalid_data_type unless mode_value
-
-          return InteractionModel::Status.constraint_error if mode_value > FanMode::Smart.value
-
-          new_mode = FanMode.from_value(mode_value)
-
-          # Validate mode is supported by sequence
-          unless mode_supported?(new_mode, @fan_mode_sequence)
-            return InteractionModel::Status.constraint_error
-          end
-
-          old_mode = @fan_mode
-          @fan_mode = new_mode
-
-          # When fan mode changes to Off, set percent and speed to 0
-          if new_mode == FanMode::Off
-            old_percent = @percent_setting
-            @percent_setting = 0_u8
-            @percent_current = 0_u8
-            @speed_setting = 0_u8
-            @speed_current = 0_u8
-            # Fire percent callback if percent changed
-            if old_percent != 0_u8
-              @on_percent_changed.try &.call(old_percent, 0_u8)
-            end
-          end
-
-          @on_fan_mode_changed.try &.call(old_mode, new_mode)
-          increment_version_and_notify(ATTR_FAN_MODE)
-
-          InteractionModel::Status.success
-        when ATTR_PERCENT_SETTING
-          new_percent = narrow_u8?(value)
-          return InteractionModel::Status.invalid_data_type unless new_percent
-
-          return InteractionModel::Status.constraint_error if new_percent > 100_u8
-
-          old_percent = @percent_setting
-          old_speed = @speed_setting
-          @percent_setting = new_percent
-
-          # When percent is set to 0, turn fan off
-          if new_percent == 0_u8
-            @fan_mode = FanMode::Off
-            @percent_current = 0_u8
-            @speed_setting = 0_u8
-            @speed_current = 0_u8
-          else
-            # When setting non-zero percent, ensure fan is not off
-            if @fan_mode == FanMode::Off
-              @fan_mode = default_on_mode(@fan_mode_sequence)
-            end
-            @percent_current = new_percent
-
-            # Sync speed from percent
-            new_speed = percent_to_speed(new_percent)
-            @speed_setting = new_speed
-            @speed_current = new_speed
-          end
-
-          @on_percent_changed.try &.call(old_percent, new_percent)
-          if @speed_setting != old_speed
-            @on_speed_changed.try &.call(old_speed, @speed_setting || 0_u8)
-          end
-          increment_version_and_notify(ATTR_PERCENT_SETTING)
-
-          InteractionModel::Status.success
-        when ATTR_SPEED_SETTING
-          new_speed = narrow_u8?(value)
-          return InteractionModel::Status.invalid_data_type unless new_speed
-
-          return InteractionModel::Status.constraint_error if new_speed > @speed_max
-
-          old_speed = @speed_setting
-          old_percent = @percent_setting
-          @speed_setting = new_speed
-          @speed_current = new_speed
-
-          # Sync percent from speed
-          new_percent = speed_to_percent(new_speed)
-          @percent_setting = new_percent
-          @percent_current = new_percent
-
-          if new_speed == 0_u8
-            @fan_mode = FanMode::Off
-          elsif @fan_mode == FanMode::Off
-            @fan_mode = default_on_mode(@fan_mode_sequence)
-          end
-
-          @on_speed_changed.try &.call(old_speed, new_speed)
-          if @percent_setting != old_percent
-            @on_percent_changed.try &.call(old_percent, new_percent)
-          end
-          increment_version_and_notify(ATTR_SPEED_SETTING)
-
-          InteractionModel::Status.success
-        when ATTR_ROCK_SETTING
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.rocking?
-          new_setting = narrow_u8?(value)
-          return InteractionModel::Status.invalid_data_type unless new_setting
-
-          # Validate against rock_support
-          invalid_bits = new_setting & ~@rock_support.value
-          return InteractionModel::Status.constraint_error if invalid_bits != 0
-
-          @rock_setting = RockSupport.from_value(new_setting)
-          increment_version_and_notify(ATTR_ROCK_SETTING)
-
-          InteractionModel::Status.success
-        when ATTR_WIND_SETTING
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.wind?
-          new_setting = narrow_u8?(value)
-          return InteractionModel::Status.invalid_data_type unless new_setting
-
-          # Validate against wind_support
-          invalid_bits = new_setting & ~@wind_support.value
-          return InteractionModel::Status.constraint_error if invalid_bits != 0
-
-          @wind_setting = WindSupport.from_value(new_setting)
-          increment_version_and_notify(ATTR_WIND_SETTING)
-
-          InteractionModel::Status.success
-        when ATTR_AIRFLOW_DIRECTION
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.airflow_direction?
-          direction_value = narrow_u8?(value)
-          return InteractionModel::Status.invalid_data_type unless direction_value
-
-          return InteractionModel::Status.constraint_error if direction_value > 1_u8
-
-          @airflow_direction = AirflowDirectionEnum.from_value(direction_value.to_i)
-          increment_version_and_notify(ATTR_AIRFLOW_DIRECTION)
-
-          InteractionModel::Status.success
-        else
-          super
-        end
+      before_write :percent_setting do |percent|
+        sync_from_percent(percent) if percent
       end
 
-      protected def handle_command(command_id : UInt32, command_data : TLV::Any?) : Cluster::CommandResponse | InteractionModel::Status
-        case command_id
-        when CMD_STEP
-          return InteractionModel::Status.unsupported_command unless @feature_map.step?
-          handle_step_command(command_data)
-        else
-          super
-        end
+      before_write :speed_setting do |speed|
+        return InteractionModel::Status.constraint_error if speed && speed > @speed_max
+        sync_from_speed(speed) if speed
       end
 
-      protected def feature_map_tlv : TLV::Any
-        tlv(@feature_map.value)
+      before_write :rock_setting do |setting|
+        InteractionModel::Status.constraint_error unless (setting & ~@rock_support).none?
       end
 
-      private def handle_step_command(data : TLV::Any?) : InteractionModel::Status
-        request = decode(data, StepRequest)
-        direction = request.direction
+      before_write :wind_setting do |setting|
+        InteractionModel::Status.constraint_error unless (setting & ~@wind_support).none?
+      end
+
+      # ------------------------------------------------------------------------
+      # Commands
+      # ------------------------------------------------------------------------
+
+      # Steps PercentSetting by `step_percent`, wrapping around the range when
+      # asked; `lowest_off` decides whether the bottom of the range is Off.
+      def step(request : StepRequest) : InteractionModel::Status
         wrap = request.wrap || false
         lowest_off = request.lowest_off.nil? ? true : request.lowest_off
-
-        old_percent = @percent_setting
-        old_mode = @fan_mode
+        lowest = lowest_off ? PERCENT_OFF : PERCENT_LOWEST_ON
         current = @percent_current
 
-        case direction
-        when StepDirection::Increase
-          if current >= 100_u8
-            if wrap
-              @percent_current = lowest_off ? 0_u8 : 1_u8
-              @percent_setting = @percent_current
-              if @percent_current == 0_u8
-                @fan_mode = FanMode::Off
-              end
-            end
-          else
-            # Step size is implementation-defined
-            new_percent = Math.min(current.to_u16 + @step_percent, 100_u16).to_u8
-            @percent_current = new_percent
-            @percent_setting = new_percent
-            if @fan_mode == FanMode::Off
-              @fan_mode = default_on_mode(@fan_mode_sequence)
-            end
-          end
-        when StepDirection::Decrease
-          if current == 0_u8 || (lowest_off && current <= @step_percent)
-            if wrap
-              @percent_current = 100_u8
-              @percent_setting = 100_u8
-              if @fan_mode == FanMode::Off
-                @fan_mode = default_on_mode(@fan_mode_sequence)
-              end
-            elsif lowest_off
-              @percent_current = 0_u8
-              @percent_setting = 0_u8
-              @fan_mode = FanMode::Off
-            end
-          else
-            new_percent = current > @step_percent ? current - @step_percent : (lowest_off ? 0_u8 : 1_u8)
-            @percent_current = new_percent
-            @percent_setting = new_percent
-            if new_percent == 0_u8
-              @fan_mode = FanMode::Off
-            end
-          end
-        end
+        target = case request.direction
+                 in .increase?
+                   if current >= PERCENT_MAX
+                     wrap ? lowest : current
+                   else
+                     Math.min(current.to_u16 + @step_percent, PERCENT_MAX.to_u16).to_u8
+                   end
+                 in .decrease?
+                   if current == PERCENT_OFF || (lowest_off && current <= @step_percent)
+                     wrap ? PERCENT_MAX : lowest
+                   else
+                     current > @step_percent ? current - @step_percent : lowest
+                   end
+                 end
 
-        # Sync speed from percent
-        new_speed = percent_to_speed(@percent_current)
-        @speed_setting = new_speed
-        @speed_current = new_speed
-
-        # Fire callbacks if values changed
-        if @percent_setting != old_percent
-          @on_percent_changed.try &.call(old_percent, @percent_setting || 0_u8)
-        end
-        if @fan_mode != old_mode
-          @on_fan_mode_changed.try &.call(old_mode, @fan_mode)
-        end
-
-        increment_version_and_notify(ATTR_PERCENT_SETTING)
+        sync_from_percent(target)
+        self.percent_setting = target
         InteractionModel::Status.success
       end
 
+      # ------------------------------------------------------------------------
+      # Public Interface
+      # ------------------------------------------------------------------------
+
       # Update the current fan speed percentage (read-only attribute updated by implementation)
-      def update_percent_current(percent : UInt8)
-        raise ArgumentError.new("percent_current must be between 0 and 100") if percent > 100_u8
-
-        old_value = @percent_current
-        @percent_current = percent
-
-        if old_value != percent
-          increment_version_and_notify(ATTR_PERCENT_CURRENT)
-        end
+      def update_percent_current(percent : UInt8) : Nil
+        raise ArgumentError.new("percent_current must be between 0 and 100") if percent > PERCENT_MAX
+        self.percent_current = percent
       end
 
-      # Callback when fan mode changes
-      @on_fan_mode_changed : Proc(FanMode, FanMode, Nil)?
-
-      def on_fan_mode_changed(&block : FanMode, FanMode -> Nil)
-        @on_fan_mode_changed = block
+      # Called with the previous and the new value whenever PercentSetting changes
+      def on_percent_changed(&block : UInt8?, UInt8? -> Nil) : Nil
+        on_percent_setting_changed(&block)
       end
 
-      # Callback when percent setting changes
-      @on_percent_changed : Proc(UInt8?, UInt8, Nil)?
-
-      def on_percent_changed(&block : UInt8?, UInt8 -> Nil)
-        @on_percent_changed = block
+      # Called with the previous and the new value whenever SpeedSetting changes
+      def on_speed_changed(&block : UInt8?, UInt8? -> Nil) : Nil
+        on_speed_setting_changed(&block)
       end
 
-      # Callback when speed setting changes (MultiSpeed feature)
-      @on_speed_changed : Proc(UInt8?, UInt8, Nil)?
+      # ------------------------------------------------------------------------
+      # Helpers
+      # ------------------------------------------------------------------------
 
-      def on_speed_changed(&block : UInt8?, UInt8 -> Nil)
-        @on_speed_changed = block
+      # Brings FanMode, PercentCurrent and the speed attributes in line with a
+      # new PercentSetting.
+      private def sync_from_percent(percent : UInt8) : Nil
+        sync_fan_mode(percent)
+        speed = percent_to_speed(percent)
+        self.speed_setting = speed
+        self.speed_current = speed
+        self.percent_current = percent
       end
 
-      # Validate that a fan mode is supported by the given sequence
-      private def validate_fan_mode(mode : FanMode, sequence : FanModeSequence)
-        unless mode_supported?(mode, sequence)
-          raise ArgumentError.new("FanMode #{mode} not supported by FanModeSequence #{sequence}")
+      # Brings FanMode, SpeedCurrent and the percent attributes in line with a
+      # new SpeedSetting.
+      private def sync_from_speed(speed : UInt8) : Nil
+        percent = speed_to_percent(speed)
+        sync_fan_mode(percent)
+        self.speed_current = speed
+        self.percent_setting = percent
+        self.percent_current = percent
+      end
+
+      # Off at zero percent; otherwise the sequence's lowest running mode
+      # replaces Off.
+      private def sync_fan_mode(percent : UInt8) : Nil
+        if percent == PERCENT_OFF
+          self.fan_mode = FanMode::Off
+        elsif @fan_mode.off?
+          self.fan_mode = default_on_mode(@fan_mode_sequence)
         end
       end
 
@@ -638,43 +295,38 @@ module Matter
         return true if mode.in?(FanMode::On, FanMode::Smart)
 
         case sequence
-        when FanModeSequence::OffLowMedHigh
+        in .off_low_med_high?
           mode.in?(FanMode::Low, FanMode::Medium, FanMode::High)
-        when FanModeSequence::OffLowHigh
+        in .off_low_high?
           mode.in?(FanMode::Low, FanMode::High)
-        when FanModeSequence::OffLowMedHighAuto
+        in .off_low_med_high_auto?
           mode.in?(FanMode::Low, FanMode::Medium, FanMode::High, FanMode::Auto)
-        when FanModeSequence::OffLowHighAuto
+        in .off_low_high_auto?
           mode.in?(FanMode::Low, FanMode::High, FanMode::Auto)
-        when FanModeSequence::OffHighAuto
+        in .off_high_auto?
           mode.in?(FanMode::High, FanMode::Auto)
-        when FanModeSequence::OffHigh
+        in .off_high?
           mode == FanMode::High
-        else
-          false
         end
       end
 
       # Convert percent (0-100) to speed (0-speed_max)
       private def percent_to_speed(percent : UInt8) : UInt8
-        (percent.to_f / 100.0 * @speed_max).round.to_u8
+        (percent.to_f / PERCENT_MAX * @speed_max).round.to_u8
       end
 
       # Convert speed (0-speed_max) to percent (0-100)
       private def speed_to_percent(speed : UInt8) : UInt8
-        (speed.to_f / @speed_max * 100).round.to_u8
+        (speed.to_f / @speed_max * PERCENT_MAX).round.to_u8
       end
 
       # Get default "on" mode for a given sequence
       private def default_on_mode(sequence : FanModeSequence) : FanMode
         case sequence
-        when FanModeSequence::OffLowMedHigh, FanModeSequence::OffLowHigh,
-             FanModeSequence::OffLowMedHighAuto, FanModeSequence::OffLowHighAuto
+        in .off_low_med_high?, .off_low_high?, .off_low_med_high_auto?, .off_low_high_auto?
           FanMode::Low
-        when FanModeSequence::OffHighAuto, FanModeSequence::OffHigh
+        in .off_high_auto?, .off_high?
           FanMode::High
-        else
-          FanMode::Low
         end
       end
     end
