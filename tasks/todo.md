@@ -52,7 +52,7 @@ Rule (user, applies to all phases): no magic numbers; named constants/enums, enu
       interaction-model/codec constants, shared TLV null marker, `Matter::Hex`
 - [ ] Step B: datatype wrappers as structs via one macro (equality, TLV, `to_s`), dead ids deleted,
       NodeId/CAT/FabricIndex constants
-- [ ] Step C: `Matter::Error` hierarchy; all bare-string raises converted; invoke/write backstop maps
+- [x] Step C: `Matter::Error` hierarchy; all bare-string raises converted; invoke/write backstop maps
       exceptions to statuses; wire-reachable raises become statuses
 - [ ] Step D: silent rescues log; corrupt storage file renamed not wiped; CASE test-compat fallback removed;
       hot-path log levels; `Network.local_ip_addresses`

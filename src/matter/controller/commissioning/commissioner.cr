@@ -126,7 +126,7 @@ module Matter
           noc_fields = first_command_fields(add_noc_resp_msg, Cluster::OperationalCredentialsCluster::CMD_NOC_RESPONSE)
           noc_resp = Cluster::Definitions::OperationalCredentials::TlvNocResponse.from_slice(noc_fields)
           unless noc_resp.status_code.ok?
-            raise "AddNOC failed (status=#{noc_resp.status_code} debug=#{noc_resp.debug_text})"
+            raise Matter::CommissioningError.new("AddNOC failed (status=#{noc_resp.status_code} debug=#{noc_resp.debug_text})")
           end
 
           case_pairing = Pairing::CasePairing.new(@crypto)
@@ -174,7 +174,7 @@ module Matter
             sleep 100.milliseconds
           end
 
-          raise "Failed to discover commissionable node via mDNS (discriminator=#{discriminator})"
+          raise Matter::TransportError.new("Failed to discover commissionable node via mDNS (discriminator=#{discriminator})")
         ensure
           scanner.try(&.close)
         end
@@ -261,11 +261,11 @@ module Matter
               saw_any = true
               # Some commands use CommandStatusIB with Success and no CommandDataIB.
               return if status_ib.status.status == InteractionModel::StatusCode::Success.value
-              raise "#{name} failed (status=#{status_ib.status.status})"
+              raise Matter::CommissioningError.new("#{name} failed (status=#{status_ib.status.status})")
             end
           end
 
-          raise "#{name} failed (empty InvokeResponse)" unless saw_any
+          raise Matter::ProtocolError.new("#{name} failed (empty InvokeResponse)") unless saw_any
         end
 
         private def first_command_fields(response : InteractionModel::InvokeResponseMessage, command_id : UInt32) : Bytes
@@ -276,7 +276,7 @@ module Matter
             fields = cmd.command_fields
             return fields ? fields.to_slice : Bytes.empty
           end
-          raise "InvokeResponse missing command_data for command_id=0x#{command_id.to_s(16)}"
+          raise Matter::ProtocolError.new("InvokeResponse missing command_data for command_id=0x#{command_id.to_s(16)}")
         end
       end
     end

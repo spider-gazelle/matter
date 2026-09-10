@@ -125,10 +125,10 @@ module Matter
       # Serialize operational key - store BOTH private and public bits
       # This ensures we preserve the exact public key from commissioning
       private_key_bytes = @operational_key.private_bits
-      raise "Operational key has no private bits" unless private_key_bytes
+      raise CryptoError.new("Operational key has no private bits") unless private_key_bytes
 
       public_key_bytes = @operational_key.public_bits
-      raise "Operational key has no public bits" unless public_key_bytes
+      raise CryptoError.new("Operational key has no public bits") unless public_key_bytes
 
       # Serialize CATs as comma-separated hex values
       cats_str = @cats.map(&.value.to_s(16)).join(",")

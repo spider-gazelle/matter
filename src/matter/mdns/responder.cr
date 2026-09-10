@@ -96,7 +96,7 @@ module Matter
         @running = false
 
         # Ensure at least one socket was created successfully
-        raise "Failed to create any mDNS socket" if @socket_ipv4.nil? && @socket_ipv6.nil?
+        raise Matter::TransportError.new("Failed to create any mDNS socket") if @socket_ipv4.nil? && @socket_ipv6.nil?
         @advertised_services = Hash(String, AdvertisedService).new
         @announcement_bursts = Hash(String, Channel(Nil)).new
       end

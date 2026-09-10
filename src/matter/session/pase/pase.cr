@@ -76,14 +76,14 @@ module Matter
             # Create SPAKE2+ instance with w0
             @spake = Crypto::Spake2p.create(@crypto, @context, @w0_w1.as(Crypto::Spake2p::W0W1).w0)
           else
-            raise "PBKDF parameters not found in response"
+            raise Matter::ProtocolError.new("PBKDF parameters not found in response")
           end
         end
 
         # Step 3: Generate pA (our public value)
         def generate_pake1 : Bytes
           spake = @spake
-          raise "SPAKE2+ not initialized" if spake.nil?
+          raise Matter::ProtocolError.new("SPAKE2+ not initialized") if spake.nil?
 
           # Compute X (commissioner/prover's public value)
           @p_a = spake.compute_x
@@ -95,7 +95,7 @@ module Matter
           spake = @spake
           w0_w1 = @w0_w1
           p_a = @p_a
-          raise "SPAKE2+ not initialized" if spake.nil? || w0_w1.nil? || p_a.nil?
+          raise Matter::ProtocolError.new("SPAKE2+ not initialized") if spake.nil? || w0_w1.nil? || p_a.nil?
 
           # Compute shared secret and verifiers from Y (responder's public value)
           # This returns ke (shared secret), h_ay, and h_bx
@@ -112,7 +112,7 @@ module Matter
         # Step 5: Verify responder's confirmation
         def process_pake3(confirmation : Bytes) : Bool
           sav = @secret_and_verifiers
-          raise "Shared secret not computed" if sav.nil?
+          raise Matter::ProtocolError.new("Shared secret not computed") if sav.nil?
 
           # Verify that the responder's confirmation matches our computed h_bx
           confirmation == sav.h_bx
@@ -121,7 +121,7 @@ module Matter
         # Derive session keys after successful PASE
         def derive_session_keys : {encryption: Bytes, decryption: Bytes, attestation_challenge: Bytes}
           sav = @secret_and_verifiers
-          raise "Shared secret not computed" if sav.nil?
+          raise Matter::ProtocolError.new("Shared secret not computed") if sav.nil?
 
           # Derive session keys from shared secret (ke) using HKDF
           # Per matter.js: SessionKeys = HKDF(ke, salt="", info="SessionKeys", length=48)
@@ -245,7 +245,7 @@ module Matter
 
           spake = @spake
           w0_l = @w0_l
-          raise "SPAKE2+ not initialized" if spake.nil? || w0_l.nil?
+          raise Matter::ProtocolError.new("SPAKE2+ not initialized") if spake.nil? || w0_l.nil?
 
           # Compute Y (responder/verifier's public value)
           @p_b = spake.compute_y
@@ -271,7 +271,7 @@ module Matter
         # Step 4: Generate confirmation value
         def generate_pake3 : Bytes
           sav = @secret_and_verifiers
-          raise "Shared secret not computed" if sav.nil?
+          raise Matter::ProtocolError.new("Shared secret not computed") if sav.nil?
 
           # Return our confirmation value (h_bx)
           sav.h_bx
@@ -280,7 +280,7 @@ module Matter
         # Derive session keys after successful PASE
         def derive_session_keys : {encryption: Bytes, decryption: Bytes, attestation_challenge: Bytes}
           sav = @secret_and_verifiers
-          raise "Shared secret not computed" if sav.nil?
+          raise Matter::ProtocolError.new("Shared secret not computed") if sav.nil?
 
           # Derive session keys from shared secret (ke) using HKDF
           # Per matter.js: SessionKeys = HKDF(ke, salt="", info="SessionKeys", length=48)
@@ -337,7 +337,7 @@ module Matter
 
         # 6. Commissioner verifies confirmation
         unless commissioner.process_pake3(confirmation)
-          raise "PASE confirmation failed"
+          raise Matter::AuthenticationError.new("PASE confirmation failed")
         end
 
         # 7. Derive session keys

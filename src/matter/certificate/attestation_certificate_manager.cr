@@ -239,7 +239,7 @@ module Matter
       private def add_custom_oid_entry(name : OpenSSL::X509::Name, oid : String, value : String)
         # Create ASN1_OBJECT from OID string
         obj = LibCrypto.obj_txt2obj(oid, 0)
-        raise OpenSSL::Error.new("Failed to create ASN1_OBJECT for OID #{oid}") if obj.null?
+        raise Matter::CertificateError.new("Failed to create ASN1_OBJECT for OID #{oid}") if obj.null?
 
         # Add entry to X509_NAME with UTF8String encoding
         # MBSTRING_UTF8 = 0x1000 | 0x0001 = 0x1001
@@ -256,7 +256,7 @@ module Matter
         # Free the ASN1_OBJECT
         LibCrypto.asn1_object_free(obj)
 
-        raise OpenSSL::Error.new("Failed to add OID entry to X509_NAME") if ret == 0
+        raise Matter::CertificateError.new("Failed to add OID entry to X509_NAME") if ret == 0
       end
 
       # Create OpenSSL extension

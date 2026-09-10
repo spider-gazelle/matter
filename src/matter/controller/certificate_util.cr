@@ -31,7 +31,7 @@ module Matter
           i += 1
         end
 
-        raise "CSR public key not found"
+        raise Matter::CertificateError.new("CSR public key not found")
       rescue ex
         Log.error(exception: ex) { "Failed extracting public key from CSR (csr_hex=#{csr_der.hexstring})" }
         raise ex
@@ -39,14 +39,14 @@ module Matter
 
       private def parse_der_length(data : Bytes, offset : Int32) : {Int32, Int32}
         first = data[offset]?
-        raise "DER length out of bounds" unless first
+        raise Matter::CodecError.new("DER length out of bounds") unless first
 
         if first < 0x80
           {first.to_i, 1}
         else
           count = (first & 0x7f).to_i
-          raise "DER length uses indefinite form" if count == 0
-          raise "DER length out of bounds" if offset + count >= data.size
+          raise Matter::CodecError.new("DER length uses indefinite form") if count == 0
+          raise Matter::CodecError.new("DER length out of bounds") if offset + count >= data.size
 
           length = 0
           count.times do |idx|

@@ -209,8 +209,28 @@ module Matter
         ([] of UInt32).to_tlv
       end
 
-      # Write an attribute value
+      # Write an attribute value.
+      #
+      # Exceptions escaping `handle_write_attribute` are mapped to an
+      # Interaction Model status here so a misbehaving cluster never breaks the
+      # protocol layer: `Matter::ClusterError` carries its own status, a codec
+      # or argument failure is the peer's fault (`InvalidDataType`) and anything
+      # else is a bug reported as `Failure`.
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+        handle_write_attribute(attribute_id, value)
+      rescue ex : Matter::ClusterError
+        Log.warn(exception: ex) { "#{self.class.name}: write attribute 0x#{attribute_id.to_s(16)} rejected" }
+        ex.to_status
+      rescue ex : Matter::CodecError | ArgumentError
+        Log.warn(exception: ex) { "#{self.class.name}: write attribute 0x#{attribute_id.to_s(16)} rejected" }
+        InteractionModel::Status.invalid_data_type
+      rescue ex
+        Log.error(exception: ex) { "#{self.class.name}: write attribute 0x#{attribute_id.to_s(16)} failed" }
+        InteractionModel::Status.failure
+      end
+
+      # Attribute write implementation (override in subclasses).
+      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         metadata = attributes.find { |attr| attr.id.id == attribute_id }
         return InteractionModel::Status.unsupported_attribute unless metadata
         return InteractionModel::Status.unsupported_write unless metadata.writable?
@@ -300,7 +320,12 @@ module Matter
         str if str.valid_encoding?
       end
 
-      # Invoke a command
+      # Invoke a command.
+      #
+      # Exceptions escaping `handle_command` are mapped to an Interaction Model
+      # status here (see `write_attribute`): `Matter::ClusterError` carries its
+      # own status, a codec or argument failure is `InvalidCommand` and anything
+      # else is a bug reported as `Failure`.
       def invoke_command(command_id : UInt32, fields : Bytes = Bytes.new(0), session_id : UInt64? = nil, is_case_session : Bool = false, fabric_index : UInt8? = nil) : InteractionModel::Status | CommandResponse
         metadata = commands.find { |cmd| cmd.id.id == command_id }
         return InteractionModel::Status.unsupported_command unless metadata
@@ -322,6 +347,15 @@ module Matter
 
         # Command implementations override this
         handle_command(command_id, fields)
+      rescue ex : Matter::ClusterError
+        Log.warn(exception: ex) { "#{self.class.name}: command 0x#{command_id.to_s(16)} rejected" }
+        ex.to_status
+      rescue ex : Matter::CodecError | ArgumentError
+        Log.warn(exception: ex) { "#{self.class.name}: command 0x#{command_id.to_s(16)} rejected" }
+        InteractionModel::Status.invalid_command
+      rescue ex
+        Log.error(exception: ex) { "#{self.class.name}: command 0x#{command_id.to_s(16)} failed" }
+        InteractionModel::Status.failure
       end
 
       # Handle command implementation (to be overridden)

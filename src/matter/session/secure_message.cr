@@ -122,7 +122,7 @@ module Matter
         unless context.validate_message_counter(message_counter)
           last = context.peer_message_counter
           expected = last.nil? ? "any (first message)" : "> #{last}"
-          raise "Invalid message counter - possible replay attack (received: #{message_counter}, expected #{expected})"
+          raise Matter::SessionError.new("Invalid message counter - possible replay attack (received: #{message_counter}, expected #{expected})")
         end
 
         # Build nonce from peer node ID and message counter

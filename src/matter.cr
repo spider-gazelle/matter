@@ -15,6 +15,8 @@ module Matter
   Log = ::Log.for("matter")
 end
 
+require "./matter/error"
+
 # Subsystems are loaded in dependency order: lower layers first.
 require "./matter/hex"
 require "./matter/datatype"

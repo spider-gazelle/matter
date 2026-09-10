@@ -267,7 +267,7 @@ module Matter
         ([] of UInt32).to_tlv
       end
 
-      def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_ON_TIME
           return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?

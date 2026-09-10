@@ -203,8 +203,8 @@ module Matter
           has_destination_group_id = (flags & PacketHeaderFlag::HasDestGroupId.value) != 0
           has_source_node_id = (flags & PacketHeaderFlag::HasSourceNodeId.value) != 0
 
-          raise Exception.new("The header cannot contain destination group and node at the same time") if has_destination_node_id && has_destination_group_id
-          raise Exception.new("Unsupported header version #{version}") if version != HEADER_VERSION
+          raise Matter::CodecError.new("The header cannot contain destination group and node at the same time") if has_destination_node_id && has_destination_group_id
+          raise Matter::CodecError.new("Unsupported header version #{version}") if version != HEADER_VERSION
 
           session_id = io.read_bytes(UInt16, byte_format)
           security_flags = io.read_bytes(UInt8, byte_format)
@@ -216,16 +216,16 @@ module Matter
 
           session_type = security_flags & SecurityFlag::SessionTypeMask.value
 
-          raise Exception.new("Unsupported session type #{session_type}") if session_type != SessionType::Group.value && session_type != SessionType::Unicast.value
+          raise Matter::CodecError.new("Unsupported session type #{session_type}") if session_type != SessionType::Group.value && session_type != SessionType::Unicast.value
 
           has_privacy_enhancements = (security_flags & SecurityFlag::HasPrivacyEnhancements.value) != 0
-          raise Exception.new("Privacy enhancements not supported") if has_privacy_enhancements
+          raise Matter::CodecError.new("Privacy enhancements not supported") if has_privacy_enhancements
 
           is_control_message = (security_flags & SecurityFlag::IsControlMessage.value) != 0
           # Control messages are valid - used for MRP standalone ACKs and other control functions
 
           has_message_extensions = (security_flags & SecurityFlag::HasMessageExtension.value) != 0
-          raise Exception.new("Message extensions not supported") if has_message_extensions
+          raise Matter::CodecError.new("Message extensions not supported") if has_message_extensions
 
           PacketHeader.new(session_id: session_id,
             session_type: SessionType.from_value(session_type),
@@ -249,7 +249,7 @@ module Matter
           has_secured_extension = (flags & PayloadHeaderFlag::HasSecureExtension.value) != 0
           has_vendor_id = (flags & PayloadHeaderFlag::HasVendorId.value) != 0
 
-          raise Exception.new("Secured extension is not supported") if has_secured_extension
+          raise Matter::CodecError.new("Secured extension is not supported") if has_secured_extension
 
           message_type = io.read_bytes(UInt8, byte_format)
           exchange_id = io.read_bytes(UInt16, byte_format)

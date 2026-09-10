@@ -109,13 +109,13 @@ module Matter
 
         case value[0]
         when 0x02, 0x03
-          raise ArgumentError.new("Unsupported public key compression")
+          raise Matter::CryptoError.new("Unsupported public key compression")
         when 0x04
           # Uncompressed format
         when 0x05
-          raise ArgumentError.new("Illegal public key format specifier")
+          raise Matter::CryptoError.new("Illegal public key format specifier")
         else
-          raise ArgumentError.new("Invalid public key format")
+          raise Matter::CryptoError.new("Invalid public key format")
         end
 
         coordinate_length = (value.size - 1) // 2
@@ -142,15 +142,15 @@ module Matter
 
       # Asserted accessors that raise if not present
       def public_key : Bytes
-        public_bits || raise ArgumentError.new("Public key not defined")
+        public_bits || raise Matter::CryptoError.new("Public key not defined")
       end
 
       def private_key : Bytes
-        @private_bits || raise ArgumentError.new("Private key not defined")
+        @private_bits || raise Matter::CryptoError.new("Private key not defined")
       end
 
       def key_pair : BinaryKeyPair
-        key_pair_bits || raise ArgumentError.new("Complete key pair not defined")
+        key_pair_bits || raise Matter::CryptoError.new("Complete key pair not defined")
       end
 
       # Import PKCS#8 private key
@@ -254,7 +254,7 @@ module Matter
         end
 
         # Fallback for unexpected format
-        raise ArgumentError.new("Could not find private key in DER format")
+        raise Matter::CryptoError.new("Could not find private key in DER format")
       end
 
       # Extract 65-byte uncompressed public key from DER format
@@ -271,7 +271,7 @@ module Matter
         if der.size >= 65
           der[der.size - 65, 65]
         else
-          raise ArgumentError.new("Invalid DER public key size")
+          raise Matter::CryptoError.new("Invalid DER public key size")
         end
       end
 
@@ -287,7 +287,7 @@ module Matter
                      when 48 then "secp384r1"  # P-384
                      when 66 then "secp521r1"  # P-521
                      else
-                       raise ArgumentError.new("Unsupported private key size: #{priv_bytes.size}")
+                       raise Matter::CryptoError.new("Unsupported private key size: #{priv_bytes.size}")
                      end
 
         # Create EC keys from raw bytes using new openssl_ext API
@@ -306,7 +306,7 @@ module Matter
                  when 48 then CurveType::P384
                  when 32 then CurveType::P256
                  else
-                   raise ArgumentError.new("Cannot infer curve from key length #{bytes}")
+                   raise Matter::CryptoError.new("Cannot infer curve from key length #{bytes}")
                  end
       end
 

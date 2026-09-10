@@ -409,7 +409,7 @@ module Matter
         decode_length += 2 if remainder_encoded_length == 4
         decode_length += 1 if remainder_encoded_length == 2
 
-        raise ArgumentError.new("Invalid base38 encoded string length: #{encoded_length}") unless [0, 2, 4].includes?(remainder_encoded_length)
+        raise CodecError.new("Invalid base38 encoded string length: #{encoded_length}") unless [0, 2, 4].includes?(remainder_encoded_length)
 
         result = Bytes.new(decode_length, 0_u8)
         decoded_offset = 0
@@ -451,7 +451,7 @@ module Matter
         (char_count - 1).downto(0) do |i|
           char = encoded[offset + i]
           code = BASE38_ALPHABET.index(char)
-          raise ArgumentError.new("Unexpected character #{char} at #{offset + i}") unless code
+          raise CodecError.new("Unexpected character #{char} at #{offset + i}") unless code
           result = result * 38 + code
         end
 

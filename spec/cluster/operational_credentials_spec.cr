@@ -1507,7 +1507,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       )
 
       response = cluster.handle_certificate_chain_request(cmd)
-      response.certificate.should eq(dac)
+      response.as(Matter::Cluster::OperationalCredentialsCluster::CertificateChainResponse).certificate.should eq(dac)
     end
 
     it "returns PAI certificate when available" do
@@ -1524,10 +1524,10 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       )
 
       response = cluster.handle_certificate_chain_request(cmd)
-      response.certificate.should eq(pai)
+      response.as(Matter::Cluster::OperationalCredentialsCluster::CertificateChainResponse).certificate.should eq(pai)
     end
 
-    it "raises error when certificate not available" do
+    it "returns Failure when certificate not available" do
       fabric_table = OpCredsTestHelpers.create_fabric_table
       cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table)
 
@@ -1535,9 +1535,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         certificate_type: Matter::Cluster::OperationalCredentialsCluster::CertificateChainType::DACCertificate
       )
 
-      expect_raises(Exception, "Certificate not available") do
-        cluster.handle_certificate_chain_request(cmd)
-      end
+      response = cluster.handle_certificate_chain_request(cmd)
+      response.should eq(Matter::InteractionModel::Status.failure)
     end
   end
 

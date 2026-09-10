@@ -418,7 +418,7 @@ module Matter
         # Don't count the key set being updated
         existing_count = fabric_key_sets.keys.count { |id| id != key_set.group_key_set_id }
         if existing_count >= max_group_keys_per_fabric
-          raise ArgumentError.new("Cannot exceed max_group_keys_per_fabric (#{max_group_keys_per_fabric})")
+          raise Matter::ClusterError.new("Cannot exceed max_group_keys_per_fabric (#{max_group_keys_per_fabric})", InteractionModel::StatusCode::ResourceExhausted)
         end
 
         # Store the key set (create or update)
@@ -463,16 +463,16 @@ module Matter
       def handle_key_set_remove(cmd : KeySetRemoveRequest, fabric_index : UInt8) : Nil
         # IPK Protection: Cannot remove key set 0 (Identity Protection Key)
         if cmd.group_key_set_id == 0
-          raise ArgumentError.new("Cannot remove key set 0 (IPK)")
+          raise Matter::ClusterError.new("Cannot remove key set 0 (IPK)", InteractionModel::StatusCode::ConstraintError)
         end
 
         fabric_key_sets = @key_sets[fabric_index]?
         unless fabric_key_sets
-          raise ArgumentError.new("Key set #{cmd.group_key_set_id} not found")
+          raise Matter::ClusterError.new("Key set #{cmd.group_key_set_id} not found", InteractionModel::StatusCode::NotFound)
         end
 
         unless fabric_key_sets.has_key?(cmd.group_key_set_id)
-          raise ArgumentError.new("Key set #{cmd.group_key_set_id} not found")
+          raise Matter::ClusterError.new("Key set #{cmd.group_key_set_id} not found", InteractionModel::StatusCode::NotFound)
         end
 
         # Remove the key set
@@ -511,13 +511,13 @@ module Matter
       ) : Nil
         # Validate group ID
         if group_id == 0
-          raise ArgumentError.new("Group ID 0 is invalid")
+          raise Matter::ClusterError.new("Group ID 0 is invalid", InteractionModel::StatusCode::ConstraintError)
         end
 
         # Validate that key set exists
         fabric_key_sets = @key_sets[fabric_index]?
         unless fabric_key_sets && fabric_key_sets.has_key?(group_key_set_id)
-          raise ArgumentError.new("Key set #{group_key_set_id} does not exist")
+          raise Matter::ClusterError.new("Key set #{group_key_set_id} does not exist", InteractionModel::StatusCode::NotFound)
         end
 
         # Check if mapping already exists (update case)
@@ -534,7 +534,7 @@ module Matter
           # Check resource limit: max_groups_per_fabric
           fabric_groups = @group_key_map.count { |e| e.fabric_index == fabric_index }
           if fabric_groups >= max_groups_per_fabric
-            raise ArgumentError.new("Cannot exceed max_groups_per_fabric (#{max_groups_per_fabric})")
+            raise Matter::ClusterError.new("Cannot exceed max_groups_per_fabric (#{max_groups_per_fabric})", InteractionModel::StatusCode::ResourceExhausted)
           end
 
           # Add new mapping
@@ -566,7 +566,7 @@ module Matter
           entry.fabric_index == fabric_index && entry.group_id == group_id
         end
         unless has_key_map
-          raise ArgumentError.new("Group #{group_id} has no key map entry")
+          raise Matter::ClusterError.new("Group #{group_id} has no key map entry", InteractionModel::StatusCode::NotFound)
         end
 
         # Find or create group info
@@ -590,7 +590,7 @@ module Matter
           # Check resource limit
           fabric_groups = @group_table.count { |e| e.fabric_index == fabric_index }
           if fabric_groups >= max_groups_per_fabric
-            raise ArgumentError.new("Cannot exceed max_groups_per_fabric (#{max_groups_per_fabric})")
+            raise Matter::ClusterError.new("Cannot exceed max_groups_per_fabric (#{max_groups_per_fabric})", InteractionModel::StatusCode::ResourceExhausted)
           end
 
           # Create new group

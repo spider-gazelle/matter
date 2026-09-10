@@ -122,7 +122,7 @@ module Matter
         end
       end
 
-      def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         # All attributes are read-only in the base ICD Management cluster
         super
       end

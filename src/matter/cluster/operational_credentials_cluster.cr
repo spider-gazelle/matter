@@ -598,7 +598,7 @@ module Matter
         end
       end
 
-      def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
+      protected def handle_write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         # All attributes are read-only
         super
       end
@@ -1119,7 +1119,7 @@ module Matter
       # Request DAC or PAI certificate
       def handle_certificate_chain_request(
         cmd : CertificateChainRequestCommand,
-      ) : CertificateChainResponse
+      ) : CertificateChainResponse | InteractionModel::Status
         certificate = case cmd.certificate_type
                       when CertificateChainType::DACCertificate
                         @dac
@@ -1127,7 +1127,10 @@ module Matter
                         @pai
                       end
 
-        raise "Certificate not available" unless certificate
+        unless certificate
+          Log.error { "CertificateChainRequest: #{cmd.certificate_type} not available" }
+          return InteractionModel::Status.failure
+        end
 
         CertificateChainResponse.new(certificate: certificate)
       end
@@ -1494,7 +1497,7 @@ module Matter
       private def sign_attestation(data : Bytes, session_id : UInt64? = nil) : Bytes
         # Sign with attestation key using ECDSA
         unless key = @attestation_key
-          raise "Attestation key not configured"
+          raise Matter::ClusterError.new("Attestation key not configured")
         end
 
         Log.debug { "Signing attestation: session_id=#{session_id || "none"} key_type=#{key.type}" }
@@ -1650,11 +1653,11 @@ module Matter
 
         fabric_id = cert.fabric_id
         unless fabric_id
-          raise "fabricId not found in NOC certificate subject"
+          raise Matter::CertificateError.new("fabricId not found in NOC certificate subject")
         end
         fabric_id
       rescue ex
-        raise "Failed to parse NOC certificate: #{ex.message}"
+        raise Matter::CertificateError.new("Failed to parse NOC certificate: #{ex.message}", cause: ex)
       end
 
       private def extract_node_id_from_noc(noc : Bytes) : UInt64
@@ -1665,11 +1668,11 @@ module Matter
 
         node_id = cert.node_id
         unless node_id
-          raise "nodeId not found in NOC certificate subject"
+          raise Matter::CertificateError.new("nodeId not found in NOC certificate subject")
         end
         node_id
       rescue ex
-        raise "Failed to parse NOC certificate: #{ex.message}"
+        raise Matter::CertificateError.new("Failed to parse NOC certificate: #{ex.message}", cause: ex)
       end
 
       # Extract the public key from a certificate (supports both TLV and DER formats)
@@ -1684,7 +1687,7 @@ module Matter
         when 0x30 # X.509 DER certificate
           extract_public_key_from_der_certificate(cert_bytes)
         else
-          raise "Unknown certificate format: first byte 0x#{first_byte.to_s(16)}"
+          raise Matter::CertificateError.new("Unknown certificate format: first byte 0x#{first_byte.to_s(16)}")
         end
       end
 
@@ -1697,11 +1700,11 @@ module Matter
 
         # Validate that it's the correct format (65 bytes starting with 0x04)
         if public_key_bytes.size != 65
-          raise "Invalid public key size: expected 65 bytes, got #{public_key_bytes.size}"
+          raise Matter::CertificateError.new("Invalid public key size: expected 65 bytes, got #{public_key_bytes.size}")
         end
 
         if public_key_bytes[0] != 0x04
-          raise "Invalid public key format: expected uncompressed point (0x04), got 0x#{public_key_bytes[0].to_s(16)}"
+          raise Matter::CertificateError.new("Invalid public key format: expected uncompressed point (0x04), got 0x#{public_key_bytes[0].to_s(16)}")
         end
 
         Log.debug { "Extracted public key from TLV certificate: #{public_key_bytes.size} bytes" }
@@ -1709,7 +1712,7 @@ module Matter
         public_key_bytes
       rescue ex
         Log.error(exception: ex) { "Failed to extract public key from TLV certificate (cert_hex=#{cert_tlv.hexstring})" }
-        raise "Failed to extract public key from TLV certificate: #{ex.message}"
+        raise Matter::CertificateError.new("Failed to extract public key from TLV certificate: #{ex.message}", cause: ex)
       end
 
       # Extract public key from X.509 DER certificate using OpenSSL
@@ -1731,14 +1734,14 @@ module Matter
             Log.debug { "Extracted public key from DER certificate: #{public_key_bytes.size} bytes" }
             public_key_bytes
           else
-            raise "Invalid EC public key format (expected 65 bytes starting with 0x04, got #{public_key_bytes.size} bytes)"
+            raise Matter::CertificateError.new("Invalid EC public key format (expected 65 bytes starting with 0x04, got #{public_key_bytes.size} bytes)")
           end
         else
-          raise "Certificate does not contain an EC public key"
+          raise Matter::CertificateError.new("Certificate does not contain an EC public key")
         end
       rescue ex
         Log.error(exception: ex) { "Failed to extract public key from DER certificate (cert_hex=#{cert_der.hexstring})" }
-        raise "Failed to extract public key from DER certificate: #{ex.message}"
+        raise Matter::CertificateError.new("Failed to extract public key from DER certificate: #{ex.message}", cause: ex)
       end
 
       # Helper method to recursively find a TLV field by tag

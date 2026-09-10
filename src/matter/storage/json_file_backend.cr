@@ -37,14 +37,14 @@ module Matter
       end
 
       def get(contexts : Array(String), key : String) : Type
-        raise Exception.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
+        raise Matter::StorageError.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
         @store[context_key]?.try(&.[key]?)
       end
 
       def set(contexts : Array(String), key : String, value : Type) : Nil
-        raise Exception.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
+        raise Matter::StorageError.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
         @store[context_key] ||= {} of String => Type
@@ -53,7 +53,7 @@ module Matter
       end
 
       def delete(contexts : Array(String), key : String) : Nil
-        raise Exception.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
+        raise Matter::StorageError.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 
         context_key = create_context_key(contexts)
         if ctx = @store[context_key]?

@@ -774,7 +774,7 @@ module Matter
         )
 
         unless decrypted
-          raise "Failed to decrypt message"
+          raise Matter::SessionError.new("Failed to decrypt message")
         end
 
         # Some controllers (notably iOS) may omit or otherwise vary the peer identity

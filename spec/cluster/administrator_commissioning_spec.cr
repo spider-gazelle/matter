@@ -1441,5 +1441,52 @@ module Matter::Cluster
         failsafe_closed.should be_true
       end
     end
+    describe "wire status mapping" do
+      it "answers ConstraintError when the commissioning timeout is out of bounds" do
+        cluster = AdministratorCommissioningCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        too_short = AdministratorCommissioningCluster::MINIMUM_COMMISSIONING_TIMEOUT - 1
+
+        result = cluster.invoke_command(
+          AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+          create_open_basic_commissioning_window_tlv(too_short)
+        )
+
+        result.should eq(Matter::InteractionModel::Status.constraint_error)
+        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
+      end
+
+      it "answers Failure with the PAKEParameterError cluster status for a bad verifier" do
+        cluster = AdministratorCommissioningCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        tlv_data = create_open_commissioning_window_tlv(
+          timeout: 900_u16,
+          verifier: Bytes.new(AdministratorCommissioningCluster::PAKE_PASSCODE_VERIFIER_LENGTH - 1, 0xAB_u8),
+          discriminator: 3840_u16,
+          iterations: 10000_u32,
+          salt: Bytes.new(32, 0xCD_u8)
+        )
+
+        result = cluster.invoke_command(AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW, tlv_data)
+
+        result.should eq(Matter::InteractionModel::Status.cluster_failure(AdministratorCommissioningCluster::StatusCode::PAKEParameterError))
+      end
+
+      it "answers Busy when a window is already open" do
+        cluster = AdministratorCommissioningCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
+        cluster.invoke_command(AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW, tlv_data)
+
+        result = cluster.invoke_command(AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW, tlv_data)
+
+        result.should eq(Matter::InteractionModel::Status.busy)
+      end
+
+      it "answers Failure with the WindowNotOpen cluster status when revoking a closed window" do
+        cluster = AdministratorCommissioningCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+
+        result = cluster.invoke_command(AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING, Bytes.new(0))
+
+        result.should eq(Matter::InteractionModel::Status.cluster_failure(AdministratorCommissioningCluster::StatusCode::WindowNotOpen))
+      end
+    end
   end
 end

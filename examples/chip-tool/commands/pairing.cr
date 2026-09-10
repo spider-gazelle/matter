@@ -81,7 +81,7 @@ module ChipTool
 
           store = Matter::Controller::StateStore.new(ctx.storage_directory)
           state = store.load
-          fabric = state.fabric || raise "No controller fabric found; run `pairing code ...` first"
+          fabric = state.fabric || raise Matter::CommissioningError.new("No controller fabric found; run `pairing code ...` first")
 
           peer = resolve_peer(state, fabric, node_id, ctx.timeout)
           state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
@@ -108,7 +108,7 @@ module ChipTool
               )
               if status = resp.invoke_responses.first?.try(&.command_status).try(&.status)
                 unless status.status == Matter::InteractionModel::StatusCode::Success.value
-                  raise "OpenBasicCommissioningWindow failed (status=#{status.status})"
+                  raise Matter::ClusterError.from_wire("OpenBasicCommissioningWindow failed (status=#{status.status})", status.status, status.cluster_status)
                 end
               end
               puts "OpenBasicCommissioningWindow: OK"
@@ -172,7 +172,7 @@ module ChipTool
           sleep 100.milliseconds
         end
 
-        raise "Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})"
+        raise Matter::TransportError.new("Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})")
       ensure
         scanner.try(&.close)
       end

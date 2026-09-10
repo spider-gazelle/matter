@@ -89,15 +89,15 @@ describe Matter::Storage::JsonFileBackend do
   it "raises ArgumentError for keys and values on the root context" do
     storage = Matter::Storage::JsonFileBackend.new(File.tempname("matter-storage-root"))
 
-    expect_raises(ArgumentError, "Context must not be empty!") do
+    expect_raises(Matter::StorageError, "Context must not be empty!") do
       storage.keys([] of String)
     end
 
-    expect_raises(ArgumentError, "Context must not be empty!") do
+    expect_raises(Matter::StorageError, "Context must not be empty!") do
       storage.values([] of String)
     end
 
-    expect_raises(ArgumentError, "Context must not be an empty string.") do
+    expect_raises(Matter::StorageError, "Context must not be an empty string.") do
       storage.keys(["ok", ""])
     end
   end

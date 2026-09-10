@@ -91,7 +91,7 @@ describe Matter::DataType::CaseAuthenticatedTag do
     end
 
     it "rejects short slices" do
-      expect_raises(ArgumentError, "CaseAuthenticatedTag slice must be at least 4 bytes") do
+      expect_raises(Matter::CodecError, "CaseAuthenticatedTag slice must be at least 4 bytes") do
         Matter::DataType::CaseAuthenticatedTag.new(Bytes[1, 2])
       end
     end
