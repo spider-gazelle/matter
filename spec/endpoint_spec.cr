@@ -253,7 +253,7 @@ describe Matter::Endpoint do
       errors.should_not be_empty
       # Should be missing Descriptor, Identify, Groups
       errors.size.should be >= 3
-      errors.any? { |e| e.includes?("0x001D") || e.includes?("Descriptor") }.should be_true
+      errors.any? { |e| e.includes?("0x001d") || e.includes?("Descriptor") }.should be_true
       errors.any? { |e| e.includes?("0x0003") || e.includes?("Identify") }.should be_true
     end
 

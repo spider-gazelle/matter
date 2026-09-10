@@ -75,7 +75,7 @@ module Matter
       # @param node_id [UInt64] Node ID within the fabric
       def operational_instance(compressed_fabric_id : Bytes, node_id : UInt64) : String
         fabric_hex = compressed_fabric_id.hexstring.upcase
-        node_hex = node_id.to_s(16).upcase.rjust(16, '0')
+        node_hex = Hex.node_id(node_id)
         "#{fabric_hex}-#{node_hex}.#{OPERATIONAL}"
       end
 

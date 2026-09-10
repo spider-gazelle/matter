@@ -125,7 +125,7 @@ module Matter
           # Cluster.
 
           @[TLV::Field(tag: 3)]
-          property subjects : Array(DataType::SubjectId)?
+          property subjects : Array(DataType::NodeId)?
 
           # The targets field shall specify a list of AccessControlTargetStruct, which define the clusters on this Node
           # to which this Access Control Entry grants access.

@@ -16,6 +16,7 @@ module Matter
 end
 
 # Subsystems are loaded in dependency order: lower layers first.
+require "./matter/hex"
 require "./matter/datatype"
 require "./matter/interaction_model"
 require "./matter/codec"

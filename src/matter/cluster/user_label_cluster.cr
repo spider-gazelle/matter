@@ -51,9 +51,9 @@ module Matter
             @label_list = list.map { |entry| LabelStruct.from_tlv(entry) }
             @attribute_values[ATTR_LABEL_LIST] = @label_list.to_tlv
             increment_version_and_notify(ATTR_LABEL_LIST)
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+            InteractionModel::Status.success
           rescue
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+            InteractionModel::Status.invalid_data_type
           end
         else
           super

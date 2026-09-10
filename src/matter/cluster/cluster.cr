@@ -163,11 +163,11 @@ module Matter
         end
 
         metadata = attributes.find { |attr| attr.id.id == attribute_id }
-        return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless metadata
+        return InteractionModel::Status.unsupported_attribute unless metadata
 
         # Return stored value or default
         @attribute_values.fetch(attribute_id) do
-          metadata.default || InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+          metadata.default || InteractionModel::Status.failure
         end
       end
 
@@ -212,14 +212,14 @@ module Matter
       # Write an attribute value
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         metadata = attributes.find { |attr| attr.id.id == attribute_id }
-        return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless metadata
-        return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedWrite) unless metadata.writable?
+        return InteractionModel::Status.unsupported_attribute unless metadata
+        return InteractionModel::Status.unsupported_write unless metadata.writable?
 
         # Validate value (simplified - real implementation would decode and validate)
         @attribute_values[attribute_id] = value
         @data_version += 1
 
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       end
 
       # ------------------------------------------------------------------------
@@ -236,7 +236,7 @@ module Matter
 
       # True when the raw value is a TLV null element
       protected def tlv_null?(value : Bytes) : Bool
-        value.size == 1 && value[0] == 0x14_u8
+        value.size == 1 && value[0] == InteractionModel::TLV_NULL_MARKER
       end
 
       protected def decode_uint(value : Bytes) : UInt64?
@@ -303,7 +303,7 @@ module Matter
       # Invoke a command
       def invoke_command(command_id : UInt32, fields : Bytes = Bytes.new(0), session_id : UInt64? = nil, is_case_session : Bool = false, fabric_index : UInt8? = nil) : InteractionModel::Status | CommandResponse
         metadata = commands.find { |cmd| cmd.id.id == command_id }
-        return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand) unless metadata
+        return InteractionModel::Status.unsupported_command unless metadata
 
         # Store session_id for clusters that need it (like OperationalCredentials)
         if responds_to?(:session_id=)
@@ -326,7 +326,7 @@ module Matter
 
       # Handle command implementation (to be overridden)
       protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | CommandResponse
-        InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand)
+        InteractionModel::Status.unsupported_command
       end
 
       # Increment data version (call when attribute changes)

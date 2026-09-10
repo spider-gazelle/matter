@@ -132,10 +132,10 @@ module Matter
         when CMD_STAY_ACTIVE_REQUEST
           # StayActiveRequest is optional and only with LITS feature
           # Return UnsupportedCommand for minimal implementation
-          InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand)
+          InteractionModel::Status.unsupported_command
         when CMD_REGISTER_CLIENT, CMD_UNREGISTER_CLIENT
           # These require CheckInProtocolSupport feature
-          InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand)
+          InteractionModel::Status.unsupported_command
         else
           super
         end

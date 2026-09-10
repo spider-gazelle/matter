@@ -414,7 +414,7 @@ module Matter
             encode_product_appearance(appearance)
           else
             # Attribute not present
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         else
           super
@@ -425,40 +425,40 @@ module Matter
         case attribute_id
         when ATTR_NODE_LABEL
           str = decode_string(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless str
+          return InteractionModel::Status.invalid_data_type unless str
 
           # Validate max length (32 chars per Matter spec)
           if str.bytesize > 32
-            return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+            return InteractionModel::Status.constraint_error
           end
 
           @node_label = str
           increment_version_and_notify(ATTR_NODE_LABEL)
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         when ATTR_LOCATION
           str = decode_string(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless str
+          return InteractionModel::Status.invalid_data_type unless str
 
           # Validate ISO 3166-1 alpha-2 format (must be exactly 2 characters)
           if str.size != 2
-            return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+            return InteractionModel::Status.constraint_error
           end
 
           # Validate it contains only ASCII letters or is "XX" (region-agnostic)
           unless str == "XX" || str.chars.all?(&.ascii_letter?)
-            return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+            return InteractionModel::Status.constraint_error
           end
 
           @location = str.upcase
           increment_version_and_notify(ATTR_LOCATION)
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         when ATTR_LOCAL_CONFIG_DISABLED
           bool = decode_bool(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) if bool.nil?
+          return InteractionModel::Status.invalid_data_type if bool.nil?
 
           @local_config_disabled = bool
           increment_version_and_notify(ATTR_LOCAL_CONFIG_DISABLED)
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         else
           super
         end

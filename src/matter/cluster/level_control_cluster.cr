@@ -349,47 +349,47 @@ module Matter
             nil.to_tlv
           end
         when ATTR_REMAINING_TIME
-          return unsupported_attribute unless @feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           @remaining_time.to_tlv
         when ATTR_ON_OFF_TRANSITION_TIME
-          return unsupported_attribute unless @feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           @on_off_transition_time.to_tlv
         when ATTR_ON_TRANSITION_TIME
-          return unsupported_attribute unless @feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           if time = @on_transition_time
             time.to_tlv
           else
             nil.to_tlv
           end
         when ATTR_OFF_TRANSITION_TIME
-          return unsupported_attribute unless @feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           if time = @off_transition_time
             time.to_tlv
           else
             nil.to_tlv
           end
         when ATTR_DEFAULT_MOVE_RATE
-          return unsupported_attribute unless @feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           if rate = @default_move_rate
             rate.to_tlv
           else
             nil.to_tlv
           end
         when ATTR_START_UP_CURRENT_LEVEL
-          return unsupported_attribute unless @feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           if level = @start_up_current_level
             level.to_tlv
           else
             nil.to_tlv
           end
         when ATTR_CURRENT_FREQUENCY
-          return unsupported_attribute unless @feature_map.frequency?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.frequency?
           @current_frequency.to_tlv
         when ATTR_MIN_FREQUENCY
-          return unsupported_attribute unless @feature_map.frequency?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.frequency?
           @min_frequency.to_tlv
         when ATTR_MAX_FREQUENCY
-          return unsupported_attribute unless @feature_map.frequency?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.frequency?
           @max_frequency.to_tlv
         when GLOBAL_FEATURE_MAP
           @feature_map.value.to_tlv
@@ -404,66 +404,66 @@ module Matter
           if options = decode_u8(value)
             @options = options
             increment_version_and_notify(ATTR_OPTIONS)
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+            InteractionModel::Status.success
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+            InteractionModel::Status.invalid_data_type
           end
         when ATTR_ON_LEVEL
           if new_level = decode_u8(value)
             if new_level >= @min_level && new_level <= @max_level
               @on_level = new_level
               increment_version_and_notify(ATTR_ON_LEVEL)
-              InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+              InteractionModel::Status.success
             else
-              InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+              InteractionModel::Status.constraint_error
             end
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+            InteractionModel::Status.invalid_data_type
           end
         when ATTR_ON_OFF_TRANSITION_TIME
-          return unsupported_attribute unless @feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           if time = decode_u16(value)
             @on_off_transition_time = time
             increment_version_and_notify(ATTR_ON_OFF_TRANSITION_TIME)
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+            InteractionModel::Status.success
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+            InteractionModel::Status.invalid_data_type
           end
         when ATTR_ON_TRANSITION_TIME
-          return unsupported_attribute unless @feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           if time = decode_u16(value)
             @on_transition_time = time
             increment_version_and_notify(ATTR_ON_TRANSITION_TIME)
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+            InteractionModel::Status.success
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+            InteractionModel::Status.invalid_data_type
           end
         when ATTR_OFF_TRANSITION_TIME
-          return unsupported_attribute unless @feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           if time = decode_u16(value)
             @off_transition_time = time
             increment_version_and_notify(ATTR_OFF_TRANSITION_TIME)
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+            InteractionModel::Status.success
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+            InteractionModel::Status.invalid_data_type
           end
         when ATTR_DEFAULT_MOVE_RATE
-          return unsupported_attribute unless @feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           if rate = decode_u8(value)
             @default_move_rate = rate
             increment_version_and_notify(ATTR_DEFAULT_MOVE_RATE)
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+            InteractionModel::Status.success
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+            InteractionModel::Status.invalid_data_type
           end
         when ATTR_START_UP_CURRENT_LEVEL
-          return unsupported_attribute unless @feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
           if level = decode_u8(value)
             @start_up_current_level = level
             increment_version_and_notify(ATTR_START_UP_CURRENT_LEVEL)
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+            InteractionModel::Status.success
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+            InteractionModel::Status.invalid_data_type
           end
         else
           super
@@ -481,19 +481,19 @@ module Matter
         when CMD_STOP
           handle_stop_command(fields, with_on_off: false)
         when CMD_MOVE_TO_LEVEL_WITH_ON_OFF
-          return unsupported_command unless @feature_map.on_off?
+          return InteractionModel::Status.unsupported_command unless @feature_map.on_off?
           handle_move_to_level_command(fields, with_on_off: true)
         when CMD_MOVE_WITH_ON_OFF
-          return unsupported_command unless @feature_map.on_off?
+          return InteractionModel::Status.unsupported_command unless @feature_map.on_off?
           handle_move_command(fields, with_on_off: true)
         when CMD_STEP_WITH_ON_OFF
-          return unsupported_command unless @feature_map.on_off?
+          return InteractionModel::Status.unsupported_command unless @feature_map.on_off?
           handle_step_command(fields, with_on_off: true)
         when CMD_STOP_WITH_ON_OFF
-          return unsupported_command unless @feature_map.on_off?
+          return InteractionModel::Status.unsupported_command unless @feature_map.on_off?
           handle_stop_command(fields, with_on_off: true)
         when CMD_MOVE_TO_CLOSEST_FREQUENCY
-          return unsupported_command unless @feature_map.frequency?
+          return InteractionModel::Status.unsupported_command unless @feature_map.frequency?
           handle_move_to_closest_frequency(fields)
         else
           super
@@ -507,7 +507,7 @@ module Matter
         move_to_level(request.level)
       rescue ex
         Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (bytes=#{fields.hexstring})" }
-        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+        InteractionModel::Status.invalid_command
       end
 
       # Handle Move command
@@ -520,11 +520,11 @@ module Matter
         when MoveMode::Down
           move_to_level(@min_level)
         else
-          InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+          InteractionModel::Status.invalid_command
         end
       rescue ex
         Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (bytes=#{fields.hexstring})" }
-        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+        InteractionModel::Status.invalid_command
       end
 
       # Handle Step command
@@ -541,11 +541,11 @@ module Matter
           new_level = @current_level.to_i16 - step_size
           move_to_level([new_level, @min_level.to_i16].max.to_u8)
         else
-          InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+          InteractionModel::Status.invalid_command
         end
       rescue ex
         Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (bytes=#{fields.hexstring})" }
-        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+        InteractionModel::Status.invalid_command
       end
 
       # Handle Stop command
@@ -557,10 +557,10 @@ module Matter
           StopRequest.from_slice(fields)
         end
         @remaining_time = 0_u16
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       rescue ex
         Log.error(exception: ex) { "LevelControl: failed to parse #{command_name} request (bytes=#{fields.hexstring})" }
-        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+        InteractionModel::Status.invalid_command
       end
 
       # Handle MoveToClosestFrequency command
@@ -575,10 +575,10 @@ module Matter
           increment_version_and_notify(ATTR_CURRENT_FREQUENCY)
         end
 
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       rescue ex
         Log.error(exception: ex) { "LevelControl: failed to parse MoveToClosestFrequency request (bytes=#{fields.hexstring})" }
-        InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+        InteractionModel::Status.invalid_command
       end
 
       # Move to a specific level with clamping
@@ -595,7 +595,7 @@ module Matter
           @on_level_changed.try &.call(old_level, @current_level)
         end
 
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       end
 
       # Set callback for level changes
@@ -702,15 +702,6 @@ module Matter
         @data_version = state.data_version
       rescue
         # Start fresh if restore fails
-      end
-
-      # Helper methods
-      private def unsupported_attribute : InteractionModel::Status
-        InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
-      end
-
-      private def unsupported_command : InteractionModel::Status
-        InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand)
       end
     end
   end

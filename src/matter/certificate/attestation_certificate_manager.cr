@@ -220,14 +220,14 @@ module Matter
         if vendor_id
           # VendorId OID: 1.3.6.1.4.1.37244.2.1
           # Encode as 4-character uppercase hex string
-          vid_str = vendor_id.to_s(16).upcase.rjust(4, '0')
+          vid_str = Hex.u16_upper(vendor_id)
           add_custom_oid_entry(name, "1.3.6.1.4.1.37244.2.1", vid_str)
         end
 
         if product_id
           # ProductId OID: 1.3.6.1.4.1.37244.2.2
           # Encode as 4-character uppercase hex string
-          pid_str = product_id.to_s(16).upcase.rjust(4, '0')
+          pid_str = Hex.u16_upper(product_id)
           add_custom_oid_entry(name, "1.3.6.1.4.1.37244.2.2", pid_str)
         end
 

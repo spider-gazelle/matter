@@ -227,7 +227,7 @@ module Matter
         when CMD_TEST_EVENT_TRIGGER
           # TestEventTrigger requires test mode to be enabled
           # For production devices, always return constraint error
-          InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+          InteractionModel::Status.constraint_error
         else
           super
         end

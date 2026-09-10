@@ -64,7 +64,7 @@ module Matter
         when Nil
           # TLV Null — return a single byte with the TLV null type marker
           # so clusters can detect null vs empty
-          Bytes[0x14]
+          Bytes[InteractionModel::TLV_NULL_MARKER]
         else
           # For complex types (arrays, lists, structures), fall back to TLV encoding
           tlv.to_slice
@@ -125,7 +125,7 @@ module Matter
         Log.debug { "ReadRequest parsed: #{attribute_requests.size} attribute request(s)" }
 
         attribute_requests.each_with_index do |path, idx|
-          Log.debug { "  Request #{idx}: endpoint=#{path.endpoint || "nil"}, cluster=0x#{path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}" }
+          Log.debug { "  Request #{idx}: #{path}" }
         end
 
         msg
@@ -148,7 +148,7 @@ module Matter
         requests = attribute_requests || [] of InteractionModel::AttributePath
 
         requests.each do |path|
-          Log.debug { "Reading attribute: endpoint=#{path.endpoint}, cluster=0x#{path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}" }
+          Log.debug { "Reading attribute: #{path}" }
 
           # Handle wildcard reads (endpoint/cluster/attribute can be nil)
           if path.wildcard?
@@ -267,10 +267,9 @@ module Matter
         cluster.read_attribute(attribute_id, fabric_index)
       rescue ex
         Log.error(exception: ex) do
-          "Failed reading attribute from cluster: endpoint=#{endpoint_id} cluster=0x#{cluster_id.to_s(16)} " \
-          "attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}"
+          "Failed reading attribute from cluster: #{path}"
         end
-        InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+        InteractionModel::Status.failure
       end
 
       private def self.build_attribute_report(
@@ -305,8 +304,7 @@ module Matter
           InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
         rescue ex
           Log.error(exception: ex) do
-            "Failed to decode attribute TLV: endpoint=#{endpoint_id} cluster=0x#{cluster_id.to_s(16)} " \
-            "attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"} bytes=#{bytes.hexstring}"
+            "Failed to decode attribute TLV: #{path} bytes=#{bytes.hexstring}"
           end
           status_ib = InteractionModel::StatusIB.new(status: InteractionModel::StatusCode::Failure.value)
           attr_status = InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
@@ -322,7 +320,7 @@ module Matter
         Log.debug { "WriteRequest parsed: #{write_requests.size} write request(s)" }
 
         write_requests.each_with_index do |req, idx|
-          Log.debug { "  Write #{idx}: endpoint=#{req.path.endpoint || "nil"}, cluster=0x#{req.path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{req.path.attribute.try(&.to_s(16)) || "nil"}" }
+          Log.debug { "  Write #{idx}: #{req.path}" }
         end
 
         msg
@@ -346,7 +344,7 @@ module Matter
 
         requests.each do |request|
           path = request.path
-          Log.debug { "Writing attribute: endpoint=#{path.endpoint}, cluster=0x#{path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}" }
+          Log.debug { "Writing attribute: #{path}" }
 
           # Get endpoint and cluster IDs
           endpoint_id = path.endpoint || 0_u16 # Default to endpoint 0 if not specified
@@ -406,7 +404,7 @@ module Matter
         Log.debug { "SubscribeRequest parsed: #{attribute_requests.size} attribute request(s), min=#{msg.min_interval_floor}s, max=#{msg.max_interval_ceiling}s" }
 
         attribute_requests.each_with_index do |path, idx|
-          Log.debug { "  Request #{idx}: endpoint=#{path.endpoint || "nil"}, cluster=0x#{path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}" }
+          Log.debug { "  Request #{idx}: #{path}" }
         end
 
         msg

@@ -327,25 +327,25 @@ module Matter
           if value = @vendor_name
             encode_tlv_string(value)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_VENDOR_ID
           if value = @vendor_id
             encode_tlv_uint16(value)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_PRODUCT_NAME
           if value = @product_name
             encode_tlv_string(value)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_PRODUCT_ID
           if value = @product_id
             encode_tlv_uint16(value)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_NODE_LABEL
           encode_tlv_string(@node_label || "")
@@ -353,67 +353,67 @@ module Matter
           if value = @hardware_version
             encode_tlv_uint16(value)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_HARDWARE_VERSION_STRING
           if value = @hardware_version_string
             encode_tlv_string(value)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_SOFTWARE_VERSION
           if value = @software_version
             encode_tlv_uint32(value)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_SOFTWARE_VERSION_STRING
           if value = @software_version_string
             encode_tlv_string(value)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_MANUFACTURING_DATE
           if value = @manufacturing_date
             encode_tlv_string(value)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_PART_NUMBER
           if value = @part_number
             encode_tlv_string(value)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_PRODUCT_URL
           if value = @product_url
             encode_tlv_string(value)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_PRODUCT_LABEL
           if value = @product_label
             encode_tlv_string(value)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_SERIAL_NUMBER
           if value = @serial_number
             encode_tlv_string(value)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_UNIQUE_ID
           if value = @unique_id
             encode_tlv_string(value)
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         when ATTR_PRODUCT_APPEARANCE
           if value = @product_appearance
             value.to_slice
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute)
+            InteractionModel::Status.unsupported_attribute
           end
         else
           super
@@ -424,16 +424,16 @@ module Matter
         case attribute_id
         when ATTR_NODE_LABEL
           str = decode_string(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless str
+          return InteractionModel::Status.invalid_data_type unless str
 
           # Validate max length (32 chars per Matter spec)
           if str.bytesize > 32
-            return InteractionModel::Status.new(InteractionModel::StatusCode::ConstraintError)
+            return InteractionModel::Status.constraint_error
           end
 
           @node_label = str
           increment_version_and_notify(ATTR_NODE_LABEL)
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         else
           super
         end

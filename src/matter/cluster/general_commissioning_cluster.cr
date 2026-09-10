@@ -326,9 +326,9 @@ module Matter
           if breadcrumb = decode_uint(value)
             @breadcrumb = breadcrumb
             increment_version
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+            InteractionModel::Status.success
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType)
+            InteractionModel::Status.invalid_data_type
           end
         else
           super

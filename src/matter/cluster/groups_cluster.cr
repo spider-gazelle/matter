@@ -144,7 +144,7 @@ module Matter
             # Return AddGroupResponse
             Cluster::CommandResponse.new(CMD_ADD_GROUP_RESPONSE, encode_add_group_response(status, group_id))
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+            InteractionModel::Status.invalid_command
           end
         when CMD_VIEW_GROUP
           # Extract group_id
@@ -152,7 +152,7 @@ module Matter
             group_id = IO::ByteFormat::LittleEndian.decode(UInt16, fields[0, 2])
             Cluster::CommandResponse.new(CMD_VIEW_GROUP_RESPONSE, view_group(group_id))
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+            InteractionModel::Status.invalid_command
           end
         when CMD_GET_GROUP_MEMBERSHIP
           # Simplified: return all groups
@@ -166,23 +166,23 @@ module Matter
             # Return RemoveGroupResponse
             Cluster::CommandResponse.new(CMD_REMOVE_GROUP_RESPONSE, encode_remove_group_response(status, group_id))
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+            InteractionModel::Status.invalid_command
           end
         when CMD_REMOVE_ALL_GROUPS
           remove_all_groups
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         when CMD_ADD_GROUP_IF_IDENTIFYING
           # Simplified: always add (would check if device is identifying)
           if fields.size >= 2
             group_id = IO::ByteFormat::LittleEndian.decode(UInt16, fields[0, 2])
             group_name = fields.size > 2 ? String.new(fields[2..]) : ""
             add_group(group_id, group_name)
-            InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+            InteractionModel::Status.success
           else
-            InteractionModel::Status.new(InteractionModel::StatusCode::InvalidCommand)
+            InteractionModel::Status.invalid_command
           end
         else
-          InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand)
+          InteractionModel::Status.unsupported_command
         end
       end
 

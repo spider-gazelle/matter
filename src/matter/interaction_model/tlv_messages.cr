@@ -4,6 +4,22 @@ require "./status_code"
 
 module Matter
   module InteractionModel
+    # Interaction Model revision advertised in every IM message (Matter 1.3)
+    INTERACTION_MODEL_REVISION = 12_u8
+
+    # Context tag carrying the InteractionModelRevision field in every IM
+    # message. `TLV::Field` requires a literal tag, so the annotations below
+    # spell out `0xFF`; keep them in sync with this constant.
+    INTERACTION_MODEL_REVISION_TAG = 0xFF_u8
+
+    # Default `MaxIntervalCeiling` for subscribe requests we originate
+    DEFAULT_MAX_INTERVAL_CEILING_SECONDS = 3600_u16
+
+    # Control byte of a TLV Null element with an anonymous tag. Raw attribute
+    # values are delivered to clusters as element bytes rather than TLV, so a
+    # null is passed through as this single byte.
+    TLV_NULL_MARKER = 0x14_u8
+
     # Event priority levels (used by clusters for event metadata)
     enum EventPriority : UInt8
       Debug    = 0
@@ -108,7 +124,7 @@ module Matter
       @[TLV::Field(tag: 4, optional: true)]
       property suppress_response : Bool?
 
-      # Tag 0xFF: InteractionModelRevision (REQUIRED!)
+      # Tag 0xFF (INTERACTION_MODEL_REVISION_TAG): InteractionModelRevision (REQUIRED!)
       @[TLV::Field(tag: 0xFF)]
       property interaction_model_revision : UInt8
 
@@ -118,7 +134,7 @@ module Matter
         @event_reports = nil,
         @more_chunked_messages = nil,
         @suppress_response = nil,
-        @interaction_model_revision = 12_u8,
+        @interaction_model_revision = INTERACTION_MODEL_REVISION,
       )
       end
     end
@@ -147,7 +163,7 @@ module Matter
       @[TLV::Field(tag: 4, optional: true)]
       property data_version_filters : Array(TLV::Any)?
 
-      # Tag 0xFF: InteractionModelRevision
+      # Tag 0xFF (INTERACTION_MODEL_REVISION_TAG): InteractionModelRevision
       @[TLV::Field(tag: 0xFF, optional: true)]
       property interaction_model_revision : UInt8?
 
@@ -182,7 +198,7 @@ module Matter
       @[TLV::Field(tag: 3, optional: true)]
       property more_chunked_messages : Bool?
 
-      # Tag 0xFF: InteractionModelRevision
+      # Tag 0xFF (INTERACTION_MODEL_REVISION_TAG): InteractionModelRevision
       @[TLV::Field(tag: 0xFF, optional: true)]
       property interaction_model_revision : UInt8?
 
@@ -204,18 +220,22 @@ module Matter
       @[TLV::Field(tag: 0)]
       property write_responses : Array(AttributeStatusIB)
 
-      # Tag 0xFF: InteractionModelRevision
+      # Tag 0xFF (INTERACTION_MODEL_REVISION_TAG): InteractionModelRevision
       @[TLV::Field(tag: 0xFF)]
       property interaction_model_revision : UInt8
 
       def initialize(
         @write_responses = [] of AttributeStatusIB,
-        @interaction_model_revision = 12_u8,
+        @interaction_model_revision = INTERACTION_MODEL_REVISION,
       )
       end
     end
 
     # SubscribeRequestMessage
+    #
+    # Field order follows the spec's tag numbering except that tag 8
+    # (DataVersionFilters) is declared before tag 7 (IsFabricFiltered) to match
+    # the order chip-tool and matter.js emit on the wire; tag 6 is unused.
     struct SubscribeRequestMessage
       include TLV::Serializable
 
@@ -251,14 +271,14 @@ module Matter
       @[TLV::Field(tag: 7)]
       property? is_fabric_filtered : Bool
 
-      # Tag 0xFF: InteractionModelRevision
+      # Tag 0xFF (INTERACTION_MODEL_REVISION_TAG): InteractionModelRevision
       @[TLV::Field(tag: 0xFF, optional: true)]
       property interaction_model_revision : UInt8?
 
       def initialize(
         @keep_subscriptions = false,
         @min_interval_floor = 0_u16,
-        @max_interval_ceiling = 3600_u16,
+        @max_interval_ceiling = DEFAULT_MAX_INTERVAL_CEILING_SECONDS,
         @is_fabric_filtered = true,
         @attribute_requests = nil,
         @event_requests = nil,
@@ -282,14 +302,14 @@ module Matter
       @[TLV::Field(tag: 2, fixed_size: true)]
       property max_interval : UInt16
 
-      # Tag 0xFF: InteractionModelRevision
+      # Tag 0xFF (INTERACTION_MODEL_REVISION_TAG): InteractionModelRevision
       @[TLV::Field(tag: 0xFF)]
       property interaction_model_revision : UInt8
 
       def initialize(
         @subscription_id : UInt32,
         @max_interval : UInt16,
-        @interaction_model_revision = 12_u8,
+        @interaction_model_revision = INTERACTION_MODEL_REVISION,
       )
       end
     end
@@ -358,7 +378,7 @@ module Matter
       @[TLV::Field(tag: 2)]
       property invoke_requests : Array(CommandDataIBTlv)
 
-      # Tag 0xFF: InteractionModelRevision
+      # Tag 0xFF (INTERACTION_MODEL_REVISION_TAG): InteractionModelRevision
       @[TLV::Field(tag: 0xFF, optional: true)]
       property interaction_model_revision : UInt8?
 
@@ -387,7 +407,7 @@ module Matter
       @[TLV::Field(tag: 2, optional: true)]
       property more_chunked_messages : Bool?
 
-      # Tag 0xFF: InteractionModelRevision
+      # Tag 0xFF (INTERACTION_MODEL_REVISION_TAG): InteractionModelRevision
       @[TLV::Field(tag: 0xFF)]
       property interaction_model_revision : UInt8
 
@@ -395,7 +415,7 @@ module Matter
         @suppress_response = false,
         @invoke_responses = [] of InvokeResponseIB,
         @more_chunked_messages = nil,
-        @interaction_model_revision = 12_u8,
+        @interaction_model_revision = INTERACTION_MODEL_REVISION,
       )
       end
     end
@@ -408,7 +428,7 @@ module Matter
       @[TLV::Field(tag: 0)]
       property status : UInt8
 
-      # Tag 0xFF: InteractionModelRevision
+      # Tag 0xFF (INTERACTION_MODEL_REVISION_TAG): InteractionModelRevision
       @[TLV::Field(tag: 0xFF, optional: true)]
       property interaction_model_revision : UInt8?
 

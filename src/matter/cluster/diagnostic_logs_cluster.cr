@@ -127,7 +127,7 @@ module Matter
         when CMD_RETRIEVE_LOGS_REQUEST
           handle_retrieve_logs_request(fields)
         else
-          InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand)
+          InteractionModel::Status.unsupported_command
         end
       end
 

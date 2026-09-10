@@ -190,16 +190,16 @@ module Matter
         when ATTR_ON_OFF
           @on_off.to_tlv
         when ATTR_GLOBAL_SCENE_CONTROL
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
           @global_scene_control.to_tlv
         when ATTR_ON_TIME
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
           @on_time.to_tlv
         when ATTR_OFF_WAIT_TIME
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
           @off_wait_time.to_tlv
         when ATTR_START_UP_ON_OFF
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
           if suo = @start_up_on_off
             suo.value.to_tlv
           else
@@ -270,31 +270,31 @@ module Matter
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         case attribute_id
         when ATTR_ON_TIME
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
           on_time = decode_u16(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless on_time
+          return InteractionModel::Status.invalid_data_type unless on_time
           @on_time = on_time
           increment_version
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         when ATTR_OFF_WAIT_TIME
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
           off_wait_time = decode_u16(value)
-          return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless off_wait_time
+          return InteractionModel::Status.invalid_data_type unless off_wait_time
           @off_wait_time = off_wait_time
           increment_version
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         when ATTR_START_UP_ON_OFF
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedAttribute) unless feature_map.lighting?
+          return InteractionModel::Status.unsupported_attribute unless feature_map.lighting?
           # Nullable enum
           if tlv_null?(value)
             @start_up_on_off = nil
           else
             start_up = decode_u8(value)
-            return InteractionModel::Status.new(InteractionModel::StatusCode::InvalidDataType) unless start_up
+            return InteractionModel::Status.invalid_data_type unless start_up
             @start_up_on_off = StartUpOnOff.from_value(start_up)
           end
           increment_version
-          InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+          InteractionModel::Status.success
         else
           super
         end
@@ -305,22 +305,22 @@ module Matter
         when CMD_OFF
           handle_off
         when CMD_ON
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand) if feature_map.off_only?
+          return InteractionModel::Status.unsupported_command if feature_map.off_only?
           handle_on
         when CMD_TOGGLE
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand) if feature_map.off_only?
+          return InteractionModel::Status.unsupported_command if feature_map.off_only?
           handle_toggle
         when CMD_OFF_WITH_EFFECT
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand) unless feature_map.lighting?
+          return InteractionModel::Status.unsupported_command unless feature_map.lighting?
           handle_off_with_effect(fields)
         when CMD_ON_WITH_RECALL_GLOBAL_SCENE
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand) unless feature_map.lighting?
+          return InteractionModel::Status.unsupported_command unless feature_map.lighting?
           handle_on_with_recall_global_scene
         when CMD_ON_WITH_TIMED_OFF
-          return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand) unless feature_map.lighting?
+          return InteractionModel::Status.unsupported_command unless feature_map.lighting?
           handle_on_with_timed_off(fields)
         else
-          InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedCommand)
+          InteractionModel::Status.unsupported_command
         end
       end
 
@@ -329,7 +329,7 @@ module Matter
         if feature_map.lighting?
           @global_scene_control = false
         end
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       end
 
       private def handle_on : InteractionModel::Status
@@ -337,7 +337,7 @@ module Matter
         if feature_map.lighting?
           @global_scene_control = true
         end
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       end
 
       private def handle_toggle : InteractionModel::Status
@@ -353,13 +353,13 @@ module Matter
         # For now, just turn off
         set_on_off(false)
         @global_scene_control = false
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       end
 
       private def handle_on_with_recall_global_scene : InteractionModel::Status
         set_on_off(true)
         @global_scene_control = true
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       end
 
       private def handle_on_with_timed_off(fields : Bytes) : InteractionModel::Status
@@ -367,7 +367,7 @@ module Matter
         # For now, just turn on
         set_on_off(true)
         @global_scene_control = true
-        InteractionModel::Status.new(InteractionModel::StatusCode::Success)
+        InteractionModel::Status.success
       end
 
       private def set_on_off(value : Bool)
