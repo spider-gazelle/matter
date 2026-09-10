@@ -37,12 +37,12 @@ describe Matter::Cluster::GroupsCluster do
   it "creates cluster without group names" do
     cluster = Matter::Cluster::GroupsCluster.new(endpoint(1), feature_map: Matter::Cluster::GroupsCluster::Feature::None)
     cluster.feature_map.group_names?.should be_false
-    read(cluster, Matter::Cluster::GroupsCluster::NAME_SUPPORT).should eq(0_u8)
+    read(cluster, Matter::Cluster::GroupsCluster::ATTR_NAME_SUPPORT).should eq(0_u8)
   end
 
   it "reports group name support" do
     cluster = Matter::Cluster::GroupsCluster.new(endpoint(1))
-    read(cluster, Matter::Cluster::GroupsCluster::NAME_SUPPORT).should eq(1_u8)
+    read(cluster, Matter::Cluster::GroupsCluster::ATTR_NAME_SUPPORT).should eq(1_u8)
     read(cluster, Matter::Cluster::Base::GLOBAL_FEATURE_MAP).should eq(1_u32)
     cluster.attributes.size.should eq(1)
     cluster.attributes.first.name.should eq("nameSupport")
