@@ -69,7 +69,7 @@ describe Matter::Cluster::ScenesManagementCluster do
       field_set = Matter::Cluster::ScenesManagementCluster::ExtensionFieldSet.new(6_u32, [{0_u32, TLV::Any.new(1_u8)}])
       add_scene_direct(cluster1, fabric_index: 1_u8, group_id: 1_u16, scene_id: 1_u8, scene_name: "Test Scene", extension_field_sets: [field_set])
       add_scene_direct(cluster1, fabric_index: 1_u8, group_id: 1_u16, scene_id: 2_u8, scene_name: "Another Scene")
-      cluster1.fabric_scene_info[1_u8] = Matter::Cluster::ScenesManagementCluster::SceneInfo.new(scene_count: 2_u8, fabric_index: 1_u8)
+      cluster1.scene_info_by_fabric[1_u8] = Matter::Cluster::ScenesManagementCluster::SceneInfo.new(scene_count: 2_u8, fabric_index: 1_u8)
       cluster1.data_version = 10_u32
 
       document = cluster1.save_state.as(Matter::Storage::Document)
@@ -86,7 +86,7 @@ describe Matter::Cluster::ScenesManagementCluster do
       restored.extension_field_sets.size.should eq(1)
       restored.extension_field_sets[0].cluster_id.should eq(6_u32)
       restored.extension_field_sets[0].attribute_value_list.map { |id, value| {id, value.value} }.should eq([{0_u32, 1_u8}])
-      cluster2.fabric_scene_info[1_u8].scene_count.should eq(2_u8)
+      cluster2.scene_info_by_fabric[1_u8].scene_count.should eq(2_u8)
       cluster2.data_version.should eq(10_u32)
     end
 
