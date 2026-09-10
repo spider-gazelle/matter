@@ -11,7 +11,7 @@ require "../../src/matter/cluster/on_off_cluster"
 require "../../src/matter/cluster/level_control_cluster"
 require "../../src/matter/cluster/color_control_cluster"
 require "../../src/matter/cluster/groups_cluster"
-require "../../src/matter/cluster/scenes_cluster"
+require "../../src/matter/cluster/scenes_management_cluster"
 require "tlv"
 
 # Helper to extract integer value from TLV::Any
@@ -58,7 +58,7 @@ describe "Descriptor Integration" do
       # Descriptor is already added automatically
       descriptor.add_server(Matter::Cluster::IdentifyCluster)
         .add_server(Matter::Cluster::GroupsCluster)
-        .add_server(Matter::Cluster::ScenesCluster)
+        .add_server(Matter::Cluster::ScenesManagementCluster)
         .add_server(Matter::Cluster::OnOffCluster)
 
       # No client clusters (this device doesn't control other devices)
@@ -87,7 +87,7 @@ describe "Descriptor Integration" do
       servers_tlv = descriptor.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
       parsed = TLV::Any.from_slice(servers_tlv.as(Bytes))
       clusters = parsed.value.as(Array(TLV::Any))
-      clusters.size.should eq(5) # Descriptor + Identify + Groups + Scenes + On/Off
+      clusters.size.should eq(5) # Descriptor + Identify + Groups + Scenes Management + On/Off
 
       # Controller knows it can control this light via On/Off cluster
       descriptor.has_server_cluster?(Matter::Cluster::OnOffCluster).should be_true
@@ -387,7 +387,7 @@ describe "Descriptor Integration" do
       # Full featured color light clusters
       descriptor.add_server(Matter::Cluster::IdentifyCluster)
         .add_server(Matter::Cluster::GroupsCluster)
-        .add_server(Matter::Cluster::ScenesCluster)
+        .add_server(Matter::Cluster::ScenesManagementCluster)
         .add_server(Matter::Cluster::OnOffCluster)
         .add_server(Matter::Cluster::LevelControlCluster)
       descriptor.server_list << 0x0300_u32 # Color Control (not yet implemented)
@@ -398,7 +398,7 @@ describe "Descriptor Integration" do
         dimming:     descriptor.has_server_cluster?(Matter::Cluster::LevelControlCluster),
         color:       descriptor.has_server_cluster?(0x0300_u32), # Color Control (not yet implemented)
         groups:      descriptor.has_server_cluster?(Matter::Cluster::GroupsCluster),
-        scenes:      descriptor.has_server_cluster?(Matter::Cluster::ScenesCluster),
+        scenes:      descriptor.has_server_cluster?(Matter::Cluster::ScenesManagementCluster),
         occupancy:   descriptor.has_server_cluster?(0x0406_u32), # Occupancy Sensing (not present)
         temperature: descriptor.has_server_cluster?(0x0402_u32), # Temperature Measurement (not present)
       }

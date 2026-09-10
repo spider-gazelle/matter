@@ -1,5 +1,4 @@
 require "./cluster"
-require "./definitions/groups"
 require "tlv"
 require "json"
 

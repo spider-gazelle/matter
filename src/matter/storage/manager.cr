@@ -81,19 +81,6 @@ module Matter
         Log.info { "Restored state for #{restored} cluster(s)" } if restored > 0
         restored
       end
-
-      def delete_cluster_state(cluster : Cluster::Base) : Nil
-        @storage.delete(CLUSTER_STATE_CONTEXT, cluster.persistence_key)
-      rescue ex
-        Log.error(exception: ex) { "Failed to delete cluster state (cluster=#{cluster.name} key=#{cluster.persistence_key})" }
-      end
-
-      def clear_all_cluster_states : Nil
-        @storage.clear_all(CLUSTER_STATE_CONTEXT)
-        Log.info { "Cleared all cluster state" }
-      rescue ex
-        Log.error(exception: ex) { "Failed to clear cluster state (context=#{CLUSTER_STATE_CONTEXT})" }
-      end
     end
   end
 end

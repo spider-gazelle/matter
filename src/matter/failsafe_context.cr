@@ -1,7 +1,5 @@
 require "log"
 require "./failsafe_timer"
-require "./fabric_manager"
-require "./session_manager"
 require "./commissioning_window"
 require "./cluster/network_commissioning_cluster"
 require "./cluster/general_commissioning_cluster"
@@ -236,14 +234,10 @@ module Matter
     # 8. Reset regulatory config
     # 9. Clean up temporary state
     #
-    # @param fabric_manager FabricManager for fabric operations
-    # @param session_manager SessionManager for PASE cleanup
     # @param network_commissioning NetworkCommissioning cluster for network state restoration
     # @param commissioning_window For closing windows
     # @param general_commissioning GeneralCommissioning cluster for regulatory config reset
     def rollback(
-      fabric_manager : FabricManager? = nil,
-      session_manager : SessionManager? = nil,
       network_commissioning : Cluster::NetworkCommissioningCluster? = nil,
       commissioning_window : CommissioningWindow? = nil,
       general_commissioning : Cluster::GeneralCommissioningCluster? = nil,
@@ -251,34 +245,12 @@ module Matter
       Log.warn { "Performing failsafe rollback" }
 
       # Step 1: Revoke added fabric (if AddNOC was used)
-      if added_index = @added_fabric_index
-        if fm = fabric_manager
-          begin
-            fm.remove_fabric(added_index)
-            Log.info { "Rolled back added fabric: #{added_index}" }
-          rescue ex
-            Log.error(exception: ex) { "Failed to rollback added fabric (fabric_index=#{added_index})" }
-          end
-        end
-      end
-
       # Step 2: Revert UpdateNOC changes
-      if @for_update_noc
-        if snapshot = @noc_update_snapshot
-          if fm = fabric_manager
-            fabric_index, operational_cert, operational_key = snapshot
-            begin
-              fm.restore_noc(fabric_index, operational_cert, operational_key)
-              Log.info { "Reverted UpdateNOC changes for fabric #{fabric_index}" }
-            rescue ex
-              Log.error(exception: ex) do
-                "Failed to revert UpdateNOC changes (fabric_index=#{fabric_index} noc_bytes=#{operational_cert.size} noc_hex=#{operational_cert.hexstring} key_bytes=#{operational_key.size})"
-              end
-            end
-          end
-        else
-          Log.warn { "UpdateNOC marked but no snapshot recorded" }
-        end
+      # Not performed here: this context holds no reference to the fabric table.
+      # `added_fabric_index` and `noc_update_snapshot` are retained so a caller
+      # with fabric access can act on them before invoking rollback.
+      if @for_update_noc && @noc_update_snapshot.nil?
+        Log.warn { "UpdateNOC marked but no snapshot recorded" }
       end
 
       # Step 3: Restore network commissioning state
@@ -294,14 +266,7 @@ module Matter
       end
 
       # Step 4: Clear PASE sessions
-      if sm = session_manager
-        begin
-          sm.clear_pase_sessions
-          Log.info { "Cleared PASE sessions" }
-        rescue ex
-          Log.error(exception: ex) { "Failed to clear PASE sessions (session_manager=#{sm.class})" }
-        end
-      end
+      # Not performed here: sessions live in the protocol message handler.
 
       # Step 5: Reset breadcrumb to 0
       @breadcrumb = 0_u64
@@ -357,11 +322,4 @@ module Matter
       Log.debug { "Closed failsafe context" }
     end
   end
-
-  # Note: The following classes are now implemented in separate files:
-  # - FabricManager (./fabric_manager.cr)
-  # - SessionManager (./session_manager.cr)
-  # - CommissioningWindow (./commissioning_window.cr)
-  # - Cluster::NetworkCommissioningCluster (./cluster/network_commissioning_cluster.cr)
-  # - Cluster::GeneralCommissioningCluster (./cluster/general_commissioning_cluster.cr)
 end

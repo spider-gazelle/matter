@@ -2,7 +2,30 @@ require "../spec_helper"
 require "../../src/matter/cluster/administrator_commissioning_cluster"
 require "../../src/matter/cluster/general_commissioning_cluster"
 require "../../src/matter/failsafe_context"
-require "../../src/matter/session_manager"
+require "../../src/matter/session/context"
+
+# Symmetric key length used by Matter secure sessions.
+private SESSION_KEY_BYTES = Matter::Crypto::CRYPTO_SYMMETRIC_KEY_LENGTH
+
+# Builds a session in the form the protocol layer keeps them in
+# `Protocol::MessageHandler#sessions`.
+private def secure_session(
+  session_id : UInt16,
+  peer_session_id : UInt16,
+  case_session : Bool,
+  fabric_index : UInt8? = nil,
+) : Matter::Session::SecureContext
+  Matter::Session::SecureContext.new(
+    session_id: session_id,
+    peer_session_id: peer_session_id,
+    session_type: Matter::Session::SessionType::Unicast,
+    encryption_key: Random::Secure.random_bytes(SESSION_KEY_BYTES),
+    decryption_key: Random::Secure.random_bytes(SESSION_KEY_BYTES),
+    initiator: false,
+    case_session: case_session,
+    fabric_index: fabric_index
+  )
+end
 
 module Matter
   describe "Commissioning Flow Integration" do
@@ -409,27 +432,21 @@ module Matter
       end
     end
 
-    describe "callback integration with SessionManager" do
+    describe "callback integration with the session store" do
       it "clears PASE sessions on successful commissioning" do
-        # Create integrated system
-        session_manager = SessionManager.new
+        # Same store type as Protocol::MessageHandler#sessions
+        sessions = {} of UInt16 => Session::SecureContext
         general_comm = Cluster::GeneralCommissioningCluster.new
 
         # Wire up callback
         general_comm.on_clear_pase_sessions = -> : Nil {
-          # Clear all PASE sessions from session manager
-          session_manager.pase_session_ids.each do |session_id|
-            session_manager.remove_pase_session(session_id)
-          end
+          sessions.reject! { |_, session| !session.case_session? }
         }
 
-        # Simulate commissioning: Create some PASE sessions
-        pase_session1 = SessionManager::PaseSession.new(100_u16, passcode: 12345678_u32)
-        pase_session2 = SessionManager::PaseSession.new(101_u16, passcode: 87654321_u32)
-
-        session_manager.add_pase_session(pase_session1)
-        session_manager.add_pase_session(pase_session2)
-        session_manager.pase_session_ids.size.should eq(2)
+        # Simulate commissioning: establish some PASE sessions
+        sessions[100_u16] = secure_session(100_u16, 1100_u16, case_session: false)
+        sessions[101_u16] = secure_session(101_u16, 1101_u16, case_session: false)
+        sessions.size.should eq(2)
 
         # Complete commissioning
         arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
@@ -442,7 +459,7 @@ module Matter
         response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
 
         # PASE sessions should be cleared
-        session_manager.pase_session_ids.should be_empty
+        sessions.should be_empty
       end
 
       it "persists fabric table on successful commissioning" do
@@ -472,9 +489,9 @@ module Matter
         persisted_fabric_data.should_not be_nil
       end
 
-      it "integrates with SessionManager for full commissioning flow" do
+      it "integrates with the session store for full commissioning flow" do
         # Create complete system
-        session_manager = SessionManager.new
+        sessions = {} of UInt16 => Session::SecureContext
         admin_comm = Cluster::AdministratorCommissioningCluster.new
         general_comm = Cluster::GeneralCommissioningCluster.new
 
@@ -486,9 +503,7 @@ module Matter
 
         # Wire up all callbacks
         general_comm.on_clear_pase_sessions = -> : Nil {
-          session_manager.pase_session_ids.each do |session_id|
-            session_manager.remove_pase_session(session_id)
-          end
+          sessions.reject! { |_, session| !session.case_session? }
           pase_sessions_cleared = true
         }
 
@@ -504,9 +519,8 @@ module Matter
         general_comm.open_commissioning_window
 
         # Step 2: Establish PASE session (simulated)
-        pase_session = SessionManager::PaseSession.new(1000_u16, passcode: 12345678_u32)
-        session_manager.add_pase_session(pase_session)
-        session_manager.has_pase_session?(1000_u16).should be_true
+        pase_session_id = 1000_u16
+        sessions[pase_session_id] = secure_session(pase_session_id, 2000_u16, case_session: false)
 
         # Step 3: Arm failsafe (PASE session)
         arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
@@ -517,34 +531,28 @@ module Matter
 
         # Step 4: Add NOC and transition to CASE (simulated)
         # This would create fabric index 2
+        new_fabric_index = 2_u8
         rearm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 5_u16,
           breadcrumb: 150_u64
         )
-        general_comm.arm_failsafe(rearm_request, 2_u8, false)
+        general_comm.arm_failsafe(rearm_request, new_fabric_index, false)
 
-        # Create CASE session
-        case_session = SessionManager::CaseSession.new(
-          session_id: 3000_u16,
-          fabric_index: 2_u8,
-          peer_node_id: 0x2222222222222222_u64,
-          vendor_id: 0x1234_u16
-        )
-        session_manager.add_case_session(case_session)
+        # Establish CASE session on the new fabric
+        case_session_id = 3000_u16
+        sessions[case_session_id] = secure_session(case_session_id, 4000_u16, case_session: true, fabric_index: new_fabric_index)
 
         # Step 5: Complete commissioning
-        response = general_comm.commissioning_complete(2_u8, true)
+        response = general_comm.commissioning_complete(new_fabric_index, true)
         response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
 
         # Verify callbacks were invoked
         pase_sessions_cleared.should be_true
         fabric_table_persisted.should be_true
 
-        # Verify PASE session was cleared
-        session_manager.has_pase_session?(1000_u16).should be_false
-
-        # Verify CASE session still exists (not cleared)
-        session_manager.has_case_session?(3000_u16).should be_true
+        # Verify PASE session was cleared and the CASE session survived
+        sessions.has_key?(pase_session_id).should be_false
+        sessions[case_session_id].fabric_index.should eq(new_fabric_index)
 
         admin_comm.close
       end

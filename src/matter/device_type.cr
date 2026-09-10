@@ -108,7 +108,7 @@ module Matter
           0x001D_u32, # Descriptor
           0x0003_u32, # Identify
           0x0004_u32, # Groups
-          0x0005_u32, # Scenes
+          0x0062_u32, # Scenes Management
           0x0006_u32, # On/Off
         ],
         optional_server_clusters: [
@@ -126,7 +126,7 @@ module Matter
           0x001D_u32, # Descriptor
           0x0003_u32, # Identify
           0x0004_u32, # Groups
-          0x0005_u32, # Scenes
+          0x0062_u32, # Scenes Management
           0x0006_u32, # On/Off
           0x0008_u32, # Level Control
         ]
@@ -142,7 +142,7 @@ module Matter
           0x001D_u32, # Descriptor
           0x0003_u32, # Identify
           0x0004_u32, # Groups
-          0x0005_u32, # Scenes
+          0x0062_u32, # Scenes Management
           0x0006_u32, # On/Off
         ],
         optional_server_clusters: [
@@ -228,7 +228,7 @@ module Matter
           0x001D_u32, # Descriptor
           0x0003_u32, # Identify
           0x0004_u32, # Groups
-          0x0005_u32, # Scenes
+          0x0062_u32, # Scenes Management
           0x0201_u32, # Thermostat
         ],
         optional_server_clusters: [

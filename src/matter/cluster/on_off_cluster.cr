@@ -1,5 +1,4 @@
 require "./cluster"
-require "./definitions/on_off"
 
 module Matter
   module Cluster

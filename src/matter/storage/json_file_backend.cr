@@ -52,15 +52,6 @@ module Matter
         flush
       end
 
-      # Set multiple key-value pairs at once
-      def set(contexts : Array(String), values : Hash(String, Type)) : Nil
-        raise Exception.new("Context must not be empty!") if contexts.size == 0
-
-        values.each do |key, value|
-          set(contexts, key, value)
-        end
-      end
-
       def delete(contexts : Array(String), key : String) : Nil
         raise Exception.new("Context and key must not be empty!") if contexts.size == 0 || key.size == 0
 

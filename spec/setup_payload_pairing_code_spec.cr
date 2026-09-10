@@ -1,5 +1,5 @@
-require "../spec_helper"
-require "../../src/matter/setup_payload"
+require "./spec_helper"
+require "../src/matter/setup_payload"
 
 # Ported from matter.js PairingCodeSchemaTest.ts
 # Tests pairing code encoding/decoding compatibility

@@ -18,10 +18,8 @@ describe Matter::Storage::MemoryBackend do
     it "multi-write and read success" do
       storage = Matter::Storage::MemoryBackend.new
 
-      storage.set(["context"], {
-        "key"  => "value",
-        "key2" => "value2",
-      })
+      storage.set(["context"], "key", "value")
+      storage.set(["context"], "key2", "value2")
 
       value = storage.get(["context"], "key")
       value.should eq("value")
@@ -32,10 +30,8 @@ describe Matter::Storage::MemoryBackend do
     it "multi-write and values read" do
       storage = Matter::Storage::MemoryBackend.new
 
-      storage.set(["context"], {
-        "key"  => "value",
-        "key2" => "value2",
-      })
+      storage.set(["context"], "key", "value")
+      storage.set(["context"], "key2", "value2")
 
       values = storage.values(["context"])
       values.should eq({"key" => "value", "key2" => "value2"})
@@ -270,11 +266,9 @@ describe Matter::Storage::MemoryBackend do
       storage = Matter::Storage::MemoryBackend.new
 
       # Initial configuration
-      storage.set(["app", "config"], {
-        "theme"    => "dark",
-        "language" => "en",
-        "version"  => "1.0",
-      })
+      storage.set(["app", "config"], "theme", "dark")
+      storage.set(["app", "config"], "language", "en")
+      storage.set(["app", "config"], "version", "1.0")
 
       # Update single value
       storage.set(["app", "config"], "theme", "light")

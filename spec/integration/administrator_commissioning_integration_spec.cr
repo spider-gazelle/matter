@@ -1,8 +1,30 @@
 require "../spec_helper"
 require "../../src/matter/cluster/administrator_commissioning_cluster"
 require "../../src/matter/cluster/general_commissioning_cluster"
-require "../../src/matter/session_manager"
 require "../../src/matter/session/pase/pase"
+
+# Symmetric key length used by Matter secure sessions.
+private SESSION_KEY_BYTES = Matter::Crypto::CRYPTO_SYMMETRIC_KEY_LENGTH
+
+# Builds a session in the form the protocol layer keeps them in
+# `Protocol::MessageHandler#sessions`.
+private def secure_session(
+  session_id : UInt16,
+  peer_session_id : UInt16,
+  case_session : Bool,
+  fabric_index : UInt8? = nil,
+) : Matter::Session::SecureContext
+  Matter::Session::SecureContext.new(
+    session_id: session_id,
+    peer_session_id: peer_session_id,
+    session_type: Matter::Session::SessionType::Unicast,
+    encryption_key: Random::Secure.random_bytes(SESSION_KEY_BYTES),
+    decryption_key: Random::Secure.random_bytes(SESSION_KEY_BYTES),
+    initiator: false,
+    case_session: case_session,
+    fabric_index: fabric_index
+  )
+end
 
 module Matter
   describe "Administrator Commissioning Integration" do
@@ -145,49 +167,6 @@ module Matter
     end
 
     describe "PASE session integration" do
-      it "integrates with PASE session establishment" do
-        admin_comm = Cluster::AdministratorCommissioningCluster.new
-        session_manager = SessionManager.new
-        admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
-
-        # Track PASE configuration
-        configured_pin : UInt32? = nil
-        configured_iterations : UInt32? = nil
-        configured_salt : Bytes? = nil
-
-        # Wire up callback to capture PASE parameters
-        admin_comm.on_configure_pase_pin = ->(pin : UInt32, iterations : UInt32, salt : Bytes) : Nil {
-          configured_pin = pin
-          configured_iterations = iterations
-          configured_salt = salt
-        }
-
-        # Open basic commissioning window
-        open_request = Cluster::AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
-          commissioning_timeout: 5_u16
-        )
-        admin_comm.open_basic_commissioning_window(open_request, 1_u8, 0x1234_u16)
-
-        # Simulate PASE session establishment using configured parameters
-        configured_pin.should_not be_nil
-        configured_iterations.should_not be_nil
-        configured_salt.should_not be_nil
-
-        # Create PASE session with the configured PIN
-        pase_session = SessionManager::PaseSession.new(
-          session_id: 1000_u16,
-          passcode: configured_pin
-        )
-        session_manager.add_pase_session(pase_session)
-
-        # Verify session was created
-        session_manager.has_pase_session?(1000_u16).should be_true
-
-        # Clean up
-        session_manager.remove_pase_session(1000_u16)
-        admin_comm.close
-      end
-
       it "integrates PASE parameters with SPAKE2+ protocol" do
         admin_comm = Cluster::AdministratorCommissioningCluster.new
         admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
@@ -231,37 +210,28 @@ module Matter
 
     describe "full commissioning flow with callbacks" do
       it "coordinates PASE, failsafe, and commissioning window lifecycle" do
-        # Create integrated system
         admin_comm = Cluster::AdministratorCommissioningCluster.new
         general_comm = Cluster::GeneralCommissioningCluster.new
-        session_manager = SessionManager.new
+        # Same store type as Protocol::MessageHandler#sessions
+        sessions = {} of UInt16 => Session::SecureContext
 
         admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
         # Track events
         pase_started = false
         pase_stopped = false
-        failsafe_closed = false
-        pase_pin : UInt32? = nil
 
         # Wire up all callbacks
-        admin_comm.on_configure_pase_pin = ->(pin : UInt32, _iterations : UInt32, _salt : Bytes) : Nil {
+        admin_comm.on_configure_pase_pin = ->(_pin : UInt32, _iterations : UInt32, _salt : Bytes) : Nil {
           pase_started = true
-          pase_pin = pin
         }
 
         admin_comm.on_stop_pase_server = -> : Nil {
           pase_stopped = true
         }
 
-        admin_comm.on_close_failsafe = -> : Nil {
-          failsafe_closed = true
-        }
-
         general_comm.on_clear_pase_sessions = -> : Nil {
-          session_manager.pase_session_ids.each do |session_id|
-            session_manager.remove_pase_session(session_id)
-          end
+          sessions.reject! { |_, session| !session.case_session? }
         }
 
         # Step 1: Open commissioning window
@@ -275,9 +245,8 @@ module Matter
         admin_comm.window_open?.should be_true
 
         # Step 2: Establish PASE session
-        pase_session = SessionManager::PaseSession.new(1000_u16, passcode: pase_pin.as(UInt32))
-        session_manager.add_pase_session(pase_session)
-        session_manager.has_pase_session?(1000_u16).should be_true
+        pase_session_id = 1000_u16
+        sessions[pase_session_id] = secure_session(pase_session_id, 2000_u16, case_session: false)
 
         # Step 3: Arm failsafe
         arm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
@@ -288,27 +257,25 @@ module Matter
         general_comm.failsafe_armed?.should be_true
 
         # Step 4: Add NOC (simulated) - transition to CASE
+        new_fabric_index = 2_u8
         rearm_request = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
           expiry_length_seconds: 5_u16,
           breadcrumb: 150_u64
         )
-        general_comm.arm_failsafe(rearm_request, 2_u8, false)
+        general_comm.arm_failsafe(rearm_request, new_fabric_index, false)
 
-        # Create CASE session
-        case_session = SessionManager::CaseSession.new(
-          session_id: 3000_u16,
-          fabric_index: 2_u8,
-          peer_node_id: 0x2222222222222222_u64
-        )
-        session_manager.add_case_session(case_session)
+        # Establish CASE session on the new fabric
+        case_session_id = 3000_u16
+        sessions[case_session_id] = secure_session(case_session_id, 4000_u16, case_session: true, fabric_index: new_fabric_index)
 
         # Step 5: Complete commissioning
-        response = general_comm.commissioning_complete(2_u8, true)
+        response = general_comm.commissioning_complete(new_fabric_index, true)
         response.error_code.should eq(Cluster::GeneralCommissioningCluster::CommissioningError::OK)
 
         # Verify session cleanup happened
-        session_manager.has_pase_session?(1000_u16).should be_false # PASE cleared
-        session_manager.has_case_session?(3000_u16).should be_true  # CASE preserved
+        sessions.has_key?(pase_session_id).should be_false     # PASE cleared
+        sessions[case_session_id].case_session?.should be_true # CASE preserved
+        sessions[case_session_id].fabric_index.should eq(new_fabric_index)
         general_comm.failsafe_armed?.should be_false
 
         # Commissioning complete doesn't automatically close the window

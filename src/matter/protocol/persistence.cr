@@ -185,21 +185,6 @@ module Matter
           @storage.set(SESSION_CONTEXT, SESSION_KEY, sessions.to_json)
         end
 
-        private def load_case_sessions_from_storage : Hash(UInt16, Session::SecureContext)
-          stored = load_case_sessions
-          sessions = {} of UInt16 => Session::SecureContext
-
-          stored.each do |_, session_h|
-            session = Session::SecureContext.from_h(session_h)
-            next unless session.case_session?
-            sessions[session.session_id] = session
-          rescue
-            # Skip invalid entries
-          end
-
-          sessions
-        end
-
         private def load_subscriptions : Hash(String, Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil))))
           stored = @storage.get(SESSION_CONTEXT, SUBSCRIPTIONS_KEY)
           return ({} of String => Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil)))) if !stored.is_a?(String) || stored.empty?

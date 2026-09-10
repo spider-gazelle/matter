@@ -6,7 +6,7 @@ require "../src/matter/cluster/on_off_cluster"
 require "../src/matter/cluster/level_control_cluster"
 require "../src/matter/cluster/identify_cluster"
 require "../src/matter/cluster/groups_cluster"
-require "../src/matter/cluster/scenes_cluster"
+require "../src/matter/cluster/scenes_management_cluster"
 
 describe Matter::DeviceType do
   describe "device type definitions" do
@@ -30,7 +30,7 @@ describe Matter::DeviceType do
       dt.requires_cluster?(0x001D_u32).should be_true          # Descriptor
       dt.requires_cluster?(0x0003_u32).should be_true          # Identify
       dt.requires_cluster?(0x0004_u32).should be_true          # Groups
-      dt.requires_cluster?(0x0005_u32).should be_true          # Scenes
+      dt.requires_cluster?(0x0062_u32).should be_true          # Scenes Management
       dt.requires_cluster?(0x0006_u32).should be_true          # On/Off
       dt.supports_optional_cluster?(0x0008_u32).should be_true # Level Control
     end
@@ -215,12 +215,12 @@ describe Matter::Endpoint do
       descriptor.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(0x0100_u32, 2_u16)
       descriptor.server_list << 0x0003_u32
       descriptor.server_list << 0x0004_u32
-      descriptor.server_list << 0x0005_u32
+      descriptor.server_list << 0x0062_u32
       descriptor.server_list << 0x0006_u32
       endpoint.add_cluster(descriptor)
       endpoint.add_cluster(Matter::Cluster::IdentifyCluster.new(endpoint_id))
       endpoint.add_cluster(Matter::Cluster::GroupsCluster.new(endpoint_id))
-      endpoint.add_cluster(Matter::Cluster::ScenesCluster.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::ScenesManagementCluster.new(endpoint_id))
       endpoint.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint_id))
 
       endpoint.valid?.should be_true
@@ -254,13 +254,13 @@ describe Matter::Endpoint do
       descriptor.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(0x0101_u32, 2_u16)
       descriptor.server_list << 0x0003_u32
       descriptor.server_list << 0x0004_u32
-      descriptor.server_list << 0x0005_u32
+      descriptor.server_list << 0x0062_u32
       descriptor.server_list << 0x0006_u32
       descriptor.server_list << 0x0008_u32
       endpoint.add_cluster(descriptor)
       endpoint.add_cluster(Matter::Cluster::IdentifyCluster.new(endpoint_id))
       endpoint.add_cluster(Matter::Cluster::GroupsCluster.new(endpoint_id))
-      endpoint.add_cluster(Matter::Cluster::ScenesCluster.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::ScenesManagementCluster.new(endpoint_id))
       endpoint.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint_id))
       endpoint.add_cluster(Matter::Cluster::LevelControlCluster.new(endpoint_id))
 
@@ -541,12 +541,12 @@ describe Matter::MatterNode do
       descriptor1.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(0x0100_u32, 2_u16)
       descriptor1.server_list << 0x0003_u32
       descriptor1.server_list << 0x0004_u32
-      descriptor1.server_list << 0x0005_u32
+      descriptor1.server_list << 0x0062_u32
       descriptor1.server_list << 0x0006_u32
       endpoint1.add_cluster(descriptor1)
       endpoint1.add_cluster(Matter::Cluster::IdentifyCluster.new(endpoint1_id))
       endpoint1.add_cluster(Matter::Cluster::GroupsCluster.new(endpoint1_id))
-      endpoint1.add_cluster(Matter::Cluster::ScenesCluster.new(endpoint1_id))
+      endpoint1.add_cluster(Matter::Cluster::ScenesManagementCluster.new(endpoint1_id))
       endpoint1.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint1_id))
 
       node.add_endpoint(endpoint1)
