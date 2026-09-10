@@ -9,6 +9,35 @@ require "../../src/matter/cluster/level_control_cluster"
 require "../../src/matter/cluster/thermostat_cluster"
 require "../../src/matter/cluster/occupancy_sensing_cluster"
 require "../../src/matter/interaction_model/tlv_messages"
+require "../../src/matter/cluster/fan_control_cluster"
+
+# Decodes a writable enum attribute straight through `Base#decode`, so a type
+# mismatch is raised from inside the TLV shard rather than pre-screened by a
+# width helper.
+private class EnumWriteCluster < Matter::Cluster::Base
+  CLUSTER_ID = 0xFFF1_FC01_u32 # manufacturer-specific test cluster
+  ATTR_MODE  =      0x0000_u32
+
+  getter mode : Matter::Cluster::FanControlCluster::FanMode = Matter::Cluster::FanControlCluster::FanMode::Off
+
+  def initialize(endpoint_id : Matter::DataType::EndpointNumber)
+    super(endpoint_id, Matter::DataType::ClusterId.new(CLUSTER_ID))
+  end
+
+  def name : String
+    "EnumWrite"
+  end
+
+  def attributes : Array(Matter::Cluster::AttributeMetadata)
+    [Matter::Cluster::AttributeMetadata.new(id: Matter::DataType::AttributeId.new(ATTR_MODE), name: "mode", type: :enum8, writable: true)]
+  end
+
+  protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : Matter::InteractionModel::Status
+    return super unless attribute_id == ATTR_MODE
+    @mode = decode(value, Matter::Cluster::FanControlCluster::FanMode)
+    Matter::InteractionModel::Status.success
+  end
+end
 
 # Width and type preservation for attribute writes from the official chip-tool.
 private def write_via_im(cluster : Matter::Cluster::Base, attribute_id : UInt32, data : TLV::Any) : Matter::InteractionModel::AttributeStatusIB
@@ -319,5 +348,15 @@ describe "UTF-8 attribute writes" do
     status.status.status.should eq(Matter::InteractionModel::StatusCode::InvalidDataType.value)
     cluster.node_label.should eq(original_label)
     cluster.data_version.should eq(original_version)
+  end
+
+  it "a mistyped enum write yields InvalidDataType" do
+    fan = Matter::Cluster::FanControlCluster.new(endpoint(1))
+    expect_status(write(fan, Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, "auto"), Matter::InteractionModel::StatusCode::InvalidDataType)
+    fan.fan_mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Off)
+
+    cluster = EnumWriteCluster.new(endpoint(1))
+    expect_status(write(cluster, EnumWriteCluster::ATTR_MODE, "auto"), Matter::InteractionModel::StatusCode::InvalidDataType)
+    cluster.mode.should eq(Matter::Cluster::FanControlCluster::FanMode::Off)
   end
 end

@@ -1,5 +1,11 @@
 # Lessons
 
+- 2026-09-11: The tlv shard should raise `TLV::DeserializationError` for enum/union mismatches; today it
+  uses `raise "Cannot deserialize ..."` (a bare `Exception`, not `RuntimeError`) and `deserialize_field`
+  only re-wraps `TypeCastError`. Until the shard is fixed, `Cluster::Base#decode` normalises every
+  deserialization failure to `TLV::DeserializationError` so peers get InvalidCommand/InvalidDataType,
+  never Failure. Probe what a dependency actually raises before writing a rescue clause for it.
+
 - 2026-09-10: If a referenced task plan is missing, check the local planning directory before
   proposing to reconstruct it. This phase's approved detail was in `~/.claude/plans/`.
 - 2026-09-10: A locked compiler cache does not serialize Docker image exports. Shared builder

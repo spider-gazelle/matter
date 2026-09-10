@@ -228,7 +228,7 @@ module Matter
       rescue ex : Matter::ClusterError
         Log.warn(exception: ex) { "#{self.class.name}: write attribute 0x#{attribute_id.to_s(16)} rejected" }
         ex.to_status
-      rescue ex : TLV::DeserializationError | Matter::CodecError | ArgumentError
+      rescue ex : TLV::DeserializationError | TypeCastError | Matter::CodecError | ArgumentError
         Log.warn(exception: ex) { "#{self.class.name}: write attribute 0x#{attribute_id.to_s(16)} rejected" }
         InteractionModel::Status.invalid_data_type
       rescue ex
@@ -250,9 +250,21 @@ module Matter
       end
 
       # Decode values without losing the TLV type at the cluster boundary.
+      #
+      # Every failure raised by the tlv shard is a fault in the peer's encoding,
+      # so it is normalised to `TLV::DeserializationError` for the status mapping
+      # in `write_attribute` / `invoke_command`. The shard itself raises a bare
+      # `Exception` for enum and union mismatches (`raise "Cannot deserialize ..."`)
+      # and `deserialize_field` only re-wraps `TypeCastError`.
       protected def decode(value : TLV::Any?, type : T.class) : T forall T
         raise TLV::DeserializationError.new("Missing command fields") unless value
-        decoded = TLV::Serializable.deserialize_value(value, type)
+        decoded = begin
+          TLV::Serializable.deserialize_value(value, type)
+        rescue ex : TLV::DeserializationError
+          raise ex
+        rescue ex
+          raise TLV::DeserializationError.new(ex.message, cause: ex)
+        end
         {% if T == String %}
           raise TLV::DeserializationError.new("Invalid UTF-8 string") unless decoded.valid_encoding?
         {% end %}
@@ -326,7 +338,7 @@ module Matter
       rescue ex : Matter::ClusterError
         Log.warn(exception: ex) { "#{self.class.name}: command 0x#{command_id.to_s(16)} rejected" }
         ex.to_status
-      rescue ex : TLV::DeserializationError | Matter::CodecError | ArgumentError
+      rescue ex : TLV::DeserializationError | TypeCastError | Matter::CodecError | ArgumentError
         Log.warn(exception: ex) { "#{self.class.name}: command 0x#{command_id.to_s(16)} rejected" }
         InteractionModel::Status.invalid_command
       rescue ex

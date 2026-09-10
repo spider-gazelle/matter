@@ -44,6 +44,10 @@ module Matter
 
       CLUSTER_REVISION = 4_u16
 
+      # Group 0 is reserved and names are bounded in UTF-8 bytes (Matter 1.4 §1.3.7.1).
+      GROUP_ID_MIN          = 1_u16
+      GROUP_NAME_MAX_LENGTH =    16
+
       # Feature map
       property feature_map : Feature
 
@@ -144,7 +148,13 @@ module Matter
         when CMD_VIEW_GROUP
           req = decode(fields, Definitions::Groups::ViewGroupRequest)
           group_name = @groups[req.group_id.id]?
-          status = group_name ? InteractionModel::StatusCode::Success : InteractionModel::StatusCode::NotFound
+          status = if !valid_group_id?(req.group_id.id)
+                     InteractionModel::StatusCode::ConstraintError
+                   elsif group_name
+                     InteractionModel::StatusCode::Success
+                   else
+                     InteractionModel::StatusCode::NotFound
+                   end
           Cluster::CommandResponse.new(CMD_VIEW_GROUP_RESPONSE, tlv(Definitions::Groups::ViewGroupResponse.new(status, req.group_id, group_name || "")))
         when CMD_GET_GROUP_MEMBERSHIP
           req = decode(fields, Definitions::Groups::GetGroupMembershipRequest)
@@ -161,15 +171,22 @@ module Matter
           InteractionModel::Status.success
         when CMD_ADD_GROUP_IF_IDENTIFYING
           req = decode(fields, Definitions::Groups::AddGroupIfIdentifyingRequest)
-          add_group(req.group_id.id, req.group_name)
-          InteractionModel::Status.success
+          # No response struct is defined for this command, so the outcome is the command status.
+          InteractionModel::Status.new(add_group(req.group_id.id, req.group_name))
         else
           InteractionModel::Status.unsupported_command
         end
       end
 
+      private def valid_group_id?(group_id : UInt16) : Bool
+        group_id >= GROUP_ID_MIN
+      end
+
       # Add a group
       private def add_group(group_id : UInt16, group_name : String) : InteractionModel::StatusCode
+        unless valid_group_id?(group_id) && group_name.bytesize <= GROUP_NAME_MAX_LENGTH
+          return InteractionModel::StatusCode::ConstraintError
+        end
         if @groups.size >= @max_groups && !@groups.has_key?(group_id)
           return InteractionModel::StatusCode::ResourceExhausted
         end
@@ -181,6 +198,7 @@ module Matter
 
       # Remove a group
       private def remove_group(group_id : UInt16) : InteractionModel::StatusCode
+        return InteractionModel::StatusCode::ConstraintError unless valid_group_id?(group_id)
         if @groups.delete(group_id)
           increment_version
           InteractionModel::StatusCode::Success

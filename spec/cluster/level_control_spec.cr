@@ -449,6 +449,31 @@ describe Matter::Cluster::LevelControlCluster do
     end
   end
 
+  describe "nullable attribute writes" do
+    nullable_attributes = {
+      Matter::Cluster::LevelControlCluster::ATTR_ON_LEVEL               => 42_u8,
+      Matter::Cluster::LevelControlCluster::ATTR_ON_TRANSITION_TIME     => 7_u16,
+      Matter::Cluster::LevelControlCluster::ATTR_OFF_TRANSITION_TIME    => 8_u16,
+      Matter::Cluster::LevelControlCluster::ATTR_DEFAULT_MOVE_RATE      => 10_u8,
+      Matter::Cluster::LevelControlCluster::ATTR_START_UP_CURRENT_LEVEL => 12_u8,
+    }
+
+    nullable_attributes.each do |attribute_id, populated|
+      it "accepts null for attribute 0x#{attribute_id.to_s(16)}" do
+        cluster = Matter::Cluster::LevelControlCluster.new(endpoint(1),
+          feature_map: Matter::Cluster::LevelControlCluster::Feature::OnOff | Matter::Cluster::LevelControlCluster::Feature::Lighting)
+        expect_success(write(cluster, attribute_id, populated))
+        read(cluster, attribute_id).should eq(populated)
+
+        changes = capture_changes(cluster) do
+          version_delta(cluster) { expect_success(write(cluster, attribute_id, nil)) }.should eq(1_i64)
+        end
+        changes.map(&.attribute).should eq([attribute_id])
+        read(cluster, attribute_id).should be_nil
+      end
+    end
+  end
+
   describe "error handling" do
     it "returns error for unsupported attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)

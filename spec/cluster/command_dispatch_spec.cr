@@ -29,6 +29,11 @@ private struct ThermostatSetpointWireRequest
   end
 end
 
+# MoveToHue request field tags (Matter 1.4 §3.2.11.4).
+private MOVE_TO_HUE_TAG_HUE             = 0_u8
+private MOVE_TO_HUE_TAG_DIRECTION       = 1_u8
+private MOVE_TO_HUE_TAG_TRANSITION_TIME = 2_u8
+
 private def dispatch_cluster_command(cluster : Matter::Cluster::Base, command : UInt32, request)
   path = Matter::InteractionModel::CommandPath.new(cluster.endpoint_id.number, cluster.cluster_id.id, command)
   data = Matter::InteractionModel::CommandDataIBTlv.new(path, request.to_tlv(nil))
@@ -54,5 +59,18 @@ describe "typed cluster command dispatch" do
 
     dispatch_cluster_command(thermostat, Matter::Cluster::ThermostatCluster::CMD_SETPOINT_RAISE_LOWER, request).should eq(Matter::InteractionModel::StatusCode::Success.value)
     thermostat.occupied_heating_setpoint.should eq(previous - 100)
+  end
+
+  it "a mistyped enum field yields InvalidCommand" do
+    color = Matter::Cluster::ColorControlCluster.new(endpoint(1))
+    # Direction is an enum on the wire; a string is the peer's fault, not an internal failure.
+    request = TLV::Any.new({
+      MOVE_TO_HUE_TAG_HUE             => TLV::Any.new(10_u8),
+      MOVE_TO_HUE_TAG_DIRECTION       => TLV::Any.new("shortest"),
+      MOVE_TO_HUE_TAG_TRANSITION_TIME => TLV::Any.new(0_u16),
+    } of TLV::TagId => TLV::Any)
+
+    expect_status(invoke(color, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, request), Matter::InteractionModel::StatusCode::InvalidCommand)
+    color.current_hue.should eq(0_u8)
   end
 end

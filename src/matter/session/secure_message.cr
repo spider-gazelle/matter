@@ -8,6 +8,8 @@ module Matter
     module SecureMessage
       extend self
 
+      Log = ::Log.for("matter.session.secure_message")
+
       NONCE_LENGTH = 13
       MIC_LENGTH   = 16
 
@@ -40,20 +42,26 @@ module Matter
         aad = Codec::MessageCodec::Base.encode_packet_header(header)
         node_id = session.case_session? ? (session.local_node_id.try(&.id) || source_node_id.try(&.id) || DataType::NodeId::UNSPECIFIED) : DataType::NodeId::UNSPECIFIED
         nonce = build_nonce(node_id, counter, aad[Codec::MessageCodec::SECURITY_FLAGS_OFFSET])
+        Log.trace { "Encoding secure message: session_id=#{session.peer_session_id}, counter=#{counter}, nonce_node_id=0x#{node_id.to_s(16)}, aad_bytes=#{aad.size}" }
         encrypted = crypto.encrypt(session.encryption_key, packet.payload, nonce, aad)
         {Slice.join([aad, encrypted]), counter}
       end
 
       # Replay classification belongs to the routing layer. Only authenticated,
       # successfully decoded messages advance the session's receive window.
+      #
+      # The received header bytes are the additional authenticated data: the
+      # peer signed exactly what it sent, including reserved flag bits, so a
+      # header re-encoded from parsed fields is never an acceptable substitute.
       def decode(
         session : SecureContext,
         packet : Codec::MessageCodec::Packet,
         crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
       ) : Codec::MessageCodec::Message
-        aad = packet.header_bytes || Codec::MessageCodec::Base.encode_packet_header(packet.header)
+        aad = packet.header_bytes || raise Matter::CodecError.new("Secure message decode: received header bytes required for authentication")
         node_id = session.case_session? ? (session.peer_node_id.try(&.id) || packet.header.source_node_id.try(&.id) || DataType::NodeId::UNSPECIFIED) : DataType::NodeId::UNSPECIFIED
         nonce = build_nonce(node_id, packet.header.message_id, aad[Codec::MessageCodec::SECURITY_FLAGS_OFFSET])
+        Log.trace { "Decoding secure message: session_id=#{session.session_id}, counter=#{packet.header.message_id}, nonce_node_id=0x#{node_id.to_s(16)}, aad_bytes=#{aad.size}" }
         plaintext = crypto.decrypt(session.decryption_key, packet.payload, nonce, aad)
         message = Codec::MessageCodec::Base.decode_payload(Codec::MessageCodec::Packet.new(packet.header, plaintext, aad))
         session.accept_peer_message_counter(packet.header.message_id)

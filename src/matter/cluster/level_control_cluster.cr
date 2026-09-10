@@ -409,6 +409,7 @@ module Matter
             InteractionModel::Status.invalid_data_type
           end
         when ATTR_ON_LEVEL
+          return write_null(ATTR_ON_LEVEL) { @on_level = nil } if value.value.nil?
           if new_level = narrow_u8?(value)
             if new_level >= @min_level && new_level <= @max_level
               @on_level = new_level
@@ -431,6 +432,7 @@ module Matter
           end
         when ATTR_ON_TRANSITION_TIME
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
+          return write_null(ATTR_ON_TRANSITION_TIME) { @on_transition_time = nil } if value.value.nil?
           if time = decode?(value, UInt16)
             @on_transition_time = time
             increment_version_and_notify(ATTR_ON_TRANSITION_TIME)
@@ -440,6 +442,7 @@ module Matter
           end
         when ATTR_OFF_TRANSITION_TIME
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
+          return write_null(ATTR_OFF_TRANSITION_TIME) { @off_transition_time = nil } if value.value.nil?
           if time = decode?(value, UInt16)
             @off_transition_time = time
             increment_version_and_notify(ATTR_OFF_TRANSITION_TIME)
@@ -449,6 +452,7 @@ module Matter
           end
         when ATTR_DEFAULT_MOVE_RATE
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
+          return write_null(ATTR_DEFAULT_MOVE_RATE) { @default_move_rate = nil } if value.value.nil?
           if rate = narrow_u8?(value)
             @default_move_rate = rate
             increment_version_and_notify(ATTR_DEFAULT_MOVE_RATE)
@@ -458,6 +462,7 @@ module Matter
           end
         when ATTR_START_UP_CURRENT_LEVEL
           return InteractionModel::Status.unsupported_attribute unless @feature_map.lighting?
+          return write_null(ATTR_START_UP_CURRENT_LEVEL) { @start_up_current_level = nil } if value.value.nil?
           if level = narrow_u8?(value)
             @start_up_current_level = level
             increment_version_and_notify(ATTR_START_UP_CURRENT_LEVEL)
@@ -468,6 +473,13 @@ module Matter
         else
           super
         end
+      end
+
+      # Nullable attributes accept TLV null; the block clears the backing field.
+      private def write_null(attribute_id : UInt32, &) : InteractionModel::Status
+        yield
+        increment_version_and_notify(attribute_id)
+        InteractionModel::Status.success
       end
 
       protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse

@@ -9,6 +9,7 @@ end
 
 describe Matter::Controller::Client do
   it "resends the same encrypted ACK for duplicate messages without advancing its outgoing counter" do
+    require_udp_sockets!
     client = ReplaySpecClient.new
     peer = UDPSocket.new(Socket::Family::INET6)
     peer.bind("::1", 0)

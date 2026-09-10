@@ -53,6 +53,17 @@ describe Matter::Session::SecureMessage do
     session.check_peer_message_counter(1_u32).accept?.should be_true
   end
 
+  it "refuses to decode a packet without the received header bytes" do
+    session = wire_session
+    encoded, _ = Matter::Session::SecureMessage.encode(session, wire_payload_header, Bytes[1])
+    packet = Matter::Codec::MessageCodec::Base.decode_packet(encoded)
+    bare = Matter::Codec::MessageCodec::Packet.new(packet.header, packet.payload)
+    expect_raises(Matter::CodecError, /header bytes/) do
+      Matter::Session::SecureMessage.decode(session, bare)
+    end
+    session.peer_message_counter.should be_nil
+  end
+
   it "rejects tampering with optional header identities" do
     session = wire_session
     encoded, _ = Matter::Session::SecureMessage.encode(session, wire_payload_header, Bytes[1],

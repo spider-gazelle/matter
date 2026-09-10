@@ -89,7 +89,8 @@ describe "CASE peer_node_id population" do
     encrypted_msg = Matter::Codec::MessageCodec::Message.new(
       packet_header: packet_header,
       payload_header: payload_header,
-      payload: encrypted_payload
+      payload: encrypted_payload,
+      header_bytes: aad
     )
 
     handler.handle_message(encrypted_msg, Socket::IPAddress.new("127.0.0.1", 5540))

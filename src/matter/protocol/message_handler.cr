@@ -421,6 +421,14 @@ module Matter
         end
       end
 
+      # Answers a duplicate request with the cached MRP response so the peer's
+      # retransmission still gets its ACK.
+      #
+      # Only counters the receive window classifies as `Duplicate` reach here: a
+      # retransmit older than `Transport::MessageCounter::WINDOW_SIZE` is `Stale`
+      # and dropped rather than resent. Within `MRP_DUPLICATE_RESPONSE_TTL` a
+      # peer cannot advance the counter that far, so that path is unreachable
+      # in practice.
       private def resend_cached_mrp_response?(session_id : UInt16, incoming_counter : UInt32, peer : Socket::IPAddress) : Bool
         now = Time.instant
         if cached = @mrp_response_cache[{session_id, incoming_counter}]?
@@ -661,10 +669,12 @@ module Matter
             message_counter = msg.packet_header.message_id
             case session.check_peer_message_counter(message_counter)
             when Transport::MessageCounter::CheckResult::Duplicate
-              resend_cached_mrp_response?(session_id, message_counter, peer)
+              unless resend_cached_mrp_response?(session_id, message_counter, peer)
+                Log.trace { "Dropping duplicate message with no cached response: session_id=#{session_id}, counter=#{message_counter}" }
+              end
               return
             when Transport::MessageCounter::CheckResult::Stale
-              Log.trace { "Dropping stale message: session_id=#{session_id}, counter=#{message_counter}" }
+              Log.trace { "Dropping stale message outside the receive window: session_id=#{session_id}, counter=#{message_counter}" }
               return
             end
 

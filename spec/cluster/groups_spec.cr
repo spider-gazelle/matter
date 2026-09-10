@@ -172,4 +172,49 @@ describe Matter::Cluster::GroupsCluster do
     cluster.group_count.should eq(2)
     view_test_group(cluster, 1_u16).group_name.should eq("Updated")
   end
+
+  describe "constraints (Matter 1.4 §1.3.7.1)" do
+    reserved_group = Matter::Cluster::GroupsCluster::GROUP_ID_MIN - 1
+    too_long_name = "x" * (Matter::Cluster::GroupsCluster::GROUP_NAME_MAX_LENGTH + 1)
+    # 16 bytes of UTF-8 but only 8 characters: the limit is in bytes.
+    max_length_name = "é" * (Matter::Cluster::GroupsCluster::GROUP_NAME_MAX_LENGTH // "é".bytesize)
+    max_length_name.bytesize.should eq(Matter::Cluster::GroupsCluster::GROUP_NAME_MAX_LENGTH)
+
+    it "answers AddGroup for the reserved group id with ConstraintError" do
+      cluster = Matter::Cluster::GroupsCluster.new(endpoint(1))
+      response = add_test_group(cluster, reserved_group, "Kitchen")
+      response.status_code.should eq(GroupsStatus::ConstraintError)
+      response.group_id.id.should eq(reserved_group)
+      cluster.groups.should be_empty
+    end
+
+    it "answers AddGroup with a name over #{Matter::Cluster::GroupsCluster::GROUP_NAME_MAX_LENGTH} bytes with ConstraintError" do
+      cluster = Matter::Cluster::GroupsCluster.new(endpoint(1))
+      add_test_group(cluster, 1_u16, too_long_name).status_code.should eq(GroupsStatus::ConstraintError)
+      cluster.groups.should be_empty
+      add_test_group(cluster, 1_u16, max_length_name).status_code.should eq(GroupsStatus::Success)
+      cluster.groups[1_u16].should eq(max_length_name)
+    end
+
+    it "answers AddGroupIfIdentifying constraint violations with ConstraintError" do
+      cluster = Matter::Cluster::GroupsCluster.new(endpoint(1))
+      command = Matter::Cluster::GroupsCluster::CMD_ADD_GROUP_IF_IDENTIFYING
+      request = GroupsDef::AddGroupIfIdentifyingRequest.new(Matter::DataType::GroupId.new(reserved_group), "Kitchen")
+      expect_status(invoke(cluster, command, request), GroupsStatus::ConstraintError)
+      request = GroupsDef::AddGroupIfIdentifyingRequest.new(Matter::DataType::GroupId.new(1_u16), too_long_name)
+      expect_status(invoke(cluster, command, request), GroupsStatus::ConstraintError)
+      cluster.groups.should be_empty
+    end
+
+    it "answers ViewGroup and RemoveGroup for the reserved group id with ConstraintError" do
+      cluster = Matter::Cluster::GroupsCluster.new(endpoint(1))
+      view = view_test_group(cluster, reserved_group)
+      view.status_code.should eq(GroupsStatus::ConstraintError)
+      view.group_id.id.should eq(reserved_group)
+      view.group_name.should eq("")
+      remove = remove_test_group(cluster, reserved_group)
+      remove.status_code.should eq(GroupsStatus::ConstraintError)
+      remove.group_id.id.should eq(reserved_group)
+    end
+  end
 end
