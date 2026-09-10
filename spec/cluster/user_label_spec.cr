@@ -19,8 +19,8 @@ describe Matter::Cluster::UserLabelCluster do
     meta = cluster.attributes.find { |attr| attr.id.id == Matter::Cluster::UserLabelCluster::ATTR_LABEL_LIST }
     meta.should_not be_nil
     meta = meta.as(Matter::Cluster::AttributeMetadata)
-    meta.name.should eq("LabelList")
-    meta.type.should eq(:list)
+    meta.name.should eq("labelList")
+    meta.type.should eq(:array)
     meta.writable?.should be_true
   end
 
@@ -52,6 +52,16 @@ describe Matter::Cluster::UserLabelCluster do
     status.status.should eq(Matter::InteractionModel::StatusCode::InvalidDataType)
   end
 
+  it "rejects LabelList entries longer than 16 bytes with ConstraintError" do
+    endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+    cluster = Matter::Cluster::UserLabelCluster.new(endpoint_id)
+
+    too_long = [Matter::Cluster::LabelStruct.new("room", "a" * (Matter::Cluster::UserLabelCluster::LABEL_MAX_LENGTH + 1))]
+    status = write(cluster, Matter::Cluster::UserLabelCluster::ATTR_LABEL_LIST, too_long)
+    status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
+    cluster.label_list.should be_empty
+  end
+
   it "persists and restores label list state" do
     endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
     cluster = Matter::Cluster::UserLabelCluster.new(endpoint_id, [
@@ -60,7 +70,7 @@ describe Matter::Cluster::UserLabelCluster do
 
     cluster.data_version = 3_u32
     document = cluster.save_state.as(Matter::Storage::Document)
-    document["labels"].should eq([Matter::Storage::Document{"label" => "a", "value" => "b"}] of Matter::Storage::Type)
+    document["label_list"].should eq([Matter::Storage::Document{"label" => "a", "value" => "b"}] of Matter::Storage::Type)
     document["data_version"].should eq(3_i64)
 
     restored = Matter::Cluster::UserLabelCluster.new(endpoint_id)
