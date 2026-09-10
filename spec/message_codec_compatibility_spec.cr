@@ -33,6 +33,10 @@ describe "MessageCodec Compatibility with matter.js" do
 
       # Verify payload exists
       decoded.payload.size.should be > 0
+
+      # Re-encoding the decoded message must reproduce the matter.js bytes exactly
+      re_encoded = Matter::Codec::MessageCodec::Base.encode_packet(Matter::Codec::MessageCodec::Base.encode_payload(decoded))
+      re_encoded.hexstring.should eq(encoded.hexstring)
     end
 
     it "decodes message with matter.js test vector 2" do
@@ -57,6 +61,10 @@ describe "MessageCodec Compatibility with matter.js" do
       decoded.payload_header.message_type.should eq(0x21_u8)
       decoded.payload_header.requires_acknowledge?.should be_true
       decoded.payload_header.acknowledged_message_id.should eq(401755914_u32)
+
+      # Re-encoding the decoded message must reproduce the matter.js bytes exactly
+      re_encoded = Matter::Codec::MessageCodec::Base.encode_packet(Matter::Codec::MessageCodec::Base.encode_payload(decoded))
+      re_encoded.hexstring.should eq(encoded.hexstring)
     end
 
     it "encodes and decodes message round-trip" do
@@ -96,6 +104,23 @@ describe "MessageCodec Compatibility with matter.js" do
       # Encode the message
       encoded_payload = Matter::Codec::MessageCodec::Base.encode_payload(message)
       encoded_packet = Matter::Codec::MessageCodec::Base.encode_packet(encoded_payload)
+
+      # Exact wire layout (all little-endian):
+      #   04                 packet flags: version 0 | HasSourceNodeId
+      #   3412               session id 0x1234
+      #   00                 security flags: unicast
+      #   2a000000           message id 42
+      #   8877665544332211   source node id 0x1122334455667788
+      #   03                 payload flags: IsInitiator | IsAck (acknowledged_message_id is non-nil)
+      #   05                 message type 5
+      #   6400               exchange id 100
+      #   0100               protocol id 1
+      #   00000000           acknowledged message id 0
+      #   48656c6c6f...      "Hello Matter Protocol"
+      encoded_packet.hexstring.should eq(
+        "043412002a0000008877665544332211" \
+        "0305640001000000000048656c6c6f204d61747465722050726f746f636f6c"
+      )
 
       # Decode it back
       decoded_packet = Matter::Codec::MessageCodec::Base.decode_packet(encoded_packet)
@@ -159,6 +184,68 @@ describe "MessageCodec Compatibility with matter.js" do
       decoded_message.packet_header.destination_group_id.as(Matter::DataType::GroupId).id.should eq(0xABCD_u16)
     end
 
+    # The Destination Group ID is a 16-bit field (Matter spec 4.4.1, matter.js
+    # MessageCodec.ts `writer.writeUInt16(destGroupId)`). `encode_packet_header`
+    # once wrote it as UInt32; the round-trip above never caught that because the
+    # decoder consumed the two stray zero bytes as payload flags + message type.
+    it "encodes group session packet with a 16-bit destination group id" do
+      dest_group_id = Matter::DataType::GroupId.new(0xABCD_u16)
+      flags = Matter::Codec::MessageCodec::Base.compute_flags(nil, nil, dest_group_id)
+      packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
+        session_id: 0x5678_u16,
+        session_type: Matter::Codec::MessageCodec::SessionType::Group,
+        message_id: 99_u32,
+        privacy_enhancements: false,
+        control_message: false,
+        message_extensions: false,
+        flags: flags,
+        security_flags: 1_u8,
+        destination_group_id: dest_group_id
+      )
+
+      payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(
+        exchange_id: 200_u16,
+        protocol_id: 2_u16,
+        message_type: 10_u8,
+        initiator_message: false,
+        requires_acknowledge: false,
+        acknowledged_message_id: 0_u32
+      )
+
+      message = Matter::Codec::MessageCodec::Message.new(
+        packet_header: packet_header,
+        payload_header: payload_header,
+        payload: Bytes.new(10)
+      )
+
+      encoded_payload = Matter::Codec::MessageCodec::Base.encode_payload(message)
+      encoded_packet = Matter::Codec::MessageCodec::Base.encode_packet(encoded_payload)
+
+      # Exact wire layout (all little-endian):
+      #   02                 packet flags: version 0 | HasDestGroupId
+      #   7856               session id 0x5678
+      #   01                 security flags: group session
+      #   63000000           message id 99
+      #   cdab               destination group id 0xABCD (16-bit)
+      #   02                 payload flags: IsAck (acknowledged_message_id is non-nil)
+      #   0a                 message type 10
+      #   c800               exchange id 200
+      #   0200               protocol id 2
+      #   00000000           acknowledged message id 0
+      #   00 * 10            payload
+      encoded_packet.hexstring.should eq(
+        "0278560163000000cdab" \
+        "020ac800020000000000" \
+        "00000000000000000000"
+      )
+
+      decoded_message = Matter::Codec::MessageCodec::Base.decode_payload(Matter::Codec::MessageCodec::Base.decode_packet(encoded_packet))
+      decoded_message.payload_header.exchange_id.should eq(200_u16)
+      decoded_message.payload_header.protocol_id.should eq(2_u16)
+      decoded_message.payload_header.message_type.should eq(10_u8)
+      decoded_message.payload.size.should eq(10)
+    end
+
     it "handles control messages correctly" do
       # No source or destination node IDs, so flags is just version bits
       flags = Matter::Codec::MessageCodec::Base.compute_flags(nil, nil, nil)
@@ -194,9 +281,24 @@ describe "MessageCodec Compatibility with matter.js" do
       decoded_packet = Matter::Codec::MessageCodec::Base.decode_packet(encoded_packet)
       decoded_message = Matter::Codec::MessageCodec::Base.decode_payload(decoded_packet)
 
+      # Exact wire layout (all little-endian):
+      #   00                 packet flags: version 0, no node ids
+      #   0100               session id 1
+      #   40                 security flags: IsControlMessage | unicast
+      #   01000000           message id 1
+      #   03                 payload flags: IsInitiator | IsAck (acknowledged_message_id is non-nil)
+      #   10                 message type 0x10
+      #   0100               exchange id 1
+      #   0000               protocol id 0
+      #   00000000           acknowledged message id 0
+      encoded_packet.hexstring.should eq("000100400100000003100100000000000000")
+
       # Verify the message encoded and decoded successfully
       decoded_message.packet_header.session_id.should eq(1_u16)
       decoded_message.payload_header.protocol_id.should eq(0_u16)
+      decoded_message.packet_header.control_message?.should be_true
+      decoded_message.payload_header.exchange_id.should eq(1_u16)
+      decoded_message.payload_header.message_type.should eq(0x10_u8)
     end
   end
 end

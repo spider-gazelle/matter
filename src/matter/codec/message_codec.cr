@@ -163,7 +163,7 @@ module Matter
 
           byte_format.encode(UInt64.new(source_node_id.as(DataType::NodeId).id), io) if source_node_id
           byte_format.encode(UInt64.new(dest_node_id.as(DataType::NodeId).id), io) if dest_node_id
-          byte_format.encode(UInt32.new(packet_header.destination_group_id.as(DataType::GroupId).id), io) if packet_header.destination_group_id
+          byte_format.encode(UInt16.new(packet_header.destination_group_id.as(DataType::GroupId).id), io) if packet_header.destination_group_id
         end
 
         def encode_payload_header(payload_header : PayloadHeader, io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian)
