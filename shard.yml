@@ -31,3 +31,7 @@ development_dependencies:
     github: veelenga/ameba
 
 license: MIT
+
+targets:
+  matter-storage:
+    main: src/matter/storage/cli.cr

@@ -19,6 +19,7 @@ require "./storage/file_backend"
 require "./storage/yaml_file"
 require "./storage/json_file"
 require "./storage/record"
+require "./storage/migrator"
 
 require "./storage/type"
 require "./storage/base"
