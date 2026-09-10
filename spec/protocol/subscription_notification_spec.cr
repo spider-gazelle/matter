@@ -164,7 +164,7 @@ describe "Subscription Notifications" do
 
         attribute_callback_called.should be_true
         state_callback_called.should be_true
-        state_value.should eq(true)
+        state_value.should be_true
       end
     end
   end

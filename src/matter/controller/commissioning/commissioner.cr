@@ -157,12 +157,13 @@ module Matter
 
           deadline = Time.instant + @timeout
           loop do
-            if dev = scanner.commissioning_devices.find { |device|
-                 disc = device.discriminator
-                 next false unless disc
-                 next true if disc == discriminator
-                 short_only && SetupPayload.short_discriminator(disc) == short_discriminator
-               }
+            dev = scanner.commissioning_devices.find do |device|
+              disc = device.discriminator
+              next false unless disc
+              next true if disc == discriminator
+              short_only && SetupPayload.short_discriminator(disc) == short_discriminator
+            end
+            if dev
               address = dev.addresses.find(&.family.inet?) || dev.addresses.first?
               if addr = address
                 return Socket::IPAddress.new(addr.address, dev.port)

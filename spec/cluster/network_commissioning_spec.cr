@@ -126,7 +126,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       value.should be_a(Bytes)
       # Decode TLV to get actual value (true = boolean)
       decoded = decode_tlv_value(value.as(Bytes))
-      decoded.should eq(true)
+      decoded.should be_true
     end
 
     it "writes InterfaceEnabled attribute" do

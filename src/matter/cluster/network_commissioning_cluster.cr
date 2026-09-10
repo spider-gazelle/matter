@@ -923,7 +923,7 @@ module Matter
         # Convert internal WiFi results to Definitions struct (skip incomplete results)
         wifi_results = if results = response.wifi_scan_results
                          results.compact_map do |result|
-                           next nil unless result.ssid && result.bssid && result.channel
+                           next unless result.ssid && result.bssid && result.channel
                            band = result.wifi_band.try { |wifi_band| Definitions::NetworkCommissioning::Band.new(wifi_band.value) }
                            Definitions::NetworkCommissioning::WiFiInterfaceScanResult.new(
                              security: result.security.try(&.value) || 0_u8,
@@ -934,8 +934,6 @@ module Matter
                              rssi: result.rssi
                            )
                          end
-                       else
-                         nil
                        end
 
         # Convert internal Thread results to Definitions struct
@@ -952,8 +950,6 @@ module Matter
                                lqi: result.lqi
                              )
                            end
-                         else
-                           nil
                          end
 
         # Use TLV::Serializable struct for response

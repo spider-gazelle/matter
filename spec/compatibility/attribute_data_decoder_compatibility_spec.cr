@@ -12,11 +12,6 @@ describe "AttributeDataDecoder matter.js Compatibility" do
     tlv_hex = "153601153501260055156878370124020024032824040918240201181818290424ff0118"
     tlv_data = tlv_hex.hexbytes
 
-    puts "\nDecoding matter.js DataReport test vector:"
-    puts "  Hex: #{tlv_hex}"
-    puts "  Size: #{tlv_data.size} bytes"
-    puts ""
-
     # Decode using TLV::Serializable struct
     report = Matter::InteractionModel::ReportDataMessage.from_slice(tlv_data)
 
@@ -44,14 +39,6 @@ describe "AttributeDataDecoder matter.js Compatibility" do
 
     # Verify interaction model revision
     report.interaction_model_revision.should eq(1_u8)
-
-    puts "  Successfully decoded matter.js test vector!"
-    puts "  Structure matches expected:"
-    puts "    - 1 attribute report"
-    puts "    - endpoint=0, cluster=0x28, attribute=9"
-    puts "    - value=true (boolean)"
-    puts "    - dataVersion=2020087125"
-    puts "    - interactionModelRevision=1"
   end
 
   it "can encode and decode round-trip using TLV::Serializable" do
@@ -80,9 +67,7 @@ describe "AttributeDataDecoder matter.js Compatibility" do
     # Encode
     encoded = data_report.to_slice
 
-    puts "\nEncoded hex: #{encoded.hexstring}"
     # With fixed_size: true, paths are encoded at full width (uint16 for endpoint, uint32 for cluster/attribute)
-    puts "Encoded length: #{encoded.size} bytes"
 
     # Decode back and verify
     decoded = Matter::InteractionModel::ReportDataMessage.from_slice(encoded)

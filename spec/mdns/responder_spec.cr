@@ -3,6 +3,12 @@ require "../../src/matter/mdns/responder"
 require "../../src/matter/mdns/service_type"
 require "../../src/matter/mdns/record_builder"
 
+private def compressed_fabric_id_bytes(compressed_fabric_id : UInt64) : Bytes
+  bytes = Bytes.new(sizeof(UInt64))
+  IO::ByteFormat::LittleEndian.encode(compressed_fabric_id, bytes)
+  bytes
+end
+
 # Captures multicast packets instead of sending them so specs can inspect
 # announcements and query responses.
 class RecordingResponder < Matter::MDNS::Responder
@@ -158,7 +164,7 @@ describe Matter::MDNS::Responder do
       )
 
       info = Matter::MDNS::OperationalInfo.new(
-        compressed_fabric_id: (cfid = Bytes.new(8); IO::ByteFormat::LittleEndian.encode(0x0000000000000001_u64, cfid); cfid),
+        compressed_fabric_id: compressed_fabric_id_bytes(0x0000000000000001_u64),
         node_id: 0x0000000000000001_u64,
         session_idle_interval: 500_u32,
         session_active_interval: 300_u32,
@@ -171,7 +177,7 @@ describe Matter::MDNS::Responder do
 
     it "includes correct TXT records for operational" do
       info = Matter::MDNS::OperationalInfo.new(
-        compressed_fabric_id: (cfid = Bytes.new(8); IO::ByteFormat::LittleEndian.encode(0x0000000000000001_u64, cfid); cfid),
+        compressed_fabric_id: compressed_fabric_id_bytes(0x0000000000000001_u64),
         node_id: 0x0000000000000001_u64,
         session_idle_interval: 500_u32,
         session_active_interval: 300_u32,
@@ -186,7 +192,7 @@ describe Matter::MDNS::Responder do
 
     it "omits TCP flag when not supported" do
       info = Matter::MDNS::OperationalInfo.new(
-        compressed_fabric_id: (cfid = Bytes.new(8); IO::ByteFormat::LittleEndian.encode(0x0000000000000001_u64, cfid); cfid),
+        compressed_fabric_id: compressed_fabric_id_bytes(0x0000000000000001_u64),
         node_id: 0x0000000000000001_u64,
         tcp_supported: false
       )
@@ -558,7 +564,7 @@ describe Matter::MDNS::Responder do
 
       # Advertise operational service
       op_info = Matter::MDNS::OperationalInfo.new(
-        compressed_fabric_id: (cfid = Bytes.new(8); IO::ByteFormat::LittleEndian.encode(0x1234567890ABCDEF_u64, cfid); cfid),
+        compressed_fabric_id: compressed_fabric_id_bytes(0x1234567890ABCDEF_u64),
         node_id: 0x0000000000000001_u64,
         session_idle_interval: 500_u32,
         session_active_interval: 300_u32,

@@ -700,7 +700,7 @@ module Matter
         @min_frequency = state.min_frequency
         @max_frequency = state.max_frequency
         @data_version = state.data_version
-      rescue ex
+      rescue
         # Start fresh if restore fails
       end
 

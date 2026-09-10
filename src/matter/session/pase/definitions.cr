@@ -220,8 +220,6 @@ module Matter
             protocol_data = if io.pos < data.size
                               remaining = data[io.pos..]
                               remaining.size > 0 ? remaining : nil
-                            else
-                              nil
                             end
 
             StatusReport.new(

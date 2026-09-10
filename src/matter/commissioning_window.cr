@@ -125,8 +125,6 @@ module Matter
       if expires_at = @expires_at
         remaining = expires_at - Time.utc
         remaining > Time::Span.zero ? remaining : Time::Span.zero
-      else
-        nil
       end
     end
 
@@ -146,7 +144,7 @@ module Matter
     end
 
     # Get window statistics
-    def statistics : Hash(String, String | Bool | Int32 | UInt8 | UInt16 | Nil)
+    def statistics : Hash(String, String | Bool | Int32 | UInt8 | UInt16?)
       {
         "status"             => @status.to_s,
         "open"               => open?,

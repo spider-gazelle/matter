@@ -91,7 +91,7 @@ module Matter
     ) : Fabric?
       # Find next available fabric index
       fabric_index = next_available_index
-      return nil unless fabric_index
+      return unless fabric_index
 
       # Create fabric
       fabric = Fabric.new(

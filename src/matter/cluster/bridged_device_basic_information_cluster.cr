@@ -505,7 +505,7 @@ module Matter
         @node_label = state.node_label
         @reachable = state.reachable?
         @data_version = state.data_version
-      rescue ex
+      rescue
         # Start fresh if restore fails
       end
 

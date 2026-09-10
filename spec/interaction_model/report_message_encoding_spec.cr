@@ -30,9 +30,6 @@ describe "ReportDataMessage Encoding" do
     # Encode using to_slice
     encoded = report_msg.to_slice
 
-    puts "\nEncoded ReportDataMessage:"
-    puts "  Hex: #{encoded.hexstring}"
-
     # Decode and verify structure
     decoded = Matter::InteractionModel::ReportDataMessage.from_slice(encoded)
 
@@ -54,8 +51,6 @@ describe "ReportDataMessage Encoding" do
     attr_data_ib.data_version.should eq(12345678_u32)
 
     # Check data preserved
-    attr_data_ib.data.value.should eq(true)
-
-    puts "  ✅ Path and data preserved correctly!"
+    attr_data_ib.data.value.should be_true
   end
 end

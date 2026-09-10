@@ -500,7 +500,7 @@ module Matter
         @location = state.location
         @local_config_disabled = state.local_config_disabled?
         @data_version = state.data_version
-      rescue ex
+      rescue
         # Start fresh if restore fails
       end
 

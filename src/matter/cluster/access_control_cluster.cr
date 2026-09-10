@@ -228,12 +228,10 @@ module Matter
         end
 
         @extension = state.extension.compact_map do |entry|
-          begin
-            ExtensionEntry.new(entry.data_hex.hexbytes, entry.fabric_index)
-          rescue ex
-            Log.warn(exception: ex) { "restore_state: skipping extension entry with invalid data_hex (fabric_index=#{entry.fabric_index} data_hex=#{entry.data_hex})" }
-            next
-          end
+          ExtensionEntry.new(entry.data_hex.hexbytes, entry.fabric_index)
+        rescue ex
+          Log.warn(exception: ex) { "restore_state: skipping extension entry with invalid data_hex (fabric_index=#{entry.fabric_index} data_hex=#{entry.data_hex})" }
+          next
         end
       rescue ex
         Log.error(exception: ex) { "restore_state failed (json_bytes=#{json.bytesize})" }

@@ -69,7 +69,7 @@ module ChipTool
 
       private def parse_u64(s : String) : UInt64?
         v = s.strip
-        return nil if v.empty?
+        return if v.empty?
         if v.starts_with?("0x") || v.starts_with?("0X")
           v[2..].to_u64?(16)
         else
@@ -108,7 +108,7 @@ module ChipTool
 
       private def extract_report_u16_list(report : Matter::InteractionModel::ReportDataMessage, cluster_id : UInt32, attribute_id : UInt32) : Array(UInt16)?
         reports = report.attribute_reports
-        return nil unless reports
+        return unless reports
 
         reports.each do |attr_report|
           data = attr_report.attribute_data
@@ -118,7 +118,7 @@ module ChipTool
           next unless path.attribute == attribute_id
 
           any = data.data
-          list = any.value.as?(Array(TLV::Any)) || return nil
+          list = any.value.as?(Array(TLV::Any)) || return
 
           values = [] of UInt16
           list.each_with_index do |elem, idx|

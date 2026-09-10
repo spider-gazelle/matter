@@ -91,14 +91,9 @@ describe "IMHandler - Message Chunking" do
       # Should have multiple chunks
       chunks.size.should be > 1
 
-      puts "\nChunking test with 50 large attributes:"
-      puts "  Total chunks: #{chunks.size}"
-
       # Verify each chunk
       total_reports = 0
       chunks.each_with_index do |(chunk_bytes, is_last), idx|
-        puts "  Chunk #{idx + 1}: #{chunk_bytes.size} bytes, is_last=#{is_last}"
-
         # Each chunk should be under the MTU limit (allow some margin for single large items)
         chunk_bytes.size.should be < 1500 # Allow some margin above MAX_REPORT_PAYLOAD_SIZE
 
@@ -118,7 +113,7 @@ describe "IMHandler - Message Chunking" do
           root[3_u8]?.should be_nil
         else
           # Non-last chunks must have moreChunkedMessages = true
-          root[3_u8].value.should eq true
+          root[3_u8].value.should be_true
         end
 
         # Last chunk marker should match position
@@ -127,7 +122,6 @@ describe "IMHandler - Message Chunking" do
 
       # All 50 reports should be included across all chunks
       total_reports.should eq 50
-      puts "  Total reports across chunks: #{total_reports}"
     end
 
     it "sets more_chunks flag correctly for multi-chunk responses" do
@@ -148,7 +142,7 @@ describe "IMHandler - Message Chunking" do
         is_last.should be_false
 
         root = decode_chunk(chunk_bytes)
-        root[3_u8].value.should eq true # moreChunkedMessages (tag 3 per Matter spec)
+        root[3_u8].value.should be_true # moreChunkedMessages (tag 3 per Matter spec)
       end
 
       # Last chunk should have more_chunks = false (field omitted)
@@ -247,19 +241,12 @@ describe "IMHandler - Message Chunking" do
       # Read all attributes
       response = Matter::Protocol::IMHandler.read_attributes(paths, clusters)
 
-      puts "\nReal cluster wildcard read:"
-      puts "  Total reports: #{response.size}"
-
       # Chunk the response
       chunks = Matter::Protocol::IMHandler.encode_chunked_report_data(response, 1_u32)
 
-      puts "  Chunks produced: #{chunks.size}"
-
       # Verify all chunks are valid
       total_items = 0
-      chunks.each_with_index do |(chunk_bytes, is_last), idx|
-        puts "  Chunk #{idx + 1}: #{chunk_bytes.size} bytes"
-
+      chunks.each do |(chunk_bytes, _)|
         root = decode_chunk(chunk_bytes)
         reports_array = root[1_u8].value.as(Array(TLV::Any))
         total_items += reports_array.size

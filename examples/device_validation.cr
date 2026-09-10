@@ -53,7 +53,7 @@ end
 
 def extract_uint_list_from_attribute_list(output : String) : Array(UInt32)?
   text = strip_ansi(output)
-  return nil unless text.includes?("AttributeList:")
+  return unless text.includes?("AttributeList:")
 
   values = [] of UInt32
   text.each_line do |line|
@@ -87,7 +87,7 @@ end
 
 def parse_u64(s : String) : UInt64?
   v = s.strip
-  return nil if v.empty?
+  return if v.empty?
   if v.starts_with?("0x") || v.starts_with?("0X")
     v[2..].to_u64?(16)
   else

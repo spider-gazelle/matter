@@ -23,15 +23,12 @@ describe Matter::Cluster::AccessControlCluster do
 
       # Extract the value that will be passed to write_attribute (convert TLV::Any to bytes)
       acl_value = write_requests[0].data.to_slice
-      puts "ACL value size: #{acl_value.size} bytes"
-      puts "ACL value hex: #{acl_value.hexstring}"
 
       # Now try to decode it with the access control cluster
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::AccessControlCluster.new(endpoint_id)
 
       status = cluster.write_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL, acl_value)
-      puts "Write status: #{status.status}"
 
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
 
@@ -64,7 +61,6 @@ describe Matter::Cluster::AccessControlCluster do
       cluster.acl << entry
 
       encoded = cluster.read_attribute(Matter::Cluster::AccessControlCluster::ATTR_ACL)
-      puts "Encoded ACL: #{encoded.as(Bytes).hexstring}"
 
       # Try round-trip
       cluster2 = Matter::Cluster::AccessControlCluster.new(endpoint_id)

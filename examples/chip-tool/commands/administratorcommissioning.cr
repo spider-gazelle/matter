@@ -64,7 +64,7 @@ module ChipTool
 
       private def parse_u64(s : String) : UInt64?
         v = s.strip
-        return nil if v.empty?
+        return if v.empty?
         if v.starts_with?("0x") || v.starts_with?("0X")
           v[2..].to_u64?(16)
         else

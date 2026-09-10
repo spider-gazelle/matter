@@ -80,15 +80,15 @@ module Matter
       # Check if message needs retransmission
       # Returns the message to retransmit, or nil if none needed
       def needs_retransmit? : Codec::MessageCodec::Message?
-        return nil if @pending_message.nil?
-        return nil if @state != State::Active
+        return if @pending_message.nil?
+        return if @state != State::Active
 
         elapsed_ms = (Time.utc - @last_activity).total_milliseconds.to_i
 
         if elapsed_ms >= @timeout_ms
           if @retransmit_count >= MRP_MAX_RETRIES
             fail
-            return nil
+            return
           end
 
           @retransmit_count += 1

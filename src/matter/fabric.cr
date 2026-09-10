@@ -156,14 +156,10 @@ module Matter
     def self.from_h(data : Hash(String, String | UInt64 | UInt16 | UInt8 | Int64)) : Fabric
       intermediate_cert = if ic = data["intermediate_cert"]?.as?(String)
                             ic.empty? ? nil : Base64.decode(ic)
-                          else
-                            nil
                           end
 
       root_cert = if rc = data["root_cert"]?.as?(String)
                     rc.empty? ? nil : Base64.decode(rc)
-                  else
-                    nil
                   end
 
       # Reconstruct operational key from private AND public bits

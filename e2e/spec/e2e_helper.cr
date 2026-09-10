@@ -226,7 +226,9 @@ module E2E
 
       result = E2E.run(args, storage_dir)
       unless result.success? && result.output.includes?("Device commissioning completed with success")
-        raise(@commissioning_error = CommissioningError.new("#{name}: commissioning failed\n#{result}"))
+        error = CommissioningError.new("#{name}: commissioning failed\n#{result}")
+        @commissioning_error = error
+        raise error
       end
       @commissioned = true
     rescue ex : CommissioningError

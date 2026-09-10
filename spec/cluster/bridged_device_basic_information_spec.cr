@@ -46,7 +46,7 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
 
       # Decode the TLV
       decoded = TLV::Any.from_slice(result.as(Bytes))
-      decoded.value.should eq(true)
+      decoded.value.should be_true
     end
 
     it "reads NodeLabel attribute" do

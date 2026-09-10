@@ -659,8 +659,6 @@ module Matter
                         @dac
                       when Definitions::OperationalCredentials::CertificateChainType::PaiCertificate
                         @pai
-                      else
-                        nil
                       end
 
         # Encode response as TLV
@@ -959,8 +957,6 @@ module Matter
             fabric_idx = case v = val.value
                          when Int
                            v.to_u8
-                         else
-                           nil
                          end
           end
         rescue ex
@@ -1133,8 +1129,6 @@ module Matter
                         @dac
                       when CertificateChainType::PAICertificate
                         @pai
-                      else
-                        nil
                       end
 
         raise "Certificate not available" unless certificate
@@ -1151,16 +1145,16 @@ module Matter
         failsafe_armed : Bool,
       ) : CSRResponse?
         # Validate failsafe is armed
-        return nil unless failsafe_armed
+        return unless failsafe_armed
 
         # Cannot update NOC on PASE session
         if cmd.is_for_update_noc == true && is_pase_session
-          return nil
+          return
         end
 
         # Cannot call CSR after AddNOC/UpdateNOC in same failsafe
         if @pending_credentials.noc_added_or_updated?
-          return nil
+          return
         end
 
         # Generate new operational key pair
@@ -1189,7 +1183,7 @@ module Matter
         failsafe_armed : Bool,
       ) : NOCResponse?
         # Must have armed failsafe
-        return nil unless failsafe_armed
+        return unless failsafe_armed
 
         # Cannot set root cert twice in same failsafe
         if @pending_credentials.root_cert_set?
@@ -1514,8 +1508,6 @@ module Matter
         # Per Matter spec: signature is over (attestation_elements || attestation_challenge)
         attestation_challenge = if session_id && @session_lookup
                                   @session_lookup.as(Proc(UInt64, Bytes?)).call(session_id)
-                                else
-                                  nil
                                 end
 
         if attestation_challenge

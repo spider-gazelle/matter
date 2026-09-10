@@ -228,7 +228,7 @@ module Matter
     # Usage: node.get_cluster(1_u16, OnOffCluster)
     def get_cluster(endpoint_id : UInt16, cluster_type : T.class) : T? forall T
       endpoint = get_endpoint(endpoint_id)
-      return nil unless endpoint
+      return unless endpoint
 
       endpoint.get_cluster(cluster_type)
     end

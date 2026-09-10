@@ -1429,7 +1429,7 @@ module Matter
             return fail_with_cluster_status(Def::StatusCode::InvalidField)
           end
           clear_failed_pin_state
-          return nil
+          return
         end
 
         if pin && !pin.empty? && @feature_map.pin_credential?
@@ -1666,12 +1666,12 @@ module Matter
       end
 
       private def pin_from_slice(pin_slice : Slice(UInt8)?) : String?
-        return nil unless pin_slice
+        return unless pin_slice
         String.new(pin_slice)
       end
 
       private def fabric_index_from_u8(index : UInt8?) : DataType::FabricIndex?
-        return nil unless index
+        return unless index
         DataType::FabricIndex.new(index)
       end
 

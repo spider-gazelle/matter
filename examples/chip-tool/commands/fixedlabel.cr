@@ -117,7 +117,7 @@ module ChipTool
 
       private def extract_report_label_list(report : Matter::InteractionModel::ReportDataMessage, cluster_id : UInt32, attribute_id : UInt32) : Array(Matter::Cluster::LabelStruct)?
         reports = report.attribute_reports
-        return nil unless reports
+        return unless reports
 
         reports.each do |attr_report|
           data = attr_report.attribute_data
@@ -126,7 +126,7 @@ module ChipTool
           next unless path.cluster == cluster_id
           next unless path.attribute == attribute_id
 
-          list = data.data.value.as?(Array(TLV::Any)) || return nil
+          list = data.data.value.as?(Array(TLV::Any)) || return
           return list.map { |entry| Matter::Cluster::LabelStruct.from_tlv(entry) }
         end
 
@@ -135,7 +135,7 @@ module ChipTool
 
       private def parse_u64(s : String) : UInt64?
         v = s.strip
-        return nil if v.empty?
+        return if v.empty?
         if v.starts_with?("0x") || v.starts_with?("0X")
           v[2..].to_u64?(16)
         else

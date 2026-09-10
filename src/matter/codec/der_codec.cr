@@ -9,7 +9,7 @@ module Matter
 
       CONSTRUCTED = 0x20
 
-      alias Value = UInt8 | UInt16 | UInt32 | UInt32 | String | Bool | Time | Nil | Slice(UInt8) | Array(Value) | Hash(String, Value)
+      alias Value = UInt8 | UInt16 | UInt32 | String | Bool | Time | Slice(UInt8) | Array(Value) | Hash(String, Value)?
 
       enum Type : UInt8
         Boolean          = 0x01

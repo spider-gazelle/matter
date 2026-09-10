@@ -15,15 +15,9 @@ describe "TLV Array Encoding in Hash" do
     # Encode
     encoded = hash.to_slice
 
-    puts "\nEncoded hash with array:"
-    puts "  Hex: #{encoded.hexstring}"
-
     # Decode
     decoded = TLV::Any.from_slice(encoded)
     root = decoded.value.as(TLV::Structure)
-
-    puts "  Decoded tag 1 type: #{root[1_u8].value.class}"
-    puts "  Decoded tag 1 value: #{root[1_u8].value.inspect[0, 80]}"
 
     # Check if it's an array
     arr_value = root[1_u8].value
@@ -34,7 +28,5 @@ describe "TLV Array Encoding in Hash" do
     arr_decoded[0].value.as(Int).should eq(0)
     arr_decoded[1].value.as(Int).should eq(40)
     arr_decoded[2].value.as(Int).should eq(9)
-
-    puts "  ✅ Encoded as array (list-form)"
   end
 end

@@ -208,21 +208,12 @@ describe "IMHandler - matter.js Compatibility" do
       encoded = Matter::Protocol::IMHandler.encode_report_data(response)
 
       # Log the encoded response for debugging
-      puts "\n=== Crystal Matter ReadResponse TLV ==="
-      puts "Size: #{encoded.size} bytes"
-      puts "Hex (first 128): #{encoded[0...64].hexstring}"
-      puts
 
       # matter.js response (from logs):
       # Size: 210 bytes
       # Hex: 1536011535012600b89644d3370124020024033024040418290218181535012600b89644d337012402002403302404001824020018181535012600b89644d3370124020024033024040118350224003c250184031818181535012600b89644d337012402002403302404021824020218181535012600b89644d337012402002403302404031824020218181535012600c860c1e23701240200240328240402182502f1ff18181535012600c860c1e237012402002403282404041825020080181818290424ff0d18
       matterjs_response_hex = "1536011535012600b89644d3370124020024033024040418290218181535012600b89644d337012402002403302404001824020018181535012600b89644d3370124020024033024040118350224003c250184031818181535012600b89644d337012402002403302404021824020218181535012600b89644d337012402002403302404031824020218181535012600c860c1e23701240200240328240402182502f1ff18181535012600c860c1e237012402002403282404041825020080181818290424ff0d18"
       matterjs_response_bytes = Bytes.new(matterjs_response_hex.scan(/../).map(&.[0].to_u8(16)).to_unsafe, matterjs_response_hex.size // 2)
-
-      puts "=== matter.js ReadResponse TLV ==="
-      puts "Size: #{matterjs_response_bytes.size} bytes"
-      puts "Hex (first 128): #{matterjs_response_bytes[0...64].hexstring}"
-      puts
 
       # Parse both responses using TLV::Serializable
       crystal_decoded = Matter::InteractionModel::ReportDataMessage.from_slice(encoded)
@@ -242,10 +233,6 @@ describe "IMHandler - matter.js Compatibility" do
       # Both should have interactionModelRevision (tag 0xFF)
       crystal_decoded.interaction_model_revision.should eq 12_u8
       matterjs_decoded.interaction_model_revision.should eq 13_u8 # matter.js uses revision 13 (0x0d)
-
-      puts "TLV structure matches matter.js!"
-      puts "Both have #{crystal_reports.size} attribute reports"
-      puts "Both have interactionModelRevision tag"
     end
   end
 end

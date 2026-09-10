@@ -119,7 +119,7 @@ module Matter
             rescue e
               Log.warn(exception: e) { "Failed to parse peer certificate" }
             end
-          rescue ex
+          rescue
             # If decryption fails, store encrypted cert for now (backward compatibility with tests)
             @peer_cert = peer_encrypted_cert
           end
@@ -681,7 +681,6 @@ module Matter
                           when UInt32 then v
                           when UInt16 then v.to_u32
                           when UInt8  then v.to_u32
-                          else             nil
                           end
                     next unless raw
 
@@ -720,10 +719,10 @@ module Matter
 
           parsed = TLV::Any.from_slice(cert_tlv)
           subject_any = find_tlv_field(parsed, 6_u8)
-          return nil unless subject_any
+          return unless subject_any
 
           node_any = find_tlv_field(subject_any, 17_u8)
-          return nil unless node_any
+          return unless node_any
 
           case v = node_any.value
           when UInt64 then v
@@ -731,7 +730,6 @@ module Matter
           when UInt16 then v.to_u64
           when UInt8  then v.to_u64
           when Int    then v.to_u64
-          else             nil
           end
         rescue ex
           Log.trace(exception: ex) { "CASE: Failed to parse peer NodeId from NOC TLV" }

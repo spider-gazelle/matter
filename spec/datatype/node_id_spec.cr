@@ -98,13 +98,13 @@ describe Matter::DataType::NodeId do
       cat = Matter::DataType::CaseAuthenticatedTag.new(0x12345678_u32)
       node_id = Matter::DataType::NodeId.from_case_authenticated_tag(cat)
 
-      node_id.case_authenticated_tag?.should eq(true)
+      node_id.case_authenticated_tag?.should be_true
     end
 
     it "returns false for non-CAT NodeId" do
       node_id = Matter::DataType::NodeId.new(0x123456789ABCDEF0_u64)
 
-      node_id.case_authenticated_tag?.should eq(false)
+      node_id.case_authenticated_tag?.should be_false
     end
 
     it "extracts CaseAuthenticatedTag from NodeId" do

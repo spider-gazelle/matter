@@ -256,7 +256,7 @@ describe Matter::Cluster::PowerSourceCluster do
       )
       bytes = cluster.read_attribute(Matter::Cluster::PowerSourceCluster::ATTR_BAT_REPLACEMENT_NEEDED)
       bytes.should be_a(Bytes)
-      decode_tlv_value(bytes.as(Bytes)).should eq(true)
+      decode_tlv_value(bytes.as(Bytes)).should be_true
     end
 
     it "reads BatReplaceability" do

@@ -1254,12 +1254,9 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Verify fabric was added to fabric_table
         fabric_table.size.should eq(1)
-        puts "fabric_table.size after AddNOC: #{fabric_table.size}"
-        puts "fabric_table.all_fabrics: #{fabric_table.all_fabrics.map(&.fabric_index)}"
 
         # Verify cluster.fabrics returns the fabric
         cluster.fabrics.size.should eq(1)
-        puts "cluster.fabrics.size: #{cluster.fabrics.size}"
 
         # NOW TEST THE ACTUAL ISSUE: Read the Fabrics attribute
         # This is what the iPhone does after commissioning
@@ -1267,8 +1264,6 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         fabrics_value.should be_a(Bytes)
 
         fabrics_bytes = fabrics_value.as(Bytes)
-        puts "Fabrics attribute bytes: #{fabrics_bytes.size} bytes"
-        puts "Fabrics attribute hex: #{fabrics_bytes.hexstring}"
 
         # The attribute should NOT be empty
         fabrics_bytes.size.should be > 0
@@ -1277,7 +1272,6 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Parse the TLV to verify it contains the fabric data
         if fabrics_bytes.size > 0
           fabrics_parsed = TLV::Any.from_slice(fabrics_bytes)
-          puts "Fabrics TLV parsed: #{fabrics_parsed.value.inspect}"
 
           # Should contain an array with one fabric
           fabrics_array = fabrics_parsed.value.as(Array(TLV::Any))

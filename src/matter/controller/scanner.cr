@@ -388,7 +388,7 @@ module Matter
       end
 
       private def parse_a_record(record : DNS::Packet::ResourceRecord) : Socket::IPAddress?
-        return nil unless record.resource_data.size == 4
+        return unless record.resource_data.size == 4
 
         # IPv4 address is 4 bytes
         ip_bytes = record.resource_data
@@ -399,7 +399,7 @@ module Matter
       end
 
       private def parse_aaaa_record(record : DNS::Packet::ResourceRecord) : Socket::IPAddress?
-        return nil unless record.resource_data.size == 16
+        return unless record.resource_data.size == 16
 
         # IPv6 address is 16 bytes
         # Convert to hex string representation

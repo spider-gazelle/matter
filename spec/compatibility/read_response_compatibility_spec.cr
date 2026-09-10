@@ -39,8 +39,6 @@ describe "ReadResponse matter.js Compatibility" do
     report.attribute_data.should_not be_nil
     attr_data_ib = report.attribute_data.as(Matter::InteractionModel::AttributeDataIB)
 
-    puts "AttributeDataIB: path=#{attr_data_ib.path.inspect[0, 100]}"
-
     # Per matter.js TlvAttributeData:
     # Tag 0: dataVersion (optional)
     # Tag 1: path

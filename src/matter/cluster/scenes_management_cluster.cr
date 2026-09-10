@@ -867,8 +867,6 @@ module Matter
       private def encode_membership_response(status : InteractionModel::StatusCode, capacity : UInt8?, group_id : UInt16, scene_list : Array(UInt8)?) : Bytes
         list = if scene_list && status == InteractionModel::StatusCode::Success
                  scene_list
-               else
-                 nil
                end
         GetSceneMembershipResponse.new(
           status: status.value,

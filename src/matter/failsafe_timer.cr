@@ -122,11 +122,9 @@ module Matter
       # Invoke expiry callback in a new fiber to avoid scheduling issues
       # This ensures the callback can properly interact with other fibers (like tests)
       spawn do
-        begin
-          @expiry_callback.call
-        rescue ex
-          Log.error(exception: ex) { "Error in failsafe expiry callback (primary_expiry=#{@primary_expiry} cumulative_expiry=#{@cumulative_expiry})" }
-        end
+        @expiry_callback.call
+      rescue ex
+        Log.error(exception: ex) { "Error in failsafe expiry callback (primary_expiry=#{@primary_expiry} cumulative_expiry=#{@cumulative_expiry})" }
       end
 
       # Yield to let the callback fiber run
@@ -140,7 +138,7 @@ module Matter
 
     # Get time remaining on primary timer (nil if expired)
     def primary_time_remaining : Time::Span?
-      return nil if @completed
+      return if @completed
 
       elapsed = Time.utc - @start_time
       remaining = @primary_expiry - elapsed
@@ -149,7 +147,7 @@ module Matter
 
     # Get time remaining on cumulative timer (nil if expired)
     def cumulative_time_remaining : Time::Span?
-      return nil if @completed
+      return if @completed
 
       elapsed = Time.utc - @start_time
       remaining = @cumulative_expiry - elapsed

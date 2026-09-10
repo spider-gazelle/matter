@@ -209,7 +209,7 @@ module Matter
 
         # Serialize subscription to hash for persistence
         # Note: session is stored by session_id - must be resolved when restoring
-        def to_h : Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil)))
+        def to_h : Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16?)))
           paths_array = @attribute_paths.map do |path|
             {
               "endpoint"   => path.endpoint,
@@ -235,11 +235,11 @@ module Matter
         # Deserialize subscription from hash
         # Requires a session lookup function to resolve session_id to SecureContext
         def self.from_h(
-          h : Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil))),
+          h : Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16?))),
           session : Session::SecureContext,
         ) : ActiveSubscription
           # Parse attribute paths
-          paths_data = h["attribute_paths"].as(Array(Hash(String, UInt32 | UInt16 | Nil)))
+          paths_data = h["attribute_paths"].as(Array(Hash(String, UInt32 | UInt16?)))
           paths = paths_data.map do |path_h|
             InteractionModel::AttributePath.new(
               endpoint: path_h["endpoint"]?.try(&.as(UInt16)),
@@ -1547,8 +1547,6 @@ module Matter
                                     original_msg.packet_header.destination_node_id
                                   elsif session.local_node_id
                                     session.local_node_id
-                                  else
-                                    nil # PASE: no node ID in header
                                   end
 
         # Compute the flags byte for the packet header (swapping source/dest from request)
@@ -1582,8 +1580,6 @@ module Matter
         # If the original message required acknowledgment, embed the ACK in our response
         ack_msg_id = if original_msg.payload_header.requires_acknowledge?
                        original_msg.packet_header.message_id
-                     else
-                       nil
                      end
 
         payload_header = Codec::MessageCodec::PayloadHeader.new(
@@ -2302,13 +2298,13 @@ module Matter
       # find the newest active session for the same fabric/peer that can take over
       private def find_superseding_session(old_session_id : UInt16) : Session::SecureContext?
         old_session = @sessions[old_session_id]?
-        return nil unless old_session
-        return nil unless old_session.case_session?
-        return nil unless old_session.fabric_index
+        return unless old_session
+        return unless old_session.case_session?
+        return unless old_session.fabric_index
 
         old_fabric = old_session.fabric_index.as(UInt8)
         old_peer_node = old_session.peer_node_id
-        return nil if old_peer_node.nil?
+        return if old_peer_node.nil?
 
         # Find all newer sessions for the same fabric/peer
         candidates = @sessions.values.select do |session|

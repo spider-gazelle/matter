@@ -231,7 +231,7 @@ module Matter
 
             data = buffer[0, bytes_read]
             handle_received_data(data, peer_address)
-          rescue ex : IO::TimeoutError
+          rescue IO::TimeoutError
             # Normal - just continue
           rescue ex : Exception
             # Log error but keep running

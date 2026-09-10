@@ -16,23 +16,23 @@ module Matter
       property enable_tag_compression : Bool?
 
       @[TLV::Field(tag: 1, optional: true, fixed_size: true)]
-      property node_raw : UInt64 | Nil
+      property node_raw : UInt64?
 
       # Internal storage accepts Bool for wildcard indicator from iOS
       @[TLV::Field(tag: 2, fixed_size: true)]
-      property endpoint_raw : UInt16 | Bool | Nil
+      property endpoint_raw : UInt16 | Bool?
 
       @[TLV::Field(tag: 3, fixed_size: true)]
-      property cluster_raw : UInt32 | Bool | Nil
+      property cluster_raw : UInt32 | Bool?
 
       @[TLV::Field(tag: 4, fixed_size: true)]
-      property attribute_raw : UInt32 | Bool | Nil
+      property attribute_raw : UInt32 | Bool?
 
       @[TLV::Field(tag: 5, fixed_size: true)]
-      property list_index_raw : UInt16 | Bool | Nil
+      property list_index_raw : UInt16 | Bool?
 
       @[TLV::Field(tag: 6, optional: true, fixed_size: true)]
-      property wildcard_path_flags_raw : UInt32 | Nil
+      property wildcard_path_flags_raw : UInt32?
 
       def initialize(
         endpoint : UInt16? = nil,
@@ -175,17 +175,17 @@ module Matter
       include TLV::Serializable
 
       @[TLV::Field(tag: 0, fixed_size: true)]
-      property node_raw : UInt64 | Bool | Nil
+      property node_raw : UInt64 | Bool?
 
       # Internal storage accepts Bool for wildcard indicator from iOS
       @[TLV::Field(tag: 1, fixed_size: true)]
-      property endpoint_raw : UInt16 | Bool | Nil
+      property endpoint_raw : UInt16 | Bool?
 
       @[TLV::Field(tag: 2, fixed_size: true)]
-      property cluster_raw : UInt32 | Bool | Nil
+      property cluster_raw : UInt32 | Bool?
 
       @[TLV::Field(tag: 3, fixed_size: true)]
-      property event_raw : UInt32 | Bool | Nil
+      property event_raw : UInt32 | Bool?
 
       @[TLV::Field(tag: 4)]
       property? is_urgent : Bool = false

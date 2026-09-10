@@ -92,7 +92,7 @@ module Matter::Cluster
 
         value = cluster.read_attribute(GeneralCommissioningCluster::ATTR_SUPPORTS_CONCURRENT_CONNECTION)
         value.should be_a(Bytes)
-        decode_tlv_value(value.as(Bytes)).should eq(true)
+        decode_tlv_value(value.as(Bytes)).should be_true
       end
 
       it "returns status for unsupported attribute write" do
@@ -319,8 +319,8 @@ module Matter::Cluster
         cluster.breadcrumb.should eq(0_u64)
         cluster.max_cumulative_failsafe_seconds.should eq(900_u16)
         cluster.max_network_commissioning_seconds.should eq(900_u16)
-        cluster.regulatory_config.indoor_outdoor?.should eq true
-        cluster.location_capability.indoor_outdoor?.should eq true
+        cluster.regulatory_config.indoor_outdoor?.should be_true
+        cluster.location_capability.indoor_outdoor?.should be_true
         cluster.supports_concurrent_connection?.should be_true
         cluster.failsafe_armed?.should be_false
       end
@@ -344,7 +344,7 @@ module Matter::Cluster
           is_pase_session: true
         )
 
-        response.error_code.ok?.should eq true
+        response.error_code.ok?.should be_true
         cluster.failsafe_armed?.should be_true
         cluster.breadcrumb.should eq(123_u64)
       end
@@ -362,7 +362,7 @@ module Matter::Cluster
           is_pase_session: true
         )
 
-        response.error_code.value_outside_range?.should eq true
+        response.error_code.value_outside_range?.should be_true
         cluster.failsafe_armed?.should be_false
       end
 
@@ -384,7 +384,7 @@ module Matter::Cluster
         )
         response = cluster.arm_failsafe(request2, nil, true)
 
-        response.error_code.ok?.should eq true
+        response.error_code.ok?.should be_true
         cluster.failsafe_armed?.should be_false
         # Breadcrumb should NOT be updated on disarm
         cluster.breadcrumb.should eq(123_u64)
@@ -407,7 +407,7 @@ module Matter::Cluster
         )
         response = cluster.arm_failsafe(request2, 1_u8, false)
 
-        response.error_code.ok?.should eq true
+        response.error_code.ok?.should be_true
         cluster.failsafe_armed?.should be_true
         cluster.breadcrumb.should eq(200_u64)
       end
@@ -429,7 +429,7 @@ module Matter::Cluster
         )
         response = cluster.arm_failsafe(request2, 2_u8, false)
 
-        response.error_code.busy_with_other_admin?.should eq true
+        response.error_code.busy_with_other_admin?.should be_true
         cluster.breadcrumb.should eq(100_u64) # Not updated
       end
 
@@ -451,7 +451,7 @@ module Matter::Cluster
         )
         response = cluster.arm_failsafe(request2, nil, true)
 
-        response.error_code.ok?.should eq true
+        response.error_code.ok?.should be_true
         cluster.breadcrumb.should eq(200_u64)
       end
 
@@ -492,7 +492,7 @@ module Matter::Cluster
           is_case_session: true
         )
 
-        response.error_code.ok?.should eq true
+        response.error_code.ok?.should be_true
         cluster.failsafe_armed?.should be_false
         cluster.breadcrumb.should eq(0_u64) # Reset on success
       end
@@ -513,7 +513,7 @@ module Matter::Cluster
           is_case_session: false
         )
 
-        response.error_code.invalid_authentication?.should eq true
+        response.error_code.invalid_authentication?.should be_true
         cluster.failsafe_armed?.should be_true # Still armed
       end
 
@@ -525,7 +525,7 @@ module Matter::Cluster
           is_case_session: true
         )
 
-        response.error_code.no_fail_safe?.should eq true
+        response.error_code.no_fail_safe?.should be_true
       end
 
       it "rejects when fabric doesn't match" do
@@ -544,7 +544,7 @@ module Matter::Cluster
           is_case_session: true
         )
 
-        response.error_code.invalid_authentication?.should eq true
+        response.error_code.invalid_authentication?.should be_true
         cluster.failsafe_armed?.should be_true # Still armed
       end
     end
@@ -561,8 +561,8 @@ module Matter::Cluster
 
         response = (cluster.regulatory_config = request)
 
-        response.error_code.ok?.should eq true
-        cluster.regulatory_config.outdoor?.should eq true
+        response.error_code.ok?.should be_true
+        cluster.regulatory_config.outdoor?.should be_true
         cluster.breadcrumb.should eq(456_u64)
       end
 
@@ -626,7 +626,7 @@ module Matter::Cluster
           )
 
           response = (cluster.regulatory_config = request)
-          response.error_code.ok?.should eq true
+          response.error_code.ok?.should be_true
         end
       end
     end
@@ -648,7 +648,7 @@ module Matter::Cluster
           )
 
           response = (cluster.regulatory_config = request)
-          response.error_code.ok?.should eq true
+          response.error_code.ok?.should be_true
         end
       end
 
@@ -663,7 +663,7 @@ module Matter::Cluster
           breadcrumb: 100_u64
         )
         response1 = (cluster.regulatory_config = request1)
-        response1.error_code.ok?.should eq true
+        response1.error_code.ok?.should be_true
 
         # Outdoor should fail
         request2 = GeneralCommissioningCluster::SetRegulatoryConfigRequest.new(
@@ -771,7 +771,7 @@ module Matter::Cluster
         cluster.arm_failsafe(arm_request, 1_u8, false)
 
         response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.ok?.should eq true
+        response.error_code.ok?.should be_true
       end
 
       it "blocks commissioning complete when TC required but not accepted" do
@@ -806,7 +806,7 @@ module Matter::Cluster
 
         # Complete commissioning
         response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.ok?.should eq true
+        response.error_code.ok?.should be_true
       end
 
       it "uses callback to check TC acceptance" do
@@ -828,7 +828,7 @@ module Matter::Cluster
 
         # Complete commissioning
         response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.ok?.should eq true
+        response.error_code.ok?.should be_true
         tc_check_called.should be_true
       end
     end
@@ -851,7 +851,7 @@ module Matter::Cluster
 
         # Complete commissioning
         response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.ok?.should eq true
+        response.error_code.ok?.should be_true
         persist_called.should be_true
       end
 
@@ -872,7 +872,7 @@ module Matter::Cluster
 
         # Complete commissioning
         response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.ok?.should eq true
+        response.error_code.ok?.should be_true
         clear_pase_called.should be_true
       end
 
@@ -889,7 +889,7 @@ module Matter::Cluster
 
         # Complete commissioning
         response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.ok?.should eq true
+        response.error_code.ok?.should be_true
 
         # Commissioning window should be closed (internal state verified)
         cluster.failsafe_armed?.should be_false
@@ -908,7 +908,7 @@ module Matter::Cluster
         )
 
         response = (cluster.regulatory_config = request)
-        response.error_code.ok?.should eq true
+        response.error_code.ok?.should be_true
       end
 
       it "allows whitelisted country codes" do
@@ -922,7 +922,7 @@ module Matter::Cluster
         )
 
         response = (cluster.regulatory_config = request)
-        response.error_code.ok?.should eq true
+        response.error_code.ok?.should be_true
         cluster.country_code.should eq("US")
       end
 
@@ -953,7 +953,7 @@ module Matter::Cluster
           )
 
           response = (cluster.regulatory_config = request)
-          response.error_code.ok?.should eq true
+          response.error_code.ok?.should be_true
           cluster.country_code.should eq(country)
         end
       end

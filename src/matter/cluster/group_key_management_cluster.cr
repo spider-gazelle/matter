@@ -432,10 +432,10 @@ module Matter
       # Returns null if key set not found for this fabric.
       def handle_key_set_read(cmd : KeySetReadRequest, fabric_index : UInt8) : KeySetReadResponse?
         fabric_key_sets = @key_sets[fabric_index]?
-        return nil unless fabric_key_sets
+        return unless fabric_key_sets
 
         key_set = fabric_key_sets[cmd.group_key_set_id]?
-        return nil unless key_set
+        return unless key_set
 
         # Return key set with actual key bytes removed (security requirement)
         sanitized = GroupKeySetStruct.new(
@@ -635,7 +635,7 @@ module Matter
       # Returns the actual key set with key material
       def get_key_set(group_key_set_id : UInt16, fabric_index : UInt8) : GroupKeySetStruct?
         fabric_key_sets = @key_sets[fabric_index]?
-        return nil unless fabric_key_sets
+        return unless fabric_key_sets
 
         fabric_key_sets[group_key_set_id]?
       end

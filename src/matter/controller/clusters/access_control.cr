@@ -50,30 +50,28 @@ module Matter
           entries = Array(EntryJson).from_json(json)
 
           mapped = entries.each_with_index.map do |obj, idx|
-            begin
-              privilege = Privilege.from_value(obj.privilege.to_i)
-              auth_mode = AuthMode.from_value(obj.auth_mode.to_i)
+            privilege = Privilege.from_value(obj.privilege.to_i)
+            auth_mode = AuthMode.from_value(obj.auth_mode.to_i)
 
-              targets = obj.targets.try do |arr|
-                arr.map do |target|
-                  Target.new(
-                    cluster: target.cluster,
-                    endpoint: target.endpoint,
-                    device_type: target.device_type
-                  )
-                end
+            targets = obj.targets.try do |arr|
+              arr.map do |target|
+                Target.new(
+                  cluster: target.cluster,
+                  endpoint: target.endpoint,
+                  device_type: target.device_type
+                )
               end
-
-              Entry.new(
-                privilege: privilege,
-                auth_mode: auth_mode,
-                subjects: obj.subjects,
-                targets: targets,
-                fabric_index: nil
-              )
-            rescue ex
-              raise ArgumentError.new("Invalid ACL JSON entry at index #{idx}: #{ex.message}")
             end
+
+            Entry.new(
+              privilege: privilege,
+              auth_mode: auth_mode,
+              subjects: obj.subjects,
+              targets: targets,
+              fabric_index: nil
+            )
+          rescue ex
+            raise ArgumentError.new("Invalid ACL JSON entry at index #{idx}: #{ex.message}")
           end
 
           mapped.to_a

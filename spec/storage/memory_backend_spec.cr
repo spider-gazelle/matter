@@ -254,9 +254,9 @@ describe Matter::Storage::MemoryBackend do
 
       # Read back settings
       storage.get(["devices", "light1"], "brightness").should eq(75)
-      storage.get(["devices", "light1"], "on").should eq(true)
+      storage.get(["devices", "light1"], "on").should be_true
       storage.get(["devices", "light2"], "brightness").should eq(50)
-      storage.get(["devices", "light2"], "on").should eq(false)
+      storage.get(["devices", "light2"], "on").should be_false
 
       # List all devices
       storage.contexts(["devices"]).should eq(["light1", "light2"])

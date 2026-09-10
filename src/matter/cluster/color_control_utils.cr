@@ -84,9 +84,9 @@ module Matter::Cluster::ColorControlUtils
     ]
 
     # Apply reverse gamma correction
-    rgb = rgb.map { |component|
+    rgb = rgb.map do |component|
       component <= 0.0031308 ? 12.92 * component : (1.0 + 0.055) * (component ** (1.0 / 2.4)) - 0.055
-    }
+    end
 
     # Bring all negative components to zero
     rgb = rgb.map { |component| [component, 0.0].max }
@@ -133,7 +133,7 @@ module Matter::Cluster::ColorControlUtils
     kelvin = (1_000_000.0 / mireds).round.to_i
 
     # Valid range: 1000K - 40000K
-    return nil if kelvin < 1000 || kelvin > 40000
+    return if kelvin < 1000 || kelvin > 40000
 
     # Find exact match in lookup table
     xy = KELVIN_TO_XY_LOOKUP[kelvin]?
@@ -144,7 +144,7 @@ module Matter::Cluster::ColorControlUtils
     lower_kelvin = sorted_keys.select { |k| k <= kelvin }.max?
     upper_kelvin = sorted_keys.select { |k| k >= kelvin }.min?
 
-    return nil unless lower_kelvin && upper_kelvin
+    return unless lower_kelvin && upper_kelvin
 
     lower = KELVIN_TO_XY_LOOKUP[lower_kelvin]
     upper = KELVIN_TO_XY_LOOKUP[upper_kelvin]

@@ -23,59 +23,59 @@ describe Matter::Cluster::WindowCoveringCluster do
 
         # Check mandatory, non-optional attributes
         # configStatus - mandatory
-        attr_map["configStatus"].optional?.should eq(false)
-        attr_map["configStatus"].writable?.should eq(false)
-        attr_map["configStatus"].fixed?.should eq(false)
+        attr_map["configStatus"].optional?.should be_false
+        attr_map["configStatus"].writable?.should be_false
+        attr_map["configStatus"].fixed?.should be_false
 
         # currentPositionLiftPercent100ths - mandatory with PA_LF
-        attr_map["currentPositionLiftPercent100ths"].optional?.should eq(false)
-        attr_map["currentPositionLiftPercent100ths"].writable?.should eq(false)
-        attr_map["currentPositionLiftPercent100ths"].fixed?.should eq(false)
+        attr_map["currentPositionLiftPercent100ths"].optional?.should be_false
+        attr_map["currentPositionLiftPercent100ths"].writable?.should be_false
+        attr_map["currentPositionLiftPercent100ths"].fixed?.should be_false
 
         # currentPositionLiftPercentage - optional
-        attr_map["currentPositionLiftPercentage"].optional?.should eq(true)
-        attr_map["currentPositionLiftPercentage"].writable?.should eq(false)
-        attr_map["currentPositionLiftPercentage"].fixed?.should eq(false)
+        attr_map["currentPositionLiftPercentage"].optional?.should be_true
+        attr_map["currentPositionLiftPercentage"].writable?.should be_false
+        attr_map["currentPositionLiftPercentage"].fixed?.should be_false
 
         # endProductType - fixed
-        attr_map["endProductType"].optional?.should eq(false)
-        attr_map["endProductType"].writable?.should eq(false)
-        attr_map["endProductType"].fixed?.should eq(true)
+        attr_map["endProductType"].optional?.should be_false
+        attr_map["endProductType"].writable?.should be_false
+        attr_map["endProductType"].fixed?.should be_true
 
         # featureMap - mandatory
-        attr_map["featureMap"].optional?.should eq(false)
-        attr_map["featureMap"].writable?.should eq(false)
-        attr_map["featureMap"].fixed?.should eq(false)
+        attr_map["featureMap"].optional?.should be_false
+        attr_map["featureMap"].writable?.should be_false
+        attr_map["featureMap"].fixed?.should be_false
 
         # mode - writable
-        attr_map["mode"].optional?.should eq(false)
-        attr_map["mode"].writable?.should eq(true)
-        attr_map["mode"].fixed?.should eq(false)
+        attr_map["mode"].optional?.should be_false
+        attr_map["mode"].writable?.should be_true
+        attr_map["mode"].fixed?.should be_false
 
         # numberOfActuationsLift - optional
-        attr_map["numberOfActuationsLift"].optional?.should eq(true)
-        attr_map["numberOfActuationsLift"].writable?.should eq(false)
-        attr_map["numberOfActuationsLift"].fixed?.should eq(false)
+        attr_map["numberOfActuationsLift"].optional?.should be_true
+        attr_map["numberOfActuationsLift"].writable?.should be_false
+        attr_map["numberOfActuationsLift"].fixed?.should be_false
 
         # operationalStatus - mandatory
-        attr_map["operationalStatus"].optional?.should eq(false)
-        attr_map["operationalStatus"].writable?.should eq(false)
-        attr_map["operationalStatus"].fixed?.should eq(false)
+        attr_map["operationalStatus"].optional?.should be_false
+        attr_map["operationalStatus"].writable?.should be_false
+        attr_map["operationalStatus"].fixed?.should be_false
 
         # safetyStatus - optional
-        attr_map["safetyStatus"].optional?.should eq(true)
-        attr_map["safetyStatus"].writable?.should eq(false)
-        attr_map["safetyStatus"].fixed?.should eq(false)
+        attr_map["safetyStatus"].optional?.should be_true
+        attr_map["safetyStatus"].writable?.should be_false
+        attr_map["safetyStatus"].fixed?.should be_false
 
         # targetPositionLiftPercent100ths - mandatory with PA_LF
-        attr_map["targetPositionLiftPercent100ths"].optional?.should eq(false)
-        attr_map["targetPositionLiftPercent100ths"].writable?.should eq(false)
-        attr_map["targetPositionLiftPercent100ths"].fixed?.should eq(false)
+        attr_map["targetPositionLiftPercent100ths"].optional?.should be_false
+        attr_map["targetPositionLiftPercent100ths"].writable?.should be_false
+        attr_map["targetPositionLiftPercent100ths"].fixed?.should be_false
 
         # type - fixed
-        attr_map["type"].optional?.should eq(false)
-        attr_map["type"].writable?.should eq(false)
-        attr_map["type"].fixed?.should eq(true)
+        attr_map["type"].optional?.should be_false
+        attr_map["type"].writable?.should be_false
+        attr_map["type"].fixed?.should be_true
       end
 
       it "has correct command properties" do
@@ -87,16 +87,16 @@ describe Matter::Cluster::WindowCoveringCluster do
         end
 
         # downOrClose - mandatory
-        cmd_map["downOrClose"].optional?.should eq(false)
+        cmd_map["downOrClose"].optional?.should be_false
 
         # goToLiftPercentage - mandatory with LF & PA_LF
-        cmd_map["goToLiftPercentage"].optional?.should eq(false)
+        cmd_map["goToLiftPercentage"].optional?.should be_false
 
         # stopMotion - mandatory
-        cmd_map["stopMotion"].optional?.should eq(false)
+        cmd_map["stopMotion"].optional?.should be_false
 
         # upOrOpen - mandatory
-        cmd_map["upOrOpen"].optional?.should eq(false)
+        cmd_map["upOrOpen"].optional?.should be_false
       end
     end
   end
@@ -111,15 +111,15 @@ describe Matter::Cluster::WindowCoveringCluster do
       cmds = cluster.commands
       cmd_names = cmds.map(&.name)
 
-      cmd_names.includes?("goToLiftPercentage").should eq(false)
+      cmd_names.includes?("goToLiftPercentage").should be_false
     end
 
     it "does not include position-aware lift attributes" do
       attrs = cluster.attributes
       attr_names = attrs.map(&.name)
 
-      attr_names.includes?("currentPositionLiftPercent100ths").should eq(false)
-      attr_names.includes?("targetPositionLiftPercent100ths").should eq(false)
+      attr_names.includes?("currentPositionLiftPercent100ths").should be_false
+      attr_names.includes?("targetPositionLiftPercent100ths").should be_false
     end
   end
 
@@ -134,15 +134,15 @@ describe Matter::Cluster::WindowCoveringCluster do
       cmds = cluster.commands
       cmd_names = cmds.map(&.name)
 
-      cmd_names.includes?("goToTiltPercentage").should eq(true)
+      cmd_names.includes?("goToTiltPercentage").should be_true
     end
 
     it "includes position-aware tilt attributes" do
       attrs = cluster.attributes
       attr_names = attrs.map(&.name)
 
-      attr_names.includes?("currentPositionTiltPercent100ths").should eq(true)
-      attr_names.includes?("targetPositionTiltPercent100ths").should eq(true)
+      attr_names.includes?("currentPositionTiltPercent100ths").should be_true
+      attr_names.includes?("targetPositionTiltPercent100ths").should be_true
     end
   end
 

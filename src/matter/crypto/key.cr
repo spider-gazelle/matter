@@ -95,7 +95,7 @@ module Matter
       def public_bits : Bytes?
         x = @x_bits
         y = @y_bits
-        return nil unless x && y
+        return unless x && y
 
         io = IO::Memory.new
         io.write_byte(0x04_u8) # Uncompressed point indicator
@@ -130,7 +130,7 @@ module Matter
       def key_pair_bits : BinaryKeyPair?
         pub = public_bits
         priv = @private_bits
-        return nil unless pub && priv
+        return unless pub && priv
 
         BinaryKeyPair.new(pub, priv)
       end

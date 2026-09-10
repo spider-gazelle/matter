@@ -292,7 +292,7 @@ describe Matter::Endpoint do
 
       result = endpoint.read_attribute(0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
       result.should be_a(Bytes)
-      decode_tlv_value(result.as(Bytes)).should eq(true)
+      decode_tlv_value(result.as(Bytes)).should be_true
     end
 
     it "returns error for missing cluster" do
@@ -477,10 +477,10 @@ describe Matter::MatterNode do
 
       # Check endpoint 1 is on, endpoint 2 is still off
       result1 = node.read_attribute(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
-      decode_tlv_value(result1.as(Bytes)).should eq(true)
+      decode_tlv_value(result1.as(Bytes)).should be_true
 
       result2 = node.read_attribute(2_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
-      decode_tlv_value(result2.as(Bytes)).should eq(false)
+      decode_tlv_value(result2.as(Bytes)).should be_false
     end
   end
 
@@ -496,7 +496,7 @@ describe Matter::MatterNode do
 
       result = node.read_attribute(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
       result.should be_a(Bytes)
-      decode_tlv_value(result.as(Bytes)).should eq(true)
+      decode_tlv_value(result.as(Bytes)).should be_true
     end
 
     it "returns error for missing endpoint" do

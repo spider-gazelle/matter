@@ -215,7 +215,7 @@ module Matter
 
         loop do
           remaining = deadline - Time.instant
-          return nil if remaining <= 0.seconds
+          return if remaining <= 0.seconds
 
           select
           when rec = @inbox.receive
@@ -226,7 +226,7 @@ module Matter
             next unless msg.payload_header.message_type == message_type
             return rec
           when timeout(remaining)
-            return nil
+            return
           end
         end
       end

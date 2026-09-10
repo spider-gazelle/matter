@@ -113,21 +113,19 @@ module Matter
           pruned = 0
 
           stored.each do |id, session_h|
-            begin
-              session = Session::SecureContext.from_h(session_h)
-              next unless session.case_session?
+            session = Session::SecureContext.from_h(session_h)
+            next unless session.case_session?
 
-              fabric_index = session.fabric_index
-              if fabric_index && handler.fabric_table.get_fabric(fabric_index)
-                handler.sessions[session.session_id] = session
-                kept[id] = session_h
-                restored += 1
-              else
-                pruned += 1
-              end
-            rescue
+            fabric_index = session.fabric_index
+            if fabric_index && handler.fabric_table.get_fabric(fabric_index)
+              handler.sessions[session.session_id] = session
+              kept[id] = session_h
+              restored += 1
+            else
               pruned += 1
             end
+          rescue
+            pruned += 1
           end
 
           # If the persisted session list includes stale entries (e.g. sessions for
@@ -190,21 +188,21 @@ module Matter
           @storage.set(SESSION_CONTEXT, SESSION_KEY, sessions.to_json)
         end
 
-        private def load_subscriptions : Hash(String, Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil))))
+        private def load_subscriptions : Hash(String, Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16?))))
           stored = @storage.get(SESSION_CONTEXT, SUBSCRIPTIONS_KEY)
-          return ({} of String => Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil)))) if !stored.is_a?(String) || stored.empty?
+          return ({} of String => Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16?)))) if !stored.is_a?(String) || stored.empty?
 
           data = Hash(String, Hash(String, JSON::Any)).from_json(stored)
-          subs = {} of String => Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil)))
+          subs = {} of String => Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16?)))
           data.each do |id, hash|
             subs[id] = json_any_hash_to_subscription_hash(hash)
           end
           subs
         rescue
-          {} of String => Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil)))
+          {} of String => Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16?)))
         end
 
-        private def persist_subscriptions(subs : Hash(String, Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil))))) : Nil
+        private def persist_subscriptions(subs : Hash(String, Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16?))))) : Nil
           @storage.set(SESSION_CONTEXT, SUBSCRIPTIONS_KEY, subs.to_json)
         end
 
@@ -250,15 +248,15 @@ module Matter
           session_h
         end
 
-        private def json_any_hash_to_subscription_hash(h : Hash(String, JSON::Any)) : Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil)))
-          sub_h = {} of String => (String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16 | Nil)))
+        private def json_any_hash_to_subscription_hash(h : Hash(String, JSON::Any)) : Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16?)))
+          sub_h = {} of String => (String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16?)))
 
           h.each do |key, value|
             if key == "attribute_paths"
               paths_any = value.as_a
               paths = paths_any.map do |path_any|
                 path_h_any = path_any.as_h
-                converted = {} of String => (UInt32 | UInt16 | Nil)
+                converted = {} of String => (UInt32 | UInt16)?
                 path_h_any.each do |path_key, pv_any|
                   pv = pv_any.raw
                   if pv.nil?

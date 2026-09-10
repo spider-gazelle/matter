@@ -128,7 +128,7 @@ describe Matter::Cluster::BasicInformationCluster do
       result.should be_a(Bytes)
 
       parsed = TLV::Any.from_slice(result.as(Bytes))
-      parsed.value.should eq(true)
+      parsed.value.should be_true
     end
 
     it "reads CAPABILITY_MINIMA with TLV struct encoding" do
@@ -309,7 +309,7 @@ describe Matter::Cluster::BasicInformationCluster do
       status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCAL_CONFIG_DISABLED, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
-      cluster.local_config_disabled?.should eq(true)
+      cluster.local_config_disabled?.should be_true
     end
 
     it "rejects write to read-only VENDOR_NAME" do
@@ -376,12 +376,12 @@ describe Matter::Cluster::BasicInformationCluster do
       event_data = cluster.emit_reachable_changed_event(false)
       event_data.should be_a(Bytes)
 
-      cluster.reachable?.should eq(false)
+      cluster.reachable?.should be_false
       cluster.data_version.should eq(initial_version + 1)
 
       # Parse using TLV::Serializable
       parsed = Matter::Cluster::BasicInformationCluster::ReachableChangedEvent.from_slice(event_data)
-      parsed.reachable_new_value?.should eq(false)
+      parsed.reachable_new_value?.should be_false
     end
   end
 

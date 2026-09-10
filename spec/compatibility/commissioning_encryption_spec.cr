@@ -36,30 +36,6 @@ describe "Commissioning Encryption Test Vector" do
     # Verify first 64 bytes match (enough to confirm encryption is correct)
     result_sample = result[0, expected_encrypted.size]
 
-    puts "\n═══ Commissioning Encryption Verification ═══"
-    puts "Key:      #{key.hexstring}"
-    puts "Payload:  #{payload.hexstring}"
-    puts "Nonce:    #{nonce.hexstring}"
-    puts "AAD:      #{aad.hexstring}"
-    puts "\nExpected: #{expected_encrypted.hexstring}"
-    puts "Got:      #{result_sample.hexstring}"
-    puts "Match:    #{result_sample == expected_encrypted ? "✅ YES" : "❌ NO"}"
-
-    if result_sample != expected_encrypted
-      puts "\n❌ MISMATCH FOUND!"
-      puts "This means either:"
-      puts "  1. Our AES-CCM implementation is wrong"
-      puts "  2. The captured test vector parameters are incorrect"
-      puts "  3. There's a bug in how we're calling crypto.encrypt()"
-
-      # Show byte-by-byte diff
-      result_sample.each_with_index do |byte, i|
-        if byte != expected_encrypted[i]
-          puts "  Byte #{i}: expected 0x#{expected_encrypted[i].to_s(16).rjust(2, '0')}, got 0x#{byte.to_s(16).rjust(2, '0')}"
-        end
-      end
-    end
-
     result_sample.should eq(expected_encrypted)
   end
 
@@ -70,12 +46,6 @@ describe "Commissioning Encryption Test Vector" do
     source_node_id = 0_u64
 
     nonce = Matter::Session::SecureMessage.build_nonce(source_node_id, message_counter, security_flags)
-
-    puts "\nNonce construction:"
-    puts "  security_flags: 0x#{security_flags.to_s(16).rjust(2, '0')}"
-    puts "  message_counter: #{message_counter}"
-    puts "  source_node_id: #{source_node_id}"
-    puts "  Result: #{nonce.hexstring}"
 
     nonce.should eq("00000000000000000000000000".hexbytes)
     nonce.size.should eq(13)
@@ -97,13 +67,6 @@ describe "Commissioning Encryption Test Vector" do
     io.write_byte(security_flags)
     IO::ByteFormat::LittleEndian.encode(message_counter, io)
     aad = io.rewind.to_slice
-
-    puts "\nAAD construction:"
-    puts "  flags: 0x#{flags.to_s(16).rjust(2, '0')}"
-    puts "  session_id: #{session_id} (0x#{session_id.to_s(16)})"
-    puts "  security_flags: 0x#{security_flags.to_s(16).rjust(2, '0')}"
-    puts "  message_counter: #{message_counter}"
-    puts "  Result: #{aad.hexstring}"
 
     aad.should eq("009be70000000000".hexbytes)
     aad.size.should eq(8)

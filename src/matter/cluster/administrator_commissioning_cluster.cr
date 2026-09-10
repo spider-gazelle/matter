@@ -415,11 +415,11 @@ module Matter
         begin
           open_commissioning_window(request, fabric_index, vendor_id)
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
-        rescue ex : BusyError
+        rescue BusyError
           InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
-        rescue ex : PAKEParameterError
+        rescue PAKEParameterError
           InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
-        rescue ex
+        rescue
           InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
         end
       rescue ex
@@ -438,9 +438,9 @@ module Matter
         begin
           open_basic_commissioning_window(request, fabric_index, vendor_id)
           InteractionModel::Status.new(InteractionModel::StatusCode::Success)
-        rescue ex : BusyError
+        rescue BusyError
           InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
-        rescue ex
+        rescue
           InteractionModel::Status.new(InteractionModel::StatusCode::Busy)
         end
       rescue ex
@@ -453,9 +453,9 @@ module Matter
 
         revoke_commissioning
         InteractionModel::Status.new(InteractionModel::StatusCode::Success)
-      rescue ex : WindowNotOpenError
+      rescue WindowNotOpenError
         InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
-      rescue ex
+      rescue
         InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
       end
 
@@ -513,8 +513,8 @@ module Matter
 
       # Get time remaining on commissioning window (for testing)
       def time_remaining : Time::Span?
-        return nil unless window_open?
-        return nil unless expiry = @window_expiry_time
+        return unless window_open?
+        return unless expiry = @window_expiry_time
 
         remaining = expiry - Time.utc
         remaining > Time::Span.zero ? remaining : Time::Span.zero

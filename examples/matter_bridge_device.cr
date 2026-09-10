@@ -208,7 +208,7 @@ module MatterBridge
 
       unless success
         puts "  Warning: Failed to restore endpoint #{config.endpoint_id}"
-        return nil
+        return
       end
 
       @bridged_devices[config.endpoint_id] = device
@@ -363,7 +363,7 @@ module MatterBridge
 
       unless success
         puts "Failed to add endpoint #{endpoint_id}"
-        return nil
+        return
       end
 
       @bridged_devices[endpoint_id] = device
@@ -550,11 +550,11 @@ module MatterBridge
     end
 
     private def parse_endpoint(arg : String?) : UInt16?
-      return nil unless arg
+      return unless arg
       endpoint = arg.to_u16?
       unless endpoint
         puts "  Invalid endpoint number: #{arg}"
-        return nil
+        return
       end
       endpoint
     end
