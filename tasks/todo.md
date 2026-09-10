@@ -64,12 +64,12 @@ Document model: `Type = Nil | Bool | Int64 | UInt64 | Float64 | String | Bytes |
 collections `fabrics`, `sessions`, `subscriptions`, `device`, `clusters`, `app`, `meta` (schema in plan).
 - [x] Step 1: dependency-free core: `Backend` interface, Memory/YamlFile/JsonFile over `FileBackend`,
       `Record` macro, `Migrator` + `bin/matter-storage` CLI, shared backend contract spec
-- [ ] Step 2: Fabric/session/subscription/cluster records; `Device::Persistence` (dirty tracking, debounce,
+- [x] Step 2: Fabric/session/subscription/cluster records; `Device::Persistence` (dirty tracking, debounce,
       identity, app documents, orphan cleanup, `reset!`); `Device::Base.new(storage:)`; examples on YAML;
       controller state on a backend; old storage classes deleted
-- [ ] Step 3: `storage/legacy/` importer + fixture spec; restart spec + e2e restart; README storage section;
+- [x] Step 3: `storage/legacy/` importer + fixture spec; restart spec + e2e restart; README storage section;
       manual import of a real device file
-- [ ] `./test` green at the end
+- [x] `./test` green at the end (2268 unit + 63 e2e incl. two device restarts)
 
 ## Phase 4: Wire codec and cluster boundary
 - [ ] `SecureMessageCodec` encode/decode; single AAD definition; single `PacketHeader` representation
@@ -173,3 +173,27 @@ collections `fabrics`, `sessions`, `subscriptions`, `device`, `clusters`, `app`,
 | `src/` lines / files | 40,897 / 139 | 41,275 / 140 |
 | unit examples | 2034 | 2140 |
 | bare-string raises in src | 66 | 0 |
+
+### Phase 3 (2026-09-10)
+- `src/matter/storage/` depends on nothing: `Backend` (collections → ids → documents, transactions,
+  `destroy!`), `Memory`, `YamlFile`, `JsonFile` over one `FileBackend` (atomic write, fsync, mutex, corrupt
+  file preserved, schema version), `Record` macro (`to_document`/`from_document` from ivars), `Migrator` and
+  `bin/matter-storage migrate|inspect`. Human-readable files; `Bytes` and `Time` first-class; `UInt64`
+  above `Int64::MAX` survives (the old loader silently factory-reset on such fabric ids).
+- Fabrics, sessions, subscriptions, every cluster state, device identity, bridge documents and controller
+  state are `Record`s; one document per fabric/session/subscription; hand-rolled `to_h`, `PersistedState`
+  JSON structs, the scenes shadow-field hack, `Persistence.redact` and `Storage::Manager` are gone.
+- `Device::Persistence` owns the backend, fabric table, protocol persistence, identity, app documents,
+  orphan cleanup and `reset!`; `Device::Base.new(storage:)` replaces `build_storage_manager`. Writes are
+  debounced (250 ms) through `Debouncer` into one transaction; `increment_version` is the dirty chokepoint
+  (GroupKeyManagement now bumps it). Cluster state survives a crash, not just a clean shutdown.
+- Legacy importer isolated in `storage/legacy/` (`--from legacy:<file>`), verified against a real device
+  file; fixture-based import + boot spec caught an integer-vs-name enum mismatch and fixed it.
+- Restart coverage that never existed: unit restart spec (crash and flush paths, `reset!`) and in-place
+  container restarts in e2e (marker file on the shared log volume) for the switch and door lock.
+
+| Metric | after Phase 2 | after Phase 3 |
+|---|---|---|
+| unit examples | 2140 | 2268 |
+| e2e examples | 61 | 63 |
+| storage formats | JSON-in-JSON KV | YAML / JSON / memory documents |
