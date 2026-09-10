@@ -25,6 +25,7 @@ require "./matter/codec"
 require "./matter/crypto"
 require "./matter/certificate"
 require "./matter/storage"
+require "./matter/debouncer"
 require "./matter/fabric"
 require "./matter/fabric_table"
 require "./matter/network"
@@ -35,10 +36,6 @@ require "./matter/failsafe_timer"
 require "./matter/failsafe_context"
 require "./matter/cluster"
 require "./matter/protocol"
-# Storage::Manager depends on the fabric table, protocol persistence and
-# clusters, so it cannot live in `matter/storage`. Phase 3 of the refactor
-# moves it out of the storage namespace.
-require "./matter/storage/manager"
 require "./matter/mdns"
 require "./matter/device_type"
 require "./matter/endpoint"
