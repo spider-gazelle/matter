@@ -316,8 +316,8 @@ module Matter
             next
           end
 
-          if metadata = cluster.attributes.find { |attr| attr.id.id == attribute_id }
-            unless authorized?(clusters, metadata.access, endpoint_id, cluster_id, is_case_session, fabric_index, peer_subject_ids)
+          if metadata = cluster.get_attribute_metadata(attribute_id)
+            unless authorized?(clusters, metadata.write_access, endpoint_id, cluster_id, is_case_session, fabric_index, peer_subject_ids)
               status_ib = InteractionModel::StatusIB.new(status: InteractionModel::StatusCode::UnsupportedAccess.value)
               write_responses << InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
               next
