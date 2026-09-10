@@ -1,5 +1,6 @@
 require "option_parser"
 require "../storage"
+require "./legacy"
 
 module Matter
   module Storage
@@ -11,7 +12,8 @@ module Matter
     # ```
     #
     # Store URIs are those accepted by `Migrator.open`: `memory:`,
-    # `yaml:<path>`, `json:<path>`.
+    # `yaml:<path>`, `json:<path>` and, for pre-refactor files,
+    # `legacy:<path>` (see `Storage::Legacy`).
     module CLI
       PROGRAM = "matter-storage"
 

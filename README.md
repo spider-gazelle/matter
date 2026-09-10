@@ -44,6 +44,42 @@ These projects show off how custom matter interfaces can be built for almost any
 * [Control a rangehood](https://github.com/Crystal-Matter/elica-rangehood-matter)
 * Control a [Windows media center PC](https://github.com/Crystal-Matter/matter_media), plugged into your TV, from your phone
 
+## Storage
+
+Device state (fabrics, sessions, subscriptions, cluster state, identity) is persisted
+through `Matter::Storage::Backend`. Three backends ship with the library:
+
+* `Matter::Storage::YamlFile` - one human readable YAML file (recommended)
+* `Matter::Storage::JsonFile` - the same layout as JSON
+* `Matter::Storage::Memory` - nothing persisted; state is rebuilt on every start
+
+A store is a set of *collections* (`fabrics`, `sessions`, `subscriptions`, `device`,
+`clusters`, `app`, `meta`), each holding *documents* keyed by id, so a file looks like
+`{collection: {id: document}}`. Documents hold 64-bit integers, floats, booleans,
+strings, byte strings, timestamps, arrays and nested maps. Bytes are written as
+`!!binary` base64 in YAML and `{"$bytes": "<base64>"}` in JSON; timestamps as
+`!!timestamp` / `{"$time": "<RFC 3339 UTC>"}`. `meta/schema` records the layout version.
+
+`bin/matter-storage` (built with `shards build matter-storage`) copies and prints stores.
+Store URIs are `memory:`, `yaml:<path>`, `json:<path>`:
+
+```shell
+bin/matter-storage migrate --from json:matter_storage.json --to yaml:matter_storage.yml
+bin/matter-storage inspect yaml:matter_storage.yml   # keys, certs and byte strings are redacted
+```
+
+Devices that ran a release before the storage refactor wrote a different flat JSON file
+(`{"<context>": {"<key>": <json string>}}`). Convert it once with the `legacy:` scheme:
+
+```shell
+bin/matter-storage migrate --from legacy:matter_storage.json --to yaml:matter_storage.yml
+```
+
+Unrecognised entries are kept under `app/legacy-<context>-<key>` and each is reported with
+a warning, so nothing is dropped silently. The importer lives in `src/matter/storage/legacy/`
+and is only loaded by `require "matter/storage/legacy"` (the CLI does this); it is a
+temporary module that will be removed once deployed devices have migrated.
+
 ## End to end tests
 
 The full suite (unit specs + chip-tool driven end-to-end specs against every example
