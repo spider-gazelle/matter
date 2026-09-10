@@ -102,6 +102,16 @@ device) runs inside docker compose, so the only requirement is Docker with compo
 * Container logs (device output, pairing codes, protocol debug logs) are saved to
   `tmp/e2e/logs/` after every run.
 
+Persistence is checked by restarting devices in place. The `tests` container has no
+docker socket, so `E2E::Device#restart!` creates a marker file
+`/e2e/logs/<example>.restart` on the shared log volume; `e2e/device-entrypoint.sh`
+(a small supervisor loop) removes it, sends `SIGTERM` to the device for a clean
+shutdown, appends `=== e2e restart <n> ===` to `<example>.log` and starts the binary
+again in the same working directory, where its storage lives. The spec then waits for
+the operational-mode banner after that line and checks that no new pairing code was
+printed before reading the persisted state back with chip-tool. A device that exits
+without a restart having been requested takes its container down with its exit code.
+
 The same validation can be run directly on the host against a locally installed
 chip-tool:
 
