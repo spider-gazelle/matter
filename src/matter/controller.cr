@@ -4,7 +4,7 @@
 # mDNS scanner, secure client, PASE/CASE pairing and commissioning flows.
 require "../matter"
 
-require "./mdns/scanner"
+require "./controller/scanner"
 require "./controller/state"
 require "./controller/state_store"
 require "./controller/certificate_util"

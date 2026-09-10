@@ -6,7 +6,7 @@ require "../../cluster/definitions/general_commissioning"
 require "../../cluster/definitions/operational_credentials"
 require "../../crypto/certificate"
 require "../../crypto/key"
-require "../../mdns/scanner"
+require "../scanner"
 require "../../setup_payload"
 
 require "../certificate_util"
@@ -148,8 +148,8 @@ module Matter
         end
 
         private def discover_commissionable(discriminator : UInt16) : Socket::IPAddress
-          scanner = nil.as(MDNS::Scanner?)
-          scanner = MDNS::Scanner.new
+          scanner = nil.as(Scanner?)
+          scanner = Scanner.new
           scanner.start
           scanner.query_commissioning
           short_only = (discriminator & 0x00ff_u16) == 0_u16

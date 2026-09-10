@@ -150,8 +150,8 @@ module ChipTool
           end
         end
 
-        scanner = nil.as(Matter::MDNS::Scanner?)
-        scanner = Matter::MDNS::Scanner.new
+        scanner = nil.as(Matter::Controller::Scanner?)
+        scanner = Matter::Controller::Scanner.new
         scanner.start
         scanner.query_operational
 

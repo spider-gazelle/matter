@@ -1,10 +1,10 @@
 require "dns"
 require "log"
-require "./service_type"
-require "./record_builder"
+require "../mdns/service_type"
+require "../mdns/record_builder"
 
 module Matter
-  module MDNS
+  module Controller
     # Discovered Matter device information
     struct DiscoveredDevice
       property instance_name : String
@@ -12,7 +12,7 @@ module Matter
       property addresses : Array(Socket::IPAddress)
       property port : Int32
       property txt_records : Hash(String, String)
-      property service_type : ServiceType
+      property service_type : MDNS::ServiceType
       property expires_at : Time
 
       # Commissioning-specific fields
@@ -33,7 +33,7 @@ module Matter
         @addresses : Array(Socket::IPAddress),
         @port : Int32,
         @txt_records : Hash(String, String),
-        @service_type : ServiceType,
+        @service_type : MDNS::ServiceType,
         @expires_at : Time,
       )
         parse_txt_records
@@ -86,7 +86,7 @@ module Matter
     # - Processing unsolicited announcements
     # - Sending queries for specific services
     class Scanner
-      Log       = ::Log.for("matter.mdns.scanner")
+      Log       = ::Log.for("matter.controller.scanner")
       MDNS_PORT = 5353
       MDNS_IPV4 = Socket::IPAddress.new("224.0.0.251", MDNS_PORT)
       MDNS_IPV6 = Socket::IPAddress.new("ff02::fb", MDNS_PORT)
@@ -157,12 +157,12 @@ module Matter
 
       # Query for commissioning devices
       def query_commissioning : Nil
-        query_service(ServiceNames::COMMISSIONING)
+        query_service(MDNS::ServiceNames::COMMISSIONING)
       end
 
       # Query for operational devices
       def query_operational : Nil
-        query_service(ServiceNames::OPERATIONAL)
+        query_service(MDNS::ServiceNames::OPERATIONAL)
       end
 
       # Get all discovered devices
@@ -189,8 +189,8 @@ module Matter
         # Build PTR query for service
         question = DNS::Packet::Question.new(
           name: service,
-          type: RecordBuilder::TYPE_PTR,
-          class_code: RecordBuilder::CLASS_IN
+          type: MDNS::RecordBuilder::TYPE_PTR,
+          class_code: MDNS::RecordBuilder::CLASS_IN
         )
 
         packet = DNS::Packet.new(
@@ -258,10 +258,10 @@ module Matter
 
       private def extract_instance_name(name : String) : String?
         # Check if this is a service instance name
-        if name.includes?(ServiceNames::COMMISSIONING)
-          return name if name.ends_with?(ServiceNames::COMMISSIONING)
-        elsif name.includes?(ServiceNames::OPERATIONAL)
-          return name if name.ends_with?(ServiceNames::OPERATIONAL)
+        if name.includes?(MDNS::ServiceNames::COMMISSIONING)
+          return name if name.ends_with?(MDNS::ServiceNames::COMMISSIONING)
+        elsif name.includes?(MDNS::ServiceNames::OPERATIONAL)
+          return name if name.ends_with?(MDNS::ServiceNames::OPERATIONAL)
         end
 
         nil
@@ -269,10 +269,10 @@ module Matter
 
       private def process_instance_records(instance : String, records : Array(DNS::Packet::ResourceRecord)) : Nil
         # Extract information from records
-        srv_record = records.find { |record| record.type == RecordBuilder::TYPE_SRV }
-        txt_record = records.find { |record| record.type == RecordBuilder::TYPE_TXT }
-        a_records = records.select { |record| record.type == RecordBuilder::TYPE_A }
-        aaaa_records = records.select { |record| record.type == RecordBuilder::TYPE_AAAA }
+        srv_record = records.find { |record| record.type == MDNS::RecordBuilder::TYPE_SRV }
+        txt_record = records.find { |record| record.type == MDNS::RecordBuilder::TYPE_TXT }
+        a_records = records.select { |record| record.type == MDNS::RecordBuilder::TYPE_A }
+        aaaa_records = records.select { |record| record.type == MDNS::RecordBuilder::TYPE_AAAA }
 
         # Need at least SRV record to identify the service
         return unless srv_record
@@ -298,10 +298,10 @@ module Matter
         end
 
         # Determine service type
-        service_type = if instance.includes?(ServiceNames::COMMISSIONING)
-                         ServiceType::Commissioning
-                       elsif instance.includes?(ServiceNames::OPERATIONAL)
-                         ServiceType::Operational
+        service_type = if instance.includes?(MDNS::ServiceNames::COMMISSIONING)
+                         MDNS::ServiceType::Commissioning
+                       elsif instance.includes?(MDNS::ServiceNames::OPERATIONAL)
+                         MDNS::ServiceType::Operational
                        else
                          return
                        end
