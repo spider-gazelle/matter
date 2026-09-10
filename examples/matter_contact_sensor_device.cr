@@ -18,7 +18,7 @@ module MatterContactSensor
     @running : Bool = false
 
     def initialize
-      super(ip_addresses: local_ips)
+      super(ip_addresses: Matter::Network.local_ip_addresses)
     end
 
     def device_name : String
@@ -121,31 +121,6 @@ module MatterContactSensor
         # true = contact open, false = contact closed
         contact.update_state(rand(0..99) < 25)
       end
-    end
-
-    private def local_ips : Array(Socket::IPAddress)
-      ips = [] of Socket::IPAddress
-
-      begin
-        socket = UDPSocket.new(:inet6)
-        socket.connect("2606:4700:4700::1111", 53)
-        addr = socket.local_address
-        socket.close
-        ips << Socket::IPAddress.new(addr.address, 0)
-      rescue
-      end
-
-      begin
-        socket = UDPSocket.new(:inet)
-        socket.connect("8.8.8.8", 80)
-        addr = socket.local_address
-        socket.close
-        ips << Socket::IPAddress.new(addr.address, 0)
-      rescue
-      end
-
-      ips << Socket::IPAddress.new("127.0.0.1", 0) if ips.empty?
-      ips
     end
   end
 end
