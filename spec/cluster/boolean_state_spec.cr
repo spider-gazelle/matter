@@ -1,12 +1,12 @@
 require "../spec_helper"
 require "../../src/matter/cluster/boolean_state_cluster"
 
-describe Matter::Cluster::BooleanStateCluster do
-  endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+private alias BooleanState = Matter::Cluster::BooleanStateCluster
 
+describe Matter::Cluster::BooleanStateCluster do
   describe "initialization" do
     it "creates with default false state" do
-      cluster = Matter::Cluster::BooleanStateCluster.new(endpoint_id)
+      cluster = BooleanState.new(endpoint(1))
 
       cluster.cluster_id.id.should eq(0x0045_u32)
       cluster.name.should eq("BooleanState")
@@ -14,63 +14,49 @@ describe Matter::Cluster::BooleanStateCluster do
     end
 
     it "creates with true state" do
-      cluster = Matter::Cluster::BooleanStateCluster.new(endpoint_id, state_value: true)
+      cluster = BooleanState.new(endpoint(1), state_value: true)
       cluster.state_value?.should be_true
     end
   end
 
   describe "attributes" do
     it "exposes StateValue attribute metadata" do
-      cluster = Matter::Cluster::BooleanStateCluster.new(endpoint_id)
+      cluster = BooleanState.new(endpoint(1))
       attrs = cluster.attributes
 
       attrs.size.should eq(1)
-      attrs[0].id.id.should eq(Matter::Cluster::BooleanStateCluster::ATTR_STATE_VALUE)
+      attrs[0].id.id.should eq(BooleanState::ATTR_STATE_VALUE)
       attrs[0].name.should eq("StateValue")
       attrs[0].writable?.should be_false
     end
 
     it "reads state as TLV bool" do
-      cluster = Matter::Cluster::BooleanStateCluster.new(endpoint_id, state_value: true)
-      result = cluster.read_attribute(Matter::Cluster::BooleanStateCluster::ATTR_STATE_VALUE)
-
-      result.should be_a(Bytes)
-      decode_tlv_value(result.as(Bytes)).should eq(true)
+      cluster = BooleanState.new(endpoint(1), state_value: true)
+      read(cluster, BooleanState::ATTR_STATE_VALUE).should be_true
     end
 
     it "returns unsupported for unknown attribute" do
-      cluster = Matter::Cluster::BooleanStateCluster.new(endpoint_id)
-      result = cluster.read_attribute(0x9999_u32)
-
-      result.should be_a(Matter::InteractionModel::Status)
-      result.as(Matter::InteractionModel::Status).status.should eq(
-        Matter::InteractionModel::StatusCode::UnsupportedAttribute
-      )
+      cluster = BooleanState.new(endpoint(1))
+      read_status(cluster, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 
   describe "update_state" do
     it "updates state and increments data version" do
-      cluster = Matter::Cluster::BooleanStateCluster.new(endpoint_id, state_value: false)
-      initial_version = cluster.data_version
+      cluster = BooleanState.new(endpoint(1), state_value: false)
 
-      cluster.update_state(true)
-
+      version_delta(cluster) { cluster.update_state(true) }.should eq(1)
       cluster.state_value?.should be_true
-      cluster.data_version.should eq(initial_version + 1)
     end
 
     it "does not change data version when value is unchanged" do
-      cluster = Matter::Cluster::BooleanStateCluster.new(endpoint_id, state_value: true)
-      initial_version = cluster.data_version
+      cluster = BooleanState.new(endpoint(1), state_value: true)
 
-      cluster.update_state(true)
-
-      cluster.data_version.should eq(initial_version)
+      version_delta(cluster) { cluster.update_state(true) }.should eq(0)
     end
 
     it "invokes on_state_changed when value changes" do
-      cluster = Matter::Cluster::BooleanStateCluster.new(endpoint_id, state_value: false)
+      cluster = BooleanState.new(endpoint(1), state_value: false)
 
       old_value : Bool? = nil
       new_value : Bool? = nil
@@ -81,31 +67,19 @@ describe Matter::Cluster::BooleanStateCluster do
 
       cluster.update_state(true)
 
-      old_value.should eq(false)
-      new_value.should eq(true)
+      old_value.should be_false
+      new_value.should be_true
     end
 
     it "notifies attribute subscribers when value changes" do
-      cluster = Matter::Cluster::BooleanStateCluster.new(endpoint_id, state_value: false)
+      cluster = BooleanState.new(endpoint(1), state_value: false)
 
-      notified = false
-      notified_endpoint : UInt16 = 0_u16
-      notified_cluster : UInt32 = 0_u32
-      notified_attribute : UInt32 = 0_u32
+      changes = capture_changes(cluster) { cluster.update_state(true) }
 
-      cluster.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) {
-        notified = true
-        notified_endpoint = ep
-        notified_cluster = cl
-        notified_attribute = attr
-      }
-
-      cluster.update_state(true)
-
-      notified.should be_true
-      notified_endpoint.should eq(1_u16)
-      notified_cluster.should eq(Matter::Cluster::BooleanStateCluster::CLUSTER_ID)
-      notified_attribute.should eq(Matter::Cluster::BooleanStateCluster::ATTR_STATE_VALUE)
+      changes.size.should eq(1)
+      changes[0].endpoint.should eq(1_u16)
+      changes[0].cluster.should eq(BooleanState::CLUSTER_ID)
+      changes[0].attribute.should eq(BooleanState::ATTR_STATE_VALUE)
     end
   end
 end
