@@ -3,7 +3,6 @@ require "../../src/matter/protocol/message_handler"
 require "../../src/matter/session/context"
 require "../../src/matter/transport/udp_transport"
 require "../../src/matter/fabric_table"
-require "../../src/matter/storage/base"
 
 class NoSocketTransportForSessionCleanupSpec < Matter::Transport::UDPTransport
   def self.new_for_spec : self
@@ -27,7 +26,7 @@ end
 module SessionCleanupTestHelpers
   def self.create_test_handler
     transport = NoSocketTransportForSessionCleanupSpec.new_for_spec
-    storage = Matter::Storage::MemoryBackend.new
+    storage = Matter::Storage::Memory.new
     fabric_table = Matter::FabricTable.new(storage)
     handler = Matter::Protocol::MessageHandler.new(
       transport: transport,
@@ -412,7 +411,7 @@ describe Matter::Protocol::MessageHandler do
 
     it "allows custom max_sessions configuration" do
       transport = NoSocketTransportForSessionCleanupSpec.new_for_spec
-      storage = Matter::Storage::MemoryBackend.new
+      storage = Matter::Storage::Memory.new
       fabric_table = Matter::FabricTable.new(storage)
       handler = Matter::Protocol::MessageHandler.new(
         transport: transport,

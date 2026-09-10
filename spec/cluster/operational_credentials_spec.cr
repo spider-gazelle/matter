@@ -4,9 +4,8 @@ require "../../src/matter/crypto/certificate"
 
 # Helper functions for TLV encoding command data
 def build_op_creds_cluster(endpoint_id : Matter::DataType::EndpointNumber = Matter::DataType::EndpointNumber.new(0_u16))
-  storage = Matter::Storage::MemoryBackend.new
-  storage_manager = Matter::Storage::Manager.new(storage)
-  Matter::Cluster::OperationalCredentialsCluster.new(storage_manager.fabric_table, endpoint_id, nil)
+  fabric_table = Matter::FabricTable.new(Matter::Storage::Memory.new)
+  Matter::Cluster::OperationalCredentialsCluster.new(fabric_table, endpoint_id, nil)
 end
 
 def create_attestation_request_tlv(nonce : Bytes) : Bytes
@@ -122,7 +121,7 @@ module OpCredsTestHelpers
 
   # Helper to create a fabric table with storage
   def create_fabric_table(max_fabrics : UInt8 = 10_u8)
-    storage = Matter::Storage::MemoryBackend.new
+    storage = Matter::Storage::Memory.new
     Matter::FabricTable.new(storage, max_fabrics: max_fabrics)
   end
 
@@ -1092,7 +1091,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
     describe "fabric label management" do
       it "updates fabric label" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        storage = Matter::Storage::MemoryBackend.new
+        storage = Matter::Storage::Memory.new
         fabric_table = Matter::FabricTable.new(storage)
         cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table, endpoint_id, nil)
 
@@ -1138,7 +1137,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       it "rejects duplicate fabric labels" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        storage = Matter::Storage::MemoryBackend.new
+        storage = Matter::Storage::Memory.new
         fabric_table = Matter::FabricTable.new(storage)
         cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table, endpoint_id, nil)
 
@@ -1199,7 +1198,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
     describe "Fabrics attribute read after AddNOC" do
       it "returns non-empty Fabrics attribute after successful AddNOC" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        storage = Matter::Storage::MemoryBackend.new
+        storage = Matter::Storage::Memory.new
         fabric_table = Matter::FabricTable.new(storage)
         cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table, endpoint_id, nil)
 
@@ -1283,7 +1282,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
     describe "certificate public key extraction" do
       it "processes AddNOC with TLV root certificate" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        storage = Matter::Storage::MemoryBackend.new
+        storage = Matter::Storage::Memory.new
         fabric_table = Matter::FabricTable.new(storage)
         cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table, endpoint_id, nil)
 
@@ -1336,7 +1335,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       it "processes AddNOC with DER root certificate" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        storage = Matter::Storage::MemoryBackend.new
+        storage = Matter::Storage::Memory.new
         fabric_table = Matter::FabricTable.new(storage)
         cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table, endpoint_id, nil)
 
@@ -1404,7 +1403,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       it "computes correct compressed fabric ID from extracted public key" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        storage = Matter::Storage::MemoryBackend.new
+        storage = Matter::Storage::Memory.new
         fabric_table = Matter::FabricTable.new(storage)
         cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table, endpoint_id, nil)
 

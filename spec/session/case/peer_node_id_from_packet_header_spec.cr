@@ -5,7 +5,6 @@ require "../../../src/matter/crypto/crypto"
 require "../../../src/matter/datatype/node_id"
 require "../../../src/matter/protocol/message_handler"
 require "../../../src/matter/session/secure_message"
-require "../../../src/matter/storage/memory_backend"
 require "../../../src/matter/transport/udp_transport"
 
 # Minimal transport that avoids binding OS UDP sockets in the spec environment.
@@ -26,7 +25,7 @@ end
 describe "CASE peer_node_id population" do
   it "populates session.peer_node_id from packet header when missing" do
     transport = NoSocketTransportForPeerNodeIdSpec.new_for_spec
-    storage = Matter::Storage::MemoryBackend.new
+    storage = Matter::Storage::Memory.new
     fabric_table = Matter::FabricTable.new(storage)
 
     handler = Matter::Protocol::MessageHandler.new(

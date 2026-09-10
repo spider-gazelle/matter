@@ -42,7 +42,7 @@ end
 
 describe Matter::Device::LifecycleManager do
   it "defers CASE session cleanup on fabric removal" do
-    storage = Matter::Storage::MemoryBackend.new
+    storage = Matter::Storage::Memory.new
     fabric_table = Matter::FabricTable.new(storage)
 
     handler = Matter::FakeSessionManager.new
