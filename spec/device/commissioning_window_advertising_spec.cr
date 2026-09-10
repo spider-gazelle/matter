@@ -29,8 +29,8 @@ class CommissioningWindowTestDevice < Matter::Device::Base
     20202021_u32
   end
 
-  def primary_device_type_id : UInt16
-    Matter::DeviceTypes::ROOT_NODE
+  def primary_device_type_id : UInt32
+    Matter::DeviceType::ROOT_NODE
   end
 
   protected def build_storage_manager : Matter::Storage::Manager
