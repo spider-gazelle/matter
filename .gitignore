@@ -12,6 +12,7 @@
 
 # Runtime state written by the examples and chip-tool
 *.json
+!/spec/fixtures/*.json
 /chip-tool-storage/
 *_storage.yml
 *_storage.yaml
