@@ -19,7 +19,7 @@ module Matter
       property vendor_id : UInt16?
       property product_id : UInt16?
       property discriminator : UInt16?
-      property device_type : UInt16?
+      property device_type : UInt32?
       property device_name : String?
       property commissioning_mode : UInt8?
 
@@ -58,7 +58,7 @@ module Matter
         end
 
         @discriminator = @txt_records["D"]?.try(&.to_u16?)
-        @device_type = @txt_records["DT"]?.try(&.to_u16?)
+        @device_type = @txt_records["DT"]?.try(&.to_u32?)
         @device_name = @txt_records["DN"]?
         @commissioning_mode = @txt_records["CM"]?.try(&.to_u8?)
       end

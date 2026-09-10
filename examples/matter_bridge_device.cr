@@ -201,7 +201,7 @@ module MatterBridge
       # already knows about these devices from before the restart
       success = add_endpoint(
         endpoint_id: config.endpoint_id,
-        device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+        device_type: Matter::DeviceType::ON_OFF_LIGHT,
         clusters: device.clusters,
         notify_subscribers: false
       )
@@ -244,8 +244,8 @@ module MatterBridge
     end
 
     # Bridge is a Root Node device type
-    def primary_device_type_id : UInt16
-      Matter::DeviceTypes::ROOT_NODE
+    def primary_device_type_id : UInt32
+      Matter::DeviceType::ROOT_NODE
     end
 
     def vendor_name : String
@@ -357,7 +357,7 @@ module MatterBridge
       # Register with the bridge using dynamic endpoint management
       success = add_endpoint(
         endpoint_id: endpoint_id,
-        device_type: Matter::DeviceTypes::ON_OFF_LIGHT.to_u32,
+        device_type: Matter::DeviceType::ON_OFF_LIGHT,
         clusters: device.clusters
       )
 

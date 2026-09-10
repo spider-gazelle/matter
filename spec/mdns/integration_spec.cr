@@ -32,7 +32,7 @@ describe "mDNS Integration" do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
-        device_type: 0x0016_u16,
+        device_type: 0x0016_u32,
         commissioning_mode: Matter::MDNS::CommissioningMode::Basic
       )
 
@@ -236,7 +236,7 @@ describe "mDNS Integration" do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
-        device_type: 0x0016_u16
+        device_type: 0x0016_u32
       )
 
       responder.advertise_commissioning(commissioning_info, port: 5540)
@@ -365,7 +365,7 @@ describe "mDNS Integration" do
     end
 
     it "formats device type subtype" do
-      subtype = Matter::MDNS::ServiceNames.device_type_subtype(0x0016_u16)
+      subtype = Matter::MDNS::ServiceNames.device_type_subtype(0x0016_u32)
       subtype.should eq("_T22._sub._matterc._udp.local")
     end
   end
@@ -406,7 +406,7 @@ describe "mDNS Integration" do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
-        device_type: 0x0016_u16
+        device_type: 0x0016_u32
       )
 
       responder1.advertise_commissioning(info, port: 5540)

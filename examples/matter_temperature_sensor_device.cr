@@ -53,8 +53,8 @@ module MatterTemperatureSensor
       SETUP_PIN_CODE
     end
 
-    def primary_device_type_id : UInt16
-      Matter::DeviceTypes::TEMPERATURE_SENSOR
+    def primary_device_type_id : UInt32
+      Matter::DeviceType::TEMPERATURE_SENSOR
     end
 
     def vendor_name : String

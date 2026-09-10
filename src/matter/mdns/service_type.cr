@@ -75,7 +75,7 @@ module Matter
 
       # Build device type subtype
       # Format: _T<device-type>._sub._matterc._udp.local
-      def device_type_subtype(device_type : UInt16) : String
+      def device_type_subtype(device_type : UInt32) : String
         "_T#{device_type}._sub.#{COMMISSIONING}"
       end
 
@@ -106,7 +106,7 @@ module Matter
       property vendor_id : UInt16
       property product_id : UInt16
       property discriminator : UInt16
-      property device_type : UInt16
+      property device_type : UInt32
       property commissioning_mode : CommissioningMode
       property pairing_hint : UInt16?
       property pairing_instruction : String?
@@ -116,7 +116,7 @@ module Matter
         @vendor_id : UInt16,
         @product_id : UInt16,
         @discriminator : UInt16,
-        @device_type : UInt16,
+        @device_type : UInt32,
         @commissioning_mode : CommissioningMode = CommissioningMode::Disabled,
         @pairing_hint : UInt16? = nil,
         @pairing_instruction : String? = nil,

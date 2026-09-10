@@ -42,7 +42,7 @@ describe Matter::MDNS::Responder do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
-        device_type: 0x0016_u16,
+        device_type: 0x0016_u32,
         commissioning_mode: Matter::MDNS::CommissioningMode::Basic
       )
 
@@ -56,7 +56,7 @@ describe Matter::MDNS::Responder do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
-        device_type: 0x0016_u16,
+        device_type: 0x0016_u32,
         commissioning_mode: Matter::MDNS::CommissioningMode::Basic,
         pairing_hint: 0x01_u16,
         pairing_instruction: "Scan QR code"
@@ -150,7 +150,7 @@ describe Matter::MDNS::Responder do
     end
 
     it "generates device type subtype" do
-      subtype = Matter::MDNS::ServiceNames.device_type_subtype(0x0016_u16)
+      subtype = Matter::MDNS::ServiceNames.device_type_subtype(0x0016_u32)
       subtype.should eq("_T22._sub._matterc._udp.local")
     end
 
@@ -316,7 +316,7 @@ describe Matter::MDNS::Responder do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
-        device_type: 0x0016_u16
+        device_type: 0x0016_u32
       )
 
       # Should not raise
@@ -338,7 +338,7 @@ describe Matter::MDNS::Responder do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
-        device_type: 0x0016_u16
+        device_type: 0x0016_u32
       )
 
       # Should not raise
@@ -382,7 +382,7 @@ describe Matter::MDNS::Responder do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
-        device_type: 0x0100_u16,
+        device_type: 0x0100_u32,
         commissioning_mode: Matter::MDNS::CommissioningMode::Basic
       )
 
@@ -413,7 +413,7 @@ describe Matter::MDNS::Responder do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
-        device_type: 0x0100_u16,
+        device_type: 0x0100_u32,
         commissioning_mode: Matter::MDNS::CommissioningMode::Basic
       )
 
@@ -442,7 +442,7 @@ describe Matter::MDNS::Responder do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
-        device_type: 0x0100_u16,
+        device_type: 0x0100_u32,
         commissioning_mode: Matter::MDNS::CommissioningMode::Basic
       )
 
@@ -477,7 +477,7 @@ describe Matter::MDNS::Responder do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
-        device_type: 0x0100_u16,
+        device_type: 0x0100_u32,
         commissioning_mode: Matter::MDNS::CommissioningMode::Basic
       )
 

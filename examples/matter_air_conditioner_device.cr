@@ -81,8 +81,8 @@ module MatterAirConditioner
       SETUP_PIN_CODE
     end
 
-    def primary_device_type_id : UInt16
-      Matter::DeviceTypes::THERMOSTAT
+    def primary_device_type_id : UInt32
+      Matter::DeviceType::THERMOSTAT
     end
 
     def vendor_name : String

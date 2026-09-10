@@ -41,8 +41,8 @@ module MatterMotionSensor
       SETUP_PIN_CODE
     end
 
-    def primary_device_type_id : UInt16
-      Matter::DeviceTypes::OCCUPANCY_SENSOR
+    def primary_device_type_id : UInt32
+      Matter::DeviceType::OCCUPANCY_SENSOR
     end
 
     def vendor_name : String
