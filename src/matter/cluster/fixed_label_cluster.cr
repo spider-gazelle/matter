@@ -7,39 +7,12 @@ module Matter
     #
     # Provides fixed (non-writable) labels for an endpoint.
     class FixedLabelCluster < Base
-      CLUSTER_ID = 0x0040_u32
+      cluster 0x0040, revision: 1
 
-      ATTR_LABEL_LIST = 0x0000_u32
-
-      property label_list : Array(LabelStruct)
+      attribute 0x0000, :label_list, Array(LabelStruct), default: [] of LabelStruct, fixed: true
 
       def initialize(endpoint_id : DataType::EndpointNumber, @label_list : Array(LabelStruct))
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
-        @attribute_values[ATTR_LABEL_LIST] = tlv(@label_list)
-      end
-
-      def name : String
-        "FixedLabel"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        [
-          AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_LABEL_LIST),
-            name: "LabelList",
-            type: :list,
-            writable: false
-          ),
-        ]
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_LABEL_LIST
-          tlv(@label_list)
-        else
-          super
-        end
       end
     end
   end

@@ -24,8 +24,8 @@ describe Matter::Cluster::FixedLabelCluster do
     meta = cluster.attributes.find { |attr| attr.id.id == Matter::Cluster::FixedLabelCluster::ATTR_LABEL_LIST }
     meta.should_not be_nil
     meta = meta.as(Matter::Cluster::AttributeMetadata)
-    meta.name.should eq("LabelList")
-    meta.type.should eq(:list)
+    meta.name.should eq("labelList")
+    meta.type.should eq(:array)
     meta.writable?.should be_false
   end
 
