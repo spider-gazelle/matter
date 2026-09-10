@@ -74,8 +74,11 @@ describe "cluster boundary error mapping" do
       result.should eq(Matter::InteractionModel::Status.new(Matter::InteractionModel::StatusCode::Busy, RaisingCluster::CLUSTER_STATUS))
     end
 
-    it "maps CodecError to InvalidCommand" do
+    it "maps CodecError and TLV deserialization failures to InvalidCommand" do
       cluster = build_raising_cluster(Matter::CodecError.new("truncated"))
+      cluster.invoke_command(RaisingCluster::CMD_RAISE).should eq(Matter::InteractionModel::Status.invalid_command)
+
+      cluster = build_raising_cluster(TLV::DeserializationError.new("bad element"))
       cluster.invoke_command(RaisingCluster::CMD_RAISE).should eq(Matter::InteractionModel::Status.invalid_command)
     end
 
@@ -106,8 +109,11 @@ describe "cluster boundary error mapping" do
       cluster.write_attribute(RaisingCluster::ATTR_RAISE, value).should eq(cluster_error.to_status)
     end
 
-    it "maps CodecError and ArgumentError to InvalidDataType" do
+    it "maps CodecError, TLV deserialization failures and ArgumentError to InvalidDataType" do
       cluster = build_raising_cluster(Matter::CodecError.new("truncated"))
+      cluster.write_attribute(RaisingCluster::ATTR_RAISE, value).should eq(Matter::InteractionModel::Status.invalid_data_type)
+
+      cluster = build_raising_cluster(TLV::DeserializationError.new("bad element"))
       cluster.write_attribute(RaisingCluster::ATTR_RAISE, value).should eq(Matter::InteractionModel::Status.invalid_data_type)
 
       cluster = build_raising_cluster(ArgumentError.new("too long"))

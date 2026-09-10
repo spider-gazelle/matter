@@ -383,8 +383,8 @@ module Matter
             # CAT matching: identity must match, incoming version >= ACL version
             acl_cat.identity_value == incoming_cat.identity_value &&
               incoming_cat.version >= acl_cat.version
-          rescue
-            # If CAT extraction fails, fall back to exact match
+          rescue ex
+            Log.trace(exception: ex) { "CAT extraction failed; falling back to exact subject match" }
             acl_subject == incoming_subject
           end
         else

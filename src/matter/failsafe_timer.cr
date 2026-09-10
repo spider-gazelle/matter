@@ -77,7 +77,7 @@ module Matter
 
       # Stop old primary timer
       if channel = @primary_channel
-        channel.send(nil) rescue nil # Signal cancellation
+        signal_cancel(channel)
       end
 
       # Start new primary timer
@@ -99,10 +99,10 @@ module Matter
       # Stop both timers (spawn to avoid deadlock if called from timer fiber)
       spawn do
         if channel = @primary_channel
-          channel.send(nil) rescue nil
+          signal_cancel(channel)
         end
         if channel = @cumulative_channel
-          channel.send(nil) rescue nil
+          signal_cancel(channel)
         end
       end
 
@@ -203,11 +203,18 @@ module Matter
       @completed = true
 
       if channel = @primary_channel
-        channel.send(nil) rescue nil
+        signal_cancel(channel)
       end
       if channel = @cumulative_channel
-        channel.send(nil) rescue nil
+        signal_cancel(channel)
       end
+    end
+
+    # Signal a timer fiber to stop; a timer that already finished has closed
+    # its channel and needs no signal.
+    private def signal_cancel(channel : Channel(Nil)) : Nil
+      channel.send(nil)
+    rescue Channel::ClosedError
     end
   end
 end

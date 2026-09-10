@@ -886,6 +886,10 @@ module Matter
           # Extract new node_id from the updated NOC
           new_node_id = extract_node_id_from_noc(request.noc_value)
         rescue ex
+          Log.error(exception: ex) do
+            "Failed to parse NOC (#{request.noc_value.size} bytes): " \
+            "#{request.noc_value[0, [200, request.noc_value.size].min].hexstring}"
+          end
           return encode_noc_response(NodeOperationalCertStatus::InvalidNoc, nil, "Failed to parse NOC: #{ex.message}")
         end
 

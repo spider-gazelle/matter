@@ -700,8 +700,8 @@ module Matter
         @min_frequency = state.min_frequency
         @max_frequency = state.max_frequency
         @data_version = state.data_version
-      rescue
-        # Start fresh if restore fails
+      rescue ex
+        Log.warn(exception: ex) { "LevelControl restore_state failed; starting fresh" }
       end
     end
   end

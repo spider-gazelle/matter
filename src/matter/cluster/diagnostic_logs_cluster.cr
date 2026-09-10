@@ -138,8 +138,8 @@ module Matter
         begin
           req = RetrieveLogsRequest.from_slice(fields)
           intent = Intent.from_value(req.intent)
-        rescue
-          # Use defaults
+        rescue ex
+          Log.warn(exception: ex) { "RetrieveLogsRequest: failed to parse request, using defaults (bytes=#{fields.hexstring})" }
         end
 
         # Build response

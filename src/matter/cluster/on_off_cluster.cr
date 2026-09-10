@@ -451,8 +451,8 @@ module Matter
         end
 
         @data_version = state.data_version
-      rescue
-        # Start fresh if restore fails
+      rescue ex
+        Log.warn(exception: ex) { "OnOff restore_state failed; starting fresh" }
       end
 
       # ------------------------------------------------------------------------
@@ -480,8 +480,8 @@ module Matter
               set_on_off(parsed)
               return true
             end
-          rescue
-            # Ignore malformed TLV
+          rescue ex
+            Log.debug(exception: ex) { "OnOff: ignoring malformed scene extension field (bytes=#{value.hexstring})" }
           end
         end
 

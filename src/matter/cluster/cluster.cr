@@ -213,15 +213,15 @@ module Matter
       #
       # Exceptions escaping `handle_write_attribute` are mapped to an
       # Interaction Model status here so a misbehaving cluster never breaks the
-      # protocol layer: `Matter::ClusterError` carries its own status, a codec
-      # or argument failure is the peer's fault (`InvalidDataType`) and anything
-      # else is a bug reported as `Failure`.
+      # protocol layer: `Matter::ClusterError` carries its own status, a TLV /
+      # codec or argument failure is the peer's fault (`InvalidDataType`) and
+      # anything else is a bug reported as `Failure`.
       def write_attribute(attribute_id : UInt32, value : Bytes) : InteractionModel::Status
         handle_write_attribute(attribute_id, value)
       rescue ex : Matter::ClusterError
         Log.warn(exception: ex) { "#{self.class.name}: write attribute 0x#{attribute_id.to_s(16)} rejected" }
         ex.to_status
-      rescue ex : Matter::CodecError | ArgumentError
+      rescue ex : TLV::DeserializationError | Matter::CodecError | ArgumentError
         Log.warn(exception: ex) { "#{self.class.name}: write attribute 0x#{attribute_id.to_s(16)} rejected" }
         InteractionModel::Status.invalid_data_type
       rescue ex
@@ -350,7 +350,7 @@ module Matter
       rescue ex : Matter::ClusterError
         Log.warn(exception: ex) { "#{self.class.name}: command 0x#{command_id.to_s(16)} rejected" }
         ex.to_status
-      rescue ex : Matter::CodecError | ArgumentError
+      rescue ex : TLV::DeserializationError | Matter::CodecError | ArgumentError
         Log.warn(exception: ex) { "#{self.class.name}: command 0x#{command_id.to_s(16)} rejected" }
         InteractionModel::Status.invalid_command
       rescue ex

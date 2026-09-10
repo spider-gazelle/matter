@@ -505,8 +505,8 @@ module Matter
         @node_label = state.node_label
         @reachable = state.reachable?
         @data_version = state.data_version
-      rescue
-        # Start fresh if restore fails
+      rescue ex
+        Log.warn(exception: ex) { "BridgedDeviceBasicInformation restore_state failed; starting fresh" }
       end
 
       # TLV encoding helpers

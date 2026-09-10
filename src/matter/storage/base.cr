@@ -16,7 +16,7 @@ module Matter
       CONTEXT_SEPARATOR = "."
 
       # Join a context path into the flat key used by the backing store.
-      # Raises `ArgumentError` when the path is empty or contains an empty segment.
+      # Raises `Matter::StorageError` when the path is empty or contains an empty segment.
       protected def create_context_key(contexts : Array(String)) : String
         raise Matter::StorageError.new("Context must not be empty!") if contexts.empty?
 

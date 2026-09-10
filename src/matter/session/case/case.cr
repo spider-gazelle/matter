@@ -105,23 +105,23 @@ module Matter
             13
           )
 
-          begin
-            # Decrypt the certificate
-            decrypted_cert_der = @crypto.decrypt(encryption_key, peer_encrypted_cert, nonce_material)
-            @peer_cert = decrypted_cert_der
+          # Decrypt the certificate; a MIC failure means the peer does not hold
+          # the shared secret and the handshake must fail.
+          decrypted_cert_der = begin
+            @crypto.decrypt(encryption_key, peer_encrypted_cert, nonce_material)
+          rescue ex : Matter::CryptoError
+            raise Matter::AuthenticationError.new("CASE: Sigma2 certificate decryption failed", cause: ex)
+          end
+          @peer_cert = decrypted_cert_der
 
-            # Parse the DER-encoded certificate to verify it's valid
-            begin
-              OpenSSL::X509::Certificate.from_der(decrypted_cert_der)
-              Log.debug { "Successfully parsed peer certificate in Sigma2" }
-              # Note: Full certificate chain validation should be done after the handshake
-              # by calling validate_certificate_chain(trusted_roots) with appropriate trusted roots
-            rescue e
-              Log.warn(exception: e) { "Failed to parse peer certificate" }
-            end
-          rescue
-            # If decryption fails, store encrypted cert for now (backward compatibility with tests)
-            @peer_cert = peer_encrypted_cert
+          # Parse the DER-encoded certificate to verify it's valid
+          begin
+            OpenSSL::X509::Certificate.from_der(decrypted_cert_der)
+            Log.debug { "Successfully parsed peer certificate in Sigma2" }
+            # Note: Full certificate chain validation should be done after the handshake
+            # by calling validate_certificate_chain(trusted_roots) with appropriate trusted roots
+          rescue e
+            Log.warn(exception: e) { "Failed to parse peer certificate" }
           end
 
           # Sign the handshake transcript
@@ -140,34 +140,26 @@ module Matter
           {encrypted_cert: encrypted_cert, signature: signature}
         end
 
-        # Verify Sigma3 confirmation
-        def verify_sigma3(signature : Bytes, transcript : Bytes? = nil) : Bool
+        # Verify the Sigma3 signature over `transcript` with the peer's
+        # certificate. Raises `Matter::AuthenticationError` when the certificate
+        # cannot be parsed or the signature does not verify.
+        def verify_sigma3(signature : Bytes, transcript : Bytes) : Nil
           peer_cert = @peer_cert
           raise Matter::ProtocolError.new("Peer certificate not received") if peer_cert.nil?
 
-          # If we have a transcript, verify the signature
-          if transcript
-            begin
-              # Parse the peer's certificate from DER
-              cert_obj = OpenSSL::X509::Certificate.from_der(peer_cert)
-
-              # Verify the signature using the peer's certificate public key
-              result = OpenSSL::X509::SignatureVerifier.verify_signature(
-                transcript,
-                signature,
-                cert_obj,
-                :SHA256
-              )
-
-              return result
-            rescue ex
-              # If parsing or verification fails, fall back to accepting (for test compatibility)
-              Log.warn(exception: ex) { "Certificate verification failed" }
-            end
+          cert_obj = begin
+            OpenSSL::X509::Certificate.from_der(peer_cert)
+          rescue ex : OpenSSL::Error
+            raise Matter::AuthenticationError.new("CASE: peer certificate cannot be parsed", cause: ex)
           end
 
-          # For backward compatibility with tests, return true
-          true
+          verified = OpenSSL::X509::SignatureVerifier.verify_signature(
+            transcript,
+            signature,
+            cert_obj,
+            :SHA256
+          )
+          raise Matter::AuthenticationError.new("CASE: Sigma3 signature verification failed") unless verified
         end
 
         # Validate peer certificate chain against trusted roots
@@ -861,10 +853,9 @@ module Matter
         end
 
         # 5. Initiator verifies Sigma3 response
-        # (In full protocol, responder also sends a signature)
-        # unless initiator.verify_sigma3(responder_signature)
-        #   raise Matter::ProtocolError.new("CASE responder verification failed")
-        # end
+        # (In full protocol, responder also sends a signature and
+        # `initiator.verify_sigma3(responder_signature, transcript)` raises
+        # `Matter::AuthenticationError` when it does not verify)
 
         # 6. Derive session keys
         sigma3_bytes = crypto.random_bytes(100) # Mock sigma3_bytes for transcript

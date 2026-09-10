@@ -204,7 +204,7 @@ module Matter
         begin
           @socket.send(data, MDNS_IPV4)
         rescue ex
-          Log.error { "Error sending mDNS query: #{ex.message} (service=#{service})" }
+          Log.error(exception: ex) { "Error sending mDNS query (service=#{service})" }
         end
       end
 
@@ -226,7 +226,7 @@ module Matter
             # Normal - continue
           rescue ex : Exception
             peer = last_peer ? last_peer.to_s : "unknown"
-            Log.error(exception: ex) { "Error receiving mDNS packet (peer=#{peer} data_hex=#{last_data.try(&.hexstring) || "nil"})" }
+            Log.debug(exception: ex) { "Error receiving mDNS packet (peer=#{peer} bytes=#{last_data.try(&.size) || 0})" }
           end
         end
       end

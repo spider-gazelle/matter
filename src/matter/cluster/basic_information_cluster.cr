@@ -500,8 +500,8 @@ module Matter
         @location = state.location
         @local_config_disabled = state.local_config_disabled?
         @data_version = state.data_version
-      rescue
-        # Start fresh if restore fails
+      rescue ex
+        Log.warn(exception: ex) { "BasicInformation restore_state failed; starting fresh" }
       end
 
       # Helper: Trigger StartUp event (call when node boots)

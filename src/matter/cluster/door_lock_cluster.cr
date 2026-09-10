@@ -666,7 +666,8 @@ module Matter
         else
           super
         end
-      rescue ArgumentError
+      rescue ex : ArgumentError
+        Log.debug(exception: ex) { "DoorLock: attribute 0x#{attribute_id.to_s(16)} value out of range" }
         InteractionModel::Status.invalid_data_type
       end
 
@@ -737,7 +738,8 @@ module Matter
         else
           super
         end
-      rescue
+      rescue ex : TLV::DeserializationError | Matter::CodecError | ArgumentError
+        Log.warn(exception: ex) { "DoorLock: rejected command 0x#{command_id.to_s(16)} (bytes=#{fields.hexstring})" }
         InteractionModel::Status.invalid_command
       end
 

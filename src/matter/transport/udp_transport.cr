@@ -219,7 +219,6 @@ module Matter
         packet_count = 0
         peer_address : Socket::IPAddress? = nil
         bytes_read = 0
-        data : Bytes? = nil
 
         while @running
           begin
@@ -229,14 +228,13 @@ module Matter
             packet_count += 1
             Log.trace { "Received UDP packet ##{packet_count}: bytes=#{bytes_read} peer=#{peer_address.address}:#{peer_address.port}" }
 
-            data = buffer[0, bytes_read]
-            handle_received_data(data, peer_address)
+            handle_received_data(buffer[0, bytes_read], peer_address)
           rescue IO::TimeoutError
             # Normal - just continue
           rescue ex : Exception
-            # Log error but keep running
+            # Keep the receive loop running; a bad datagram is not an outage.
             peer = peer_address ? "#{peer_address.address}:#{peer_address.port}" : "unknown"
-            Log.error(exception: ex) { "Transport receive error (peer=#{peer} bytes=#{bytes_read} data_hex=#{data.try(&.hexstring) || "nil"})" }
+            Log.debug(exception: ex) { "Transport receive error (peer=#{peer} bytes=#{bytes_read})" }
           end
         end
 
@@ -375,8 +373,8 @@ module Matter
           Log.warn { "No on_message callback registered" }
         end
       rescue ex : Exception
-        # Log decode/processing errors
-        Log.error(exception: ex) { "Error handling received data (peer=#{peer_address.address}:#{peer_address.port} bytes=#{data.size} data_hex=#{data.hexstring})" }
+        # Decode / processing errors for a single datagram
+        Log.debug(exception: ex) { "Error handling received data (peer=#{peer_address.address}:#{peer_address.port} bytes=#{data.size})" }
       end
 
       private def send_acknowledgment(

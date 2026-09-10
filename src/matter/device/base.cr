@@ -553,7 +553,8 @@ module Matter
         hostname = "#{token}.local"
         @storage_manager.storage.set(IDENTITY_CONTEXT, HOSTNAME_KEY, hostname)
         hostname
-      rescue
+      rescue ex
+        Log.error(exception: ex) { "Failed to load or persist the commissioning hostname; using a transient value" }
         "#{Hex.node_id(Random::Secure.rand(UInt64))}.local"
       end
 
@@ -566,7 +567,8 @@ module Matter
         serial = Random::Secure.hex(8).upcase
         @storage_manager.storage.set(IDENTITY_CONTEXT, SERIAL_NUMBER_KEY, serial)
         serial
-      rescue
+      rescue ex
+        Log.error(exception: ex) { "Failed to load or persist the serial number; using a transient value" }
         Random::Secure.hex(8).upcase
       end
 
@@ -579,7 +581,8 @@ module Matter
         unique_id = Random::Secure.hex(16)
         @storage_manager.storage.set(IDENTITY_CONTEXT, UNIQUE_ID_KEY, unique_id)
         unique_id
-      rescue
+      rescue ex
+        Log.error(exception: ex) { "Failed to load or persist the unique id; using a transient value" }
         Random::Secure.hex(16)
       end
 

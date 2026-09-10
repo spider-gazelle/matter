@@ -758,8 +758,8 @@ module Matter
         @group_table = state.group_table
 
         @data_version = state.data_version
-      rescue
-        # Start fresh if restore fails
+      rescue ex
+        Log.error(exception: ex) { "GroupKeyManagement restore_state failed; starting fresh" }
       end
     end
   end

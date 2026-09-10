@@ -337,9 +337,9 @@ module Matter
             @x_bits = pub_bytes[1, coordinate_length]
             @y_bits = pub_bytes[coordinate_length + 1, coordinate_length]
           end
-        rescue
-          # Silently ignore derivation failures - public key can be set explicitly if needed
-          # This is expected in some environments or when using FIPS mode
+        rescue ex
+          # Expected in some environments (FIPS mode); the public key can be set explicitly.
+          Log.debug(exception: ex) { "Public key derivation from private key failed" }
         end
       end
     end

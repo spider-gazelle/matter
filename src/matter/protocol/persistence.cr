@@ -124,7 +124,8 @@ module Matter
             else
               pruned += 1
             end
-          rescue
+          rescue ex
+            Log.warn(exception: ex) { "Pruning persisted session #{id}: cannot be restored" }
             pruned += 1
           end
 
@@ -180,7 +181,9 @@ module Matter
             sessions[id] = json_any_hash_to_session_hash(hash)
           end
           sessions
-        rescue
+        rescue ex
+          raw_value = stored.is_a?(String) ? Persistence.redact(stored) : stored.inspect
+          Log.error(exception: ex) { "Failed to decode persisted sessions (stored=#{raw_value})" }
           {} of String => Hash(String, String | UInt64 | UInt32 | UInt16 | UInt8 | Int64 | Bool)
         end
 
@@ -198,7 +201,9 @@ module Matter
             subs[id] = json_any_hash_to_subscription_hash(hash)
           end
           subs
-        rescue
+        rescue ex
+          raw_value = stored.is_a?(String) ? stored : stored.inspect
+          Log.error(exception: ex) { "Failed to decode persisted subscriptions (stored=#{raw_value})" }
           {} of String => Hash(String, String | UInt32 | UInt16 | Int64 | Array(Hash(String, UInt32 | UInt16?)))
         end
 
@@ -212,15 +217,15 @@ module Matter
           stored = load_subscriptions
           subs = {} of UInt32 => MessageHandler::ActiveSubscription
 
-          stored.each do |_, sub_h|
+          stored.each do |id, sub_h|
             session_id = sub_h["session_id"]?.try(&.as(UInt16)) || 0_u16
             session = sessions[session_id]?
             next unless session
 
             sub = MessageHandler::ActiveSubscription.from_h(sub_h, session)
             subs[sub.subscription_id] = sub
-          rescue
-            # Skip invalid entries
+          rescue ex
+            Log.warn(exception: ex) { "Skipping persisted subscription #{id}: cannot be restored" }
           end
 
           subs
