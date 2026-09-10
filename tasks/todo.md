@@ -48,15 +48,15 @@ Rule (user, applies to all phases): no magic numbers; named constants/enums, enu
 - [x] `./test` green after step 4 and at the end; line-count report in Review
 
 ## Phase 2: Foundations
-- [ ] Step A: `to_s(io)` fixes, `Status` factory macro + rewrite of 338 sites, local shorthands removed,
+- [x] Step A: `to_s(io)` fixes, `Status` factory macro + rewrite of 338 sites, local shorthands removed,
       interaction-model/codec constants, shared TLV null marker, `Matter::Hex`
-- [ ] Step B: datatype wrappers as structs via one macro (equality, TLV, `to_s`), dead ids deleted,
+- [x] Step B: datatype wrappers as structs via one macro (equality, TLV, `to_s`), dead ids deleted,
       NodeId/CAT/FabricIndex constants
 - [ ] Step C: `Matter::Error` hierarchy; all bare-string raises converted; invoke/write backstop maps
       exceptions to statuses; wire-reachable raises become statuses
 - [ ] Step D: silent rescues log; corrupt storage file renamed not wiped; CASE test-compat fallback removed;
       hot-path log levels; `Network.local_ip_addresses`
-- [ ] Step E: log sources mirror paths; namespace `Log` fallbacks; examples read `MATTER_LOG`
+- [x] Step E: log sources mirror paths; namespace `Log` fallbacks; examples read `MATTER_LOG`
 - [ ] `./test` green at the end
 
 ## Phase 3: Storage
