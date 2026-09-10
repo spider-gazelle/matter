@@ -12,3 +12,6 @@
   services sharing one Dockerfile target raced on the BuildKit crystal cache mount (object-file rename
   failures, ld errors). Declare `build:` on one service, give the rest `image:` only, and use
   `sharing=locked` on compiler cache mounts.
+- 2026-09-10 (user rule): no magic numbers. Every meaningful literal (ids, tags, flag bits, offsets,
+  timeouts, sizes) is a named constant or an enum member; prefer an enum wherever both would work.
+  Apply when writing new code and when touching existing code.

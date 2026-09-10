@@ -32,13 +32,20 @@ Gates for every phase: `crystal tool format --check`, `./bin/ameba`, `crystal sp
 - [x] Baseline `./test` green on branch tip (2026-09-10: 2133 unit + 61 e2e examples, 0 failures)
 
 ## Phase 1: Prune, explicit requires, naming collisions
-- [ ] Explicit require tree; `src/matter/controller.cr` entrypoint
-- [ ] Delete dead islands (managers, utilities, logger, schema, empty classes, 30 unused definitions)
-- [ ] Consolidate mDNS on `Responder`; delete legacy stack; scanner under controller
-- [ ] Fix collisions (`CLUSTER_REVISION`, `FailsafeContext`, `SessionManager`, `DeviceType`)
-- [ ] Fix bugs (on_off duplicate tags, redaction regex, node_id bounds, memory backend live hash)
-- [ ] Spec reorg tranche 1
-- [ ] `./bin/ameba` clean repo-wide (250 pre-existing findings on develop)
+Rule (user, applies to all phases): no magic numbers; named constants/enums, enums preferred.
+- [x] Step 1: explicit require tree (per-subsystem aggregators), `src/matter/controller.cr` entrypoint
+- [x] Step 2: delete dead code (managers, utilities, logger, schema, empty stubs, 32 unused definitions,
+      legacy Scenes 0x0005, dead methods, failsafe rollback params)
+- [x] Step 3: one device-type registry (`Matter::DeviceType`, u32); drop `DeviceTypes`
+- [x] Step 4: mDNS on `Responder` only: CommissioningMode move, legacy branch out of AdministratorCommissioning,
+      subtype PTR query answers + announcement burst in Responder, basic-window discriminator fix,
+      port legacy spec assertions, delete legacy stack, scanner → `Controller::Scanner`
+- [x] Step 5a: collisions (`CLUSTER_REVISION` = revision value + base macro, `PendingCredentials`)
+- [x] Step 5b: bugs (redaction regex, node id ranges, storage backend consistency, fabric table load,
+      duplicate `window_open?`, enum aliases) each with a spec
+- [x] Step 5c: `./bin/ameba` exits 0 repo-wide (307 files, 0 findings; was 250)
+- [x] Step 6: spec reorg tranche 1 (mirror src, `spec/compatibility/`, deletions, merges, splits)
+- [x] `./test` green after step 4 and at the end; line-count report in Review
 
 ## Phase 2: Foundations
 - [ ] `Matter::Error` hierarchy
@@ -86,4 +93,34 @@ Gates for every phase: `crystal tool format --check`, `./bin/ameba`, `crystal sp
 - [ ] Full gates; PR to develop
 
 ## Review
-(filled in as phases complete)
+
+### Phase 0 (2026-09-10)
+- Byte-exact codec specs found a real bug: destination group id encoded as 4 bytes. Fixed.
+- Shared cluster spec helpers; e2e harness build race fixed.
+
+### Phase 1 (2026-09-10)
+- `src/matter.cr` is an explicit layered require tree with one aggregator per subsystem;
+  `require "matter/controller"` is a separate entrypoint (the device library is controller-free).
+- Deleted: dead managers/stubs/utilities/logger/schema, 32 unused cluster definitions, legacy Scenes
+  cluster (0x0005), legacy mDNS stack (advertiser/server/socket/service_description), the u16
+  `DeviceTypes` registry, uncalled `FabricTable#export/#import`, dead storage/persistence methods.
+- mDNS: `Responder` now answers subtype PTR queries (`_L`, `_S`, `_T`, `_V`, `_CM`) and instance
+  queries, sends a 3-packet announcement burst, and a basic commissioning window advertises the device
+  discriminator (was 0). Scanner is `Controller::Scanner`.
+- Collisions: `CLUSTER_REVISION` is the revision value everywhere (base macro generates
+  `cluster_revision`); `PendingCredentials` replaces the nested `FailsafeContext`; one `DeviceType`.
+- Bugs fixed with specs: persistence redaction regex (keys were logged unredacted), node id range check
+  and group node id byte order, memory backend leaking its live hash, fabric table load wiping the table on
+  one bad entry, duplicate `window_open?`, enum alias conflicts.
+- `spec/` mirrors `src/`; `spec/compatibility/` holds the matter.js/iPhone golden-vector specs; 6 scratch
+  specs deleted, 2 duplicate pairs merged, no `puts` left in specs; `MATTER_SPEC_LOG` controls spec logging.
+- Lint: ameba clean repo-wide.
+
+| Metric | develop | after Phase 1 |
+|---|---|---|
+| `src/` lines / files | 46,886 / 176 | 40,897 / 139 |
+| `spec/` lines / files | 40,208 / 138 | 38,102 / 132 |
+| top-level spec files | 62 | 10 |
+| unit examples | 2133 | 2034 (duplicates removed, ~60 added) |
+| e2e examples | 61 | 61 |
+| ameba findings | 250 | 0 |
