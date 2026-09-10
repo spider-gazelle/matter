@@ -365,10 +365,6 @@ module Matter
       ATTR_SCENE_TABLE_SIZE  = 0x0001_u32 # Fixed attribute
       ATTR_FABRIC_SCENE_INFO = 0x0002_u32 # Fabric-scoped list
 
-      # Global attributes
-      CLUSTER_REVISION = 0xFFFD_u32
-      FEATURE_MAP_ATTR = 0xFFFC_u32
-
       # Command IDs
       CMD_ADD_SCENE            = 0x00_u32
       CMD_VIEW_SCENE           = 0x01_u32
@@ -585,15 +581,11 @@ module Matter
           @scene_table_size.to_tlv
         when ATTR_FABRIC_SCENE_INFO
           encode_fabric_scene_info(fabric_index || 1_u8)
-        when FEATURE_MAP_ATTR
+        when GLOBAL_FEATURE_MAP
           @feature_map.value.to_tlv
         else
           super(attribute_id, fabric_index)
         end
-      end
-
-      protected def encode_cluster_revision_global : Bytes
-        1_u16.to_tlv # ScenesManagement revision 1
       end
 
       protected def encode_feature_map_global : Bytes

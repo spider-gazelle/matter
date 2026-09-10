@@ -37,10 +37,7 @@ module Matter
       # Optional attributes (with LongIdleTimeSupport feature)
       ATTR_OPERATING_MODE = 0x0008_u32
 
-      # Global attributes
-      ATTR_CLUSTER_REVISION = 0xFFFD_u32
-      ATTR_FEATURE_MAP      = 0xFFFC_u32
-      ATTR_ATTRIBUTE_LIST   = 0xFFFB_u32
+      CLUSTER_REVISION = 3_u16 # Matter 1.4
 
       # Feature bits
       FEATURE_CHECK_IN_PROTOCOL_SUPPORT = 0x01_u32
@@ -108,19 +105,17 @@ module Matter
           @active_mode_duration.to_tlv
         when ATTR_ACTIVE_MODE_THRESHOLD
           @active_mode_threshold.to_tlv
-        when ATTR_CLUSTER_REVISION
-          3_u16.to_tlv # Cluster revision 3 per Matter 1.4
-        when ATTR_FEATURE_MAP
+        when GLOBAL_FEATURE_MAP
           # No features enabled - this is an always-on device, not a true ICD
           0_u32.to_tlv
-        when ATTR_ATTRIBUTE_LIST
+        when GLOBAL_ATTRIBUTE_LIST
           [
             ATTR_IDLE_MODE_DURATION,
             ATTR_ACTIVE_MODE_DURATION,
             ATTR_ACTIVE_MODE_THRESHOLD,
-            ATTR_CLUSTER_REVISION,
-            ATTR_FEATURE_MAP,
-            ATTR_ATTRIBUTE_LIST,
+            GLOBAL_CLUSTER_REVISION,
+            GLOBAL_FEATURE_MAP,
+            GLOBAL_ATTRIBUTE_LIST,
           ].to_tlv
         else
           super

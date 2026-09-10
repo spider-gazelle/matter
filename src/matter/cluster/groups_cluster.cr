@@ -37,9 +37,7 @@ module Matter
       CMD_GET_GROUP_MEMBERSHIP_RESPONSE = 0x02_u32
       CMD_REMOVE_GROUP_RESPONSE         = 0x03_u32
 
-      # Global attributes
-      CLUSTER_REVISION = 0xFFFD_u32
-      FEATURE_MAP_ATTR = 0xFFFC_u32
+      CLUSTER_REVISION = 4_u16
 
       # Feature map
       property feature_map : Feature
@@ -74,11 +72,6 @@ module Matter
             default: (@feature_map.group_names? ? 0x01_u8 : 0x00_u8).to_tlv
           ),
         ]
-      end
-
-      # Override to provide correct cluster revision
-      protected def encode_cluster_revision_global : Bytes
-        4_u16.to_tlv # Groups cluster revision 4
       end
 
       # Override to provide correct feature map
@@ -130,7 +123,7 @@ module Matter
         case attribute_id
         when NAME_SUPPORT
           (@feature_map.group_names? ? 0x01_u8 : 0x00_u8).to_tlv
-        when FEATURE_MAP_ATTR
+        when GLOBAL_FEATURE_MAP
           @feature_map.value.to_tlv
         else
           super(attribute_id)

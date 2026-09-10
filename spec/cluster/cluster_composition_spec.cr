@@ -243,7 +243,7 @@ describe "Cluster Composition" do
                      Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareTilt
       )
 
-      result = cluster.read_attribute(Matter::Cluster::WindowCoveringCluster::FEATURE_MAP)
+      result = cluster.read_attribute(Matter::Cluster::Base::GLOBAL_FEATURE_MAP)
       result.should be_a(Bytes)
 
       # Tilt (0x02) | PositionAwareTilt (0x10) = 0x12

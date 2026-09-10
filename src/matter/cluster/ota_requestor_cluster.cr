@@ -27,11 +27,6 @@ module Matter
       ATTR_UPDATE_STATE          = 0x0002_u32 # Current update state
       ATTR_UPDATE_STATE_PROGRESS = 0x0003_u32 # Progress percentage (nullable)
 
-      # Global attributes
-      ATTR_CLUSTER_REVISION = 0xFFFD_u32
-      ATTR_FEATURE_MAP      = 0xFFFC_u32
-      ATTR_ATTRIBUTE_LIST   = 0xFFFB_u32
-
       # UpdateState enum values
       enum UpdateState : UInt8
         Unknown              = 0
@@ -111,19 +106,17 @@ module Matter
           @update_state.value.to_tlv
         when ATTR_UPDATE_STATE_PROGRESS
           @update_state_progress.to_tlv
-        when ATTR_CLUSTER_REVISION
-          1_u16.to_tlv # Cluster revision 1
-        when ATTR_FEATURE_MAP
+        when GLOBAL_FEATURE_MAP
           0_u32.to_tlv # No features
-        when ATTR_ATTRIBUTE_LIST
+        when GLOBAL_ATTRIBUTE_LIST
           [
             ATTR_DEFAULT_OTA_PROVIDERS,
             ATTR_UPDATE_POSSIBLE,
             ATTR_UPDATE_STATE,
             ATTR_UPDATE_STATE_PROGRESS,
-            ATTR_CLUSTER_REVISION,
-            ATTR_FEATURE_MAP,
-            ATTR_ATTRIBUTE_LIST,
+            GLOBAL_CLUSTER_REVISION,
+            GLOBAL_FEATURE_MAP,
+            GLOBAL_ATTRIBUTE_LIST,
           ].to_tlv
         else
           super

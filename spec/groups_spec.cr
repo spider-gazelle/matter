@@ -81,7 +81,7 @@ describe Matter::Cluster::GroupsCluster do
         feature_map: Matter::Cluster::GroupsCluster::Feature::GroupNames
       )
 
-      result = cluster.read_attribute(Matter::Cluster::GroupsCluster::FEATURE_MAP_ATTR)
+      result = cluster.read_attribute(Matter::Cluster::Base::GLOBAL_FEATURE_MAP)
       result.should be_a(Bytes)
       # Feature::GroupNames = 0x01
       decode_tlv_value(result.as(Bytes)).should eq(0x01_u32)

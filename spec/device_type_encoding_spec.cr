@@ -116,23 +116,18 @@ describe "DeviceType encoding for HomeKit compatibility" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       on_off = Matter::Cluster::OnOffCluster.new(endpoint_id)
 
-      # ClusterRevision attribute ID is 0xFFFD (65533)
-      result = on_off.read_attribute(0xFFFD_u32)
+      result = on_off.read_attribute(Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION)
       result.should be_a(Bytes)
-
-      bytes = result.as(Bytes)
-      puts "OnOff ClusterRevision TLV encoding: #{bytes.hexstring}"
+      TLV::Any.from_slice(result.as(Bytes)).as_u16.should eq(Matter::Cluster::OnOffCluster::CLUSTER_REVISION)
     end
 
     it "encodes Descriptor cluster revision" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       descriptor = Matter::Cluster::DescriptorCluster.new(endpoint_id)
 
-      result = descriptor.read_attribute(0xFFFD_u32)
+      result = descriptor.read_attribute(Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION)
       result.should be_a(Bytes)
-
-      bytes = result.as(Bytes)
-      puts "Descriptor ClusterRevision TLV encoding: #{bytes.hexstring}"
+      TLV::Any.from_slice(result.as(Bytes)).as_u16.should eq(Matter::Cluster::DescriptorCluster::CLUSTER_REVISION)
     end
   end
 end

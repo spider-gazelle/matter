@@ -58,10 +58,10 @@ module ChipTool
                 peer: peer,
                 endpoint_id: endpoint_id,
                 cluster_id: Matter::Cluster::OnOffCluster::CLUSTER_ID,
-                attribute_id: Matter::Cluster::OnOffCluster::ATTRIBUTE_LIST
+                attribute_id: Matter::Cluster::Base::GLOBAL_ATTRIBUTE_LIST
               )
 
-              list = extract_report_u32_list(report, Matter::Cluster::OnOffCluster::CLUSTER_ID, Matter::Cluster::OnOffCluster::ATTRIBUTE_LIST) || raise "ReportData missing AttributeList"
+              list = extract_report_u32_list(report, Matter::Cluster::OnOffCluster::CLUSTER_ID, Matter::Cluster::Base::GLOBAL_ATTRIBUTE_LIST) || raise "ReportData missing AttributeList"
               puts "AttributeList: #{list.size} entries"
               list.each_with_index do |id, idx|
                 puts "  [#{idx}]: #{id}"

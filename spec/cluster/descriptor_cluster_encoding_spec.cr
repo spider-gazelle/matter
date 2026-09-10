@@ -57,7 +57,7 @@ describe Matter::Cluster::DescriptorCluster do
       endpoint = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = Matter::Cluster::DescriptorCluster.new(endpoint)
 
-      result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTRIBUTE_LIST)
+      result = cluster.read_attribute(Matter::Cluster::Base::GLOBAL_ATTRIBUTE_LIST)
       result.should be_a(Bytes)
       bytes = result.as(Bytes)
 

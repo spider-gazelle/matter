@@ -20,9 +20,7 @@ module Matter
       ATTR_IDENTIFY_TIME = 0x0000_u32
       ATTR_IDENTIFY_TYPE = 0x0001_u32
 
-      # Global attributes (required on all clusters)
-      CLUSTER_REVISION = 0xFFFD_u32
-      FEATURE_MAP      = 0xFFFC_u32
+      CLUSTER_REVISION = 4_u16
 
       # Commands
       CMD_IDENTIFY       = 0x00_u32
@@ -108,9 +106,7 @@ module Matter
           @identify_time.to_tlv
         when ATTR_IDENTIFY_TYPE
           @identify_type.value.to_tlv
-        when CLUSTER_REVISION
-          4_u16.to_tlv # Identify cluster revision 4
-        when FEATURE_MAP
+        when GLOBAL_FEATURE_MAP
           0_u32.to_tlv # No features for basic Identify
         else
           super

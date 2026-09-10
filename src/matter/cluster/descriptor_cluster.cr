@@ -20,10 +20,7 @@ module Matter
       ATTR_CLIENT_LIST      = 0x0002_u32
       ATTR_PARTS_LIST       = 0x0003_u32
 
-      # Global attributes (required on all clusters)
-      CLUSTER_REVISION = 0xFFFD_u32
-      FEATURE_MAP      = 0xFFFC_u32
-      ATTRIBUTE_LIST   = 0xFFFB_u32
+      CLUSTER_REVISION = 2_u16
 
       # Device Type Structure
       # IMPORTANT: Device type values MUST be encoded with correct widths per Matter spec:
@@ -109,11 +106,9 @@ module Matter
           encode_cluster_list(@client_list)
         when ATTR_PARTS_LIST
           encode_parts_list
-        when CLUSTER_REVISION
-          2_u16.to_tlv # Descriptor cluster revision 2
-        when FEATURE_MAP
+        when GLOBAL_FEATURE_MAP
           0_u32.to_tlv # No features for Descriptor cluster
-        when ATTRIBUTE_LIST
+        when GLOBAL_ATTRIBUTE_LIST
           encode_attribute_list
         else
           super
@@ -130,11 +125,11 @@ module Matter
           ATTR_CLIENT_LIST,
           ATTR_PARTS_LIST,
           # Global attributes (required on all clusters)
-          GLOBAL_GENERATED_COMMAND_LIST, # 0xFFF8
-          GLOBAL_ACCEPTED_COMMAND_LIST,  # 0xFFF9
-          ATTRIBUTE_LIST,                # 0xFFFB
-          FEATURE_MAP,                   # 0xFFFC
-          CLUSTER_REVISION,              # 0xFFFD
+          GLOBAL_GENERATED_COMMAND_LIST,
+          GLOBAL_ACCEPTED_COMMAND_LIST,
+          GLOBAL_ATTRIBUTE_LIST,
+          GLOBAL_FEATURE_MAP,
+          GLOBAL_CLUSTER_REVISION,
         ].to_tlv
       end
 

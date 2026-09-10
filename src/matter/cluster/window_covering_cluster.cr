@@ -134,9 +134,7 @@ module Matter
       CMD_GO_TO_TILT_VALUE      = 0x07_u32
       CMD_GO_TO_TILT_PERCENTAGE = 0x08_u32
 
-      # Global attributes
-      CLUSTER_REVISION = 0xFFFD_u32
-      FEATURE_MAP      = 0xFFFC_u32
+      CLUSTER_REVISION = 5_u16
 
       property feature_map : Feature
       property covering_type : CoveringType
@@ -335,15 +333,15 @@ module Matter
 
         # Global attributes
         attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(CLUSTER_REVISION),
+          id: DataType::AttributeId.new(GLOBAL_CLUSTER_REVISION),
           name: "clusterRevision",
           type: :uint16,
           writable: false,
-          default: 5_u16.to_tlv
+          default: CLUSTER_REVISION.to_tlv
         )
 
         attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(FEATURE_MAP),
+          id: DataType::AttributeId.new(GLOBAL_FEATURE_MAP),
           name: "featureMap",
           type: :uint32,
           writable: false,
@@ -431,9 +429,7 @@ module Matter
           else
             nil.to_tlv
           end
-        when CLUSTER_REVISION
-          5_u16.to_tlv
-        when FEATURE_MAP
+        when GLOBAL_FEATURE_MAP
           @feature_map.value.to_tlv
         else
           super

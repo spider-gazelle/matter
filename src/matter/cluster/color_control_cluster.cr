@@ -54,9 +54,7 @@ module Matter
       ATTR_COUPLE_COLOR_TEMP_TO_LEVEL_MIN = 0x400D_u32 # CT feature (optional)
       ATTR_START_UP_COLOR_TEMPERATURE     = 0x4010_u32 # CT feature (optional)
 
-      # Global attributes
-      CLUSTER_REVISION = 0xFFFD_u32
-      FEATURE_MAP      = 0xFFFC_u32
+      CLUSTER_REVISION = 6_u16
 
       # Commands - HueSaturation feature
       CMD_MOVE_TO_HUE                = 0x00_u32 # HS
@@ -308,14 +306,14 @@ module Matter
 
         # Global attributes
         attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(CLUSTER_REVISION),
+          id: DataType::AttributeId.new(GLOBAL_CLUSTER_REVISION),
           name: "clusterRevision",
           type: :uint16,
           writable: false,
-          default: 6_u16.to_tlv
+          default: CLUSTER_REVISION.to_tlv
         )
         attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(FEATURE_MAP),
+          id: DataType::AttributeId.new(GLOBAL_FEATURE_MAP),
           name: "featureMap",
           type: :uint32,
           writable: false,
@@ -437,10 +435,8 @@ module Matter
           else
             encode_null
           end
-        when FEATURE_MAP
+        when GLOBAL_FEATURE_MAP
           @feature_map.value.to_tlv
-        when CLUSTER_REVISION
-          6_u16.to_tlv
         else
           super
         end

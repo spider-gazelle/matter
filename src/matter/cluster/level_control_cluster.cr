@@ -44,9 +44,7 @@ module Matter
       ATTR_DEFAULT_MOVE_RATE      = 0x0014_u32 # Lighting feature
       ATTR_START_UP_CURRENT_LEVEL = 0x4000_u32 # Lighting feature
 
-      # Global attributes
-      CLUSTER_REVISION = 0xFFFD_u32
-      FEATURE_MAP      = 0xFFFC_u32
+      CLUSTER_REVISION = 6_u16
 
       # Commands
       CMD_MOVE_TO_LEVEL             = 0x00_u32
@@ -258,15 +256,15 @@ module Matter
 
         # Global attributes
         attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(CLUSTER_REVISION),
+          id: DataType::AttributeId.new(GLOBAL_CLUSTER_REVISION),
           name: "clusterRevision",
           type: :uint16,
           writable: false,
-          default: 6_u16.to_tlv
+          default: CLUSTER_REVISION.to_tlv
         )
 
         attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(FEATURE_MAP),
+          id: DataType::AttributeId.new(GLOBAL_FEATURE_MAP),
           name: "featureMap",
           type: :uint32,
           writable: false,
@@ -393,10 +391,8 @@ module Matter
         when ATTR_MAX_FREQUENCY
           return unsupported_attribute unless @feature_map.frequency?
           @max_frequency.to_tlv
-        when FEATURE_MAP
+        when GLOBAL_FEATURE_MAP
           @feature_map.value.to_tlv
-        when CLUSTER_REVISION
-          6_u16.to_tlv
         else
           super
         end

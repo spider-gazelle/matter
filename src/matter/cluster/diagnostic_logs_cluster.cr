@@ -67,13 +67,6 @@ module Matter
       # Response IDs
       CMD_RETRIEVE_LOGS_RESPONSE = 0x01_u32
 
-      # Global attributes
-      CLUSTER_REVISION       = 0xFFFD_u32
-      FEATURE_MAP            = 0xFFFC_u32
-      ATTRIBUTE_LIST         = 0xFFFB_u32
-      ACCEPTED_COMMAND_LIST  = 0xFFF9_u32
-      GENERATED_COMMAND_LIST = 0xFFF8_u32
-
       # Log buffer - stores recent log entries
       @log_buffer : Array(String)
       @max_log_entries : Int32
@@ -110,21 +103,19 @@ module Matter
 
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
-        when CLUSTER_REVISION
-          1_u16.to_tlv # DiagnosticLogs cluster revision 1
-        when FEATURE_MAP
+        when GLOBAL_FEATURE_MAP
           0_u32.to_tlv # No features
-        when ATTRIBUTE_LIST
+        when GLOBAL_ATTRIBUTE_LIST
           [
-            GENERATED_COMMAND_LIST,
-            ACCEPTED_COMMAND_LIST,
-            ATTRIBUTE_LIST,
-            FEATURE_MAP,
-            CLUSTER_REVISION,
+            GLOBAL_GENERATED_COMMAND_LIST,
+            GLOBAL_ACCEPTED_COMMAND_LIST,
+            GLOBAL_ATTRIBUTE_LIST,
+            GLOBAL_FEATURE_MAP,
+            GLOBAL_CLUSTER_REVISION,
           ].to_tlv
-        when ACCEPTED_COMMAND_LIST
+        when GLOBAL_ACCEPTED_COMMAND_LIST
           [CMD_RETRIEVE_LOGS_REQUEST].to_tlv
-        when GENERATED_COMMAND_LIST
+        when GLOBAL_GENERATED_COMMAND_LIST
           [CMD_RETRIEVE_LOGS_RESPONSE].to_tlv
         else
           super

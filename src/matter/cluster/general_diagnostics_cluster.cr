@@ -26,11 +26,6 @@ module Matter
       ATTR_ACTIVE_NETWORK_FAULTS       = 0x0007_u32
       ATTR_TEST_EVENT_TRIGGERS_ENABLED = 0x0008_u32
 
-      # Global attributes
-      ATTR_CLUSTER_REVISION = 0xFFFD_u32
-      ATTR_FEATURE_MAP      = 0xFFFC_u32
-      ATTR_ATTRIBUTE_LIST   = 0xFFFB_u32
-
       # Command IDs
       CMD_TEST_EVENT_TRIGGER = 0x00_u32
 
@@ -213,11 +208,9 @@ module Matter
           @active_network_faults.map(&.value).to_tlv
         when ATTR_TEST_EVENT_TRIGGERS_ENABLED
           @test_event_triggers_enabled.to_tlv
-        when ATTR_CLUSTER_REVISION
-          1_u16.to_tlv # Cluster revision 1
-        when ATTR_FEATURE_MAP
+        when GLOBAL_FEATURE_MAP
           0_u32.to_tlv # No features
-        when ATTR_ATTRIBUTE_LIST
+        when GLOBAL_ATTRIBUTE_LIST
           encode_attribute_list
         else
           super
@@ -258,9 +251,9 @@ module Matter
           ATTR_ACTIVE_RADIO_FAULTS,
           ATTR_ACTIVE_NETWORK_FAULTS,
           ATTR_TEST_EVENT_TRIGGERS_ENABLED,
-          ATTR_CLUSTER_REVISION,
-          ATTR_FEATURE_MAP,
-          ATTR_ATTRIBUTE_LIST,
+          GLOBAL_CLUSTER_REVISION,
+          GLOBAL_FEATURE_MAP,
+          GLOBAL_ATTRIBUTE_LIST,
         ].to_tlv
       end
     end

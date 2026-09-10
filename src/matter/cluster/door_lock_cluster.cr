@@ -674,10 +674,6 @@ module Matter
         @feature_map.value.to_tlv
       end
 
-      protected def encode_cluster_revision_global : Bytes
-        CLUSTER_REVISION.to_tlv
-      end
-
       protected def handle_command(command_id : UInt32, fields : Bytes) : InteractionModel::Status | Cluster::CommandResponse
         case command_id
         when CMD_LOCK_DOOR

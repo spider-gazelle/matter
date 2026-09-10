@@ -38,12 +38,7 @@ module Matter
       CMD_ON_WITH_RECALL_GLOBAL_SCENE = 0x41_u32 # Lighting feature
       CMD_ON_WITH_TIMED_OFF           = 0x42_u32 # Lighting feature
 
-      # Global attributes
-      CLUSTER_REVISION       = 0xFFFD_u32
-      FEATURE_MAP            = 0xFFFC_u32
-      ATTRIBUTE_LIST         = 0xFFFB_u32
-      ACCEPTED_COMMAND_LIST  = 0xFFF9_u32
-      GENERATED_COMMAND_LIST = 0xFFF8_u32
+      CLUSTER_REVISION = 6_u16
 
       # StartUpOnOff enum values
       enum StartUpOnOff : UInt8
@@ -210,15 +205,13 @@ module Matter
           else
             nil.to_tlv
           end
-        when FEATURE_MAP
+        when GLOBAL_FEATURE_MAP
           feature_map.value.to_tlv
-        when CLUSTER_REVISION
-          6_u16.to_tlv
-        when ATTRIBUTE_LIST
+        when GLOBAL_ATTRIBUTE_LIST
           encode_attribute_list
-        when ACCEPTED_COMMAND_LIST
+        when GLOBAL_ACCEPTED_COMMAND_LIST
           encode_accepted_command_list
-        when GENERATED_COMMAND_LIST
+        when GLOBAL_GENERATED_COMMAND_LIST
           encode_generated_command_list
         else
           super
@@ -239,11 +232,11 @@ module Matter
         end
 
         # Global attributes (always present)
-        attr_ids << GENERATED_COMMAND_LIST
-        attr_ids << ACCEPTED_COMMAND_LIST
-        attr_ids << ATTRIBUTE_LIST
-        attr_ids << FEATURE_MAP
-        attr_ids << CLUSTER_REVISION
+        attr_ids << GLOBAL_GENERATED_COMMAND_LIST
+        attr_ids << GLOBAL_ACCEPTED_COMMAND_LIST
+        attr_ids << GLOBAL_ATTRIBUTE_LIST
+        attr_ids << GLOBAL_FEATURE_MAP
+        attr_ids << GLOBAL_CLUSTER_REVISION
 
         attr_ids.to_tlv
       end

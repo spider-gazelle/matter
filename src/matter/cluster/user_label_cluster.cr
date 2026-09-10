@@ -69,10 +69,6 @@ module Matter
         @attribute_values[ATTR_LABEL_LIST] = @label_list.to_tlv
       rescue
       end
-
-      protected def encode_cluster_revision_global : Bytes
-        1_u16.to_tlv
-      end
     end
   end
 end

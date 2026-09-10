@@ -212,7 +212,7 @@ describe Matter::Cluster::WindowCoveringCluster do
     end
 
     it "reads feature map" do
-      result = cluster.read_attribute(Matter::Cluster::WindowCoveringCluster::FEATURE_MAP)
+      result = cluster.read_attribute(Matter::Cluster::Base::GLOBAL_FEATURE_MAP)
       result.should be_a(Bytes)
       # Lift (0x01) | PositionAwareLift (0x04) = 0x05
       decode_tlv_value(result.as(Bytes)).should eq(0x05)

@@ -346,10 +346,7 @@ module Matter
       ATTR_MAX_GROUPS_PER_FABRIC     = 0x0002_u32
       ATTR_MAX_GROUP_KEYS_PER_FABRIC = 0x0003_u32
 
-      # Global attributes
-      CLUSTER_REVISION = 0xFFFD_u32
-      FEATURE_MAP      = 0xFFFC_u32
-      ATTRIBUTE_LIST   = 0xFFFB_u32
+      CLUSTER_REVISION = 2_u16
 
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
@@ -361,19 +358,17 @@ module Matter
           @max_groups_per_fabric.to_tlv
         when ATTR_MAX_GROUP_KEYS_PER_FABRIC
           @max_group_keys_per_fabric.to_tlv
-        when CLUSTER_REVISION
-          2_u16.to_tlv # GroupKeyManagement cluster revision
-        when FEATURE_MAP
+        when GLOBAL_FEATURE_MAP
           @features.value.to_tlv
-        when ATTRIBUTE_LIST
+        when GLOBAL_ATTRIBUTE_LIST
           [
             ATTR_GROUP_KEY_MAP,
             ATTR_GROUP_TABLE,
             ATTR_MAX_GROUPS_PER_FABRIC,
             ATTR_MAX_GROUP_KEYS_PER_FABRIC,
-            CLUSTER_REVISION,
-            FEATURE_MAP,
-            ATTRIBUTE_LIST,
+            GLOBAL_CLUSTER_REVISION,
+            GLOBAL_FEATURE_MAP,
+            GLOBAL_ATTRIBUTE_LIST,
           ].to_tlv
         else
           super

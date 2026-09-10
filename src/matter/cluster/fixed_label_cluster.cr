@@ -41,10 +41,6 @@ module Matter
           super
         end
       end
-
-      protected def encode_cluster_revision_global : Bytes
-        1_u16.to_tlv
-      end
     end
   end
 end

@@ -92,10 +92,27 @@ module Matter
       property on_attribute_changed : Proc(UInt16, UInt32, UInt32, Nil)?
 
       # Macro to add class method for accessing CLUSTER_ID constant
+      # Revision of the cluster specification this implementation follows.
+      # Subclasses override it by defining their own `CLUSTER_REVISION`.
+      CLUSTER_REVISION = 1_u16
+
       macro inherited
         def self.cluster_id
           CLUSTER_ID
         end
+
+        # Expanded in the subclass body, so the bare `CLUSTER_REVISION` is
+        # resolved in the subclass scope when the method is first typed. That
+        # finds the subclass's own constant even when it is defined after this
+        # macro ran, and falls back to `Base::CLUSTER_REVISION` otherwise.
+        def cluster_revision : UInt16
+          CLUSTER_REVISION
+        end
+      end
+
+      # The ClusterRevision global attribute value (`CLUSTER_REVISION`).
+      def cluster_revision : UInt16
+        CLUSTER_REVISION
       end
 
       def initialize(@endpoint_id : DataType::EndpointNumber, @cluster_id : DataType::ClusterId)
@@ -159,9 +176,9 @@ module Matter
         0_u32.to_tlv # Default: no features
       end
 
-      # Encode ClusterRevision - override in subclass for specific revision
+      # Encode ClusterRevision - subclasses set `CLUSTER_REVISION` instead of overriding
       protected def encode_cluster_revision_global : Bytes
-        1_u16.to_tlv # Default: revision 1
+        cluster_revision.to_tlv
       end
 
       # Encode AttributeList - override in subclass for custom handling

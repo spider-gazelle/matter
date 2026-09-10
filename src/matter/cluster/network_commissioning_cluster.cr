@@ -479,11 +479,6 @@ module Matter
         ]
       end
 
-      # Global attribute IDs
-      ATTR_CLUSTER_REVISION = 0xFFFD_u32
-      ATTR_FEATURE_MAP      = 0xFFFC_u32
-      ATTR_ATTRIBUTE_LIST   = 0xFFFB_u32
-
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | Bytes
         case attribute_id
         when ATTR_MAX_NETWORKS
@@ -502,10 +497,8 @@ module Matter
           @last_connect_error_value.to_tlv
         when ATTR_NETWORKS
           encode_networks
-        when ATTR_FEATURE_MAP
+        when GLOBAL_FEATURE_MAP
           @feature_map.value.to_tlv
-        when ATTR_CLUSTER_REVISION
-          1_u16.to_tlv # Cluster revision 1
         else
           super
         end

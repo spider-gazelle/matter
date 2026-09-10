@@ -19,10 +19,10 @@ describe Matter::Cluster::OnOffCluster do
 
         # featureMap and clusterRevision are global attributes (handled by base class)
         # They're accessible via read_attribute, not in the attributes array
-        result = cluster.read_attribute(Matter::Cluster::OnOffCluster::FEATURE_MAP)
+        result = cluster.read_attribute(Matter::Cluster::Base::GLOBAL_FEATURE_MAP)
         result.should be_a(Bytes)
 
-        result = cluster.read_attribute(Matter::Cluster::OnOffCluster::CLUSTER_REVISION)
+        result = cluster.read_attribute(Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION)
         result.should be_a(Bytes)
       end
 
