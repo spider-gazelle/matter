@@ -60,14 +60,16 @@ Rule (user, applies to all phases): no magic numbers; named constants/enums, enu
 - [x] `./test` green at the end (2140 unit + 61 e2e, device validation 20/20)
 
 ## Phase 3: Storage
-- [ ] `Storage::Backend` interface (collections, documents, transactions, schema_version)
-- [ ] Memory / JsonFile / YamlFile backends over shared `FileBackend`; contract spec
-- [ ] `Storage::Record` macro mixin; replace all hand-rolled to_h/PersistedState
-- [ ] Layering: storage depends on nothing; persistence services in protocol/device
-- [ ] Dirty tracking + debounced save; `Device::Base.new(storage:)`
-- [ ] Controller state on the same backend
-- [ ] `storage/legacy/json_import.cr`; `Storage::Migrator` + CLI
-- [ ] `./test` with YAML examples; manual legacy import + reconnect
+Document model: `Type = Nil | Bool | Int64 | UInt64 | Float64 | String | Bytes | Time | Array | Hash`;
+collections `fabrics`, `sessions`, `subscriptions`, `device`, `clusters`, `app`, `meta` (schema in plan).
+- [ ] Step 1: dependency-free core: `Backend` interface, Memory/YamlFile/JsonFile over `FileBackend`,
+      `Record` macro, `Migrator` + `bin/matter-storage` CLI, shared backend contract spec
+- [ ] Step 2: Fabric/session/subscription/cluster records; `Device::Persistence` (dirty tracking, debounce,
+      identity, app documents, orphan cleanup, `reset!`); `Device::Base.new(storage:)`; examples on YAML;
+      controller state on a backend; old storage classes deleted
+- [ ] Step 3: `storage/legacy/` importer + fixture spec; restart spec + e2e restart; README storage section;
+      manual import of a real device file
+- [ ] `./test` green at the end
 
 ## Phase 4: Wire codec and cluster boundary
 - [ ] `SecureMessageCodec` encode/decode; single AAD definition; single `PacketHeader` representation
