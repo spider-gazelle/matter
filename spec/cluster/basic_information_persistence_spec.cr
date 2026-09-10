@@ -20,8 +20,13 @@ describe Matter::Cluster::BasicInformationCluster do
     cluster.local_config_disabled = true
     cluster.data_version = 42_u32
 
-    json = cluster.save_state
-    json.should_not be_nil
+    document = cluster.save_state.as(Matter::Storage::Document)
+    document.should eq(Matter::Storage::Document{
+      "node_label"            => "Kitchen",
+      "location"              => "AU",
+      "local_config_disabled" => true,
+      "data_version"          => 42_i64,
+    })
 
     cluster2 = Matter::Cluster::BasicInformationCluster.new(
       endpoint_id: ep0,
@@ -32,7 +37,7 @@ describe Matter::Cluster::BasicInformationCluster do
       node_label: "Other",
       location: "XX"
     )
-    cluster2.restore_state(json.as(String))
+    cluster2.restore_state(document)
 
     cluster2.node_label.should eq("Kitchen")
     cluster2.location.should eq("AU")

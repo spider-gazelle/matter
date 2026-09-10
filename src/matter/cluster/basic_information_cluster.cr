@@ -1,6 +1,5 @@
 require "./cluster"
 require "tlv"
-require "json"
 
 module Matter
   module Cluster
@@ -469,7 +468,7 @@ module Matter
       # ------------------------------------------------------------------------
 
       private struct PersistedState
-        include JSON::Serializable
+        include Storage::Record
 
         property node_label : String
         property location : String
@@ -485,17 +484,17 @@ module Matter
         end
       end
 
-      def save_state : String?
+      def save_state : Storage::Document?
         PersistedState.new(
           node_label: @node_label,
           location: @location,
           local_config_disabled: @local_config_disabled,
           data_version: @data_version
-        ).to_json
+        ).to_document
       end
 
-      def restore_state(json : String) : Nil
-        state = PersistedState.from_json(json)
+      def restore_state(document : Storage::Document) : Nil
+        state = PersistedState.from_document(document)
         @node_label = state.node_label
         @location = state.location
         @local_config_disabled = state.local_config_disabled?

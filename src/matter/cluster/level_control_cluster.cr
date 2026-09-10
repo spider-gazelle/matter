@@ -625,7 +625,7 @@ module Matter
       # ------------------------------------------------------------------------
 
       private struct PersistedState
-        include JSON::Serializable
+        include Storage::Record
 
         getter current_level : UInt8
         getter min_level : UInt8
@@ -663,7 +663,7 @@ module Matter
         end
       end
 
-      def save_state : String?
+      def save_state : Storage::Document?
         PersistedState.new(
           current_level: @current_level,
           min_level: @min_level,
@@ -680,11 +680,11 @@ module Matter
           min_frequency: @min_frequency,
           max_frequency: @max_frequency,
           data_version: @data_version
-        ).to_json
+        ).to_document
       end
 
-      def restore_state(json : String) : Nil
-        state = PersistedState.from_json(json)
+      def restore_state(document : Storage::Document) : Nil
+        state = PersistedState.from_document(document)
         @current_level = state.current_level
         @min_level = state.min_level
         @max_level = state.max_level

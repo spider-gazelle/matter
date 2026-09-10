@@ -406,13 +406,13 @@ module Matter
       # ------------------------------------------------------------------------
 
       private struct PersistedState
-        include JSON::Serializable
+        include Storage::Record
 
         getter? on_off : Bool
         getter? global_scene_control : Bool
         getter on_time : UInt16
         getter off_wait_time : UInt16
-        getter start_up_on_off : UInt8?
+        getter start_up_on_off : StartUpOnOff?
         getter data_version : UInt32
 
         def initialize(
@@ -420,25 +420,25 @@ module Matter
           @global_scene_control : Bool,
           @on_time : UInt16,
           @off_wait_time : UInt16,
-          @start_up_on_off : UInt8?,
+          @start_up_on_off : StartUpOnOff?,
           @data_version : UInt32,
         )
         end
       end
 
-      def save_state : String?
+      def save_state : Storage::Document?
         PersistedState.new(
           on_off: @on_off,
           global_scene_control: @global_scene_control,
           on_time: @on_time,
           off_wait_time: @off_wait_time,
-          start_up_on_off: @start_up_on_off.try(&.value),
+          start_up_on_off: @start_up_on_off,
           data_version: @data_version
-        ).to_json
+        ).to_document
       end
 
-      def restore_state(json : String) : Nil
-        state = PersistedState.from_json(json)
+      def restore_state(document : Storage::Document) : Nil
+        state = PersistedState.from_document(document)
 
         @on_off = state.on_off?
         @attribute_values[ATTR_ON_OFF] = @on_off.to_tlv
@@ -447,7 +447,7 @@ module Matter
           @global_scene_control = state.global_scene_control?
           @on_time = state.on_time
           @off_wait_time = state.off_wait_time
-          @start_up_on_off = state.start_up_on_off.try { |v| StartUpOnOff.from_value(v) }
+          @start_up_on_off = state.start_up_on_off
         end
 
         @data_version = state.data_version

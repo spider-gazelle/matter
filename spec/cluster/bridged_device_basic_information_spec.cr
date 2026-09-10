@@ -203,12 +203,13 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       cluster1.reachable = false
 
       # Save state
-      json = cluster1.save_state
-      json.should_not be_nil
+      document = cluster1.save_state.as(Matter::Storage::Document)
+      document["node_label"].should eq("Modified Label")
+      document["reachable"].should be_false
 
       # Create new cluster and restore
       cluster2 = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint)
-      cluster2.restore_state(json.as(String))
+      cluster2.restore_state(document)
 
       cluster2.node_label.should eq("Modified Label")
       cluster2.reachable?.should be_false

@@ -1,6 +1,5 @@
 require "./cluster"
 require "log"
-require "json"
 
 module Matter
   module Cluster
@@ -160,8 +159,8 @@ module Matter
       # Maps a group ID to a key set ID within a fabric
       # Matter Core Spec §11.2.6.4
       struct GroupKeyMapStruct
-        include JSON::Serializable
         include TLV::Serializable
+        include Storage::Record
 
         @[TLV::Field(tag: 0)]
         property group_id : UInt16
@@ -187,8 +186,8 @@ module Matter
       # Represents a group with its endpoints and name
       # Matter Core Spec §11.2.6.5
       struct GroupInfoMapStruct
-        include JSON::Serializable
         include TLV::Serializable
+        include Storage::Record
 
         @[TLV::Field(tag: 1)]
         property group_id : UInt16
@@ -423,6 +422,7 @@ module Matter
 
         # Store the key set (create or update)
         fabric_key_sets[key_set.group_key_set_id] = key_set
+        increment_version
       end
 
       # KeySetRead command handler
@@ -483,6 +483,7 @@ module Matter
           entry.fabric_index == fabric_index &&
             entry.group_key_set_id == cmd.group_key_set_id
         end
+        increment_version
       end
 
       # KeySetReadAllIndices command handler
@@ -540,6 +541,7 @@ module Matter
           # Add new mapping
           @group_key_map << GroupKeyMapStruct.new(group_id, group_key_set_id, fabric_index)
         end
+        increment_version
       end
 
       # Remove a group key map entry
@@ -547,6 +549,7 @@ module Matter
         @group_key_map.reject! do |entry|
           entry.fabric_index == fabric_index && entry.group_id == group_id
         end
+        increment_version
       end
 
       # Add a group to the group table
@@ -598,6 +601,7 @@ module Matter
             group_id, [endpoint_id], group_name, fabric_index
           )
         end
+        increment_version
       end
 
       # Remove an endpoint from a group
@@ -622,6 +626,7 @@ module Matter
             group_id, new_endpoints, existing.group_name, fabric_index
           )
         end
+        increment_version
       end
 
       # Remove all groups for a fabric (fabric removal)
@@ -629,6 +634,7 @@ module Matter
         @key_sets.delete(fabric_index)
         @group_key_map.reject! { |entry| entry.fabric_index == fabric_index }
         @group_table.reject! { |entry| entry.fabric_index == fabric_index }
+        increment_version
       end
 
       # Get a key set by ID (for cryptographic operations)
@@ -659,98 +665,100 @@ module Matter
       # Persistence support
       # ------------------------------------------------------------------------
 
-      private struct PersistedKeySet
-        include JSON::Serializable
+      struct PersistedKeySet
+        include Storage::Record
 
-        property group_key_set_id : UInt16
-        property group_key_security_policy : UInt8
-        property epoch_key0 : String?
-        property epoch_start_time0 : UInt64?
-        property epoch_key1 : String?
-        property epoch_start_time1 : UInt64?
-        property epoch_key2 : String?
-        property epoch_start_time2 : UInt64?
-        property group_key_multicast_policy : UInt8?
+        getter group_key_set_id : UInt16
+        getter group_key_security_policy : GroupKeySecurityPolicyEnum
+        getter epoch_key0 : Bytes?
+        getter epoch_start_time0 : UInt64?
+        getter epoch_key1 : Bytes?
+        getter epoch_start_time1 : UInt64?
+        getter epoch_key2 : Bytes?
+        getter epoch_start_time2 : UInt64?
+        getter group_key_multicast_policy : GroupKeyMulticastPolicyEnum?
 
         def initialize(
           @group_key_set_id : UInt16,
-          @group_key_security_policy : UInt8,
-          @epoch_key0 : String? = nil,
-          @epoch_start_time0 : UInt64? = nil,
-          @epoch_key1 : String? = nil,
-          @epoch_start_time1 : UInt64? = nil,
-          @epoch_key2 : String? = nil,
-          @epoch_start_time2 : UInt64? = nil,
-          @group_key_multicast_policy : UInt8? = nil,
+          @group_key_security_policy : GroupKeySecurityPolicyEnum,
+          @epoch_key0 : Bytes?,
+          @epoch_start_time0 : UInt64?,
+          @epoch_key1 : Bytes?,
+          @epoch_start_time1 : UInt64?,
+          @epoch_key2 : Bytes?,
+          @epoch_start_time2 : UInt64?,
+          @group_key_multicast_policy : GroupKeyMulticastPolicyEnum?,
         )
+        end
+
+        def self.from_key_set(key_set : GroupKeySetStruct) : PersistedKeySet
+          new(
+            group_key_set_id: key_set.group_key_set_id,
+            group_key_security_policy: key_set.group_key_security_policy,
+            epoch_key0: key_set.epoch_key0,
+            epoch_start_time0: key_set.epoch_start_time0,
+            epoch_key1: key_set.epoch_key1,
+            epoch_start_time1: key_set.epoch_start_time1,
+            epoch_key2: key_set.epoch_key2,
+            epoch_start_time2: key_set.epoch_start_time2,
+            group_key_multicast_policy: key_set.group_key_multicast_policy
+          )
+        end
+
+        def to_key_set : GroupKeySetStruct
+          GroupKeySetStruct.new(
+            group_key_set_id: @group_key_set_id,
+            group_key_security_policy: @group_key_security_policy,
+            epoch_key0: @epoch_key0,
+            epoch_start_time0: @epoch_start_time0,
+            epoch_key1: @epoch_key1,
+            epoch_start_time1: @epoch_start_time1,
+            epoch_key2: @epoch_key2,
+            epoch_start_time2: @epoch_start_time2,
+            group_key_multicast_policy: @group_key_multicast_policy
+          )
         end
       end
 
       private struct PersistedState
-        include JSON::Serializable
+        include Storage::Record
 
-        property data_version : UInt32
-        property key_sets : Hash(String, Array(PersistedKeySet))
-        property group_key_map : Array(GroupKeyMapStruct)
-        property group_table : Array(GroupInfoMapStruct)
+        getter data_version : UInt32
+        getter key_sets : Hash(UInt8, Array(PersistedKeySet))
+        getter group_key_map : Array(GroupKeyMapStruct)
+        getter group_table : Array(GroupInfoMapStruct)
 
         def initialize(
           @data_version : UInt32,
-          @key_sets : Hash(String, Array(PersistedKeySet)),
+          @key_sets : Hash(UInt8, Array(PersistedKeySet)),
           @group_key_map : Array(GroupKeyMapStruct),
           @group_table : Array(GroupInfoMapStruct),
         )
         end
       end
 
-      def save_state : String?
-        key_sets_json = {} of String => Array(PersistedKeySet)
-        @key_sets.each do |fabric_idx, sets|
-          key_sets_json[fabric_idx.to_s] = sets.values.map do |key_set|
-            PersistedKeySet.new(
-              group_key_set_id: key_set.group_key_set_id,
-              group_key_security_policy: key_set.group_key_security_policy.value,
-              epoch_key0: key_set.epoch_key0.try(&.hexstring),
-              epoch_start_time0: key_set.epoch_start_time0,
-              epoch_key1: key_set.epoch_key1.try(&.hexstring),
-              epoch_start_time1: key_set.epoch_start_time1,
-              epoch_key2: key_set.epoch_key2.try(&.hexstring),
-              epoch_start_time2: key_set.epoch_start_time2,
-              group_key_multicast_policy: key_set.group_key_multicast_policy.try(&.value)
-            )
-          end
+      def save_state : Storage::Document?
+        key_sets = Hash(UInt8, Array(PersistedKeySet)).new
+        @key_sets.each do |fabric_index, sets|
+          key_sets[fabric_index] = sets.values.map { |key_set| PersistedKeySet.from_key_set(key_set) }
         end
 
-        state = PersistedState.new(
+        PersistedState.new(
           data_version: @data_version,
-          key_sets: key_sets_json,
+          key_sets: key_sets,
           group_key_map: @group_key_map,
           group_table: @group_table
-        )
-        state.to_json
+        ).to_document
       end
 
-      def restore_state(json : String) : Nil
-        state = PersistedState.from_json(json)
+      def restore_state(document : Storage::Document) : Nil
+        state = PersistedState.from_document(document)
 
         @key_sets.clear
-        state.key_sets.each do |fabric_idx_str, key_sets|
-          fabric_idx = fabric_idx_str.to_u8
-          @key_sets[fabric_idx] ||= Hash(UInt16, GroupKeySetStruct).new
+        state.key_sets.each do |fabric_index, key_sets|
+          fabric_key_sets = (@key_sets[fabric_index] ||= Hash(UInt16, GroupKeySetStruct).new)
           key_sets.each do |key_set|
-            policy = GroupKeySecurityPolicyEnum.from_value(key_set.group_key_security_policy)
-            multicast = key_set.group_key_multicast_policy.try { |value| GroupKeyMulticastPolicyEnum.from_value(value) }
-            @key_sets[fabric_idx][key_set.group_key_set_id] = GroupKeySetStruct.new(
-              group_key_set_id: key_set.group_key_set_id,
-              group_key_security_policy: policy,
-              epoch_key0: key_set.epoch_key0.try(&.hexbytes),
-              epoch_start_time0: key_set.epoch_start_time0,
-              epoch_key1: key_set.epoch_key1.try(&.hexbytes),
-              epoch_start_time1: key_set.epoch_start_time1,
-              epoch_key2: key_set.epoch_key2.try(&.hexbytes),
-              epoch_start_time2: key_set.epoch_start_time2,
-              group_key_multicast_policy: multicast
-            )
+            fabric_key_sets[key_set.group_key_set_id] = key_set.to_key_set
           end
         end
 
