@@ -357,20 +357,6 @@ module Matter
         end
       end
 
-      # Overload for tests that pass (endpoint_id, network_type, feature)
-      def initialize(
-        endpoint_id : DataType::EndpointNumber,
-        network_type : NetworkType,
-        feature : Feature,
-      )
-        initialize(
-          endpoint_id,
-          network_type,
-          max_networks: DEFAULT_MAX_NETWORKS,
-          feature_map: feature
-        )
-      end
-
       # Command handlers that accept struct parameters (used by tests and high-level API)
 
       # ScanNetworks command (0x00)
