@@ -105,8 +105,8 @@ Detailed plan: [phase5-plan.md](phase5-plan.md).
       - [x] workarounds removed from the 20 clusters; full suite, builds, format, ameba green
 - [x] Step 3: definitions folded into clusters, `EntryPrivilege` to interaction_model, class/file rename
       (`Cluster::OnOff`), `Cluster::Registry`, global-list ordering re-baselined
-- [ ] `./test` green at the end (blocked 2026-09-11: Docker Desktop not reachable from WSL; unit suite, builds, lint
-      and format all green on c9361a4); iOS smoke test by the user
+- [x] `./test` green at the end (2026-09-12: 2394 unit + 66 e2e incl. restarts and the new Groups/Colour/
+      WindowCovering cases, device validation 20/20); iOS smoke test by the user still outstanding
 
 ## Phase 6: Device model and protocol decomposition
 Detailed plan: [phase6-plan.md](phase6-plan.md).
