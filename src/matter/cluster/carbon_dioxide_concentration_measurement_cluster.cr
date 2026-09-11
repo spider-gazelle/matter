@@ -8,37 +8,26 @@ module Matter
     # and level indications in air, water, or soil. This cluster is a derived cluster
     # from the base Concentration Measurement cluster specification.
     #
-    # Supports two main measurement modes:
-    # - NumericMeasurement: Provides actual measured values in configurable units
-    # - LevelIndication: Provides coarse level indication (Unknown, Low, Medium, High, Critical)
+    # Features (derived from the values the cluster is constructed with):
+    # - NumericMeasurement (MEA): actual measured values in configurable units
+    # - LevelIndication (LEV): coarse level indication (Unknown, Low, Medium, High, Critical)
+    # - PeakMeasurement (PEA): peak value over a window
+    # - AverageMeasurement (AVG): average value over a window
     #
     # Specification: Matter 1.4 § 2.10 (Concentration Measurement)
     class CarbonDioxideConcentrationMeasurementCluster < Base
-      CLUSTER_ID = 0x040D_u32
+      cluster 0x040D, revision: 3
 
-      # Base Attributes
-      ATTR_MEASUREMENT_MEDIUM = 0x0009_u32
+      feature :numeric_measurement, bit: 0 # MEA - Numeric measurement
+      feature :level_indication, bit: 1    # LEV - Level indication
+      feature :peak_measurement, bit: 4    # PEA - Peak measurement
+      feature :average_measurement, bit: 5 # AVG - Average measurement
 
-      # NumericMeasurement Feature Attributes
-      ATTR_MEASURED_VALUE     = 0x0000_u32
-      ATTR_MIN_MEASURED_VALUE = 0x0001_u32
-      ATTR_MAX_MEASURED_VALUE = 0x0002_u32
-      ATTR_UNCERTAINTY        = 0x0007_u32
-      ATTR_MEASUREMENT_UNIT   = 0x0008_u32
-
-      # LevelIndication Feature Attributes
-      ATTR_LEVEL_VALUE = 0x000A_u32
-
-      # PeakMeasurement Feature Attributes
-      ATTR_PEAK_MEASURED_VALUE        = 0x0003_u32
-      ATTR_PEAK_MEASURED_VALUE_WINDOW = 0x0004_u32
-
-      # AverageMeasurement Feature Attributes
-      ATTR_AVERAGE_MEASURED_VALUE        = 0x0005_u32
-      ATTR_AVERAGE_MEASURED_VALUE_WINDOW = 0x0006_u32
+      # Longest peak / average window the specification allows (seconds, 7 days)
+      MAX_WINDOW = 604_800_u32
 
       # Measurement unit values
-      enum MeasurementUnit
+      enum MeasurementUnit : UInt8
         Ppm  = 0 # Parts per Million (10^6)
         Ppb  = 1 # Parts per Billion (10^9)
         Ppt  = 2 # Parts per Trillion (10^12)
@@ -50,7 +39,7 @@ module Matter
       end
 
       # Level value for coarse indication
-      enum LevelValue
+      enum LevelValue : UInt8
         Unknown  = 0 # Level is unknown
         Low      = 1 # Level is considered Low
         Medium   = 2 # Level is considered Medium
@@ -59,355 +48,126 @@ module Matter
       end
 
       # Measurement medium
-      enum MeasurementMedium
+      enum MeasurementMedium : UInt8
         Air   = 0 # Measurement is being made in Air
         Water = 1 # Measurement is being made in Water
         Soil  = 2 # Measurement is being made in Soil
       end
 
-      # Measurement medium (mandatory)
-      property measurement_medium : MeasurementMedium
+      attribute 0x0000, :measured_value, Float32, nullable: true, requires: :numeric_measurement
+      attribute 0x0001, :min_measured_value, Float32, nullable: true, requires: :numeric_measurement
+      attribute 0x0002, :max_measured_value, Float32, nullable: true, requires: :numeric_measurement
+      attribute 0x0003, :peak_measured_value, Float32, nullable: true, requires: :peak_measurement
+      attribute 0x0004, :peak_measured_value_window, UInt32, default: 0_u32, max: MAX_WINDOW, requires: :peak_measurement
+      attribute 0x0005, :average_measured_value, Float32, nullable: true, requires: :average_measurement
+      attribute 0x0006, :average_measured_value_window, UInt32, default: 0_u32, max: MAX_WINDOW, requires: :average_measurement
+      attribute 0x0007, :uncertainty, Float32, nullable: true, optional: true, requires: :numeric_measurement
+      attribute 0x0008, :measurement_unit, MeasurementUnit, default: MeasurementUnit::Ppm, fixed: true, requires: :numeric_measurement
+      attribute 0x0009, :measurement_medium, MeasurementMedium, default: MeasurementMedium::Air, fixed: true
+      attribute 0x000A, :level_value, LevelValue, default: LevelValue::Unknown, requires: :level_indication
 
-      # NumericMeasurement feature attributes
-      property measured_value : Float32?
-      property min_measured_value : Float32?
-      property max_measured_value : Float32?
-      property uncertainty : Float32?
-      property measurement_unit : MeasurementUnit?
-
-      # LevelIndication feature attributes
-      property level_value : LevelValue?
-
-      # PeakMeasurement feature attributes
-      property peak_measured_value : Float32?
-      property peak_measured_value_window : UInt32?
-
-      # AverageMeasurement feature attributes
-      property average_measured_value : Float32?
-      property average_measured_value_window : UInt32?
-
+      # The FeatureMap follows the values given: numeric measurement needs the
+      # measured, min and max values and the unit; peak and average need
+      # their value and window; level indication needs a level.
       def initialize(endpoint_id : DataType::EndpointNumber,
                      @measurement_medium : MeasurementMedium = MeasurementMedium::Air,
                      @measured_value : Float32? = nil,
                      @min_measured_value : Float32? = nil,
                      @max_measured_value : Float32? = nil,
                      @uncertainty : Float32? = nil,
-                     @measurement_unit : MeasurementUnit? = nil,
-                     @level_value : LevelValue? = nil,
+                     measurement_unit : MeasurementUnit? = nil,
+                     level_value : LevelValue? = nil,
                      @peak_measured_value : Float32? = nil,
-                     @peak_measured_value_window : UInt32? = nil,
+                     peak_measured_value_window : UInt32? = nil,
                      @average_measured_value : Float32? = nil,
-                     @average_measured_value_window : UInt32? = nil)
+                     average_measured_value_window : UInt32? = nil)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
-        # Validate NumericMeasurement feature: if any numeric measurement attribute is set,
-        # mandatory attributes must be present
-        numeric_attrs = [@measured_value, @min_measured_value, @max_measured_value, @measurement_unit]
-        if numeric_attrs.any?(&.!=(nil))
-          unless @measured_value && @min_measured_value && @max_measured_value && @measurement_unit
-            raise ArgumentError.new("NumericMeasurement feature requires measured_value, min_measured_value, max_measured_value, and measurement_unit")
-          end
+        numeric = {@measured_value, @min_measured_value, @max_measured_value, measurement_unit}
+        if numeric.any?(Nil) && !numeric.all?(Nil)
+          raise ArgumentError.new("NumericMeasurement feature requires measured_value, min_measured_value, max_measured_value, and measurement_unit")
+        end
+        raise ArgumentError.new("PeakMeasurement feature requires peak_measured_value_window") if @peak_measured_value && peak_measured_value_window.nil?
+        raise ArgumentError.new("PeakMeasurement feature requires peak_measured_value") if peak_measured_value_window && @peak_measured_value.nil?
+        raise ArgumentError.new("AverageMeasurement feature requires average_measured_value_window") if @average_measured_value && average_measured_value_window.nil?
+        raise ArgumentError.new("AverageMeasurement feature requires average_measured_value") if average_measured_value_window && @average_measured_value.nil?
+
+        if window = peak_measured_value_window
+          raise ArgumentError.new("peak_measured_value_window must be <= #{MAX_WINDOW} seconds") if window > MAX_WINDOW
+          @peak_measured_value_window = window
+        end
+        if window = average_measured_value_window
+          raise ArgumentError.new("average_measured_value_window must be <= #{MAX_WINDOW} seconds") if window > MAX_WINDOW
+          @average_measured_value_window = window
         end
 
-        # Validate PeakMeasurement feature: both attributes must be set together
-        if @peak_measured_value && !@peak_measured_value_window
-          raise ArgumentError.new("PeakMeasurement feature requires peak_measured_value_window")
-        end
-        if @peak_measured_value_window && !@peak_measured_value
-          raise ArgumentError.new("PeakMeasurement feature requires peak_measured_value")
-        end
-
-        # Validate AverageMeasurement feature: both attributes must be set together
-        if @average_measured_value && !@average_measured_value_window
-          raise ArgumentError.new("AverageMeasurement feature requires average_measured_value_window")
-        end
-        if @average_measured_value_window && !@average_measured_value
-          raise ArgumentError.new("AverageMeasurement feature requires average_measured_value")
-        end
-
-        # Validate peak measurement window (max 604800 seconds = 7 days)
-        if window = @peak_measured_value_window
-          raise ArgumentError.new("peak_measured_value_window must be <= 604800 seconds") if window > 604800
-        end
-
-        # Validate average measurement window (max 604800 seconds = 7 days)
-        if window = @average_measured_value_window
-          raise ArgumentError.new("average_measured_value_window must be <= 604800 seconds") if window > 604800
-        end
-
-        # At least one feature must be enabled
-        unless numeric_measurement_enabled? || level_indication_enabled?
+        unless measurement_unit || level_value
           raise ArgumentError.new("At least one feature (NumericMeasurement or LevelIndication) must be enabled")
         end
+
+        features = Feature::None
+        if measurement_unit
+          @measurement_unit = measurement_unit
+          features |= Feature::NumericMeasurement
+        end
+        if level_value
+          @level_value = level_value
+          features |= Feature::LevelIndication
+        end
+        features |= Feature::PeakMeasurement if @peak_measured_value
+        features |= Feature::AverageMeasurement if @average_measured_value
+        @feature_map = features
       end
 
-      def name : String
-        "CarbonDioxideConcentrationMeasurement"
+      # Uncertainty is optional: unsupported until the device reports one.
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
+        return InteractionModel::Status.unsupported_attribute if attribute_id == ATTR_UNCERTAINTY && @uncertainty.nil?
+        super
       end
 
-      def attributes : Array(AttributeMetadata)
-        attrs = [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MEASUREMENT_MEDIUM),
-            "MeasurementMedium",
-            :uint8,
-            writable: false
-          ),
-        ]
+      # ------------------------------------------------------------------------
+      # Public Interface
+      # ------------------------------------------------------------------------
 
-        # Add NumericMeasurement feature attributes if enabled
-        if numeric_measurement_enabled?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MEASURED_VALUE),
-            "MeasuredValue",
-            :float,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MIN_MEASURED_VALUE),
-            "MinMeasuredValue",
-            :float,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MAX_MEASURED_VALUE),
-            "MaxMeasuredValue",
-            :float,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_UNCERTAINTY),
-            "Uncertainty",
-            :float,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MEASUREMENT_UNIT),
-            "MeasurementUnit",
-            :uint8,
-            writable: false
-          )
-        end
-
-        # Add LevelIndication feature attributes if enabled
-        if level_indication_enabled?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_LEVEL_VALUE),
-            "LevelValue",
-            :uint8,
-            writable: false
-          )
-        end
-
-        # Add PeakMeasurement feature attributes if enabled
-        if peak_measurement_enabled?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PEAK_MEASURED_VALUE),
-            "PeakMeasuredValue",
-            :float,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PEAK_MEASURED_VALUE_WINDOW),
-            "PeakMeasuredValueWindow",
-            :uint32,
-            writable: false
-          )
-        end
-
-        # Add AverageMeasurement feature attributes if enabled
-        if average_measurement_enabled?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_AVERAGE_MEASURED_VALUE),
-            "AverageMeasuredValue",
-            :float,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_AVERAGE_MEASURED_VALUE_WINDOW),
-            "AverageMeasuredValueWindow",
-            :uint32,
-            writable: false
-          )
-        end
-
-        attrs
-      end
-
-      def commands : Array(CommandMetadata)
-        [] of CommandMetadata # No commands for concentration measurement cluster
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
-        case attribute_id
-        when ATTR_MEASUREMENT_MEDIUM
-          tlv(@measurement_medium.value.to_u8)
-        when ATTR_MEASURED_VALUE
-          if value = @measured_value
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_MIN_MEASURED_VALUE
-          if value = @min_measured_value
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_MAX_MEASURED_VALUE
-          if value = @max_measured_value
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_UNCERTAINTY
-          if value = @uncertainty
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_MEASUREMENT_UNIT
-          if unit = @measurement_unit
-            tlv(unit.value.to_u8)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_LEVEL_VALUE
-          if value = @level_value
-            tlv(value.value.to_u8)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_PEAK_MEASURED_VALUE
-          if value = @peak_measured_value
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_PEAK_MEASURED_VALUE_WINDOW
-          if value = @peak_measured_value_window
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_AVERAGE_MEASURED_VALUE
-          if value = @average_measured_value
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_AVERAGE_MEASURED_VALUE_WINDOW
-          if value = @average_measured_value_window
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        else
-          super
-        end
-      end
-
-      # Update the measured CO2 concentration value
-      def update_measured_value(value : Float32)
+      # Reports a new reading; ignored unless NumericMeasurement is enabled
+      def update_measured_value(value : Float32) : Nil
         return unless numeric_measurement_enabled?
-
-        old_value = @measured_value
-        @measured_value = value
-
-        if old_value != value
-          @on_measured_value_changed.try &.call(old_value, value)
-          increment_version
-        end
+        self.measured_value = value
       end
 
-      # Update the level indication value
-      def update_level_value(value : LevelValue)
+      # Reports a new level; ignored unless LevelIndication is enabled
+      def update_level_value(value : LevelValue) : Nil
         return unless level_indication_enabled?
-
-        old_value = @level_value
-        @level_value = value
-
-        if old_value != value
-          @on_level_value_changed.try &.call(old_value, value)
-          increment_version
-        end
+        self.level_value = value
       end
 
-      # Update the peak measured value
-      def update_peak_measured_value(value : Float32)
+      # Reports a new peak; ignored unless PeakMeasurement is enabled
+      def update_peak_measured_value(value : Float32) : Nil
         return unless peak_measurement_enabled?
-
-        old_value = @peak_measured_value
-        @peak_measured_value = value
-
-        if old_value != value
-          @on_peak_measured_value_changed.try &.call(old_value, value)
-          increment_version
-        end
+        self.peak_measured_value = value
       end
 
-      # Update the average measured value
-      def update_average_measured_value(value : Float32)
+      # Reports a new average; ignored unless AverageMeasurement is enabled
+      def update_average_measured_value(value : Float32) : Nil
         return unless average_measurement_enabled?
-
-        old_value = @average_measured_value
-        @average_measured_value = value
-
-        if old_value != value
-          @on_average_measured_value_changed.try &.call(old_value, value)
-          increment_version
-        end
+        self.average_measured_value = value
       end
 
-      # Check if NumericMeasurement feature is enabled
       def numeric_measurement_enabled? : Bool
-        !@measured_value.nil?
+        @feature_map.numeric_measurement?
       end
 
-      # Check if LevelIndication feature is enabled
       def level_indication_enabled? : Bool
-        !@level_value.nil?
+        @feature_map.level_indication?
       end
 
-      # Check if PeakMeasurement feature is enabled
       def peak_measurement_enabled? : Bool
-        !@peak_measured_value.nil?
+        @feature_map.peak_measurement?
       end
 
-      # Check if AverageMeasurement feature is enabled
       def average_measurement_enabled? : Bool
-        !@average_measured_value.nil?
+        @feature_map.average_measurement?
       end
-
-      # Callback when measured value changes
-      @on_measured_value_changed : Proc(Float32?, Float32, Nil)?
-
-      def on_measured_value_changed(&block : Float32?, Float32 -> Nil)
-        @on_measured_value_changed = block
-      end
-
-      # Callback when level value changes
-      @on_level_value_changed : Proc(LevelValue?, LevelValue, Nil)?
-
-      def on_level_value_changed(&block : LevelValue?, LevelValue -> Nil)
-        @on_level_value_changed = block
-      end
-
-      # Callback when peak measured value changes
-      @on_peak_measured_value_changed : Proc(Float32?, Float32, Nil)?
-
-      def on_peak_measured_value_changed(&block : Float32?, Float32 -> Nil)
-        @on_peak_measured_value_changed = block
-      end
-
-      # Callback when average measured value changes
-      @on_average_measured_value_changed : Proc(Float32?, Float32, Nil)?
-
-      def on_average_measured_value_changed(&block : Float32?, Float32 -> Nil)
-        @on_average_measured_value_changed = block
-      end
-
-      # build_float uses TLV encoding for attribute responses
     end
   end
 end

@@ -153,7 +153,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
       )
 
       attrs = sensor.attributes
-      attrs.map(&.name).should contain("MeasurementMedium")
+      attrs.map(&.name).should contain("measurementMedium")
     end
 
     it "has NumericMeasurement attributes when feature enabled" do
@@ -166,10 +166,10 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
       )
 
       attrs = sensor.attributes
-      attrs.find { |attr| attr.name == "MeasuredValue" }.should_not be_nil
-      attrs.find { |attr| attr.name == "MinMeasuredValue" }.should_not be_nil
-      attrs.find { |attr| attr.name == "MaxMeasuredValue" }.should_not be_nil
-      attrs.find { |attr| attr.name == "MeasurementUnit" }.should_not be_nil
+      attrs.find { |attr| attr.name == "measuredValue" }.should_not be_nil
+      attrs.find { |attr| attr.name == "minMeasuredValue" }.should_not be_nil
+      attrs.find { |attr| attr.name == "maxMeasuredValue" }.should_not be_nil
+      attrs.find { |attr| attr.name == "measurementUnit" }.should_not be_nil
     end
 
     it "has LevelIndication attributes when feature enabled" do
@@ -179,7 +179,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
       )
 
       attrs = sensor.attributes
-      attrs.find { |attr| attr.name == "LevelValue" }.should_not be_nil
+      attrs.find { |attr| attr.name == "levelValue" }.should_not be_nil
     end
 
     it "does not have NumericMeasurement attributes when feature disabled" do
@@ -189,8 +189,8 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurementCluster do
       )
 
       attrs = sensor.attributes
-      attrs.find { |attr| attr.name == "MeasuredValue" }.should be_nil
-      attrs.find { |attr| attr.name == "MeasurementUnit" }.should be_nil
+      attrs.find { |attr| attr.name == "measuredValue" }.should be_nil
+      attrs.find { |attr| attr.name == "measurementUnit" }.should be_nil
     end
 
     it "reads measurement medium" do
