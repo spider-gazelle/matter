@@ -1,5 +1,13 @@
 # Lessons
 
+- 2026-09-12: Crystal keeps only the **ten** most recently used program directories in a cache root and
+  deletes the rest at the *start* of every compile (`codegen/cache_dir.cr#cleanup`). The e2e builder
+  compiled eleven programs in parallel into one root, so a starting build deleted a sibling's directory
+  mid-codegen (`Error renaming file: ... No such file or directory`, then a link failure). Fixed by giving
+  each build its own `CRYSTAL_CACHE_DIR`; nothing is lost, the cache is per program either way. When
+  parallel compiles share a cache, count the programs against that limit. See the earlier BuildKit
+  cache-mount race below: same directory, different mechanism.
+
 - 2026-09-12: A custom type used as a TLV field must work in both directions, and the two are not
   symmetric. The tlv shard's `serialize_value` dispatches on a registered overload, so any
   `define_id` type encodes; but its union branch (`lib/tlv/src/tlv/serializable.cr:406-503`) matches a
