@@ -293,13 +293,13 @@ module Matter
         {% end %}
       end
 
-      macro event(id, name, priority = :info, requires = nil)
+      macro event(id, name, priority = :info, requires = nil, access = :view, payload = nil)
         {% unless ::Matter::Cluster::DSL::EVENT_PRIORITIES.includes?(priority) %}
           {% raise "#{@type}: event :#{name.id} priority: must be one of #{::Matter::Cluster::DSL::EVENT_PRIORITIES.join(", ").id}" %}
         {% end %}
         {% raise "#{@type}: event :#{name.id} declared twice" if @type.constant("EVENT_DECLS").any? { |event| event[:name] == name } %}
         {% requires = requires.resolve if requires.is_a?(Path) %}
-        {% @type.constant("EVENT_DECLS") << {id: id, name: name, priority: priority, requires: requires} %}
+        {% @type.constant("EVENT_DECLS") << {id: id, name: name, priority: priority, requires: requires, access: access, payload: payload} %}
 
         EVENT_{{ name.id.upcase }} = {{ (id.is_a?(NumberLiteral) && id.kind == :i32) ? "#{id}_u32".id : "(#{id}).to_u32".id }}
       end
@@ -618,9 +618,11 @@ module Matter
                 id: ::Matter::DataType::EventId.new(EVENT_{{ decl[:name].id.upcase }}),
                 name: {{ decl[:name].id.stringify.camelcase(lower: true) }},
                 priority: ::Matter::InteractionModel::EventPriority::{{ decl[:priority].id.camelcase }},
+                access: ::Matter::InteractionModel::EntryPrivilege::{{ (decl[:access] || :view).id.camelcase }},
               ),
             {% end %}
           ] of ::Matter::Cluster::EventMetadata
+          EVENTS_BY_ID = EVENTS.to_h { |event| {event.id.id, event} }
 
           # The tables are shared by every instance; callers must not mutate them.
           def attributes : Array(::Matter::Cluster::AttributeMetadata)
@@ -654,6 +656,19 @@ module Matter
           def get_command_metadata(command_id : UInt32) : ::Matter::Cluster::CommandMetadata?
             COMMANDS_BY_ID[command_id]? if dsl_command_supported?(command_id)
           end
+
+          def get_event_metadata(event_id : UInt32) : ::Matter::Cluster::EventMetadata?
+            EVENTS_BY_ID[event_id]? if dsl_event_supported?(event_id)
+          end
+
+          # Typed emitters for the events that named a payload struct.
+          {% for decl in EVENT_DECLS %}
+            {% if decl[:payload] %}
+              def emit_{{ decl[:name].id }}(payload : {{ decl[:payload] }}, fabric_index : UInt8? = nil) : Nil
+                emit_event(EVENT_{{ decl[:name].id.upcase }}, payload, fabric_index)
+              end
+            {% end %}
+          {% end %}
 
           # -- reads -------------------------------------------------------------
 

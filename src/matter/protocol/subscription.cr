@@ -18,8 +18,13 @@ module Matter
       property peer : Socket::IPAddress
       property session : Session::SecureContext
       property attribute_paths : Array(InteractionModel::AttributePath)
+      property event_paths : Array(InteractionModel::EventPath)
       property last_report_time : Time
       property exchange_id : UInt16
+
+      # The highest event number this subscription has already reported. The
+      # journal is drained from here on every report.
+      property last_event_number : UInt64
 
       def initialize(
         @subscription_id,
@@ -29,6 +34,8 @@ module Matter
         @session,
         @attribute_paths,
         @exchange_id,
+        @event_paths = [] of InteractionModel::EventPath,
+        @last_event_number = 0_u64,
       )
         @last_report_time = Time.utc
       end
@@ -44,10 +51,49 @@ module Matter
         end
       end
 
+      # Whether this subscription watches events at all.
+      def events? : Bool
+        !@event_paths.empty?
+      end
+
       # Whether the subscription has gone silent for longer than the interval
       # the controller accepted.
       def expired?(now : Time = Time.utc) : Bool
         now > @last_report_time + @max_interval.seconds
+      end
+
+      # Whether the minimum interval the controller asked for has elapsed since
+      # the last report, so a non-urgent change may go out now.
+      def min_interval_elapsed?(now : Time = Time.utc) : Bool
+        now >= @last_report_time + @min_interval.seconds
+      end
+
+      # One subscribed event path in its persisted form.
+      struct EventPathRecord
+        include Storage::Record
+
+        getter node : UInt64?
+        getter endpoint : UInt16?
+        getter cluster : UInt32?
+        getter event : UInt32?
+        getter? urgent : Bool = false
+
+        def initialize(@node : UInt64?, @endpoint : UInt16?, @cluster : UInt32?, @event : UInt32?, @urgent : Bool)
+        end
+
+        def self.from_path(path : InteractionModel::EventPath) : EventPathRecord
+          new(path.node, path.endpoint, path.cluster, path.event, path.is_urgent?)
+        end
+
+        def to_path : InteractionModel::EventPath
+          InteractionModel::EventPath.new(
+            node: @node,
+            endpoint: @endpoint,
+            cluster: @cluster,
+            event: @event,
+            is_urgent: urgent?
+          )
+        end
       end
 
       # One subscribed attribute path in its persisted form.
@@ -86,6 +132,11 @@ module Matter
         getter last_report_at : Time
         getter attribute_paths : Array(AttributePathRecord)
 
+        # Added with event subscriptions; a store written before they existed
+        # has neither key, so both carry a default rather than a nilable type.
+        getter event_paths : Array(EventPathRecord) = [] of EventPathRecord
+        getter last_event_number : UInt64 = 0_u64
+
         def initialize(
           @subscription_id : UInt32,
           @min_interval : UInt16,
@@ -96,6 +147,8 @@ module Matter
           @exchange_id : UInt16,
           @last_report_at : Time,
           @attribute_paths : Array(AttributePathRecord),
+          @event_paths : Array(EventPathRecord) = [] of EventPathRecord,
+          @last_event_number : UInt64 = 0_u64,
         )
         end
       end
@@ -110,7 +163,9 @@ module Matter
           session_id: @session.session_id,
           exchange_id: @exchange_id,
           last_report_at: @last_report_time,
-          attribute_paths: @attribute_paths.map { |path| AttributePathRecord.from_path(path) }
+          attribute_paths: @attribute_paths.map { |path| AttributePathRecord.from_path(path) },
+          event_paths: @event_paths.map { |path| EventPathRecord.from_path(path) },
+          last_event_number: @last_event_number
         )
       end
 
@@ -123,7 +178,9 @@ module Matter
           peer: Socket::IPAddress.new(record.peer_address, record.peer_port.to_i),
           session: session,
           attribute_paths: record.attribute_paths.map(&.to_path),
-          exchange_id: record.exchange_id
+          exchange_id: record.exchange_id,
+          event_paths: record.event_paths.map(&.to_path),
+          last_event_number: record.last_event_number
         )
         subscription.last_report_time = record.last_report_at
         subscription

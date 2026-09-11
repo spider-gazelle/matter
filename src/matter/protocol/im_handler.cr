@@ -2,6 +2,7 @@ require "../interaction_model/paths"
 require "../interaction_model/status_code"
 require "../interaction_model/tlv_messages"
 require "../cluster/cluster"
+require "../event_journal"
 require "../cluster/access_control"
 require "tlv"
 
@@ -200,6 +201,126 @@ module Matter
         attribute_reports
       end
 
+      # Reads journaled events for *event_requests*.
+      #
+      # Wildcards in an `EventPath` expand against the journal rather than the
+      # data model: a record is reported when some requested path selects it,
+      # the reader's fabric may see it and the reader holds the privilege the
+      # cluster declared for that event.
+      #
+      # A concrete path (endpoint, cluster and event all given) that names
+      # something the node does not have - or that the reader may not read -
+      # produces an `EventStatusIB` so the controller learns why it got nothing.
+      # Wildcard paths stay silent, exactly as attribute reads do.
+      #
+      # *event_filters* carry the lowest event number the reader still wants;
+      # the node has one event number space, so the highest `event_min` across
+      # the filters wins. *after* is what a subscription has already reported.
+      def self.read_events(
+        event_requests : Array(InteractionModel::EventPath)?,
+        journal : EventJournal,
+        clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
+        event_filters : Array(InteractionModel::EventFilterIB)? = nil,
+        fabric_index : UInt8? = nil,
+        is_case_session : Bool = false,
+        peer_subject_ids : Array(UInt64)? = nil,
+        after : UInt64? = nil,
+      ) : Array(InteractionModel::EventReportIB)
+        reports = [] of InteractionModel::EventReportIB
+        requests = event_requests || [] of InteractionModel::EventPath
+        return reports if requests.empty?
+
+        requests.each do |path|
+          Log.debug { "Reading events: #{path}" }
+          next if path.wildcard?
+
+          if status = concrete_event_status(path, clusters, is_case_session, fabric_index, peer_subject_ids)
+            reports << InteractionModel::EventReportIB.new(event_status: status)
+          end
+        end
+
+        records = journal.query(
+          requests,
+          after: after,
+          min_event_number: minimum_event_number(event_filters),
+          fabric_index: fabric_index
+        )
+
+        records.each do |record|
+          privilege = event_access(clusters, record)
+          next unless privilege
+          next unless authorized?(clusters, privilege, record.endpoint, record.cluster, is_case_session, fabric_index, peer_subject_ids)
+
+          reports << InteractionModel::EventReportIB.new(event_data: build_event_data(record))
+        end
+
+        Log.debug { "Read #{reports.size} event report(s) from #{journal.size} journaled event(s)" }
+        reports
+      end
+
+      # The EventDataIB carrying *record*.
+      def self.build_event_data(record : EventJournal::Record) : InteractionModel::EventDataIB
+        InteractionModel::EventDataIB.new(
+          path: record.to_path,
+          event_number: record.event_number,
+          priority: record.priority,
+          data: record.data,
+          epoch_timestamp: record.epoch_timestamp_ms
+        )
+      end
+
+      # The privilege required to read *record*'s event, or `nil` when the
+      # cluster no longer declares it.
+      private def self.event_access(
+        clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
+        record : EventJournal::Record,
+      ) : InteractionModel::EntryPrivilege?
+        clusters[{record.endpoint, record.cluster}]?.try(&.get_event_metadata(record.event)).try(&.access)
+      end
+
+      # The status a fully specified event path answers with, or `nil` when it
+      # names an event the reader may read.
+      private def self.concrete_event_status(
+        path : InteractionModel::EventPath,
+        clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
+        is_case_session : Bool,
+        fabric_index : UInt8?,
+        peer_subject_ids : Array(UInt64)?,
+      ) : InteractionModel::EventStatusIB?
+        endpoint_id = path.endpoint.as(UInt16)
+        cluster_id = path.cluster.as(UInt32)
+        event_id = path.event.as(UInt32)
+
+        cluster = clusters[{endpoint_id, cluster_id}]?
+        return event_status(path, InteractionModel::StatusCode::UnsupportedCluster) unless cluster
+
+        metadata = cluster.get_event_metadata(event_id)
+        return event_status(path, InteractionModel::StatusCode::UnsupportedEvent) unless metadata
+
+        unless authorized?(clusters, metadata.access, endpoint_id, cluster_id, is_case_session, fabric_index, peer_subject_ids)
+          return event_status(path, InteractionModel::StatusCode::UnsupportedAccess)
+        end
+
+        nil
+      end
+
+      private def self.event_status(
+        path : InteractionModel::EventPath,
+        status : InteractionModel::StatusCode,
+      ) : InteractionModel::EventStatusIB
+        InteractionModel::EventStatusIB.new(
+          path: path,
+          status: InteractionModel::StatusIB.new(status: status.value)
+        )
+      end
+
+      # The lowest event number *event_filters* still want reported.
+      private def self.minimum_event_number(event_filters : Array(InteractionModel::EventFilterIB)?) : UInt64?
+        return if event_filters.nil? || event_filters.empty?
+
+        event_filters.max_of(&.event_min)
+      end
+
       private def self.safe_read_attribute(
         cluster : Cluster::Base,
         attribute_id : UInt32,
@@ -357,17 +478,19 @@ module Matter
         nil
       end
 
-      # Encode ReportData from array of AttributeReportIB
+      # Encode ReportData from arrays of AttributeReportIB and EventReportIB
       # Used for both ReadResponse and initial subscription data
       def self.encode_report_data(
         attribute_reports : Array(InteractionModel::AttributeReportIB),
         subscription_id : UInt32? = nil,
         more_chunked_messages : Bool = false,
         suppress_response : Bool = false,
+        event_reports : Array(InteractionModel::EventReportIB)? = nil,
       ) : Bytes
         report_msg = InteractionModel::ReportDataMessage.new(
           subscription_id: subscription_id,
           attribute_reports: attribute_reports.empty? ? nil : attribute_reports,
+          event_reports: (event_reports.nil? || event_reports.empty?) ? nil : event_reports,
           more_chunked_messages: more_chunked_messages ? true : nil,
           suppress_response: suppress_response,
           interaction_model_revision: InteractionModel::INTERACTION_MODEL_REVISION
@@ -382,72 +505,90 @@ module Matter
       # 1280 - 89 = ~1191 bytes available for TLV payload, use 1100 for safety margin
       MAX_REPORT_PAYLOAD_SIZE = 1100
 
-      # Chunk attributes into multiple ReportData messages that fit within MTU
-      # Returns an array of (encoded_bytes, is_last_chunk) tuples
+      # Bytes reserved in every chunk for the ReportData structure itself:
+      # structure start (~1) + attribute array start (~2) + moreChunkedMessages
+      # (~2) + interactionModelRevision (~3) + structure end (~1), rounded up.
+      REPORT_DATA_OVERHEAD = 15
+
+      # Extra bytes a subscription id costs in the ReportData structure.
+      SUBSCRIPTION_ID_OVERHEAD = 5
+
+      # Extra bytes the event report array costs when the chunk carries one.
+      EVENT_ARRAY_OVERHEAD = 2
+
+      # Chunk attribute and event reports into ReportData messages that fit
+      # within the MTU. Returns (encoded_bytes, is_last_chunk) tuples.
+      #
+      # Both kinds of report share one budget: a read that asks for attributes
+      # and events gets as many chunks as the two together need, never one
+      # ladder each. Attribute reports go out first, then events in event
+      # number order.
       def self.encode_chunked_report_data(
         attribute_reports : Array(InteractionModel::AttributeReportIB),
         subscription_id : UInt32? = nil,
+        event_reports : Array(InteractionModel::EventReportIB)? = nil,
       ) : Array(Tuple(Bytes, Bool))
         chunks = [] of Tuple(Bytes, Bool)
+        events = event_reports || [] of InteractionModel::EventReportIB
 
-        # Pre-encode all attribute reports with their sizes
-        encoded_reports = [] of Tuple(InteractionModel::AttributeReportIB, Bytes)
-        attribute_reports.each do |report|
-          encoded_reports << {report, report.to_slice}
-        end
+        # Pre-encode every report so its wire size is known before packing
+        encoded_attributes = attribute_reports.map { |report| {report, report.to_slice} }
+        encoded_events = events.map { |report| {report, report.to_slice} }
+        total = encoded_attributes.size + encoded_events.size
 
-        # Calculate base overhead for ReportData structure
-        # Structure start (~1) + subscriptionId (~6 if present) + array start (~2) +
-        # moreChunkedMessages (~2) + interactionModelRevision (~3) + structure end (~1) = ~15 bytes
-        base_overhead = subscription_id ? 20 : 15
+        base_overhead = REPORT_DATA_OVERHEAD
+        base_overhead += SUBSCRIPTION_ID_OVERHEAD if subscription_id
+        base_overhead += EVENT_ARRAY_OVERHEAD unless encoded_events.empty?
 
-        # Current chunk state
-        current_reports = [] of InteractionModel::AttributeReportIB
+        current_attributes = [] of InteractionModel::AttributeReportIB
+        current_events = [] of InteractionModel::EventReportIB
         current_size = base_overhead
-        report_index = 0
+        index = 0
 
-        # Process all reports
-        while report_index < encoded_reports.size
-          report, encoded = encoded_reports[report_index]
-
-          if current_size + encoded.size <= MAX_REPORT_PAYLOAD_SIZE
-            current_reports << report
-            current_size += encoded.size
-            report_index += 1
-          elsif current_reports.empty?
-            # Single report too large - include it anyway (will exceed MTU but necessary)
-            Log.warn { "Single attribute report exceeds max payload size (#{encoded.size} bytes)" }
-            current_reports << report
-            current_size += encoded.size
-            report_index += 1
-          else
-            # Chunk is full, output what we have
-            is_last = (report_index >= encoded_reports.size)
-            chunk_bytes = encode_report_data(current_reports, subscription_id, more_chunked_messages: !is_last)
-            chunks << {chunk_bytes, is_last}
-
-            Log.debug { "Created chunk #{chunks.size}: #{current_reports.size} reports, #{chunk_bytes.size} bytes, more=#{!is_last}" }
-
-            # Reset for next chunk
-            current_reports = [] of InteractionModel::AttributeReportIB
-            current_size = base_overhead
+        flush = ->(is_last : Bool) do
+          chunk_bytes = encode_report_data(
+            current_attributes,
+            subscription_id,
+            more_chunked_messages: !is_last,
+            event_reports: current_events
+          )
+          chunks << {chunk_bytes, is_last}
+          Log.debug do
+            "Created chunk #{chunks.size}: #{current_attributes.size} attribute report(s), " \
+            "#{current_events.size} event report(s), #{chunk_bytes.size} bytes, more=#{!is_last}"
           end
+          current_attributes = [] of InteractionModel::AttributeReportIB
+          current_events = [] of InteractionModel::EventReportIB
+          current_size = base_overhead
+          nil
         end
 
-        # Output final chunk if there's anything left
-        if !current_reports.empty?
-          chunk_bytes = encode_report_data(current_reports, subscription_id, more_chunked_messages: false)
-          chunks << {chunk_bytes, true}
+        while index < total
+          encoded = index < encoded_attributes.size ? encoded_attributes[index][1] : encoded_events[index - encoded_attributes.size][1]
+          empty_chunk = current_attributes.empty? && current_events.empty?
 
-          Log.debug { "Created final chunk #{chunks.size}: #{current_reports.size} reports, #{chunk_bytes.size} bytes" }
+          if current_size + encoded.size > MAX_REPORT_PAYLOAD_SIZE && !empty_chunk
+            # Chunk is full, output what we have and retry this report
+            flush.call(false)
+            next
+          end
+
+          if empty_chunk && current_size + encoded.size > MAX_REPORT_PAYLOAD_SIZE
+            # Single report too large - include it anyway (will exceed MTU but necessary)
+            Log.warn { "Single report exceeds max payload size (#{encoded.size} bytes)" }
+          end
+
+          if index < encoded_attributes.size
+            current_attributes << encoded_attributes[index][0]
+          else
+            current_events << encoded_events[index - encoded_attributes.size][0]
+          end
+          current_size += encoded.size
+          index += 1
         end
 
-        # Edge case: empty response
-        if chunks.empty?
-          chunk_bytes = encode_report_data([] of InteractionModel::AttributeReportIB, subscription_id)
-          chunks << {chunk_bytes, true}
-          Log.debug { "Created empty chunk: #{chunk_bytes.size} bytes" }
-        end
+        # The final chunk, which is also the only chunk of an empty response
+        flush.call(true) if !current_attributes.empty? || !current_events.empty? || chunks.empty?
 
         Log.debug { "Total chunks: #{chunks.size}" }
         chunks

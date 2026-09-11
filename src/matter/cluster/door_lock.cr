@@ -129,8 +129,8 @@ module Matter
       command 0x27, :unbolt_door, request: UnboltDoorRequest, timed: true, requires: :unbolting
 
       event 0x00, :door_lock_alarm, priority: :critical
-      event 0x01, :door_state_change, priority: :critical, requires: :door_position_sensor
-      event 0x02, :lock_operation, priority: :critical
+      event 0x01, :door_state_change, priority: :critical, requires: :door_position_sensor, payload: Events::DoorStateChange
+      event 0x02, :lock_operation, priority: :critical, payload: Events::LockOperation
       event 0x03, :lock_operation_error, priority: :critical
       event 0x04, :lock_user_change, priority: :info, requires: :user
 
@@ -287,6 +287,7 @@ module Matter
 
         cancel_pending_relock
         self.lock_state = LockState::Locked
+        report_lock_operation(LockOperationType::Lock, source)
         InteractionModel::Status.success
       end
 
@@ -298,6 +299,7 @@ module Matter
 
         self.lock_state = LockState::Unlocked
         schedule_relock(@auto_relock_time)
+        report_lock_operation(LockOperationType::Unlock, source)
         InteractionModel::Status.success
       end
 
@@ -309,6 +311,7 @@ module Matter
 
         self.lock_state = LockState::Unlocked
         schedule_relock(timeout_seconds.to_u32)
+        report_lock_operation(LockOperationType::Unlock, source)
         InteractionModel::Status.success
       end
 
@@ -321,6 +324,7 @@ module Matter
 
         self.lock_state = LockState::Unlatched
         schedule_relock(@auto_relock_time)
+        report_lock_operation(LockOperationType::Unlatch, source)
         InteractionModel::Status.success
       end
 
@@ -350,6 +354,23 @@ module Matter
         end
 
         self.door_state = new_state
+        emit_door_state_change(Events::DoorStateChange.new(new_state)) if new_state
+      end
+
+      # Journals the LockOperation event for a completed operation. Remote
+      # operations carry the fabric and node that asked for them; a local one
+      # carries neither.
+      private def report_lock_operation(operation : LockOperationType, source : OperationSource) : Nil
+        fabric_index = @request_fabric_index
+        emit_lock_operation(
+          Events::LockOperation.new(
+            lock_operation_type: operation,
+            operation_source: source,
+            fabric_index: fabric_index ? DataType::FabricIndex.new(fabric_index) : nil,
+            source_node: @request_peer_node_id.try { |node_id| DataType::NodeId.new(node_id) }
+          ),
+          fabric_index
+        )
       end
 
       # ------------------------------------------------------------------------

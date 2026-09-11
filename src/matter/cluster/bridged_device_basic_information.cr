@@ -108,24 +108,34 @@ module Matter
         @node_label = node_label || ""
       end
 
-      # Helper: Trigger StartUp event
+      # Journals the StartUp event and returns its encoded body.
       def emit_start_up_event(software_version : UInt32) : Bytes
-        StartUpEvent.new(software_version).to_slice
+        payload = StartUpEvent.new(software_version)
+        emit_event(EVENT_START_UP, payload)
+        payload.to_slice
       end
 
-      # Helper: Trigger ShutDown event
+      # Journals the ShutDown event.
       def emit_shut_down_event : Bytes
-        ShutDownEvent.new.to_slice
+        payload = ShutDownEvent.new
+        emit_event(EVENT_SHUT_DOWN, payload)
+        payload.to_slice
       end
 
-      # Helper: Trigger Leave event
+      # Journals the Leave event, scoped to the fabric that left.
       def emit_leave_event(fabric_index : UInt8) : Bytes
-        LeaveEvent.new(fabric_index).to_slice
+        payload = LeaveEvent.new(fabric_index)
+        emit_event(EVENT_LEAVE, payload, fabric_index)
+        payload.to_slice
       end
 
-      # Helper: Trigger ReachableChanged event
+      # Journals the ReachableChanged event and updates `reachable`.
       def emit_reachable_changed_event(reachable_new_value : Bool) : Bytes
-        ReachableChangedEvent.new(reachable_new_value).to_slice
+        self.reachable = reachable_new_value
+
+        payload = ReachableChangedEvent.new(reachable_new_value)
+        emit_event(EVENT_REACHABLE_CHANGED, payload)
+        payload.to_slice
       end
     end
   end

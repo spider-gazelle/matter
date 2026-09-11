@@ -110,6 +110,105 @@ module Matter
       end
     end
 
+    # EventDataIB - one journaled event, per Matter Core 10.6.9 and
+    # matter.js `TlvEventData`.
+    struct EventDataIB
+      include TLV::Serializable
+
+      # Tag 0: Path
+      @[TLV::Field(tag: 0)]
+      property path : EventPath
+
+      # Tag 1: EventNumber
+      @[TLV::Field(tag: 1)]
+      property event_number : UInt64
+
+      # Tag 2: Priority
+      @[TLV::Field(tag: 2)]
+      property priority : EventPriority
+
+      # Tag 3: EpochTimestamp (milliseconds since the POSIX epoch)
+      @[TLV::Field(tag: 3, optional: true)]
+      property epoch_timestamp : UInt64?
+
+      # Tag 4: SystemTimestamp
+      @[TLV::Field(tag: 4, optional: true)]
+      property system_timestamp : UInt64?
+
+      # Tag 5: DeltaEpochTimestamp
+      @[TLV::Field(tag: 5, optional: true)]
+      property delta_epoch_timestamp : UInt64?
+
+      # Tag 6: DeltaSystemTimestamp
+      @[TLV::Field(tag: 6, optional: true)]
+      property delta_system_timestamp : UInt64?
+
+      # Tag 7: Data (the event payload)
+      @[TLV::Field(tag: 7, optional: true)]
+      property data : TLV::Any?
+
+      def initialize(
+        @path : EventPath,
+        @event_number : UInt64,
+        @priority : EventPriority,
+        @data : TLV::Any? = nil,
+        @epoch_timestamp : UInt64? = nil,
+        @system_timestamp : UInt64? = nil,
+        @delta_epoch_timestamp : UInt64? = nil,
+        @delta_system_timestamp : UInt64? = nil,
+      )
+      end
+    end
+
+    # EventStatusIB - an event path that could not be read (Matter Core 10.6.15)
+    struct EventStatusIB
+      include TLV::Serializable
+
+      # Tag 0: Path
+      @[TLV::Field(tag: 0)]
+      property path : EventPath
+
+      # Tag 1: Status
+      @[TLV::Field(tag: 1)]
+      property status : StatusIB
+
+      def initialize(@path : EventPath, @status : StatusIB)
+      end
+    end
+
+    # EventReportIB - wrapper for either data or status (Matter Core 10.6.10)
+    struct EventReportIB
+      include TLV::Serializable
+
+      # Tag 0: EventStatusIB (optional - present on error)
+      @[TLV::Field(tag: 0, optional: true)]
+      property event_status : EventStatusIB?
+
+      # Tag 1: EventDataIB (optional - present on success)
+      @[TLV::Field(tag: 1, optional: true)]
+      property event_data : EventDataIB?
+
+      def initialize(@event_status : EventStatusIB? = nil, @event_data : EventDataIB? = nil)
+      end
+    end
+
+    # EventFilterIB - the lowest event number a reader still wants
+    # (Matter Core 10.6.6)
+    struct EventFilterIB
+      include TLV::Serializable
+
+      # Tag 0: NodeId (optional)
+      @[TLV::Field(tag: 0, optional: true)]
+      property node : UInt64?
+
+      # Tag 1: EventMin
+      @[TLV::Field(tag: 1)]
+      property event_min : UInt64
+
+      def initialize(@event_min : UInt64, @node : UInt64? = nil)
+      end
+    end
+
     # ReportDataMessage - the actual ReadResponse/ReportData message
     # Per matter.js TlvDataReportForSend
     # Note: fixed_size: true on subscription_id ensures 4-byte encoding for iOS compatibility
@@ -124,9 +223,9 @@ module Matter
       @[TLV::Field(tag: 1, optional: true)]
       property attribute_reports : Array(AttributeReportIB)?
 
-      # Tag 2: EventReports (optional, array)
+      # Tag 2: EventReports (array of EventReportIB)
       @[TLV::Field(tag: 2, optional: true)]
-      property event_reports : Array(TLV::Any)?
+      property event_reports : Array(EventReportIB)?
 
       # Tag 3: MoreChunkedMessages (optional)
       @[TLV::Field(tag: 3, optional: true)]
@@ -163,9 +262,9 @@ module Matter
       @[TLV::Field(tag: 1, optional: true)]
       property event_requests : Array(EventPath)?
 
-      # Tag 2: EventFilters (optional)
+      # Tag 2: EventFilters (array of EventFilterIB)
       @[TLV::Field(tag: 2, optional: true)]
-      property event_filters : Array(TLV::Any)?
+      property event_filters : Array(EventFilterIB)?
 
       # Tag 3: FabricFiltered
       @[TLV::Field(tag: 3, optional: true)]
@@ -271,9 +370,9 @@ module Matter
       @[TLV::Field(tag: 4, optional: true)]
       property event_requests : Array(EventPath)?
 
-      # Tag 5: EventFilters (optional)
+      # Tag 5: EventFilters (array of EventFilterIB)
       @[TLV::Field(tag: 5, optional: true)]
-      property event_filters : Array(TLV::Any)?
+      property event_filters : Array(EventFilterIB)?
 
       # Tag 8: DataVersionFilters (optional)
       @[TLV::Field(tag: 8, optional: true)]

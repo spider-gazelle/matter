@@ -56,6 +56,10 @@ module Matter
       # status code that happens to sit inside the 0xC0-0xFF range)
       UnsupportedCluster = 0xC3
 
+      # Request is for an event the cluster instance does not support
+      # (Matter Core 8.10.1, another general code inside the 0xC0-0xFF range)
+      UnsupportedEvent = 0xC7
+
       # Cluster-specific range 0xC0-0xFF
       # Applications can define cluster-specific error codes in this range
 
@@ -88,6 +92,7 @@ module Matter
         when Timeout               then "Timeout"
         when Busy                  then "Busy"
         when UnsupportedCluster    then "Unsupported Cluster"
+        when UnsupportedEvent      then "Unsupported Event"
         else                            "Unknown Status (#{Hex.u8(value)})"
         end
       end

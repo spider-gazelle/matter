@@ -224,7 +224,21 @@ module Matter
         @node.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) do
           @subscriptions.notify(ep, cl, attr)
         end
-        Log.debug { "Set up attribute change notifications for #{clusters.size} cluster(s)" }
+        @node.on_event_emitted = ->(_record : EventJournal::Record) do
+          @subscriptions.notify_events
+        end
+        Log.debug { "Set up attribute change and event notifications for #{clusters.size} cluster(s)" }
+
+        emit_start_up_event
+      end
+
+      # Journals BasicInformation's StartUp event. The node is fully built by
+      # the time notifications are wired, so this is where it boots.
+      private def emit_start_up_event : Nil
+        basic = @node.get_cluster(Cluster::BasicInformation)
+        return unless basic
+
+        basic.emit_start_up_event(basic.software_version)
       end
 
       # Reports one changed attribute to every subscription watching it.

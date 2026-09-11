@@ -189,30 +189,36 @@ module Matter
         code.size == LOCATION_LENGTH && (code == LOCATION_UNKNOWN || code.chars.all?(&.ascii_letter?))
       end
 
-      # Helper: Trigger StartUp event (call when node boots)
-      def emit_start_up_event(software_version : UInt32)
-        # NOTE: Event emission would be handled by the event management system
-        StartUpEvent.new(software_version).to_slice
+      # Journals the StartUp event (call when the node boots) and returns its
+      # encoded body.
+      def emit_start_up_event(software_version : UInt32) : Bytes
+        payload = StartUpEvent.new(software_version)
+        emit_event(EVENT_START_UP, payload)
+        payload.to_slice
       end
 
-      # Helper: Trigger ShutDown event (call when node shuts down)
-      def emit_shut_down_event
-        # NOTE: Event emission would be handled by the event management system
-        ShutDownEvent.new.to_slice
+      # Journals the ShutDown event (call when the node shuts down).
+      def emit_shut_down_event : Bytes
+        payload = ShutDownEvent.new
+        emit_event(EVENT_SHUT_DOWN, payload)
+        payload.to_slice
       end
 
-      # Helper: Trigger Leave event (call when leaving fabric)
-      def emit_leave_event(fabric_index : UInt8)
-        # NOTE: Event emission would be handled by the event management system
-        LeaveEvent.new(fabric_index).to_slice
+      # Journals the Leave event (call when a fabric is removed). The event is
+      # scoped to the fabric that left.
+      def emit_leave_event(fabric_index : UInt8) : Bytes
+        payload = LeaveEvent.new(fabric_index)
+        emit_event(EVENT_LEAVE, payload, fabric_index)
+        payload.to_slice
       end
 
-      # Helper: Trigger ReachableChanged event (call when reachability changes)
-      def emit_reachable_changed_event(reachable_new_value : Bool)
+      # Journals the ReachableChanged event (call when reachability changes).
+      def emit_reachable_changed_event(reachable_new_value : Bool) : Bytes
         self.reachable = reachable_new_value
 
-        # NOTE: Event emission would be handled by the event management system
-        ReachableChangedEvent.new(reachable_new_value).to_slice
+        payload = ReachableChangedEvent.new(reachable_new_value)
+        emit_event(EVENT_REACHABLE_CHANGED, payload)
+        payload.to_slice
       end
     end
   end

@@ -4,6 +4,7 @@ require "socket"
 require "../codec/message_codec"
 require "../interaction_model/paths"
 require "../interaction_model/tlv_messages"
+require "../event_journal"
 require "../node"
 require "../session/context"
 require "./im_handler"
@@ -55,6 +56,11 @@ module Matter
         getter min_interval : UInt16
         getter max_interval : UInt16
         getter attribute_paths : Array(InteractionModel::AttributePath)
+        getter event_paths : Array(InteractionModel::EventPath)
+
+        # The highest event number the priming report carried, so the first
+        # update does not repeat what the controller has already seen.
+        getter last_event_number : UInt64
 
         def initialize(
           @subscription_id,
@@ -64,6 +70,8 @@ module Matter
           peer : Socket::IPAddress,
           session : Session::SecureContext,
           remaining_chunks : Array(Bytes),
+          @event_paths = [] of InteractionModel::EventPath,
+          @last_event_number = 0_u64,
         )
           super(peer, session, remaining_chunks)
         end
@@ -157,16 +165,88 @@ module Matter
 
           subscriptions.each_value do |subscription|
             reports = collect_reports(subscription, attributes)
-            next if reports.empty?
+            # Every report drains whatever the journal still owes this
+            # subscription, so a non-urgent event rides out with the next
+            # attribute change rather than waiting for its own report.
+            events = pending_events(subscription)
+            next if reports.empty? && events.empty?
 
-            Log.debug { "Sending batched subscription update: subscription_id=#{subscription.subscription_id}, peer=#{subscription.peer}, reports=#{reports.size}" }
-            payload = IMHandler.encode_report_data(reports, subscription.subscription_id)
-            Log.trace { "Subscription update ReportData TLV (#{payload.size} bytes): #{payload.hexstring}" }
-
-            @sender.send_report(subscription.session, subscription.peer, payload)
-            subscription.last_report_time = Time.utc
+            Log.debug { "Sending batched subscription update: subscription_id=#{subscription.subscription_id}, peer=#{subscription.peer}, reports=#{reports.size}, events=#{events.size}" }
+            send_update(subscription, reports, events)
           end
         end
+      end
+
+      # Reports newly journaled events to every subscription watching them.
+      #
+      # A subscription's minimum interval damps ordinary events: they wait in
+      # the journal until the interval has elapsed (or until an attribute
+      # report goes out and takes them along). An event on a path the
+      # controller marked urgent goes out immediately, which is what
+      # `EventPath#is_urgent?` is for.
+      def notify_events : Nil
+        @registry.synchronize do
+          subscriptions = @registry.active_subscriptions
+          return if subscriptions.empty?
+
+          now = Time.utc
+          subscriptions.each_value do |subscription|
+            next unless subscription.events?
+
+            records = journal_records(subscription)
+            next if records.empty?
+
+            urgent = records.any?(&.urgent_for?(subscription.event_paths))
+            next unless urgent || subscription.min_interval_elapsed?(now)
+
+            Log.debug do
+              "Sending event report: subscription_id=#{subscription.subscription_id}, " \
+              "events=#{records.size}, urgent=#{urgent}"
+            end
+            send_update(subscription, [] of InteractionModel::AttributeReportIB, event_reports(subscription, records))
+          end
+        end
+      end
+
+      # Sends one subscription update and marks the subscription reported.
+      private def send_update(
+        subscription : ActiveSubscription,
+        reports : Array(InteractionModel::AttributeReportIB),
+        events : Array(InteractionModel::EventReportIB),
+      ) : Nil
+        payload = IMHandler.encode_report_data(reports, subscription.subscription_id, event_reports: events)
+        Log.trace { "Subscription update ReportData TLV (#{payload.size} bytes): #{payload.hexstring}" }
+
+        @sender.send_report(subscription.session, subscription.peer, payload)
+        subscription.last_report_time = Time.utc
+      end
+
+      # The journal records *subscription* has not reported yet, in event
+      # number order.
+      private def journal_records(subscription : ActiveSubscription) : Array(EventJournal::Record)
+        return [] of EventJournal::Record unless subscription.events?
+
+        @node.event_journal.query(
+          subscription.event_paths,
+          after: subscription.last_event_number,
+          fabric_index: subscription.session.fabric_index
+        )
+      end
+
+      # Turns *records* into reports and advances the subscription's cursor.
+      private def event_reports(
+        subscription : ActiveSubscription,
+        records : Array(EventJournal::Record),
+      ) : Array(InteractionModel::EventReportIB)
+        return [] of InteractionModel::EventReportIB if records.empty?
+
+        subscription.last_event_number = records.last.event_number
+        records.map { |record| InteractionModel::EventReportIB.new(event_data: IMHandler.build_event_data(record)) }
+      end
+
+      # Everything the journal owes *subscription*, ready to report.
+      private def pending_events(subscription : ActiveSubscription) : Array(InteractionModel::EventReportIB)
+        event_reports(subscription, journal_records(subscription))
       end
 
       # The reports *subscription* wants out of *attributes*, read at the
@@ -240,7 +320,9 @@ module Matter
           peer: pending.peer,
           session: pending.session,
           attribute_paths: pending.attribute_paths,
-          exchange_id: exchange_id
+          exchange_id: exchange_id,
+          event_paths: pending.event_paths,
+          last_event_number: pending.last_event_number
         ))
       end
     end
