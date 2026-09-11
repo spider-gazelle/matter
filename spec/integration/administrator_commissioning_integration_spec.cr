@@ -230,10 +230,6 @@ module Matter
           pase_stopped = true
         }
 
-        general_comm.on_clear_pase_sessions = -> : Nil {
-          sessions.reject! { |_, session| !session.case_session? }
-        }
-
         # Step 1: Open commissioning window
         open_request = Cluster::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 5_u16
@@ -272,9 +268,8 @@ module Matter
         response = general_comm.commissioning_complete(new_fabric_index, true)
         response.error_code.should eq(Cluster::GeneralCommissioning::CommissioningError::OK)
 
-        # Verify session cleanup happened
-        sessions.has_key?(pase_session_id).should be_false     # PASE cleared
-        sessions[case_session_id].case_session?.should be_true # CASE preserved
+        # The CASE session on the new fabric carries the commissioning through
+        sessions[case_session_id].case_session?.should be_true
         sessions[case_session_id].fabric_index.should eq(new_fabric_index)
         general_comm.failsafe_armed?.should be_false
 
@@ -297,14 +292,9 @@ module Matter
         admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
         pase_stopped = false
-        failsafe_closed = false
 
         admin_comm.on_stop_pase_server = -> : Nil {
           pase_stopped = true
-        }
-
-        admin_comm.on_close_failsafe = -> : Nil {
-          failsafe_closed = true
         }
 
         # Open window and arm failsafe

@@ -3,6 +3,7 @@ require "timecop"
 require "../src/matter"
 require "./support/test_network_backend"
 require "./support/cluster_helpers"
+require "./support/commissioning_helpers"
 
 # Some CI/sandbox environments disallow creating UDP sockets (Operation not permitted).
 # Use this helper at the top of specs that require real sockets, so the rest of the

@@ -1084,45 +1084,6 @@ describe Matter::Cluster::NetworkCommissioning do
     end
   end
 
-  describe "breadcrumb callback" do
-    it "updates breadcrumb when callback set" do
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        features: Matter::Cluster::NetworkCommissioning::Feature::WiFiNetworkInterface
-      )
-
-      breadcrumb_value = nil
-      cluster.breadcrumb_callback = ->(value : UInt64) { breadcrumb_value = value }
-
-      cmd = Matter::Cluster::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest.new(
-        ssid: "Test".to_slice,
-        credentials: "password".to_slice,
-        breadcrumb: 12345_u64
-      )
-
-      cluster.handle_add_or_update_wifi_network(cmd, failsafe_armed: true)
-
-      breadcrumb_value.should eq(12345_u64)
-    end
-
-    it "does not call callback when breadcrumb not provided" do
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        features: Matter::Cluster::NetworkCommissioning::Feature::WiFiNetworkInterface
-      )
-
-      callback_called = false
-      cluster.breadcrumb_callback = ->(_value : UInt64) { callback_called = true }
-
-      cmd = Matter::Cluster::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest.new(
-        ssid: "Test".to_slice,
-        credentials: "password".to_slice
-      )
-
-      cluster.handle_add_or_update_wifi_network(cmd, failsafe_armed: true)
-
-      callback_called.should be_false
-    end
-  end
-
   describe "data structure validations" do
     it "validates NetworkInfo network_id length" do
       expect_raises(ArgumentError, "network_id must be 1-32 bytes") do

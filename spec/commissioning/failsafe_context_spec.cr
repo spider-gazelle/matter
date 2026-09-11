@@ -1,7 +1,7 @@
-require "./spec_helper"
-require "../src/matter/failsafe_context"
+require "../spec_helper"
+require "../../src/matter/commissioning/failsafe_context"
 
-module Matter
+module Matter::Commissioning
   describe FailsafeContext do
     describe "initialization" do
       it "creates context with fabric index and breadcrumb" do
@@ -194,48 +194,6 @@ module Matter
 
         context.close
       end
-
-      it "records CSR nonce" do
-        context = FailsafeContext.new(
-          associated_fabric_index: nil,
-          breadcrumb: 0_u64,
-          expiry_callback: -> { }
-        )
-
-        nonce = Bytes[1, 2, 3, 4, 5]
-        context.record_csr_nonce(nonce)
-        context.csr_nonce.should eq(nonce)
-
-        context.close
-      end
-
-      it "records root certificate" do
-        context = FailsafeContext.new(
-          associated_fabric_index: nil,
-          breadcrumb: 0_u64,
-          expiry_callback: -> { }
-        )
-
-        cert = Bytes[0x30, 0x82, 0x01, 0x00] # DER-encoded cert prefix
-        context.record_root_cert(cert)
-        context.root_cert.should eq(cert)
-
-        context.close
-      end
-
-      it "marks for UpdateNOC" do
-        context = FailsafeContext.new(
-          associated_fabric_index: 1_u8,
-          breadcrumb: 0_u64,
-          expiry_callback: -> { }
-        )
-
-        context.for_update_noc?.should be_false
-        context.mark_for_update_noc
-        context.for_update_noc?.should be_true
-
-        context.close
-      end
     end
 
     describe "rollback" do
@@ -263,9 +221,6 @@ module Matter
         # Record various state
         context.record_added_fabric(1_u8)
         context.record_network_state({"ssid" => "test"})
-        context.record_csr_nonce(Bytes[1, 2, 3])
-        context.record_root_cert(Bytes[0x30, 0x82])
-        context.mark_for_update_noc
 
         # Perform rollback
         context.rollback
@@ -273,9 +228,61 @@ module Matter
         # Verify cleanup
         context.added_fabric_index.should be_nil
         context.network_state_snapshot.should be_nil
-        context.csr_nonce.should be_nil
-        context.root_cert.should be_nil
-        context.for_update_noc?.should be_false
+
+        context.close
+      end
+
+      it "restores the recorded state through the rollback target" do
+        target = RecordingRollbackTarget.new
+        context = FailsafeContext.new(
+          associated_fabric_index: nil,
+          breadcrumb: 7_u64,
+          expiry_callback: -> { }
+        )
+
+        context.record_network_state({"ssid" => "test"})
+        context.record_regulatory_config(1_u8, "AU")
+        context.rollback(target)
+
+        target.network_state.should eq({"ssid" => "test"})
+        target.regulatory_config.should eq({1_u8, "AU"})
+        target.windows_closed.should eq(1)
+
+        context.close
+      end
+
+      it "closes the window even when nothing was snapshotted" do
+        target = RecordingRollbackTarget.new
+        context = FailsafeContext.new(
+          associated_fabric_index: nil,
+          breadcrumb: 0_u64,
+          expiry_callback: -> { }
+        )
+
+        context.rollback(target)
+
+        target.network_state.should be_nil
+        target.regulatory_config.should be_nil
+        target.windows_closed.should eq(1)
+
+        context.close
+      end
+
+      it "survives a rollback target that raises" do
+        target = RaisingRollbackTarget.new
+        context = FailsafeContext.new(
+          associated_fabric_index: nil,
+          breadcrumb: 9_u64,
+          expiry_callback: -> { }
+        )
+
+        context.record_network_state({"ssid" => "test"})
+        context.record_regulatory_config(0_u8, "XX")
+        context.rollback(target)
+
+        context.breadcrumb.should eq(0_u64)
+        context.network_state_snapshot.should be_nil
+        context.regulatory_config_snapshot.should be_nil
 
         context.close
       end

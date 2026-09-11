@@ -1,5 +1,6 @@
 require "./cluster"
 require "./network_commissioning/types"
+require "../commissioning"
 require "../network/backend"
 require "log"
 require "base64"
@@ -32,6 +33,8 @@ module Matter
     # - LastNetworkID (0x06): Network ID of last operation
     # - LastConnectErrorValue (0x07): Error value from last connect
     class NetworkCommissioning < Base
+      include Commissioning::NetworkStateStore
+
       Log = ::Log.for("matter.cluster.network_commissioning")
       cluster 0x0031, revision: 2
 
@@ -306,9 +309,6 @@ module Matter
       # Platform backend for network operations (required)
       property backend : Network::Backend?
 
-      # Callback for breadcrumb updates
-      property breadcrumb_callback : Proc(UInt64, Nil)?
-
       # Additional state for connected network tracking
       @connected_network_index : Int32?
 
@@ -355,8 +355,6 @@ module Matter
         if @feature_map.thread_network_interface?
           @supported_thread_features = ThreadCapabilitiesBitmap::IsRouterCapable | ThreadCapabilitiesBitmap::IsFullThreadDevice
         end
-
-        @breadcrumb_callback = nil
       end
 
       # Overload for tests that pass (endpoint_id, network_type, feature)
@@ -387,9 +385,6 @@ module Matter
             debug_text: "Fail-safe not armed"
           )
         end
-
-        # Update breadcrumb if provided
-        update_breadcrumb(cmd.breadcrumb)
 
         # Perform scan based on enabled features
         wifi_results = nil
@@ -484,7 +479,6 @@ module Matter
         # Update state
         @last_networking_status = NetworkCommissioningStatus::Success
         @last_network_id = cmd.ssid
-        update_breadcrumb(cmd.breadcrumb)
 
         NetworkConfigResponse.new(
           networking_status: NetworkCommissioningStatus::Success,
@@ -557,7 +551,6 @@ module Matter
         # Update state
         @last_networking_status = NetworkCommissioningStatus::Success
         @last_network_id = network_id
-        update_breadcrumb(cmd.breadcrumb)
 
         NetworkConfigResponse.new(
           networking_status: NetworkCommissioningStatus::Success,
@@ -609,7 +602,6 @@ module Matter
         # Update state
         @last_networking_status = NetworkCommissioningStatus::Success
         @last_network_id = cmd.network_id
-        update_breadcrumb(cmd.breadcrumb)
 
         NetworkConfigResponse.new(
           networking_status: NetworkCommissioningStatus::Success,
@@ -648,7 +640,6 @@ module Matter
             @last_networking_status = NetworkCommissioningStatus::OtherConnectionFailure
             @last_network_id = cmd.network_id
             @last_connect_error_value = error_value
-            update_breadcrumb(cmd.breadcrumb)
 
             return ConnectNetworkResponse.new(
               networking_status: NetworkCommissioningStatus::OtherConnectionFailure,
@@ -670,7 +661,6 @@ module Matter
         @last_networking_status = NetworkCommissioningStatus::Success
         @last_network_id = cmd.network_id
         @last_connect_error_value = nil
-        update_breadcrumb(cmd.breadcrumb)
 
         ConnectNetworkResponse.new(
           networking_status: NetworkCommissioningStatus::Success,
@@ -716,7 +706,6 @@ module Matter
         # Update state
         @last_networking_status = NetworkCommissioningStatus::Success
         @last_network_id = cmd.network_id
-        update_breadcrumb(cmd.breadcrumb)
 
         NetworkConfigResponse.new(
           networking_status: NetworkCommissioningStatus::Success,
@@ -935,7 +924,8 @@ module Matter
       # made during a failed commissioning session.
       #
       # @param state Snapshot of network state (key-value pairs)
-      def restore_network_state(state : Hash(String, String)) : Nil
+      def restore_network_state(snapshot : Hash(String, String)) : Nil
+        state = snapshot
         Log.info { "Restoring network state from snapshot" }
 
         # Restore networks list
@@ -984,11 +974,6 @@ module Matter
       end
 
       # Helper methods
-
-      private def update_breadcrumb(breadcrumb : UInt64?)
-        return unless breadcrumb
-        @breadcrumb_callback.try &.call(breadcrumb)
-      end
 
       private def perform_wifi_scan(ssid : Bytes?) : Array(WiFiInterfaceScanResult)
         backend = @backend

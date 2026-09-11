@@ -495,38 +495,33 @@ module Matter::Cluster
     end
 
     describe "PAKE parameters" do
-      it "stores PAKE verifier for enhanced commissioning" do
+      it "keeps the parameters of an open enhanced window and drops them on close" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = AdministratorCommissioning.new(endpoint_id)
 
-        verifier = Bytes.new(97, 0xAB_u8)
-        cluster.pake_verifier = verifier
+        verifier = Bytes.new(AdministratorCommissioning::PAKE_PASSCODE_VERIFIER_LENGTH, 0xAB_u8)
+        salt = Bytes.new(AdministratorCommissioning::PAKE_SALT_MAX_LENGTH, 0xCD_u8)
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
+          commissioning_timeout: 300_u16,
+          pake_passcode_verifier: verifier,
+          discriminator: 3840_u16,
+          iterations: 1000_u32,
+          salt: salt
+        )
+
+        cluster.open_commissioning_window(request, 1_u8, 0xFFF1_u16)
+
         cluster.pake_verifier.should eq(verifier)
-      end
-
-      it "stores discriminator" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioning.new(endpoint_id)
-
-        cluster.discriminator = 3840_u16
         cluster.discriminator.should eq(3840_u16)
-      end
-
-      it "stores iterations" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioning.new(endpoint_id)
-
-        cluster.iterations = 1000_u32
         cluster.iterations.should eq(1000_u32)
-      end
-
-      it "stores salt" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioning.new(endpoint_id)
-
-        salt = Bytes.new(32, 0xCD_u8)
-        cluster.salt = salt
         cluster.salt.should eq(salt)
+
+        cluster.close
+
+        cluster.pake_verifier.should be_nil
+        cluster.discriminator.should be_nil
+        cluster.iterations.should be_nil
+        cluster.salt.should be_nil
       end
     end
 
@@ -1330,27 +1325,6 @@ module Matter::Cluster
         callback_invoked.should be_true
       end
 
-      it "invokes on_close_failsafe callback when window closes" do
-        cluster = AdministratorCommissioning.new
-        callback_invoked = false
-
-        cluster.on_close_failsafe = -> {
-          callback_invoked = true
-          nil
-        }
-
-        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
-          commissioning_timeout: 600_u16
-        )
-
-        cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
-        callback_invoked.should be_false # Not invoked yet
-
-        cluster.revoke_commissioning!
-
-        callback_invoked.should be_true
-      end
-
       it "works without callbacks configured" do
         cluster = AdministratorCommissioning.new
 
@@ -1374,20 +1348,14 @@ module Matter::Cluster
         cluster.window_open?.should be_false
       end
 
-      it "invokes callbacks on timeout expiry" do
+      it "stops the PASE server when the window times out" do
         cluster = AdministratorCommissioning.new
         cluster.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
         pase_stopped = false
-        failsafe_closed = false
 
         cluster.on_stop_pase_server = -> {
           pase_stopped = true
-          nil
-        }
-
-        cluster.on_close_failsafe = -> {
-          failsafe_closed = true
           nil
         }
 
@@ -1398,14 +1366,13 @@ module Matter::Cluster
         cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
 
         pase_stopped.should be_false
-        failsafe_closed.should be_false
 
         # Wait for timeout
         sleep 1.5.seconds
         Fiber.yield
 
         pase_stopped.should be_true
-        failsafe_closed.should be_true
+        cluster.window_open?.should be_false
       end
     end
     describe "wire status mapping" do

@@ -1,7 +1,7 @@
-require "./spec_helper"
-require "../src/matter/failsafe_timer"
+require "../spec_helper"
+require "../../src/matter/commissioning/failsafe_timer"
 
-module Matter
+module Matter::Commissioning
   describe FailsafeTimer do
     describe "initialization" do
       it "creates timer with primary and cumulative durations" do
