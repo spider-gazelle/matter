@@ -19,13 +19,12 @@ module Matter
     class OtaRequestorCluster < Base
       Log = ::Log.for("matter.cluster.ota_requestor")
 
-      CLUSTER_ID = 0x002A_u32
+      cluster 0x002A, revision: 1
 
-      # Attribute IDs
-      ATTR_DEFAULT_OTA_PROVIDERS = 0x0000_u32 # List of default OTA provider locations
-      ATTR_UPDATE_POSSIBLE       = 0x0001_u32 # Whether update is currently possible
-      ATTR_UPDATE_STATE          = 0x0002_u32 # Current update state
-      ATTR_UPDATE_STATE_PROGRESS = 0x0003_u32 # Progress percentage (nullable)
+      # The spec cluster name; the class name is shortened.
+      def name : String
+        "OtaSoftwareUpdateRequestor"
+      end
 
       # UpdateState enum values
       enum UpdateState : UInt8
@@ -40,13 +39,27 @@ module Matter
         DelayedOnUserConsent = 8
       end
 
-      # Command IDs (optional - not implemented for minimal version)
-      CMD_ANNOUNCE_OTA_PROVIDER = 0x00_u32
+      # An OTA provider on a fabric (DefaultOTAProviders entries)
+      struct ProviderLocation
+        include TLV::Serializable
 
-      # Instance variables
-      property? update_possible : Bool
-      property update_state : UpdateState
-      property update_state_progress : UInt8?
+        @[TLV::Field(tag: 1)]
+        property provider_node_id : UInt64
+
+        @[TLV::Field(tag: 2)]
+        property endpoint : UInt16
+
+        @[TLV::Field(tag: 254)]
+        property fabric_index : UInt8
+
+        def initialize(@provider_node_id : UInt64, @endpoint : UInt16, @fabric_index : UInt8)
+        end
+      end
+
+      attribute 0x0000, :default_ota_providers, Array(ProviderLocation), default: [] of ProviderLocation, writable: true, persist: false, write_access: :administer, fabric_scoped: true
+      attribute 0x0001, :update_possible, Bool, default: true
+      attribute 0x0002, :update_state, UpdateState, default: UpdateState::Idle
+      attribute 0x0003, :update_state_progress, UInt8, nullable: true
 
       def initialize(
         endpoint_id : DataType::EndpointNumber = DataType::EndpointNumber.new(0_u16),
@@ -57,94 +70,13 @@ module Matter
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
       end
 
-      def name : String
-        "OtaSoftwareUpdateRequestor"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_DEFAULT_OTA_PROVIDERS),
-            "DefaultOTAProviders",
-            :array,
-            writable: true # Fabric-scoped, writable by admins
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_UPDATE_POSSIBLE),
-            "UpdatePossible",
-            :bool,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_UPDATE_STATE),
-            "UpdateState",
-            :enum8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_UPDATE_STATE_PROGRESS),
-            "UpdateStateProgress",
-            :uint8, # nullable
-            writable: false
-          ),
-        ]
-      end
-
-      def commands : Array(CommandMetadata)
-        # AnnounceOTAProvider is optional, not implemented for minimal version
-        [] of CommandMetadata
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_DEFAULT_OTA_PROVIDERS
-          # Return empty list - no default OTA providers configured
-          tlv(([] of UInt8))
-        when ATTR_UPDATE_POSSIBLE
-          tlv(@update_possible)
-        when ATTR_UPDATE_STATE
-          tlv(@update_state.value)
-        when ATTR_UPDATE_STATE_PROGRESS
-          tlv(@update_state_progress)
-        when GLOBAL_FEATURE_MAP
-          tlv(0_u32) # No features
-        when GLOBAL_ATTRIBUTE_LIST
-          tlv([
-            ATTR_DEFAULT_OTA_PROVIDERS,
-            ATTR_UPDATE_POSSIBLE,
-            ATTR_UPDATE_STATE,
-            ATTR_UPDATE_STATE_PROGRESS,
-            GLOBAL_CLUSTER_REVISION,
-            GLOBAL_FEATURE_MAP,
-            GLOBAL_ATTRIBUTE_LIST,
-          ])
-        else
-          super
-        end
-      end
-
+      # No OTA provider is ever used, so a DefaultOTAProviders write is
+      # accepted and discarded rather than stored per fabric.
       protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        case attribute_id
-        when ATTR_DEFAULT_OTA_PROVIDERS
-          # Accept writes but don't actually store them for minimal implementation
-          # In a real implementation, this would update the provider list
-          Log.debug { "Received write to DefaultOTAProviders (ignoring for minimal implementation)" }
-          InteractionModel::Status.success
-        else
-          super
-        end
-      end
+        return super unless attribute_id == ATTR_DEFAULT_OTA_PROVIDERS
 
-      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
-        case command_id
-        when CMD_ANNOUNCE_OTA_PROVIDER
-          # AnnounceOTAProvider is optional
-          # For minimal implementation, just acknowledge receipt
-          Log.debug { "Received AnnounceOTAProvider (ignoring for minimal implementation)" }
-          InteractionModel::Status.success
-        else
-          super
-        end
+        Log.debug { "Received write to DefaultOTAProviders (ignoring for minimal implementation)" }
+        InteractionModel::Status.success
       end
     end
   end
