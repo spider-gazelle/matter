@@ -283,7 +283,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       supported_fabrics = attributes.find { |attr| attr.id.id == Matter::Cluster::OperationalCredentialsCluster::ATTR_SUPPORTED_FABRICS }
       supported_fabrics.should_not be_nil
       supported_fabrics_attr = supported_fabrics.as(Matter::Cluster::AttributeMetadata)
-      supported_fabrics_attr.name.should eq("SupportedFabrics")
+      supported_fabrics_attr.name.should eq("supportedFabrics")
       supported_fabrics_attr.writable?.should be_false
     end
 
@@ -297,7 +297,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
       attestation_cmd = commands.find { |cmd| cmd.id.id == Matter::Cluster::OperationalCredentialsCluster::CMD_ATTESTATION_REQUEST }
       attestation_cmd.should_not be_nil
-      attestation_cmd.as(Matter::Cluster::CommandMetadata).name.should eq("AttestationRequest")
+      attestation_cmd.as(Matter::Cluster::CommandMetadata).name.should eq("attestationRequest")
     end
   end
 
