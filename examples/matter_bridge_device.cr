@@ -3,6 +3,7 @@ require "../src/matter"
 require "../src/matter/cluster/bridged_device_basic_information"
 require "../src/matter/cluster/on_off"
 require "../src/matter/cluster/identify"
+require "../src/matter/cluster/groups"
 
 # Matter Bridge Device Example
 #
@@ -57,6 +58,7 @@ module MatterBridge
     @on_off_cluster : Matter::Cluster::OnOff
     @bridged_info_cluster : Matter::Cluster::BridgedDeviceBasicInformation
     @identify_cluster : Matter::Cluster::Identify
+    @groups_cluster : Matter::Cluster::Groups
 
     def initialize(@endpoint_id : UInt16, @name : String, @unique_id : String)
       endpoint = Matter::DataType::EndpointNumber.new(@endpoint_id)
@@ -84,6 +86,11 @@ module MatterBridge
         identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLight
       )
 
+      # Groups is a mandatory server cluster of the On/Off Light device type
+      # (Matter Device Library 4.1, On/Off Light), so every bridged endpoint
+      # carries one.
+      @groups_cluster = Matter::Cluster::Groups.new(endpoint)
+
       # Wire reachability callback
       @bridged_info_cluster.on_reachable_changed do |new_state|
         @reachable = new_state
@@ -95,6 +102,7 @@ module MatterBridge
         @on_off_cluster.as(Matter::Cluster::Base),
         @bridged_info_cluster.as(Matter::Cluster::Base),
         @identify_cluster.as(Matter::Cluster::Base),
+        @groups_cluster.as(Matter::Cluster::Base),
       ]
     end
 

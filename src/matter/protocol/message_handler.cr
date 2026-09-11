@@ -9,6 +9,7 @@ require "../cluster/basic_information"
 require "../cluster/general_commissioning"
 require "../cluster/operational_credentials"
 require "../fabric_table"
+require "../node"
 require "../interaction_model/paths"
 require "../interaction_model/status_code"
 require "../interaction_model/tlv_messages"
@@ -61,7 +62,11 @@ module Matter
       getter transport : Transport::UDPTransport
       getter pase_responder : Session::Pase::PaseResponder?
       getter sessions : Hash(UInt16, Session::SecureContext)
-      getter clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base)
+
+      # The data model this handler serves: endpoints, their clusters and the
+      # flat index the Interaction Model resolves paths against.
+      getter node : Node
+
       getter fabric_table : FabricTable
       getter operational_credentials_cluster : Cluster::OperationalCredentials?
       getter persistence : Persistence::Base?
@@ -384,7 +389,7 @@ module Matter
         @mrp_response_cache.clear
 
         # Initialize clusters
-        @clusters = {} of Tuple(UInt16, UInt32) => Cluster::Base
+        @node = Node.new
         initialize_clusters
 
         # Set ourselves as the message handler
@@ -450,30 +455,40 @@ module Matter
         @mrp_response_cache.reject! { |(sid, _), _| sid == session_id }
       end
 
+      # The clusters of the node, keyed by `{endpoint, cluster}`.
+      #
+      # Inserting into this hash registers a cluster without an endpoint; it is
+      # the escape hatch the protocol specs use. Devices build endpoints
+      # through `node` instead.
+      def clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base)
+        @node.clusters
+      end
+
       # Initialize device clusters (called during construction)
+      #
+      # These are placeholders that let a bare handler answer a read before a
+      # device has been built on top of it; `Device::Base` replaces the root
+      # endpoint wholesale with the real clusters. The endpoint carries no
+      # device type, so it is not held to the Root Node conformance a device
+      # must satisfy.
       private def initialize_clusters : Nil
         # Endpoint 0 - Root Node endpoint (required)
         endpoint_0 = DataType::EndpointNumber.new(0_u16)
-
-        # Descriptor cluster (0x001D) - REQUIRED on all endpoints per Matter spec
-        descriptor = Cluster::Descriptor.new(endpoint_0)
-        @clusters[{0_u16, 0x001D_u32}] = descriptor
+        root = Endpoint.new(endpoint_0)
 
         # Basic Information cluster (0x0028) - required on endpoint 0
         # Use the device's vendor_id and product_id to ensure consistency
         # with DAC certificates and Certification Declaration
-        basic_info = Cluster::BasicInformation.new(
+        root.add_cluster(Cluster::BasicInformation.new(
           endpoint_id: endpoint_0,
           vendor_name: "Crystal Matter",
           vendor_id: @vendor_id,
           product_name: "Matter Device",
           product_id: @product_id
-        )
-        @clusters[{0_u16, 0x0028_u32}] = basic_info
+        ))
 
         # General Commissioning cluster (0x0030) - required on endpoint 0
-        general_commissioning = Cluster::GeneralCommissioning.new(endpoint_0)
-        @clusters[{0_u16, 0x0030_u32}] = general_commissioning
+        root.add_cluster(Cluster::GeneralCommissioning.new(endpoint_0))
 
         # Operational Credentials cluster (0x003E) - required on endpoint 0 for commissioning
         # NOTE: We do NOT call set_attestation_from_manager here because:
@@ -507,15 +522,19 @@ module Matter
           end
         end
 
-        @clusters[{0_u16, 0x003E_u32}] = operational_creds
+        root.add_cluster(operational_creds)
         @operational_credentials_cluster = operational_creds
+
+        # The Descriptor cluster (0x001D), required on every endpoint per the
+        # Matter spec, is injected and populated by `Node#add_endpoint`.
+        @node.add_endpoint(root)
 
         @pase_passcode_verifier = nil
         @default_setup_pin = @setup_pin
         @default_iterations = @iterations
         @default_salt = @salt.dup
 
-        Log.debug { "MessageHandler initialized with #{@clusters.size} default clusters (device may add more)" }
+        Log.debug { "MessageHandler initialized with #{clusters.size} default clusters (device may add more)" }
       end
 
       # Configure PASE server parameters for an enhanced commissioning window.
@@ -557,12 +576,10 @@ module Matter
       # This should be called after all clusters have been added to the clusters hash
       # It enables automatic subscription updates when attributes change
       def setup_cluster_notifications
-        @clusters.each do |_key, cluster|
-          cluster.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) do
-            notify_subscriptions(ep, cl, attr)
-          end
+        @node.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) do
+          notify_subscriptions(ep, cl, attr)
         end
-        Log.debug { "Set up attribute change notifications for #{@clusters.size} cluster(s)" }
+        Log.debug { "Set up attribute change notifications for #{clusters.size} cluster(s)" }
       end
 
       # Handle attribute change and send updates to matching subscriptions
@@ -587,7 +604,7 @@ module Matter
             next unless matches
 
             # Read the current attribute value
-            cluster = @clusters[{endpoint_id, cluster_id}]?
+            cluster = clusters[{endpoint_id, cluster_id}]?
             unless cluster
               Log.warn { "Subscription update skipped: cluster not found (endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)})" }
               next
@@ -1033,7 +1050,7 @@ module Matter
         # Read attributes from clusters (pass fabric_index for fabric-scoped attributes)
         attribute_reports = IMHandler.read_attributes(
           request.attribute_requests,
-          @clusters,
+          clusters,
           session.fabric_index,
           session.case_session?,
           session.peer_subject_ids.empty? ? nil : session.peer_subject_ids
@@ -1124,7 +1141,7 @@ module Matter
         # Read attributes from clusters (same as ReadRequest, pass fabric_index for fabric-scoped attributes)
         attribute_reports = IMHandler.read_attributes(
           request.attribute_requests,
-          @clusters,
+          clusters,
           session.fabric_index,
           session.case_session?,
           session.peer_subject_ids.empty? ? nil : session.peer_subject_ids
@@ -1231,7 +1248,7 @@ module Matter
         # Write attributes to clusters
         write_responses = IMHandler.write_attributes(
           request.write_requests,
-          @clusters,
+          clusters,
           session_id: session.session_id,
           is_case_session: session.case_session?,
           fabric_index: session.fabric_index,
@@ -1309,7 +1326,7 @@ module Matter
         # Execute commands on clusters (pass session info for attestation)
         invoke_responses = IMHandler.invoke_commands(
           request.invoke_requests,
-          @clusters,
+          clusters,
           session.session_id.to_u64,
           session.case_session?,
           session.fabric_index,
