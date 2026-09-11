@@ -307,6 +307,11 @@ Subtypes registered:
 | Scenes | `0x0005` (provisional) | Deprecated |
 | Scenes Management | N/A | `0x0062` (mandatory for lighting) |
 
+This library implements Matter 1.3+ only. The deprecated Scenes cluster (`0x0005`) was removed in
+0.2 — use `Matter::Cluster::ScenesManagement` (`0x0062`). Every cluster class declares its real
+specification revision in its `CLUSTER_REVISION` constant, so check that rather than assuming the
+table above.
+
 ---
 
 ## Quick Start Checklist
