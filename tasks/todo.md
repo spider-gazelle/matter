@@ -103,9 +103,10 @@ Detailed plan: [phase5-plan.md](phase5-plan.md).
       - [x] `Base#invoke_command` sets `request_*` (duck typing removed); `requires:` accepts a constant
       - [x] DSL rules documented at the top of `dsl.cr`; legacy user_label key `label_list`
       - [x] workarounds removed from the 20 clusters; full suite, builds, format, ameba green
-- [ ] Step 3: definitions folded into clusters, `EntryPrivilege` to interaction_model, class/file rename
+- [x] Step 3: definitions folded into clusters, `EntryPrivilege` to interaction_model, class/file rename
       (`Cluster::OnOff`), `Cluster::Registry`, global-list ordering re-baselined
-- [ ] `./test` green at each step end; iOS smoke test by the user at the end
+- [ ] `./test` green at the end (blocked 2026-09-11: Docker Desktop not reachable from WSL; unit suite, builds, lint
+      and format all green on c9361a4); iOS smoke test by the user
 
 ## Phase 6: Device model and protocol decomposition
 - [ ] Endpoint/Node model + `ClusterRegistry`
@@ -256,6 +257,30 @@ Detailed plan: [phase5-plan.md](phase5-plan.md).
 | e2e examples | 63 | 66 |
 | cluster wire boundary | encoded/raw Bytes | TLV::Any |
 | ameba findings | 0 | 0 |
+
+### Phase 5 (2026-09-11)
+- `src/matter/cluster/dsl.cr`: `cluster`, `feature`/`conflicts`, `attribute`, `command`, `event`,
+  `before_write`/`after_write` macros generate constants, typed accessors with change notification and
+  callbacks, memoised metadata tables, feature-gated read/write/command dispatch, validation to
+  `ConstraintError`/`InvalidDataType`, the unified global attribute lists, and persistence records with a
+  feature-map stamp. Keywords added after migration feedback: `computed:`, `present_if:`, `event requires:`,
+  `before_write` value replacement, `name:`, `handler:`, generated `CMD_*_RESPONSE`, `persist_state: false`,
+  constant `requires:`. A mandatory command without a handler, or a computed attribute without a reader,
+  is a compile error.
+- All 35 clusters migrated; no `read_attribute` override remains, one intentional `handle_write_attribute`
+  override (OTA). Definitions folded into their cluster classes (large ones under `cluster/<name>/types.cr`;
+  wire structs that collide with domain types live in a nested `Tlv` module); `EntryPrivilege` moved to
+  `interaction_model/access.cr`; `cluster/definitions/` deleted.
+- Classes and files renamed `Matter::Cluster::OnOff` / `cluster/on_off.cr` (35 classes, ~4,100 refs);
+  `Cluster::Registry` maps ids to classes at compile time.
+- Every cluster now declares its real spec revision; enums use `UInt8` bases so they encode as enum8;
+  CO2 reports a real feature map; GKM commands became wire-reachable; ACL/Extension reads require Administer.
+
+| Metric | after Phase 4 | after Phase 5 |
+|---|---|---|
+| cluster implementation lines (excl. dsl/base/registry/utils) | ~17,750 | ~14,000 (types files included) |
+| `AttributeMetadata.new` / `CommandMetadata.new` outside dsl.cr | 291 / 103 | 0 / 0 |
+| unit examples | 2305 | 2394 |
 
 ### Phase 5 Step 2b (2026-09-11)
 - DSL: `computed:` (reader `name` / `name(fabric_index)`, writer `name=` when writable),

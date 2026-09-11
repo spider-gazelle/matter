@@ -1,7 +1,7 @@
 # Phase 5 sub-plan: the cluster DSL
 
 The seven-phase plan is in `tasks/todo.md`. Phases 0-4 are done on `refactor/cleanup` (2305 unit + 66 e2e
-green). Status: **approved 2026-09-11; decisions 1-4 confirmed as written**.
+green). Status: **implemented 2026-09-11; e2e gate pending Docker availability**.
 
 ## Context
 
