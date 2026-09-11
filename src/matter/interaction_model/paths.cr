@@ -241,20 +241,36 @@ module Matter
       @[TLV::Field(tag: 3, fixed_size: true)]
       property event_raw : UInt32 | Bool?
 
-      @[TLV::Field(tag: 4)]
-      property? is_urgent : Bool = false
+      # Omitted rather than written as `false`, matching matter.js and the
+      # spec's optional EventPathIB field: a report path carries no urgency.
+      @[TLV::Field(tag: 4, optional: true)]
+      property is_urgent_raw : Bool?
 
       def initialize(
         node : UInt64? = nil,
         endpoint : UInt16? = nil,
         cluster : UInt32? = nil,
         event : UInt32? = nil,
-        @is_urgent : Bool = false,
+        is_urgent : Bool = false,
       )
         @node_raw = node
         @endpoint_raw = endpoint
         @cluster_raw = cluster
         @event_raw = event
+        @is_urgent_raw = is_urgent ? true : nil
+      end
+
+      # Whether the subscriber asked for events on this path to be reported
+      # without waiting out the subscription's minimum interval.
+      #
+      # ameba:disable Naming/PredicateName -- IsUrgent is the spec's field name.
+      def is_urgent? : Bool
+        @is_urgent_raw == true
+      end
+
+      def is_urgent=(value : Bool) : Bool
+        @is_urgent_raw = value ? true : nil
+        value
       end
 
       # Getters that convert Bool (wildcard) to nil

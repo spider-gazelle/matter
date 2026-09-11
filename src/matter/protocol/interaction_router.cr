@@ -182,13 +182,18 @@ module Matter
           return
         end
 
-        Log.info { "ReadRequest: #{(request.attribute_requests || [] of InteractionModel::AttributePath).size} attribute(s) requested" }
+        event_requests = request.event_requests || [] of InteractionModel::EventPath
+        Log.info do
+          "ReadRequest: #{(request.attribute_requests || [] of InteractionModel::AttributePath).size} attribute(s) " \
+          "and #{event_requests.size} event path(s) requested"
+        end
 
         reports = read_attributes(request.attribute_requests, session)
-        chunks = IMHandler.encode_chunked_report_data(reports, nil)
+        events = read_events(request.event_requests, request.event_filters, session)
+        chunks = IMHandler.encode_chunked_report_data(reports, nil, events)
         first_chunk, _ = chunks.first
         remaining_chunks = chunks[1..].map(&.[0])
-        Log.debug { "ReadResponse: #{reports.size} report(s) in #{chunks.size} chunk(s)" }
+        Log.debug { "ReadResponse: #{reports.size} attribute report(s), #{events.size} event report(s) in #{chunks.size} chunk(s)" }
 
         @sender.send_im_response(
           original_msg: original_msg,
@@ -234,19 +239,30 @@ module Matter
         end
 
         attribute_requests = request.attribute_requests || [] of InteractionModel::AttributePath
-        Log.info { "SubscribeRequest: #{attribute_requests.size} attribute(s), min=#{request.min_interval_floor}s, max=#{request.max_interval_ceiling}s" }
+        event_requests = request.event_requests || [] of InteractionModel::EventPath
+        Log.info do
+          "SubscribeRequest: #{attribute_requests.size} attribute(s), #{event_requests.size} event path(s), " \
+          "min=#{request.min_interval_floor}s, max=#{request.max_interval_ceiling}s"
+        end
         attribute_requests.each_with_index do |path, index|
           Log.debug { "  Subscribe #{index}: #{describe_path(path)}" }
+        end
+        event_requests.each_with_index do |path, index|
+          Log.debug { "  Subscribe event #{index}: #{path}" }
         end
 
         subscription_id = @registry.allocate_subscription_id
         Log.info { "Created subscription #{subscription_id}" }
 
         reports = read_attributes(request.attribute_requests, session)
-        chunks = IMHandler.encode_chunked_report_data(reports, subscription_id)
+        # Captured before the read so nothing journaled between the two is
+        # reported twice: the priming report never carries a higher number.
+        last_event_number = @node.event_journal.latest_event_number
+        events = read_events(request.event_requests, request.event_filters, session)
+        chunks = IMHandler.encode_chunked_report_data(reports, subscription_id, events)
         first_chunk, _ = chunks.first
         remaining_chunks = chunks[1..].map(&.[0])
-        Log.debug { "Initial ReportData: #{reports.size} report(s) in #{chunks.size} chunk(s)" }
+        Log.debug { "Initial ReportData: #{reports.size} attribute report(s), #{events.size} event report(s) in #{chunks.size} chunk(s)" }
 
         @sender.send_im_response(
           original_msg: original_msg,
@@ -268,7 +284,9 @@ module Matter
           end,
           peer: peer,
           session: session,
-          remaining_chunks: remaining_chunks
+          remaining_chunks: remaining_chunks,
+          event_paths: event_requests,
+          last_event_number: last_event_number
         ))
         Log.debug { "Waiting for StatusResponse on exchange #{exchange_id} (#{remaining_chunks.size} chunks remaining)" }
       rescue ex
@@ -391,6 +409,22 @@ module Matter
         IMHandler.read_attributes(
           paths,
           clusters,
+          session.fabric_index,
+          session.case_session?,
+          peer_subject_ids(session)
+        )
+      end
+
+      private def read_events(
+        paths : Array(InteractionModel::EventPath)?,
+        filters : Array(InteractionModel::EventFilterIB)?,
+        session : Session::SecureContext,
+      ) : Array(InteractionModel::EventReportIB)
+        IMHandler.read_events(
+          paths,
+          @node.event_journal,
+          clusters,
+          filters,
           session.fabric_index,
           session.case_session?,
           peer_subject_ids(session)
