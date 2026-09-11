@@ -25,12 +25,30 @@ module Matter
     # end
     # ```
     #
+    # Rules of the road:
+    #
+    # * The generated setters are the attribute API: they skip equal values,
+    #   bump the data version and notify subscribers. Domain-facing setters
+    #   need other names (`update_temperature`), never a redefinition of the
+    #   generated one.
+    # * `min:` / `max:` / `max_length:` are enforced on interaction-model
+    #   writes only; the setters trust their callers.
+    # * List attributes need `default: [] of T`; per-element constraints go in
+    #   a `before_write` block.
+    # * An attribute `Type` must be a path the compiler can resolve when the
+    #   class body is complete: a type or an `alias`, not a constant holding a
+    #   type.
+    #
     # Declarations:
     #
-    # * `cluster id, revision:` — `CLUSTER_ID`, `CLUSTER_REVISION` and `name`
-    #   (the class name without a trailing `Cluster`). Required before any
-    #   other declaration. When the class defines no `initialize` of its own,
+    # * `cluster id, revision:, name:, persist_state:` — `CLUSTER_ID`,
+    #   `CLUSTER_REVISION` and `name` (the class name without a trailing
+    #   `Cluster` unless `name:` is given). Required before any other
+    #   declaration. When the class defines no `initialize` of its own,
     #   `initialize(endpoint_id, feature_map: Feature::None)` is generated.
+    #   `persist_state: false` suppresses the generated persistence for a
+    #   cluster with a hand-written `save_state` / `restore_state` pair; its
+    #   attributes then take no `persist:` option.
     # * `feature :name, bit:` — a member of the `@[Flags] enum Feature : UInt32`
     #   and the `feature_map` property (default `Feature::None`; a hand-written
     #   `initialize` takes it as `@feature_map : Feature = Feature::None`).
@@ -44,29 +62,49 @@ module Matter
     #   `on_name_changed(&block : Type, Type -> Nil)` (`(old, new)`; with
     #   `callback: :new_only` the block takes the new value only).
     #   `writable: true` implies `persist: true` unless `persist: false`.
+    # * `attribute id, :name, Type, computed: true` — no ivar, accessors or
+    #   persistence: a read calls the reader method `name` (`name?` for `Bool`)
+    #   the class defines, which returns the value (a `Type`, or a `TLV::Any`
+    #   / `InteractionModel::Status` passed through as is). A reader taking one
+    #   argument receives the accessing fabric index (`UInt8?`). A computed
+    #   attribute declared `writable:` assigns the decoded value through a
+    #   hand-written `name=(value : Type)`. `default:` and `persist:` do not
+    #   apply. A missing reader or writer fails to compile.
+    # * `present_if: :predicate` — the attribute is supported only while the
+    #   predicate method answers `true` (and its `requires:` matches). Naming a
+    #   nullable attribute instead (`present_if: :tolerance`) means "while
+    #   `@tolerance` is not nil". Unsupported attributes are left out of the
+    #   tables and answer `UnsupportedAttribute`.
     # * `command id, :name, **options` — see `COMMAND_OPTIONS`. Generates
     #   `CMD_NAME` and dispatches to the handler method `name` (`name(request)`
-    #   when `request:` is given). A handler returns an
-    #   `InteractionModel::Status`, a `CommandResponse`, or a `TLV::Serializable`
-    #   struct which is wrapped as `CommandResponse.new(response_id || id, ...)`.
+    #   when `request:` is given), or to `handler:` when that is set. A handler
+    #   returns an `InteractionModel::Status`, a `CommandResponse`, or a
+    #   `TLV::Serializable` struct which is wrapped as
+    #   `CommandResponse.new(response_id || id, ...)`. With `response:` or
+    #   `response_id:`, `CMD_NAME_RESPONSE` holds the response command id.
     #   A command without a handler fails to compile unless `optional: true`,
-    #   in which case it is left out of the tables.
-    # * `event id, :name, priority:` — `EVENT_NAME` and the `EventMetadata`.
+    #   in which case it is left out of the tables. Before a handler runs,
+    #   `Base#invoke_command` has set `request_session_id`,
+    #   `request_is_case_session?` and `request_fabric_index`.
+    # * `event id, :name, priority:, requires:` — `EVENT_NAME` and the
+    #   `EventMetadata`.
     # * `before_write :name do |value| ... end` — runs on an interaction-model
     #   write after decoding and validation; returning an
-    #   `InteractionModel::Status` rejects the write.
+    #   `InteractionModel::Status` rejects the write, returning a value of the
+    #   attribute's type replaces the one written, anything else keeps it.
     # * `after_write :name do ... end` — runs after the value was assigned.
     #
     # `requires:` is a feature symbol (`:lighting`), a `{feature: Bool}` literal
-    # (all must match) or an array of those (any may match). Unsupported
-    # elements are left out of the tables and the global lists and answer
-    # `UnsupportedAttribute` / `UnsupportedCommand`.
+    # (all must match), an array of those (any may match) or a constant holding
+    # one of them. Unsupported elements are left out of the tables and the
+    # global lists and answer `UnsupportedAttribute` / `UnsupportedCommand`.
     #
     # Generated into the class (all names are reserved):
     #
     # * constants `CLUSTER_ID`, `CLUSTER_REVISION`, `Feature`, `ATTR_*`, `CMD_*`,
-    #   `EVENT_*`, `ATTRIBUTES`, `ATTRIBUTES_BY_ID`, `COMMANDS`, `COMMANDS_BY_ID`,
-    #   `EVENTS`, `PersistedState`; the `*_DECLS` accumulators
+    #   `CMD_*_RESPONSE`, `EVENT_*`, `ATTRIBUTES`, `ATTRIBUTES_BY_ID`,
+    #   `COMMANDS`, `COMMANDS_BY_ID`, `EVENTS`, `PersistedState`; the `*_DECLS`
+    #   accumulators
     # * `name`, `attributes`, `commands`, `events`, `get_attribute_metadata`,
     #   `get_command_metadata`, `feature_map`, `save_state`, `restore_state`
     # * `dsl_read_attribute`, `dsl_write_attribute`, `dsl_invoke_command` —
@@ -74,8 +112,9 @@ module Matter
     #   `handle_write_attribute` or `handle_command` override still reaches
     #   them through `super`
     # * `dsl_features`, `dsl_validate_features`, `dsl_attribute_supported?`,
-    #   `dsl_command_supported?`, `dsl_attribute_<name>_supported?`,
-    #   `dsl_command_<name>_supported?`, `dsl_before_write_<name>`,
+    #   `dsl_command_supported?`, `dsl_event_supported?`,
+    #   `dsl_attribute_<name>_supported?`, `dsl_command_<name>_supported?`,
+    #   `dsl_event_<name>_supported?`, `dsl_before_write_<name>`,
     #   `dsl_after_write_<name>`
     #
     # Declarations accumulate in the `*_DECLS` array constants that `Base`'s
@@ -85,9 +124,9 @@ module Matter
       ATTRIBUTE_OPTIONS = [
         :default, :writable, :persist, :nullable, :fixed, :optional, :requires,
         :read_access, :write_access, :min, :max, :max_length, :scene,
-        :omit_changes, :timed, :fabric_scoped, :callback,
+        :omit_changes, :timed, :fabric_scoped, :callback, :computed, :present_if,
       ]
-      COMMAND_OPTIONS  = [:request, :response, :response_id, :requires, :timed, :access, :optional]
+      COMMAND_OPTIONS  = [:request, :response, :response_id, :requires, :timed, :access, :optional, :handler]
       PRIVILEGES       = [:view, :proxy_view, :operate, :manage, :administer]
       EVENT_PRIORITIES = [:debug, :info, :critical]
 
@@ -109,15 +148,17 @@ module Matter
         "Slice(UInt8)": :octstr,
       }
 
-      macro cluster(id, revision)
+      macro cluster(id, revision, name = nil, persist_state = true)
         {% raise "#{@type}: `cluster` declared twice" unless @type.constant("CLUSTER_DECLS").empty? %}
-        {% @type.constant("CLUSTER_DECLS") << {id: id, revision: revision} %}
+        {% raise "#{@type}: cluster name: must be a string literal" if name && !name.is_a?(StringLiteral) %}
+        {% raise "#{@type}: cluster persist_state: must be true or false" unless persist_state.is_a?(BoolLiteral) %}
+        {% @type.constant("CLUSTER_DECLS") << {id: id, revision: revision, name: name, persist_state: persist_state} %}
 
         CLUSTER_ID       = {{ (id.is_a?(NumberLiteral) && id.kind == :i32) ? "#{id}_u32".id : "(#{id}).to_u32".id }}
         CLUSTER_REVISION = {{ (revision.is_a?(NumberLiteral) && revision.kind == :i32) ? "#{revision}_u16".id : "(#{revision}).to_u16".id }}
 
         def name : String
-          {{ @type.name.stringify.split("::").last.gsub(/Cluster$/, "") }}
+          {{ name || @type.name.stringify.split("::").last.gsub(/Cluster$/, "") }}
         end
       end
 
@@ -139,10 +180,21 @@ module Matter
         {% end %}
         {% nullable = options[:nullable] %}
         {% writable = options[:writable] %}
+        {% computed = options[:computed] %}
         {% callback = options[:callback] %}
-        {% raise "#{@type}: attribute :#{name.id} needs a default: value (or nullable: true)" if options[:default].nil? && !nullable %}
+        {% requires = options[:requires] %}
+        {% requires = requires.resolve if requires.is_a?(Path) %}
+        {% present_if = options[:present_if] %}
+        {% if computed %}
+          {% raise "#{@type}: attribute :#{name.id} is computed: and takes no default:" unless options[:default].nil? %}
+          {% raise "#{@type}: attribute :#{name.id} is computed: and cannot be persisted" unless options[:persist].nil? %}
+          {% raise "#{@type}: attribute :#{name.id} is computed: and has no change callback" if callback %}
+        {% else %}
+          {% raise "#{@type}: attribute :#{name.id} needs a default: value (or nullable: true)" if options[:default].nil? && !nullable %}
+        {% end %}
         {% raise "#{@type}: attribute :#{name.id} is fixed: and cannot be writable:" if options[:fixed] && writable %}
         {% raise "#{@type}: attribute :#{name.id} callback: must be :new_only" if callback && callback != :new_only %}
+        {% raise "#{@type}: attribute :#{name.id} present_if: must be a symbol" if present_if && !present_if.is_a?(SymbolLiteral) %}
         {% if options[:read_access] && !::Matter::Cluster::DSL::PRIVILEGES.includes?(options[:read_access]) %}
           {% raise "#{@type}: attribute :#{name.id} read_access: must be one of #{::Matter::Cluster::DSL::PRIVILEGES.join(", ").id}" %}
         {% end %}
@@ -157,11 +209,13 @@ module Matter
              type:          type,
              default:       options[:default],
              writable:      writable,
-             persist:       options[:persist].nil? ? writable : options[:persist],
+             persist:       options[:persist],
              nullable:      nullable,
              fixed:         options[:fixed],
              optional:      options[:optional],
-             requires:      options[:requires],
+             requires:      requires,
+             present_if:    present_if,
+             computed:      computed,
              read_access:   options[:read_access],
              write_access:  options[:write_access],
              min:           options[:min],
@@ -179,28 +233,30 @@ module Matter
 
         ATTR_{{ name.id.upcase }} = {{ (id.is_a?(NumberLiteral) && id.kind == :i32) ? "#{id}_u32".id : "(#{id}).to_u32".id }}
 
-        @{{ name.id }} : {{ value_type }} = {{ options[:default] }}
-        @on_{{ name.id }}_changed : Proc({{ callback_types }}, Nil)?
+        {% unless computed %}
+          @{{ name.id }} : {{ value_type }} = {{ options[:default] }}
+          @on_{{ name.id }}_changed : Proc({{ callback_types }}, Nil)?
 
-        def {{ name.id }}{{ "?".id if type.resolve? == Bool }} : {{ value_type }}
-          @{{ name.id }}
-        end
+          def {{ name.id }}{{ "?".id if type.resolve? == Bool }} : {{ value_type }}
+            @{{ name.id }}
+          end
 
-        # Assigns the attribute, bumping the data version, notifying
-        # subscribers and running the change callback when the value differs.
-        def {{ name.id }}=(value : {{ value_type }}) : Nil
-          return if @{{ name.id }} == value
-          {% unless callback == :new_only %}
-            old_value = @{{ name.id }}
-          {% end %}
-          @{{ name.id }} = value
-          increment_version_and_notify(ATTR_{{ name.id.upcase }})
-          @on_{{ name.id }}_changed.try &.call({% unless callback == :new_only %}old_value, {% end %}value)
-        end
+          # Assigns the attribute, bumping the data version, notifying
+          # subscribers and running the change callback when the value differs.
+          def {{ name.id }}=(value : {{ value_type }}) : Nil
+            return if @{{ name.id }} == value
+            {% unless callback == :new_only %}
+              old_value = @{{ name.id }}
+            {% end %}
+            @{{ name.id }} = value
+            increment_version_and_notify(ATTR_{{ name.id.upcase }})
+            @on_{{ name.id }}_changed.try &.call({% unless callback == :new_only %}old_value, {% end %}value)
+          end
 
-        def on_{{ name.id }}_changed(&block : {{ callback_types }} -> Nil) : Nil
-          @on_{{ name.id }}_changed = block
-        end
+          def on_{{ name.id }}_changed(&block : {{ callback_types }} -> Nil) : Nil
+            @on_{{ name.id }}_changed = block
+          end
+        {% end %}
       end
 
       macro command(id, name, **options)
@@ -212,41 +268,54 @@ module Matter
         {% if options[:access] && !::Matter::Cluster::DSL::PRIVILEGES.includes?(options[:access]) %}
           {% raise "#{@type}: command :#{name.id} access: must be one of #{::Matter::Cluster::DSL::PRIVILEGES.join(", ").id}" %}
         {% end %}
+        {% raise "#{@type}: command :#{name.id} handler: must be a symbol" if options[:handler] && !options[:handler].is_a?(SymbolLiteral) %}
         {% raise "#{@type}: command :#{name.id} declared twice" if @type.constant("COMMAND_DECLS").any? { |command| command[:name] == name } %}
+        {% requires = options[:requires] %}
+        {% requires = requires.resolve if requires.is_a?(Path) %}
+        {% response_id = options[:response_id] || id %}
 
         {% @type.constant("COMMAND_DECLS") << {
              id:          id,
              name:        name,
+             handler:     options[:handler] || name,
              request:     options[:request],
              response:    options[:response],
-             response_id: options[:response_id],
-             requires:    options[:requires],
+             response_id: response_id,
+             requires:    requires,
              timed:       options[:timed],
              access:      options[:access],
              optional:    options[:optional],
            } %}
 
         CMD_{{ name.id.upcase }} = {{ (id.is_a?(NumberLiteral) && id.kind == :i32) ? "#{id}_u32".id : "(#{id}).to_u32".id }}
+        {% if options[:response] || options[:response_id] %}
+          CMD_{{ name.id.upcase }}_RESPONSE = {{ (response_id.is_a?(NumberLiteral) && response_id.kind == :i32) ? "#{response_id}_u32".id : "(#{response_id}).to_u32".id }}
+        {% end %}
       end
 
-      macro event(id, name, priority = :info)
+      macro event(id, name, priority = :info, requires = nil)
         {% unless ::Matter::Cluster::DSL::EVENT_PRIORITIES.includes?(priority) %}
           {% raise "#{@type}: event :#{name.id} priority: must be one of #{::Matter::Cluster::DSL::EVENT_PRIORITIES.join(", ").id}" %}
         {% end %}
         {% raise "#{@type}: event :#{name.id} declared twice" if @type.constant("EVENT_DECLS").any? { |event| event[:name] == name } %}
-        {% @type.constant("EVENT_DECLS") << {id: id, name: name, priority: priority} %}
+        {% requires = requires.resolve if requires.is_a?(Path) %}
+        {% @type.constant("EVENT_DECLS") << {id: id, name: name, priority: priority, requires: requires} %}
 
         EVENT_{{ name.id.upcase }} = {{ (id.is_a?(NumberLiteral) && id.kind == :i32) ? "#{id}_u32".id : "(#{id}).to_u32".id }}
       end
 
       macro before_write(name, &block)
         {% raise "#{@type}: before_write :#{name.id} takes a block with one argument, the new value" unless block && block.args.size == 1 %}
+        {% decl = @type.constant("ATTRIBUTE_DECLS").find { |attribute| attribute[:name] == name } %}
+        {% raise "#{@type}: before_write :#{name.id} must follow the attribute declaration" unless decl %}
 
-        private def dsl_before_write_{{ name.id }}({{ block.args.first }}) : ::Matter::InteractionModel::Status?
+        # A status rejects the write and a value of the attribute's type
+        # replaces it; anything else keeps the decoded value.
+        private def dsl_before_write_{{ name.id }}({{ block.args.first }}) : ::Matter::InteractionModel::Status | {{ decl[:type] }} | Nil
           %result = begin
             {{ block.body }}
           end
-          %result.as?(::Matter::InteractionModel::Status)
+          %result.as?(::Matter::InteractionModel::Status | {{ decl[:type] }})
         end
       end
 
@@ -271,6 +340,22 @@ module Matter
         {% end %}
       end
 
+      # Expands a `present_if:` symbol into a presence expression: a declared
+      # nullable attribute is present while not nil, anything else is a
+      # predicate method.
+      macro dsl_presence_condition(present_if)
+        {% decl = ATTRIBUTE_DECLS.find { |attribute| attribute[:name] == present_if } %}
+        {% if decl %}
+          {% raise "#{@type}: present_if: :#{present_if.id} names an attribute that is not nullable" unless decl[:nullable] %}
+          {% raise "#{@type}: present_if: :#{present_if.id} names a computed attribute" if decl[:computed] %}
+          !@{{ present_if.id }}.nil?
+        {% elsif @type.has_method?(present_if.id.stringify) %}
+          {{ present_if.id }}
+        {% else %}
+          {% raise "#{@type}: present_if: :#{present_if.id} is neither a nullable attribute nor a method" %}
+        {% end %}
+      end
+
       # Generates the tables, dispatch methods and persistence from the
       # accumulated declarations. Called from the `macro finished` that
       # `Base`'s `macro inherited` emits.
@@ -282,15 +367,40 @@ module Matter
         {% else %}
           {% log = @type.has_constant?("Log") ? "Log".id : "::Matter::Cluster::Log".id %}
           {% has_features = !FEATURE_DECLS.empty? %}
-          {% implemented_commands = COMMAND_DECLS.reject { |decl| decl[:optional] && !@type.has_method?(decl[:name].id.stringify) } %}
-          {% persisted = ATTRIBUTE_DECLS.select { |decl| decl[:persist] } %}
+          {% persist_state = CLUSTER_DECLS.first[:persist_state] %}
+          {% implemented_commands = COMMAND_DECLS.reject { |decl| decl[:optional] && !@type.has_method?(decl[:handler].id.stringify) } %}
+          {% gated_attributes = ATTRIBUTE_DECLS.select { |decl| decl[:requires] || decl[:present_if] } %}
           {% attribute_kinds = {} of Nil => Nil %}
+          {% persisted = [] of Nil %}
+          {% readers = {} of Nil => Nil %}
 
           # -- compile-time checks ---------------------------------------------
 
+          {% for decl in ATTRIBUTE_DECLS %}
+            {% if persist_state %}
+              {% persisted << decl if decl[:persist].nil? ? (decl[:writable] && !decl[:computed]) : decl[:persist] %}
+            {% elsif !decl[:persist].nil? %}
+              {% raise "#{@type}: attribute :#{decl[:name].id} takes no persist: option under persist_state: false" %}
+            {% end %}
+          {% end %}
+
+          {% for decl in ATTRIBUTE_DECLS %}
+            {% if decl[:computed] %}
+              {% reader = "#{decl[:name].id}#{"?".id if decl[:type].resolve? == Bool}" %}
+              {% candidates = @type.methods.select { |method| method.name == reader } %}
+              {% raise "#{@type}: computed attribute :#{decl[:name].id} has no reader method `#{reader.id}`; define `def #{reader.id}` or `def #{reader.id}(fabric_index : UInt8?)`" if candidates.empty? %}
+              {% raise "#{@type}: computed attribute :#{decl[:name].id} has more than one reader method `#{reader.id}`" if candidates.size > 1 %}
+              {% raise "#{@type}: computed attribute :#{decl[:name].id} reader `#{reader.id}` takes at most one argument, the accessing fabric index" if candidates.first.args.size > 1 %}
+              {% readers[decl[:name]] = {name: reader, fabric: candidates.first.args.size == 1} %}
+              {% if decl[:writable] && !@type.has_method?("#{decl[:name].id}=") %}
+                {% raise "#{@type}: computed attribute :#{decl[:name].id} is writable and needs a writer `def #{decl[:name].id}=(value : #{decl[:type]})`" %}
+              {% end %}
+            {% end %}
+          {% end %}
+
           {% for decl in COMMAND_DECLS %}
-            {% unless decl[:optional] || @type.has_method?(decl[:name].id.stringify) %}
-              {% raise "#{@type}: command :#{decl[:name].id} has no handler method `#{decl[:name].id}`; define `def #{decl[:name].id}#{(decl[:request] ? "(request : #{decl[:request]})" : "").id}` or declare it optional: true" %}
+            {% unless decl[:optional] || @type.has_method?(decl[:handler].id.stringify) %}
+              {% raise "#{@type}: command :#{decl[:name].id} has no handler method `#{decl[:handler].id}`; define `def #{decl[:handler].id}#{(decl[:request] ? "(request : #{decl[:request]})" : "").id}` or declare it optional: true" %}
             {% end %}
           {% end %}
 
@@ -311,7 +421,7 @@ module Matter
             {% end %}
           {% end %}
 
-          {% for decl in ATTRIBUTE_DECLS + COMMAND_DECLS %}
+          {% for decl in ATTRIBUTE_DECLS + COMMAND_DECLS + EVENT_DECLS %}
             {% requires = decl[:requires] %}
             {% if requires %}
               {% raise "#{@type}: requires: needs feature declarations" unless has_features %}
@@ -377,19 +487,32 @@ module Matter
             end
           {% end %}
 
-          # -- feature gating ----------------------------------------------------
+          # -- feature and presence gating ---------------------------------------
 
-          {% for decl in ATTRIBUTE_DECLS %}
-            {% if decl[:requires] %}
-              private def dsl_attribute_{{ decl[:name].id }}_supported? : Bool
-                dsl_feature_condition({{ decl[:requires] }})
-              end
-            {% end %}
+          {% for decl in gated_attributes %}
+            private def dsl_attribute_{{ decl[:name].id }}_supported? : Bool
+              {% if decl[:requires] %}
+                return false unless dsl_feature_condition({{ decl[:requires] }})
+              {% end %}
+              {% if decl[:present_if] %}
+                dsl_presence_condition({{ decl[:present_if] }})
+              {% else %}
+                true
+              {% end %}
+            end
           {% end %}
 
           {% for decl in implemented_commands %}
             {% if decl[:requires] %}
               private def dsl_command_{{ decl[:name].id }}_supported? : Bool
+                dsl_feature_condition({{ decl[:requires] }})
+              end
+            {% end %}
+          {% end %}
+
+          {% for decl in EVENT_DECLS %}
+            {% if decl[:requires] %}
+              private def dsl_event_{{ decl[:name].id }}_supported? : Bool
                 dsl_feature_condition({{ decl[:requires] }})
               end
             {% end %}
@@ -402,7 +525,7 @@ module Matter
               case attribute_id
               {% for decl in ATTRIBUTE_DECLS %}
                 when ATTR_{{ decl[:name].id.upcase }}
-                  {% if decl[:requires] %}dsl_attribute_{{ decl[:name].id }}_supported?{% else %}true{% end %}
+                  {% if decl[:requires] || decl[:present_if] %}dsl_attribute_{{ decl[:name].id }}_supported?{% else %}true{% end %}
               {% end %}
               else
                 false
@@ -418,6 +541,21 @@ module Matter
               {% for decl in implemented_commands %}
                 when CMD_{{ decl[:name].id.upcase }}
                   {% if decl[:requires] %}dsl_command_{{ decl[:name].id }}_supported?{% else %}true{% end %}
+              {% end %}
+              else
+                false
+              end
+            {% end %}
+          end
+
+          protected def dsl_event_supported?(event_id : UInt32) : Bool
+            {% if EVENT_DECLS.empty? %}
+              false
+            {% else %}
+              case event_id
+              {% for decl in EVENT_DECLS %}
+                when EVENT_{{ decl[:name].id.upcase }}
+                  {% if decl[:requires] %}dsl_event_{{ decl[:name].id }}_supported?{% else %}true{% end %}
               {% end %}
               else
                 false
@@ -462,13 +600,12 @@ module Matter
 
           COMMANDS = [
             {% for decl in implemented_commands %}
-              {% response_id = decl[:response_id] || decl[:id] %}
               ::Matter::Cluster::CommandMetadata.new(
                 id: ::Matter::DataType::CommandId.new(CMD_{{ decl[:name].id.upcase }}),
                 name: {{ decl[:name].id.stringify.camelcase(lower: true) }},
                 optional: {{ decl[:optional] ? true : false }},
                 access: ::Matter::Cluster::Definitions::AccessControl::EntryPrivilege::{{ (decl[:access] || :operate).id.camelcase }},
-                response_id: {% if decl[:response] %}{{ (response_id.is_a?(NumberLiteral) && response_id.kind == :i32) ? "#{response_id}_u32".id : "(#{response_id}).to_u32".id }}{% else %}nil{% end %},
+                response_id: {% if decl[:response] %}CMD_{{ decl[:name].id.upcase }}_RESPONSE{% else %}nil{% end %},
                 timed: {{ decl[:timed] ? true : false }},
               ),
             {% end %}
@@ -487,10 +624,10 @@ module Matter
 
           # The tables are shared by every instance; callers must not mutate them.
           def attributes : Array(::Matter::Cluster::AttributeMetadata)
-            {% if ATTRIBUTE_DECLS.any? { |decl| decl[:requires] } %}
-              ATTRIBUTES.select { |attribute| dsl_attribute_supported?(attribute.id.id) }
-            {% else %}
+            {% if gated_attributes.empty? %}
               ATTRIBUTES
+            {% else %}
+              ATTRIBUTES.select { |attribute| dsl_attribute_supported?(attribute.id.id) }
             {% end %}
           end
 
@@ -503,7 +640,11 @@ module Matter
           end
 
           def events : Array(::Matter::Cluster::EventMetadata)
-            EVENTS
+            {% if EVENT_DECLS.any? { |decl| decl[:requires] } %}
+              EVENTS.select { |event| dsl_event_supported?(event.id.id) }
+            {% else %}
+              EVENTS
+            {% end %}
           end
 
           def get_attribute_metadata(attribute_id : UInt32) : ::Matter::Cluster::AttributeMetadata?
@@ -522,10 +663,13 @@ module Matter
               {% for decl in ATTRIBUTE_DECLS %}
                 {% kind = attribute_kinds[decl[:name]] %}
                 when ATTR_{{ decl[:name].id.upcase }}
-                  {% if decl[:requires] %}
+                  {% if decl[:requires] || decl[:present_if] %}
                     return ::Matter::InteractionModel::Status.unsupported_attribute unless dsl_attribute_{{ decl[:name].id }}_supported?
                   {% end %}
-                  {% if kind == :enum || kind == :bitmap %}
+                  {% if decl[:computed] %}
+                    {% reader = readers[decl[:name]] %}
+                    dsl_computed_value({{ reader[:name].id }}{% if reader[:fabric] %}(fabric_index){% end %})
+                  {% elsif kind == :enum || kind == :bitmap %}
                     tlv(@{{ decl[:name].id }}.try(&.value))
                   {% else %}
                     tlv(@{{ decl[:name].id }})
@@ -545,7 +689,7 @@ module Matter
               {% for decl in ATTRIBUTE_DECLS %}
                 {% kind = attribute_kinds[decl[:name]] %}
                 when ATTR_{{ decl[:name].id.upcase }}
-                  {% if decl[:requires] %}
+                  {% if decl[:requires] || decl[:present_if] %}
                     return ::Matter::InteractionModel::Status.unsupported_attribute unless dsl_attribute_{{ decl[:name].id }}_supported?
                   {% end %}
                   {% if decl[:writable] %}
@@ -587,8 +731,11 @@ module Matter
                       end
                     {% end %}
                     {% if @type.has_method?("dsl_before_write_#{decl[:name].id}") %}
-                      if %rejection{decl[:name]} = dsl_before_write_{{ decl[:name].id }}(%new_value{decl[:name]})
-                        return %rejection{decl[:name]}
+                      case %hook{decl[:name]} = dsl_before_write_{{ decl[:name].id }}(%new_value{decl[:name]})
+                      when ::Matter::InteractionModel::Status
+                        return %hook{decl[:name]}
+                      when {{ decl[:type] }}
+                        %new_value{decl[:name]} = %hook{decl[:name]}
                       end
                     {% end %}
                     self.{{ decl[:name].id }} = %new_value{decl[:name]}
@@ -612,16 +759,16 @@ module Matter
             protected def dsl_invoke_command(command_id : UInt32, fields : ::TLV::Any?) : ::Matter::InteractionModel::Status | ::Matter::Cluster::CommandResponse
               case command_id
               {% for decl in implemented_commands %}
-                {% response_id = decl[:response_id] || decl[:id] %}
+                {% response_id = decl[:response_id] %}
                 when CMD_{{ decl[:name].id.upcase }}
                   {% if decl[:requires] %}
                     return ::Matter::InteractionModel::Status.unsupported_command unless dsl_command_{{ decl[:name].id }}_supported?
                   {% end %}
                   dsl_command_result(
                     {% if decl[:request] %}
-                      {{ decl[:name].id }}(decode(fields, {{ decl[:request] }})),
+                      {{ decl[:handler].id }}(decode(fields, {{ decl[:request] }})),
                     {% else %}
-                      {{ decl[:name].id }},
+                      {{ decl[:handler].id }},
                     {% end %}
                     {{ (response_id.is_a?(NumberLiteral) && response_id.kind == :i32) ? "#{response_id}_u32".id : "(#{response_id}).to_u32".id }}
                   )

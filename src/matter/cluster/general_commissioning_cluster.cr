@@ -186,11 +186,6 @@ module Matter
       @commissioning_window_open : Bool = false
       @terms_conditions_accepted : Bool = false
 
-      # Session context properties (set by base class invoke_command via responds_to?)
-      # These are populated automatically when commands are invoked through the cluster base class
-      property? is_case_session : Bool = false
-      property fabric_index : UInt8? = nil
-
       # ========================================================================
       # Callbacks
       # ========================================================================
@@ -249,12 +244,11 @@ module Matter
           breadcrumb: request_def.breadcrumb
         )
 
-        # Call public command handler with session context from base class invoke_command
-        # is_case_session and fabric_index are set by the base class before dispatch
+        # Call public command handler with the session context from `Base#invoke_command`
         arm_failsafe(
           request: request,
-          session_fabric_index: @fabric_index,
-          is_pase_session: !@is_case_session
+          session_fabric_index: request_fabric_index,
+          is_pase_session: !request_is_case_session?
         )
       end
 
@@ -272,10 +266,10 @@ module Matter
       end
 
       def commissioning_complete : CommissioningCompleteResponse
-        # Call public command handler with session context from base class invoke_command
+        # Call public command handler with the session context from `Base#invoke_command`
         commissioning_complete(
-          session_fabric_index: @fabric_index,
-          is_case_session: @is_case_session
+          session_fabric_index: request_fabric_index,
+          is_case_session: request_is_case_session?
         )
       end
 

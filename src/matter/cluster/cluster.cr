@@ -379,20 +379,10 @@ module Matter
       def invoke_command(command_id : UInt32, fields : TLV::Any? = nil, session_id : UInt64? = nil, is_case_session : Bool = false, fabric_index : UInt8? = nil) : InteractionModel::Status | CommandResponse
         return InteractionModel::Status.unsupported_command unless get_command_metadata(command_id)
 
-        # Store session_id for clusters that need it (like OperationalCredentials)
-        if responds_to?(:session_id=)
-          self.session_id = session_id
-        end
-
-        # Store is_case_session for clusters that need it (like GeneralCommissioning)
-        if responds_to?(:is_case_session=)
-          self.is_case_session = is_case_session
-        end
-
-        # Store fabric_index for clusters that need it (like GeneralCommissioning)
-        if responds_to?(:fabric_index=)
-          self.fabric_index = fabric_index
-        end
+        # The request context the handlers read
+        @request_session_id = session_id
+        @request_is_case_session = is_case_session
+        @request_fabric_index = fabric_index
 
         # Command implementations override this
         handle_command(command_id, fields)
@@ -425,6 +415,20 @@ module Matter
 
       protected def dsl_command_result(result : TLV::Serializable, response_id : UInt32) : CommandResponse
         CommandResponse.new(response_id, result.to_tlv(nil))
+      end
+
+      # Encodes a computed attribute reader's result: a status or an encoded
+      # value passes through, an enum is encoded by value, anything else as is.
+      protected def dsl_computed_value(value : InteractionModel::Status | TLV::Any) : InteractionModel::Status | TLV::Any
+        value
+      end
+
+      protected def dsl_computed_value(value : Enum) : TLV::Any
+        tlv(value.value)
+      end
+
+      protected def dsl_computed_value(value) : TLV::Any
+        tlv(value)
       end
 
       # Increment data version (call when attribute changes). This is the only

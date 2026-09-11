@@ -41,11 +41,6 @@ module Matter
         High   = 3
       end
 
-      # Response command ids
-      CMD_GET_USER_RESPONSE              = 0x1C_u32
-      CMD_SET_CREDENTIAL_RESPONSE        = 0x23_u32
-      CMD_GET_CREDENTIAL_STATUS_RESPONSE = 0x25_u32
-
       # Wildcard indexes clearing every user / schedule / credential
       ALL_USERS     = 0xFFFE_u16
       ALL_SCHEDULES =    0xFE_u8
@@ -128,10 +123,10 @@ module Matter
       command 0x12, :get_holiday_schedule, request: Def::GetHolidayScheduleRequest, response: Def::GetHolidayScheduleResponse, access: :administer, requires: :holiday_schedules
       command 0x13, :clear_holiday_schedule, request: Def::ClearHolidayScheduleRequest, access: :administer, requires: :holiday_schedules
       command 0x1A, :set_user, request: Def::SetUserRequest, access: :administer, timed: true, requires: :user
-      command 0x1B, :get_user, request: Def::GetUserRequest, response: Def::GetUserResponse, response_id: CMD_GET_USER_RESPONSE, access: :administer, requires: :user
+      command 0x1B, :get_user, request: Def::GetUserRequest, response: Def::GetUserResponse, response_id: 0x1C, access: :administer, requires: :user
       command 0x1D, :clear_user, request: Def::ClearUserRequest, access: :administer, timed: true, requires: :user
-      command 0x22, :set_credential, request: Def::SetCredentialRequest, response: Def::SetCredentialResponse, response_id: CMD_SET_CREDENTIAL_RESPONSE, access: :administer, timed: true, requires: :user
-      command 0x24, :get_credential_status, request: Def::GetCredentialStatusRequest, response: Def::GetCredentialStatusResponse, response_id: CMD_GET_CREDENTIAL_STATUS_RESPONSE, access: :administer, requires: :user
+      command 0x22, :set_credential, request: Def::SetCredentialRequest, response: Def::SetCredentialResponse, response_id: 0x23, access: :administer, timed: true, requires: :user
+      command 0x24, :get_credential_status, request: Def::GetCredentialStatusRequest, response: Def::GetCredentialStatusResponse, response_id: 0x25, access: :administer, requires: :user
       command 0x26, :clear_credential, request: Def::ClearCredentialRequest, access: :administer, timed: true, requires: :user
       command 0x27, :unbolt_door, request: Def::UnboltDoorRequest, timed: true, requires: :unbolting
 

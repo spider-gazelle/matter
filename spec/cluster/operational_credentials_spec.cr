@@ -523,7 +523,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster = build_op_creds_cluster(endpoint_id)
 
         # Set session context for integration test
-        cluster.session_id = 12345_u64
+        cluster.request_session_id = 12345_u64
         cluster.failsafe_armed = true
 
         # Step 1: Generate CSR
@@ -588,7 +588,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = build_op_creds_cluster(endpoint_id)
 
-        cluster.session_id = 12345_u64
+        cluster.request_session_id = 12345_u64
         cluster.failsafe_armed = true
 
         # Add trusted root first
@@ -623,7 +623,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = build_op_creds_cluster(endpoint_id)
 
-        cluster.session_id = 12345_u64
+        cluster.request_session_id = 12345_u64
         cluster.failsafe_armed = true
 
         # Generate CSR
@@ -660,7 +660,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster = build_op_creds_cluster(endpoint_id)
 
         # First, add a fabric using the commissioning flow
-        cluster.session_id = 12345_u64
+        cluster.request_session_id = 12345_u64
         cluster.failsafe_armed = true
 
         # Initial commissioning
@@ -692,8 +692,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Reset failsafe context to simulate new failsafe period
         cluster.on_failsafe_expired
         cluster.failsafe_armed = true
-        cluster.session_id = 54321_u64
-        cluster.session_fabric_index = initial_fabric_index
+        cluster.request_session_id = 54321_u64
+        cluster.request_fabric_index = initial_fabric_index
 
         # Now update the NOC
         # Step 1: Generate CSR for update
@@ -739,7 +739,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster = build_op_creds_cluster(endpoint_id)
 
         # First, add an initial fabric via full commissioning flow
-        cluster.session_id = 1_u64
+        cluster.request_session_id = 1_u64
         cluster.failsafe_armed = true
 
         # Initial commissioning
@@ -767,8 +767,8 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Reset failsafe for update attempt
         cluster.on_failsafe_expired
-        cluster.session_id = 12345_u64
-        cluster.session_fabric_index = fabric_index
+        cluster.request_session_id = 12345_u64
+        cluster.request_fabric_index = fabric_index
         cluster.failsafe_armed = true
 
         # Generate CSR for update
@@ -810,7 +810,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = build_op_creds_cluster(endpoint_id)
 
-        cluster.session_id = 12345_u64
+        cluster.request_session_id = 12345_u64
         cluster.failsafe_armed = true
 
         # Complete full commissioning
@@ -857,7 +857,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
         cluster = build_op_creds_cluster(endpoint_id)
 
-        cluster.session_id = 12345_u64
+        cluster.request_session_id = 12345_u64
         cluster.failsafe_armed = true
 
         # Generate initial CSR
@@ -872,7 +872,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Expire failsafe
         cluster.on_failsafe_expired
         cluster.failsafe_armed = true
-        cluster.session_id = 54321_u64
+        cluster.request_session_id = 54321_u64
 
         # Generate new CSR - should succeed
         new_nonce = Bytes.new(32, 0x99_u8)
@@ -893,7 +893,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster = build_op_creds_cluster(endpoint_id)
 
         # Add first fabric
-        cluster.session_id = 1_u64
+        cluster.request_session_id = 1_u64
         cluster.failsafe_armed = true
 
         nonce1 = Bytes.new(32, 0x11_u8)
@@ -918,7 +918,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Reset failsafe for second fabric
         cluster.on_failsafe_success
-        cluster.session_id = 2_u64
+        cluster.request_session_id = 2_u64
         cluster.failsafe_armed = true
 
         # Add second fabric
@@ -958,7 +958,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster = build_op_creds_cluster(endpoint_id)
 
         # Add first fabric
-        cluster.session_id = 1_u64
+        cluster.request_session_id = 1_u64
         cluster.failsafe_armed = true
 
         nonce1 = Bytes.new(32, 0x11_u8)
@@ -985,7 +985,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Reset and try to add fabric with same fabric_id
         cluster.on_failsafe_success
-        cluster.session_id = 2_u64
+        cluster.request_session_id = 2_u64
         cluster.failsafe_armed = true
 
         nonce2 = Bytes.new(32, 0x22_u8)
@@ -1022,7 +1022,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster = build_op_creds_cluster(endpoint_id)
 
         # Add first fabric
-        cluster.session_id = 1_u64
+        cluster.request_session_id = 1_u64
         cluster.failsafe_armed = true
 
         nonce1 = Bytes.new(32, 0x11_u8)
@@ -1048,7 +1048,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Reset and try to add a fabric with same fabric_id AND same root
         cluster.on_failsafe_success
-        cluster.session_id = 2_u64
+        cluster.request_session_id = 2_u64
         cluster.failsafe_armed = true
 
         nonce2 = Bytes.new(32, 0x22_u8)
@@ -1087,7 +1087,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table, endpoint_id, nil)
 
         # Add a fabric
-        cluster.session_id = 1_u64
+        cluster.request_session_id = 1_u64
         cluster.failsafe_armed = true
 
         nonce = Bytes.new(32, 0x42_u8)
@@ -1111,7 +1111,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         )
 
         fabric_index = cluster.fabrics[0].fabric_index
-        cluster.session_fabric_index = fabric_index
+        cluster.request_fabric_index = fabric_index
 
         # Update label
         result = invoke(cluster,
@@ -1135,7 +1135,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         # Add two fabrics
         2.times do |i|
           cluster.on_failsafe_success if i > 0
-          cluster.session_id = (i + 1).to_u64
+          cluster.request_session_id = (i + 1).to_u64
           cluster.failsafe_armed = true
 
           nonce = Bytes.new(32, i.to_u8)
@@ -1161,7 +1161,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Set label on first fabric
         fabric1_index = cluster.fabrics[0].fabric_index
-        cluster.session_fabric_index = fabric1_index
+        cluster.request_fabric_index = fabric1_index
 
         invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_FABRIC_LABEL,
@@ -1170,7 +1170,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Try to set same label on second fabric
         fabric2_index = cluster.fabrics[1].fabric_index
-        cluster.session_fabric_index = fabric2_index
+        cluster.request_fabric_index = fabric2_index
 
         result = invoke(cluster,
           Matter::Cluster::OperationalCredentialsCluster::CMD_UPDATE_FABRIC_LABEL,
@@ -1197,7 +1197,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
         fabric_table.size.should eq(0)
 
         # Set session context for commissioning
-        cluster.session_id = 12345_u64
+        cluster.request_session_id = 12345_u64
         cluster.failsafe_armed = true
 
         # Step 1: Generate CSR
@@ -1263,7 +1263,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Set up for AddNOC
         cluster.failsafe_armed = true
-        cluster.session_id = 1_u64
+        cluster.request_session_id = 1_u64
 
         # Request CSR first
         nonce = Bytes.new(32, 0_u8)
@@ -1316,7 +1316,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Set up for AddNOC
         cluster.failsafe_armed = true
-        cluster.session_id = 1_u64
+        cluster.request_session_id = 1_u64
 
         # Request CSR
         nonce = Bytes.new(32, 0_u8)
@@ -1384,7 +1384,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
 
         # Set up for AddNOC
         cluster.failsafe_armed = true
-        cluster.session_id = 1_u64
+        cluster.request_session_id = 1_u64
 
         # Request CSR
         nonce = Bytes.new(32, 0_u8)

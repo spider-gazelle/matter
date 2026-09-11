@@ -306,9 +306,6 @@ module Matter
       command 0x03, :key_set_remove, request: KeySetRemoveRequest, access: :administer
       command 0x04, :key_set_read_all_indices, response: KeySetReadAllIndicesResponse, response_id: 0x05, access: :administer
 
-      # Accessing fabric of the command being invoked (set by `Base#invoke_command`)
-      property fabric_index : UInt8?
-
       # Internal storage (fabric-scoped)
       # Key: fabricIndex, Value: GroupKeySetStruct (with actual keys stored)
       @key_sets : Hash(UInt8, Hash(UInt16, GroupKeySetStruct))
@@ -388,7 +385,7 @@ module Matter
 
       # Key sets are fabric-scoped, so the commands need a fabric-bound session.
       private def accessing_fabric_index : UInt8
-        @fabric_index || raise Matter::ClusterError.new("Group key commands require a fabric-scoped session", InteractionModel::StatusCode::UnsupportedAccess)
+        request_fabric_index || raise Matter::ClusterError.new("Group key commands require a fabric-scoped session", InteractionModel::StatusCode::UnsupportedAccess)
       end
 
       # Get group key map for the specified fabric

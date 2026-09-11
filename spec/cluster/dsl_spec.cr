@@ -31,6 +31,8 @@ module DslSpec
   class Widget < Matter::Cluster::Base
     cluster 0xFFF1_FC10, revision: 3
 
+    ALPHA_OR_BETA = [:alpha, :beta]
+
     feature :alpha, bit: 0
     feature :beta, bit: 1
     feature :gamma, bit: 2
@@ -50,9 +52,22 @@ module DslSpec
     attribute 0x000B, :counter, UInt32, default: 0_u32, persist: true, optional: true, scene: true, omit_changes: true, timed: true, fabric_scoped: true
     attribute 0x000C, :guarded, UInt8, default: 0_u8, writable: true, persist: false
     attribute 0x000D, :mirror, UInt8, default: 0_u8
+    attribute 0x000E, :uptime, UInt32, computed: true
+    attribute 0x000F, :fabric_view, Array(UInt8), computed: true, fabric_scoped: true
+    attribute 0x0010, :state, Mode, computed: true
+    attribute 0x0011, :raw, UInt8, computed: true
+    attribute 0x0012, :store, UInt8, computed: true, writable: true, max: 50
+    attribute 0x0013, :maybe, UInt8, nullable: true, optional: true, present_if: :maybe
+    attribute 0x0014, :gated, UInt8, default: 0_u8, writable: true, present_if: :gate_open?
+    attribute 0x0015, :tag, String, default: "", writable: true
+    attribute 0x0016, :alpha_or_beta, UInt8, default: 0_u8, requires: ALPHA_OR_BETA
 
     before_write :guarded do |value|
       Matter::InteractionModel::Status.constraint_error if value.odd?
+    end
+
+    before_write :tag do |value|
+      value.empty? ? Matter::InteractionModel::Status.constraint_error : value.upcase
     end
 
     after_write :guarded do
@@ -67,9 +82,52 @@ module DslSpec
     command 0x06, :guarded_command, timed: true, access: :manage
     command 0x07, :echo, request: PingRequest, response: PingResponse, response_id: 0x01
     command 0x08, :fallible, request: PingRequest, response: PingResponse, response_id: 0x09
+    command 0x09, :set_thing, request: PingRequest, handler: :handle_set_thing
+    command 0x0A, :whoami
 
     event 0x00, :tripped, priority: :critical
     event 0x01, :noted
+    event 0x02, :alpha_event, requires: :alpha
+
+    property uptime : UInt32 = 0_u32
+    property? raw_ready : Bool = false
+    property? gate_open : Bool = false
+    getter store_value : UInt8 = 0_u8
+    getter seen_fabric : UInt8?
+    getter seen_session : UInt64?
+    getter? seen_case : Bool = false
+
+    def fabric_view(fabric_index : UInt8?) : Array(UInt8)
+      fabric_index ? [fabric_index] : [] of UInt8
+    end
+
+    def state : Mode
+      Mode::Active
+    end
+
+    def raw : TLV::Any | Matter::InteractionModel::Status
+      @raw_ready ? TLV::Any.new(9_u8) : Matter::InteractionModel::Status.failure
+    end
+
+    def store : UInt8
+      @store_value
+    end
+
+    def store=(value : UInt8) : Nil
+      @store_value = value
+    end
+
+    def handle_set_thing(request : PingRequest) : Matter::InteractionModel::Status
+      self.level = request.count
+      Matter::InteractionModel::Status.success
+    end
+
+    def whoami : Matter::InteractionModel::Status
+      @seen_fabric = request_fabric_index
+      @seen_session = request_session_id
+      @seen_case = request_is_case_session?
+      Matter::InteractionModel::Status.success
+    end
 
     def ping(request : PingRequest) : PingResponse
       PingResponse.new(request.count)
@@ -101,6 +159,13 @@ module DslSpec
       PingResponse.new(request.count)
     end
   end
+
+  # A renamed cluster that persists by hand.
+  class Gadget < Matter::Cluster::Base
+    cluster 0xFFF1_FC12, revision: 1, name: "Renamed", persist_state: false
+
+    attribute 0x0000, :knob, UInt8, default: 0_u8, writable: true
+  end
 end
 
 private alias Widget = DslSpec::Widget
@@ -117,6 +182,19 @@ end
 
 private def command_metadata(cluster : Widget, command_id : UInt32) : Matter::Cluster::CommandMetadata
   cluster.get_command_metadata(command_id).as(Matter::Cluster::CommandMetadata)
+end
+
+# Compiles a fixture that must be rejected and returns the compiler output.
+private def compile_fixture(name : String) : String
+  crystal = Process.find_executable("crystal")
+  pending! "the crystal compiler is not on PATH" unless crystal
+
+  fixture = File.join(__DIR__, "..", "fixtures", name)
+  output = IO::Memory.new
+  status = Process.run(crystal, ["build", "--no-codegen", fixture], output: output, error: output)
+
+  status.success?.should be_false
+  output.to_s
 end
 
 describe Matter::Cluster::DSL do
@@ -136,6 +214,14 @@ describe Matter::Cluster::DSL do
     it "generates a constructor taking the feature map" do
       Widget.new(endpoint(2)).feature_map.should eq(Widget::Feature::None)
       widget(Widget::Feature::Alpha).feature_map.alpha?.should be_true
+    end
+
+    it "takes name: and persist_state:" do
+      gadget = DslSpec::Gadget.new(endpoint(1))
+      gadget.name.should eq("Renamed")
+      gadget.knob = 3_u8
+      gadget.save_state.should be_nil
+      gadget.get_attribute_metadata(DslSpec::Gadget::ATTR_KNOB).as(Matter::Cluster::AttributeMetadata).writable?.should be_true
     end
   end
 
@@ -169,7 +255,7 @@ describe Matter::Cluster::DSL do
     it "generates the metadata" do
       cluster = widget
       names = cluster.attributes.map(&.name)
-      names.should eq(%w[enabled level label mode offset setpoint serial notBeta secret counter guarded mirror])
+      names.should eq(%w[enabled level label mode offset setpoint serial notBeta secret counter guarded mirror uptime fabricView state raw store tag])
 
       level = attribute_metadata(cluster, Widget::ATTR_LEVEL)
       level.type.should eq(:uint8)
@@ -347,6 +433,71 @@ describe Matter::Cluster::DSL do
         cluster.guarded.should eq(4_u8)
         cluster.mirror.should eq(4_u8)
       end
+
+      it "lets before_write replace the value" do
+        cluster = widget
+        expect_status(write(cluster, Widget::ATTR_TAG, ""), StatusCode::ConstraintError)
+        cluster.tag.should eq("")
+
+        expect_success(write(cluster, Widget::ATTR_TAG, "abc"))
+        cluster.tag.should eq("ABC")
+      end
+    end
+  end
+
+  describe "computed:" do
+    it "reads through the reader and has no storage" do
+      cluster = widget
+      cluster.uptime = 42_u32
+      read(cluster, Widget::ATTR_UPTIME).should eq(42_u32)
+      read(cluster, Widget::ATTR_STATE).should eq(DslSpec::Mode::Active.value)
+      attribute_metadata(cluster, Widget::ATTR_UPTIME).default.should be_nil
+      cluster.save_state.as(Matter::Storage::Document).keys.should_not contain("uptime")
+      expect_status(write(cluster, Widget::ATTR_UPTIME, 1_u32), StatusCode::UnsupportedWrite)
+    end
+
+    it "passes the accessing fabric index to a reader taking one" do
+      read_tlv(widget, Widget::ATTR_FABRIC_VIEW, 3_u8).as_list.map(&.as_u8).should eq([3_u8])
+      read_tlv(widget, Widget::ATTR_FABRIC_VIEW).as_list.should be_empty
+    end
+
+    it "passes a reader's status or encoded value through" do
+      cluster = widget
+      read_status(cluster, Widget::ATTR_RAW).status.should eq(StatusCode::Failure)
+      cluster.raw_ready = true
+      read(cluster, Widget::ATTR_RAW).should eq(9_u8)
+    end
+
+    it "writes a writable computed attribute through its writer" do
+      cluster = widget
+      expect_status(write(cluster, Widget::ATTR_STORE, 51_u8), StatusCode::ConstraintError)
+      expect_success(write(cluster, Widget::ATTR_STORE, 7_u8))
+      cluster.store_value.should eq(7_u8)
+      read(cluster, Widget::ATTR_STORE).should eq(7_u8)
+    end
+  end
+
+  describe "present_if:" do
+    it "gates on a nullable attribute having a value" do
+      cluster = widget
+      read_status(cluster, Widget::ATTR_MAYBE).status.should eq(StatusCode::UnsupportedAttribute)
+      cluster.get_attribute_metadata(Widget::ATTR_MAYBE).should be_nil
+      attribute_ids(cluster).should_not contain(Widget::ATTR_MAYBE)
+
+      cluster.maybe = 5_u8
+      read(cluster, Widget::ATTR_MAYBE).should eq(5_u8)
+      attribute_ids(cluster).should contain(Widget::ATTR_MAYBE)
+    end
+
+    it "gates on a predicate method" do
+      cluster = widget
+      expect_status(write(cluster, Widget::ATTR_GATED, 1_u8), StatusCode::UnsupportedAttribute)
+      attribute_ids(cluster).should_not contain(Widget::ATTR_GATED)
+
+      cluster.gate_open = true
+      expect_success(write(cluster, Widget::ATTR_GATED, 1_u8))
+      read(cluster, Widget::ATTR_GATED).should eq(1_u8)
+      attribute_ids(cluster).should contain(Widget::ATTR_GATED)
     end
   end
 
@@ -379,6 +530,16 @@ describe Matter::Cluster::DSL do
       attribute_ids(widget(Widget::Feature::Alpha | Widget::Feature::Gamma)).should contain(Widget::ATTR_ALPHA_OR_BETA_WITHOUT_GAMMA)
     end
 
+    it "accepts a constant" do
+      attribute_ids(widget).should_not contain(Widget::ATTR_ALPHA_OR_BETA)
+      attribute_ids(widget(Widget::Feature::Beta)).should contain(Widget::ATTR_ALPHA_OR_BETA)
+    end
+
+    it "gates events on features" do
+      widget.events.map(&.name).should eq(%w[tripped noted])
+      widget(Widget::Feature::Alpha).events.map(&.name).should eq(%w[tripped noted alphaEvent])
+    end
+
     it "gates commands and the accepted command list" do
       cluster = widget
       expect_status(invoke(cluster, Widget::CMD_ALPHA_COMMAND), StatusCode::UnsupportedCommand)
@@ -395,7 +556,8 @@ describe Matter::Cluster::DSL do
         Widget::ATTR_ENABLED, Widget::ATTR_LEVEL, Widget::ATTR_LABEL, Widget::ATTR_MODE, Widget::ATTR_OFFSET,
         Widget::ATTR_SETPOINT, Widget::ATTR_SERIAL, Widget::ATTR_ALPHA_ONLY, Widget::ATTR_NOT_BETA,
         Widget::ATTR_ALPHA_OR_BETA_WITHOUT_GAMMA, Widget::ATTR_SECRET, Widget::ATTR_COUNTER, Widget::ATTR_GUARDED,
-        Widget::ATTR_MIRROR,
+        Widget::ATTR_MIRROR, Widget::ATTR_UPTIME, Widget::ATTR_FABRIC_VIEW, Widget::ATTR_STATE, Widget::ATTR_RAW,
+        Widget::ATTR_STORE, Widget::ATTR_TAG, Widget::ATTR_ALPHA_OR_BETA,
         Matter::Cluster::Base::GLOBAL_GENERATED_COMMAND_LIST, Matter::Cluster::Base::GLOBAL_ACCEPTED_COMMAND_LIST,
         Matter::Cluster::Base::GLOBAL_ATTRIBUTE_LIST, Matter::Cluster::Base::GLOBAL_FEATURE_MAP,
         Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION,
@@ -409,7 +571,7 @@ describe Matter::Cluster::DSL do
       Widget::CMD_FALLIBLE.should eq(0x08_u32)
 
       cluster = widget
-      cluster.commands.map(&.name).should eq(%w[ping reset implementedOptional guardedCommand echo fallible])
+      cluster.commands.map(&.name).should eq(%w[ping reset implementedOptional guardedCommand echo fallible setThing whoami])
 
       ping = command_metadata(cluster, Widget::CMD_PING)
       ping.response_id.should eq(0x01_u32)
@@ -430,7 +592,7 @@ describe Matter::Cluster::DSL do
       cluster.get_command_metadata(Widget::CMD_UNIMPLEMENTED).should be_nil
       accepted_command_ids(cluster).should eq([
         Widget::CMD_PING, Widget::CMD_RESET, Widget::CMD_IMPLEMENTED_OPTIONAL, Widget::CMD_GUARDED_COMMAND,
-        Widget::CMD_ECHO, Widget::CMD_FALLIBLE,
+        Widget::CMD_ECHO, Widget::CMD_FALLIBLE, Widget::CMD_SET_THING, Widget::CMD_WHOAMI,
       ])
       expect_status(invoke(cluster, Widget::CMD_UNIMPLEMENTED), StatusCode::UnsupportedCommand)
       expect_status(invoke(cluster, 0x99_u32), StatusCode::UnsupportedCommand)
@@ -466,6 +628,29 @@ describe Matter::Cluster::DSL do
     it "derives the generated command list from the distinct response ids" do
       generated_command_ids(widget).should eq([0x01_u32, 0x09_u32])
     end
+
+    it "generates the response command constants" do
+      Widget::CMD_PING_RESPONSE.should eq(0x01_u32)
+      Widget::CMD_FALLIBLE_RESPONSE.should eq(0x09_u32)
+    end
+
+    it "dispatches to handler: when given" do
+      cluster = widget
+      expect_success(invoke(cluster, Widget::CMD_SET_THING, DslSpec::PingRequest.new(3_u8)))
+      cluster.level.should eq(3_u8)
+    end
+
+    it "exposes the request context to handlers" do
+      cluster = widget
+      expect_success(invoke(cluster, Widget::CMD_WHOAMI, session_id: 77_u64, is_case_session: true, fabric_index: 3_u8))
+      cluster.seen_fabric.should eq(3_u8)
+      cluster.seen_session.should eq(77_u64)
+      cluster.seen_case?.should be_true
+
+      expect_success(invoke(cluster, Widget::CMD_WHOAMI))
+      cluster.seen_fabric.should be_nil
+      cluster.seen_case?.should be_false
+    end
   end
 
   describe "event" do
@@ -493,7 +678,7 @@ describe Matter::Cluster::DSL do
       cluster.data_version = 12_u32
 
       document = cluster.save_state.as(Matter::Storage::Document)
-      document.keys.sort!.should eq(%w[alpha_only counter data_version features label level offset setpoint])
+      document.keys.sort!.should eq(%w[alpha_only counter data_version features gated label level offset setpoint tag])
       document["level"].should eq(42_i64)
       document["label"].should eq("abc")
       document["offset"].should eq(-7_i64)
@@ -546,15 +731,11 @@ describe Matter::Cluster::DSL do
 
   describe "compile-time checks" do
     it "rejects a mandatory command without a handler" do
-      crystal = Process.find_executable("crystal")
-      pending! "the crystal compiler is not on PATH" unless crystal
+      compile_fixture("dsl_missing_handler.cr").should contain("MissingHandlerCluster: command :unhandled has no handler method `unhandled`")
+    end
 
-      fixture = File.join(__DIR__, "..", "fixtures", "dsl_missing_handler.cr")
-      output = IO::Memory.new
-      status = Process.run(crystal, ["build", "--no-codegen", fixture], output: output, error: output)
-
-      status.success?.should be_false
-      output.to_s.should contain("MissingHandlerCluster: command :unhandled has no handler method `unhandled`")
+    it "rejects a computed attribute without a reader" do
+      compile_fixture("dsl_missing_reader.cr").should contain("MissingReaderCluster: computed attribute :elapsed has no reader method `elapsed`")
     end
   end
 end

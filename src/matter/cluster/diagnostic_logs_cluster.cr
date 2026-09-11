@@ -64,9 +64,7 @@ module Matter
         end
       end
 
-      CMD_RETRIEVE_LOGS_RESPONSE = 0x01_u32
-
-      command 0x00, :retrieve_logs_request, request: RetrieveLogsRequest, response: RetrieveLogsResponse, response_id: CMD_RETRIEVE_LOGS_RESPONSE
+      command 0x00, :retrieve_logs_request, request: RetrieveLogsRequest, response: RetrieveLogsResponse, response_id: 0x01
 
       # Number of recent entries returned for end-user support.
       END_USER_SUPPORT_ENTRIES = 20

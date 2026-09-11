@@ -63,13 +63,6 @@ module Matter
         InvalidFabricIndex    = 11 # Specified fabric index doesn't exist
       end
 
-      # Attributes
-      # Response command ids (the DSL generates the request ids)
-      CMD_ATTESTATION_RESPONSE       = 0x01_u32
-      CMD_CERTIFICATE_CHAIN_RESPONSE = 0x03_u32
-      CMD_CSR_RESPONSE               = 0x05_u32
-      CMD_NOC_RESPONSE               = 0x08_u32
-
       # NOCs, Fabrics, SupportedFabrics, CommissionedFabrics and
       # CurrentFabricIndex are derived from the fabric table and the session
       # in `read_attribute`; the declarations provide the metadata.
@@ -80,13 +73,13 @@ module Matter
       attribute 0x0004, :trusted_root_certificates, Array(Bytes), default: [] of Bytes
       attribute 0x0005, :current_fabric_index, UInt8, default: 0_u8
 
-      command 0x00, :attestation_request, request: Definitions::OperationalCredentials::AttestationRequest, response: OpCredDefs::AttestationResponse, response_id: CMD_ATTESTATION_RESPONSE, access: :administer
-      command 0x02, :certificate_chain_request, request: Definitions::OperationalCredentials::CertificateChainRequest, response: OpCredDefs::CertificateChainResponse, response_id: CMD_CERTIFICATE_CHAIN_RESPONSE, access: :administer
-      command 0x04, :csr_request, request: Definitions::OperationalCredentials::CsrRequest, response: OpCredDefs::CsrResponse, response_id: CMD_CSR_RESPONSE, access: :administer
-      command 0x06, :add_noc, request: Definitions::OperationalCredentials::AddNocRequest, response: OpCredDefs::TlvNocResponse, response_id: CMD_NOC_RESPONSE, access: :administer
-      command 0x07, :update_noc, request: Definitions::OperationalCredentials::UpdateNocRequest, response: OpCredDefs::TlvNocResponse, response_id: CMD_NOC_RESPONSE, access: :administer
-      command 0x09, :update_fabric_label, request: Definitions::OperationalCredentials::UpdateFabricLabelRequest, response: OpCredDefs::TlvNocResponse, response_id: CMD_NOC_RESPONSE, access: :administer
-      command 0x0A, :remove_fabric, request: Definitions::OperationalCredentials::RemoveFabricRequest, response: OpCredDefs::TlvNocResponse, response_id: CMD_NOC_RESPONSE, access: :administer
+      command 0x00, :attestation_request, request: Definitions::OperationalCredentials::AttestationRequest, response: OpCredDefs::AttestationResponse, response_id: 0x01, access: :administer
+      command 0x02, :certificate_chain_request, request: Definitions::OperationalCredentials::CertificateChainRequest, response: OpCredDefs::CertificateChainResponse, response_id: 0x03, access: :administer
+      command 0x04, :csr_request, request: Definitions::OperationalCredentials::CsrRequest, response: OpCredDefs::CsrResponse, response_id: 0x05, access: :administer
+      command 0x06, :add_noc, request: Definitions::OperationalCredentials::AddNocRequest, response: OpCredDefs::TlvNocResponse, response_id: 0x08, access: :administer
+      command 0x07, :update_noc, request: Definitions::OperationalCredentials::UpdateNocRequest, response: OpCredDefs::TlvNocResponse, response_id: 0x08, access: :administer
+      command 0x09, :update_fabric_label, request: Definitions::OperationalCredentials::UpdateFabricLabelRequest, response: OpCredDefs::TlvNocResponse, response_id: 0x08, access: :administer
+      command 0x0A, :remove_fabric, request: Definitions::OperationalCredentials::RemoveFabricRequest, response: OpCredDefs::TlvNocResponse, response_id: 0x08, access: :administer
       command 0x0B, :add_trusted_root_certificate, request: Definitions::OperationalCredentials::AddTrustedRootCertificateRequest, access: :administer
 
       struct NOCStruct
@@ -312,13 +305,7 @@ module Matter
       @access_control_cluster : AccessControlCluster?                         # Optional ACL cluster reference
       @general_commissioning_cluster : GeneralCommissioningCluster?           # Optional GeneralCommissioning cluster reference
       @current_fabric_index_value : UInt8 = 0_u8
-
-      # Session context for command handling
-      # NOTE: These should be set by the protocol layer (InteractionModel/Exchange)
-      # For testing, they default to sensible values
-      @session_id : UInt64? = nil
-      @session_fabric_index : UInt8? = nil
-      @failsafe_armed : Bool = true # Default to true for testing
+      @failsafe_armed : Bool = true                                           # Default to true for testing
 
       # Callback to get session's attestation challenge
       # This is set by the protocol layer to allow the cluster to access session data
@@ -333,15 +320,7 @@ module Matter
       @on_fabric_removed : Proc(UInt8, Nil)? = nil
 
       getter fabric_table : FabricTable
-      property session_id : UInt64?
-      property session_fabric_index : UInt8?
       property? failsafe_armed : Bool
-
-      # Alias for session_fabric_index to match base Cluster interface
-      # The base Cluster.invoke_command sets fabric_index= from the session
-      def fabric_index=(value : UInt8?)
-        @session_fabric_index = value
-      end
 
       property session_lookup : Proc(UInt64, Bytes?)?
       property on_fabric_added : Proc(Fabric, Nil)?
@@ -526,7 +505,7 @@ module Matter
         attestation_elements = build_attestation_elements(request.attestation_nonce)
 
         # Sign with attestation key (pass session_id for attestation challenge)
-        attestation_signature = sign_attestation(attestation_elements, @session_id)
+        attestation_signature = sign_attestation(attestation_elements, request_session_id)
 
         # Encode response as TLV
         OpCredDefs::AttestationResponse.new(attestation_elements, attestation_signature)
@@ -567,11 +546,10 @@ module Matter
         csr_elements = build_csr_elements(request.csr_nonce, pending_noc_key)
 
         # Sign CSR with attestation key (pass session_id for attestation challenge)
-        csr_signature = sign_attestation(csr_elements, @session_id)
+        csr_signature = sign_attestation(csr_elements, request_session_id)
 
         # Store CSR context in failsafe
-        # NOTE: @session_id should be set by protocol layer, defaults to 0 for testing
-        session_id = @session_id || 0_u64
+        session_id = request_session_id || 0_u64
         is_for_update = request.is_for_update_noc || false
         @pending_credentials.set_csr(session_id, is_for_update)
 
@@ -592,8 +570,7 @@ module Matter
         end
 
         # Must have CSR from this session
-        # NOTE: @session_id should be set by protocol layer, defaults to 0 for testing
-        session_id = @session_id || 0_u64
+        session_id = request_session_id || 0_u64
         unless @pending_credentials.csr_exists?(session_id)
           return noc_response(NodeOperationalCertStatus::MissingCsr, nil, "CSR not found for this session")
         end
@@ -717,8 +694,7 @@ module Matter
         end
 
         # Get session fabric index from instance variable or request
-        # NOTE: @session_fabric_index should be set by protocol layer
-        session_fabric_index = @session_fabric_index || request.fabric_index || 0_u8
+        session_fabric_index = request_fabric_index || request.fabric_index || 0_u8
 
         # Cannot call UpdateNOC after AddNOC in same failsafe
         if @pending_credentials.noc_added_or_updated?
@@ -726,8 +702,7 @@ module Matter
         end
 
         # Must have CSR from this session with is_for_update_noc=true
-        # NOTE: @session_id should be set by protocol layer, defaults to 0 for testing
-        session_id = @session_id || 0_u64
+        session_id = request_session_id || 0_u64
         unless @pending_credentials.csr_exists?(session_id) && @pending_credentials.is_for_update_noc?
           return noc_response(NodeOperationalCertStatus::MissingCsr, nil, "CSR for update not found")
         end
@@ -776,9 +751,8 @@ module Matter
 
       def update_fabric_label(request : Definitions::OperationalCredentials::UpdateFabricLabelRequest) : OpCredDefs::TlvNocResponse
         # Get session fabric index from instance variable or request
-        # NOTE: @session_fabric_index should be set by protocol layer
         # Per Matter spec, fabric_index in command is optional - use session context if not provided
-        fabric_idx = @session_fabric_index || request.fabric_index
+        fabric_idx = request_fabric_index || request.fabric_index
 
         unless fabric_idx
           return noc_response(NodeOperationalCertStatus::InvalidFabricIndex, nil, "Invalid fabric index")

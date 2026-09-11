@@ -101,7 +101,7 @@ module Matter
             command_id: Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
             fields: csr_req.to_slice
           )
-          csr_fields = first_command_fields(csr_resp_msg, Cluster::OperationalCredentialsCluster::CMD_CSR_RESPONSE)
+          csr_fields = first_command_fields(csr_resp_msg, Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST_RESPONSE)
           csr_resp = Cluster::Definitions::OperationalCredentials::CsrResponse.from_slice(csr_fields)
           csr_elements = Cluster::OperationalCredentialsCluster::CSRElements.from_slice(csr_resp.nocsr_elements)
 
@@ -123,7 +123,7 @@ module Matter
             command_id: Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
             fields: add_noc_req.to_slice
           )
-          noc_fields = first_command_fields(add_noc_resp_msg, Cluster::OperationalCredentialsCluster::CMD_NOC_RESPONSE)
+          noc_fields = first_command_fields(add_noc_resp_msg, Cluster::OperationalCredentialsCluster::CMD_ADD_NOC_RESPONSE)
           noc_resp = Cluster::Definitions::OperationalCredentials::TlvNocResponse.from_slice(noc_fields)
           unless noc_resp.status_code.ok?
             raise Matter::CommissioningError.new("AddNOC failed (status=#{noc_resp.status_code} debug=#{noc_resp.debug_text})")
