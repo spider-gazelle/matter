@@ -17,60 +17,21 @@ module Matter
     #
     # Specification: Matter 1.4 § 11.7
     class PowerSourceCluster < Base
-      CLUSTER_ID = 0x002F_u32
+      cluster 0x002F, revision: 3
 
-      # Feature flags
-      @[Flags]
-      enum Feature : UInt32
-        Wired        = 0x01 # WIRED - Wired power source
-        Battery      = 0x02 # BAT - Battery power source
-        Rechargeable = 0x04 # RECHG - Rechargeable battery
-        Replaceable  = 0x08 # REPLC - Replaceable battery
-      end
+      feature :wired, bit: 0        # WIRED - Wired power source
+      feature :battery, bit: 1      # BAT - Battery power source
+      feature :rechargeable, bit: 2 # RECHG - Rechargeable battery
+      feature :replaceable, bit: 3  # REPLC - Replaceable battery
+      conflicts :wired, :battery
 
-      # Base Attributes
-      ATTR_STATUS      = 0x0000_u32
-      ATTR_ORDER       = 0x0001_u32
-      ATTR_DESCRIPTION = 0x0002_u32
-
-      # Wired Feature Attributes
-      ATTR_WIRED_ASSESSED_INPUT_VOLTAGE   = 0x0003_u32
-      ATTR_WIRED_ASSESSED_INPUT_FREQUENCY = 0x0004_u32
-      ATTR_WIRED_CURRENT_TYPE             = 0x0005_u32
-      ATTR_WIRED_ASSESSED_CURRENT         = 0x0006_u32
-      ATTR_WIRED_NOMINAL_VOLTAGE          = 0x0007_u32
-      ATTR_WIRED_MAXIMUM_CURRENT          = 0x0008_u32
-      ATTR_WIRED_PRESENT                  = 0x0009_u32
-      ATTR_ACTIVE_WIRED_FAULTS            = 0x000A_u32
-
-      # Battery Feature Attributes
-      ATTR_BAT_VOLTAGE            = 0x000B_u32
-      ATTR_BAT_PERCENT_REMAINING  = 0x000C_u32
-      ATTR_BAT_TIME_REMAINING     = 0x000D_u32
-      ATTR_BAT_CHARGE_LEVEL       = 0x000E_u32
-      ATTR_BAT_REPLACEMENT_NEEDED = 0x000F_u32
-      ATTR_BAT_REPLACEABILITY     = 0x0010_u32
-      ATTR_BAT_PRESENT            = 0x0011_u32
-      ATTR_ACTIVE_BAT_FAULTS      = 0x0012_u32
-
-      # Replaceable Feature Attributes
-      ATTR_BAT_REPLACEMENT_DESCRIPTION = 0x0013_u32
-      ATTR_BAT_COMMON_DESIGNATION      = 0x0014_u32
-      ATTR_BAT_ANSI_DESIGNATION        = 0x0015_u32
-      ATTR_BAT_IEC_DESIGNATION         = 0x0016_u32
-      ATTR_BAT_APPROVED_CHEMISTRY      = 0x0017_u32
-      ATTR_BAT_CAPACITY                = 0x0018_u32
-      ATTR_BAT_QUANTITY                = 0x0019_u32
-
-      # Rechargeable Feature Attributes
-      ATTR_BAT_CHARGE_STATE              = 0x001A_u32
-      ATTR_BAT_TIME_TO_FULL_CHARGE       = 0x001B_u32
-      ATTR_BAT_FUNCTIONAL_WHILE_CHARGING = 0x001C_u32
-      ATTR_BAT_CHARGING_CURRENT          = 0x001D_u32
-      ATTR_ACTIVE_BAT_CHARGE_FAULTS      = 0x001E_u32
+      # Description strings are at most 60 characters; BatPercentRemaining
+      # is in half-percent units (0..200).
+      DESCRIPTION_MAX_LENGTH    =  60
+      BAT_PERCENT_REMAINING_MAX = 200
 
       # Power source status values
-      enum PowerSourceStatus
+      enum PowerSourceStatus : UInt8
         Unspecified = 0 # Status is not specified
         Active      = 1 # Source is available and currently supplying power
         Standby     = 2 # Source is available but not currently supplying power
@@ -78,20 +39,20 @@ module Matter
       end
 
       # Wired current type values
-      enum WiredCurrentType
+      enum WiredCurrentType : UInt8
         AC = 0 # Alternating current
         DC = 1 # Direct current
       end
 
       # Battery charge level values (coarse ranking)
-      enum BatChargeLevel
+      enum BatChargeLevel : UInt8
         Ok       = 0 # Charge level is nominal
         Warning  = 1 # Charge level is low, intervention may soon be required
         Critical = 2 # Charge level is critical, immediate intervention is required
       end
 
       # Battery replaceability values
-      enum BatReplaceability
+      enum BatReplaceability : UInt8
         Unspecified        = 0 # Replaceability is unspecified or unknown
         NotReplaceable     = 1 # Battery is not replaceable
         UserReplaceable    = 2 # Battery is replaceable by the user or customer
@@ -99,48 +60,52 @@ module Matter
       end
 
       # Battery charge state values
-      enum BatChargeState
+      enum BatChargeState : UInt8
         Unknown        = 0 # Charge state is unknown
         IsCharging     = 1 # Battery is charging
         IsAtFullCharge = 2 # Battery is at full charge
         IsNotCharging  = 3 # Battery is not charging
       end
 
-      # Feature map
-      property feature_map : Feature
-
       # Base attributes
-      property status : PowerSourceStatus
-      property order : UInt8
-      property description : String
+      attribute 0x0000, :status, PowerSourceStatus, default: PowerSourceStatus::Active
+      attribute 0x0001, :order, UInt8, default: 0_u8
+      attribute 0x0002, :description, String, default: "Battery", fixed: true
 
-      # Wired feature attributes
-      property wired_assessed_input_voltage : UInt32?
-      property wired_assessed_input_frequency : UInt16?
-      property wired_current_type : WiredCurrentType?
-      property wired_assessed_current : UInt32?
-      property wired_nominal_voltage : UInt32?
-      property wired_maximum_current : UInt32?
-      property wired_present : Bool?
+      # Feature attributes. Those without a default are present exactly when
+      # the device supplied a value (see `attribute_present?`).
+      attribute 0x0003, :wired_assessed_input_voltage, UInt32, nullable: true, optional: true, omit_changes: true, requires: :wired
+      attribute 0x0004, :wired_assessed_input_frequency, UInt16, nullable: true, optional: true, omit_changes: true, requires: :wired
+      attribute 0x0005, :wired_current_type, WiredCurrentType, default: WiredCurrentType::AC, fixed: true, requires: :wired
+      attribute 0x0009, :wired_present, Bool, nullable: true, optional: true, requires: :wired
 
-      # Battery feature attributes
-      property bat_voltage : UInt32?
-      property bat_percent_remaining : UInt8?
-      property bat_time_remaining : UInt32?
-      property bat_charge_level : BatChargeLevel?
-      property bat_replacement_needed : Bool?
-      property bat_replaceability : BatReplaceability?
-      property bat_present : Bool?
+      attribute 0x000B, :bat_voltage, UInt32, nullable: true, optional: true, omit_changes: true, requires: :battery
+      attribute 0x000C, :bat_percent_remaining, UInt8, nullable: true, optional: true, max: BAT_PERCENT_REMAINING_MAX, requires: :battery
+      attribute 0x000D, :bat_time_remaining, UInt32, nullable: true, optional: true, requires: :battery
+      attribute 0x000E, :bat_charge_level, BatChargeLevel, nullable: true, requires: :battery
+      attribute 0x000F, :bat_replacement_needed, Bool, nullable: true, requires: :battery
+      attribute 0x0010, :bat_replaceability, BatReplaceability, nullable: true, fixed: true, requires: :battery
+      attribute 0x0011, :bat_present, Bool, nullable: true, optional: true, requires: :battery
 
-      # Replaceable feature attributes
-      property bat_replacement_description : String?
-      property bat_quantity : UInt8?
+      attribute 0x0013, :bat_replacement_description, String, nullable: true, fixed: true, requires: :replaceable
+      attribute 0x0019, :bat_quantity, UInt8, nullable: true, fixed: true, requires: :replaceable
 
-      # Rechargeable feature attributes
-      property bat_charge_state : BatChargeState?
-      property bat_time_to_full_charge : UInt32?
-      property bat_functional_while_charging : Bool?
-      property bat_charging_current : UInt32?
+      attribute 0x001A, :bat_charge_state, BatChargeState, nullable: true, optional: true, requires: :rechargeable
+      attribute 0x001B, :bat_time_to_full_charge, UInt32, nullable: true, optional: true, requires: :rechargeable
+      attribute 0x001C, :bat_functional_while_charging, Bool, nullable: true, optional: true, requires: :rechargeable
+
+      # The DSL gates attributes on features only; this hook runs after the
+      # DSL's own `finished` hook and narrows the generated tables to the
+      # attributes that have a value.
+      macro finished
+        protected def dsl_attribute_supported?(attribute_id : UInt32) : Bool
+          previous_def && attribute_present?(attribute_id)
+        end
+
+        def attributes : Array(AttributeMetadata)
+          ATTRIBUTES.select { |attribute| dsl_attribute_supported?(attribute.id.id) }
+        end
+      end
 
       def initialize(endpoint_id : DataType::EndpointNumber,
                      @feature_map : Feature = Feature::Battery,
@@ -150,10 +115,7 @@ module Matter
                      # Wired feature
                      @wired_assessed_input_voltage : UInt32? = nil,
                      @wired_assessed_input_frequency : UInt16? = nil,
-                     @wired_current_type : WiredCurrentType? = nil,
-                     @wired_assessed_current : UInt32? = nil,
-                     @wired_nominal_voltage : UInt32? = nil,
-                     @wired_maximum_current : UInt32? = nil,
+                     @wired_current_type : WiredCurrentType = WiredCurrentType::AC,
                      @wired_present : Bool? = nil,
                      # Battery feature
                      @bat_voltage : UInt32? = nil,
@@ -169,24 +131,16 @@ module Matter
                      # Rechargeable feature
                      @bat_charge_state : BatChargeState? = nil,
                      @bat_time_to_full_charge : UInt32? = nil,
-                     @bat_functional_while_charging : Bool? = nil,
-                     @bat_charging_current : UInt32? = nil)
+                     @bat_functional_while_charging : Bool? = nil)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
-        # Validate mutually exclusive features
-        if @feature_map.wired? && @feature_map.battery?
-          raise ArgumentError.new("Wired and Battery features are mutually exclusive")
-        end
+        raise ArgumentError.new("description must be <= #{DESCRIPTION_MAX_LENGTH} characters") if @description.size > DESCRIPTION_MAX_LENGTH
 
-        # Validate description length
-        raise ArgumentError.new("description must be <= 60 characters") if @description.size > 60
-
-        # Validate bat_replacement_description length if provided
         if desc = @bat_replacement_description
-          raise ArgumentError.new("bat_replacement_description must be <= 60 characters") if desc.size > 60
+          raise ArgumentError.new("bat_replacement_description must be <= #{DESCRIPTION_MAX_LENGTH} characters") if desc.size > DESCRIPTION_MAX_LENGTH
         end
 
-        # Validate Battery feature: if feature is enabled, mandatory attributes must be set
+        # A feature's mandatory attributes are supplied together or not at all
         if @feature_map.battery?
           battery_attrs = [@bat_charge_level, @bat_replacement_needed, @bat_replaceability]
           if battery_attrs.any?(Nil) && battery_attrs.any?(&.!=(nil))
@@ -194,12 +148,10 @@ module Matter
           end
         end
 
-        # Validate Replaceable feature dependencies
         if @feature_map.replaceable? && !@feature_map.battery?
           raise ArgumentError.new("Replaceable feature requires Battery feature")
         end
 
-        # Validate Replaceable feature: if feature is enabled, mandatory attributes must be set
         if @feature_map.replaceable?
           replaceable_attrs = [@bat_replacement_description, @bat_quantity]
           if replaceable_attrs.any?(Nil) && replaceable_attrs.any?(&.!=(nil))
@@ -207,310 +159,41 @@ module Matter
           end
         end
 
-        # Validate Rechargeable feature dependencies
         if @feature_map.rechargeable? && !@feature_map.battery?
           raise ArgumentError.new("Rechargeable feature requires Battery feature")
         end
       end
 
-      def name : String
-        "PowerSource"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        attrs = [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_STATUS),
-            "status",
-            :uint8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_ORDER),
-            "order",
-            :uint8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_DESCRIPTION),
-            "description",
-            :string,
-            writable: false
-          ),
-        ]
-
-        # Wired feature attributes
-        if @feature_map.wired?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_WIRED_CURRENT_TYPE),
-            "wiredCurrentType",
-            :uint8,
-            writable: false
-          )
-          if @wired_assessed_input_voltage
-            attrs << AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_WIRED_ASSESSED_INPUT_VOLTAGE),
-              "wiredAssessedInputVoltage",
-              :uint32,
-              writable: false
-            )
-          end
-          if @wired_assessed_input_frequency
-            attrs << AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_WIRED_ASSESSED_INPUT_FREQUENCY),
-              "wiredAssessedInputFrequency",
-              :uint16,
-              writable: false
-            )
-          end
-          if @wired_present != nil
-            attrs << AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_WIRED_PRESENT),
-              "wiredPresent",
-              :bool,
-              writable: false
-            )
-          end
-        end
-
-        # Battery feature attributes
-        if @feature_map.battery?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_BAT_CHARGE_LEVEL),
-            "batChargeLevel",
-            :uint8,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_BAT_REPLACEMENT_NEEDED),
-            "batReplacementNeeded",
-            :bool,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_BAT_REPLACEABILITY),
-            "batReplaceability",
-            :uint8,
-            writable: false
-          )
-          if @bat_voltage
-            attrs << AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_BAT_VOLTAGE),
-              "batVoltage",
-              :uint32,
-              writable: false
-            )
-          end
-          if @bat_percent_remaining
-            attrs << AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_BAT_PERCENT_REMAINING),
-              "batPercentRemaining",
-              :uint8,
-              writable: false
-            )
-          end
-          if @bat_time_remaining
-            attrs << AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_BAT_TIME_REMAINING),
-              "batTimeRemaining",
-              :uint32,
-              writable: false
-            )
-          end
-          if @bat_present != nil
-            attrs << AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_BAT_PRESENT),
-              "batPresent",
-              :bool,
-              writable: false
-            )
-          end
-        end
-
-        # Replaceable feature attributes
-        if @feature_map.replaceable?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_BAT_REPLACEMENT_DESCRIPTION),
-            "batReplacementDescription",
-            :string,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_BAT_QUANTITY),
-            "batQuantity",
-            :uint8,
-            writable: false
-          )
-        end
-
-        # Rechargeable feature attributes
-        if @feature_map.rechargeable?
-          if @bat_charge_state
-            attrs << AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_BAT_CHARGE_STATE),
-              "batChargeState",
-              :uint8,
-              writable: false
-            )
-          end
-          if @bat_time_to_full_charge
-            attrs << AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_BAT_TIME_TO_FULL_CHARGE),
-              "batTimeToFullCharge",
-              :uint32,
-              writable: false
-            )
-          end
-          if @bat_functional_while_charging != nil
-            attrs << AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_BAT_FUNCTIONAL_WHILE_CHARGING),
-              "batFunctionalWhileCharging",
-              :bool,
-              writable: false
-            )
-          end
-        end
-
-        attrs
-      end
-
-      def commands : Array(CommandMetadata)
-        [] of CommandMetadata # No commands for power source cluster
-      end
-
-      # Report the cluster's features — controllers decide whether a node is
-      # battery powered from this (FeatureMap BAT bit + an Active status).
-      protected def feature_map_tlv : TLV::Any
-        tlv(@feature_map.value)
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
+      # A feature attribute without a value is absent.
+      private def attribute_present?(attribute_id : UInt32) : Bool
         case attribute_id
-        when ATTR_STATUS
-          tlv(@status.value.to_u8)
-        when ATTR_ORDER
-          tlv(@order)
-        when ATTR_DESCRIPTION
-          tlv(@description)
-          # Wired feature attributes
-        when ATTR_WIRED_CURRENT_TYPE
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.wired?
-          if current_type = @wired_current_type
-            tlv(current_type.value.to_u8)
-          else
-            tlv(WiredCurrentType::AC.value.to_u8)
-          end
-        when ATTR_WIRED_ASSESSED_INPUT_VOLTAGE
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.wired?
-          if voltage = @wired_assessed_input_voltage
-            tlv(voltage)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_WIRED_ASSESSED_INPUT_FREQUENCY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.wired?
-          if freq = @wired_assessed_input_frequency
-            tlv(freq)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_WIRED_PRESENT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.wired?
-          if present = @wired_present
-            tlv(present)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-          # Battery feature attributes
-        when ATTR_BAT_CHARGE_LEVEL
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
-          if level = @bat_charge_level
-            tlv(level.value.to_u8)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_BAT_REPLACEMENT_NEEDED
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
-          if needed = @bat_replacement_needed
-            tlv(needed)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_BAT_REPLACEABILITY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
-          if replaceability = @bat_replaceability
-            tlv(replaceability.value.to_u8)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_BAT_VOLTAGE
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
-          if voltage = @bat_voltage
-            tlv(voltage)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_BAT_PERCENT_REMAINING
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
-          if percent = @bat_percent_remaining
-            tlv(percent)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_BAT_TIME_REMAINING
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
-          if time = @bat_time_remaining
-            tlv(time)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_BAT_PRESENT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.battery?
-          if present = @bat_present
-            tlv(present)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-          # Replaceable feature attributes
-        when ATTR_BAT_REPLACEMENT_DESCRIPTION
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.replaceable?
-          if desc = @bat_replacement_description
-            tlv(desc)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_BAT_QUANTITY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.replaceable?
-          if quantity = @bat_quantity
-            tlv(quantity)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-          # Rechargeable feature attributes
-        when ATTR_BAT_CHARGE_STATE
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.rechargeable?
-          if state = @bat_charge_state
-            tlv(state.value.to_u8)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_BAT_TIME_TO_FULL_CHARGE
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.rechargeable?
-          if time = @bat_time_to_full_charge
-            tlv(time)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_BAT_FUNCTIONAL_WHILE_CHARGING
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.rechargeable?
-          if functional = @bat_functional_while_charging
-            tlv(functional)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        else
-          super
+        when ATTR_WIRED_ASSESSED_INPUT_VOLTAGE   then !@wired_assessed_input_voltage.nil?
+        when ATTR_WIRED_ASSESSED_INPUT_FREQUENCY then !@wired_assessed_input_frequency.nil?
+        when ATTR_WIRED_PRESENT                  then !@wired_present.nil?
+        when ATTR_BAT_VOLTAGE                    then !@bat_voltage.nil?
+        when ATTR_BAT_PERCENT_REMAINING          then !@bat_percent_remaining.nil?
+        when ATTR_BAT_TIME_REMAINING             then !@bat_time_remaining.nil?
+        when ATTR_BAT_CHARGE_LEVEL               then !@bat_charge_level.nil?
+        when ATTR_BAT_REPLACEMENT_NEEDED         then !@bat_replacement_needed.nil?
+        when ATTR_BAT_REPLACEABILITY             then !@bat_replaceability.nil?
+        when ATTR_BAT_PRESENT                    then !@bat_present.nil?
+        when ATTR_BAT_REPLACEMENT_DESCRIPTION    then !@bat_replacement_description.nil?
+        when ATTR_BAT_QUANTITY                   then !@bat_quantity.nil?
+        when ATTR_BAT_CHARGE_STATE               then !@bat_charge_state.nil?
+        when ATTR_BAT_TIME_TO_FULL_CHARGE        then !@bat_time_to_full_charge.nil?
+        when ATTR_BAT_FUNCTIONAL_WHILE_CHARGING  then !@bat_functional_while_charging.nil?
+        else                                          true
         end
+      end
+
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
+        return InteractionModel::Status.unsupported_attribute unless attribute_present?(attribute_id)
+        super
+      end
+
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
+        return InteractionModel::Status.unsupported_attribute unless attribute_present?(attribute_id)
+        super
       end
 
       # Update the remaining battery percentage (0-200 half-percent units,
@@ -519,39 +202,24 @@ module Matter
         return unless @feature_map.battery?
 
         if percent = value
-          raise ArgumentError.new("bat_percent_remaining must be <= 200") if percent > 200_u8
+          raise ArgumentError.new("bat_percent_remaining must be <= #{BAT_PERCENT_REMAINING_MAX}") if percent > BAT_PERCENT_REMAINING_MAX
         end
 
-        old_value = @bat_percent_remaining
-        @bat_percent_remaining = value
-
-        increment_version_and_notify(ATTR_BAT_PERCENT_REMAINING) if old_value != value
+        self.bat_percent_remaining = value
       end
 
       # Update battery charge level
       def update_bat_charge_level(level : BatChargeLevel)
         return unless @feature_map.battery?
 
-        old_value = @bat_charge_level
-        @bat_charge_level = level
-
-        if old_value != level
-          @on_charge_level_changed.try &.call(old_value, level)
-          increment_version
-        end
+        self.bat_charge_level = level
       end
 
       # Update battery replacement needed status
       def update_bat_replacement_needed(needed : Bool)
         return unless @feature_map.battery?
 
-        old_value = @bat_replacement_needed
-        @bat_replacement_needed = needed
-
-        if old_value != needed
-          @on_replacement_needed_changed.try &.call(old_value, needed)
-          increment_version
-        end
+        self.bat_replacement_needed = needed
       end
 
       # Check if Battery feature is enabled (for backward compatibility)
@@ -564,18 +232,14 @@ module Matter
         @feature_map.replaceable?
       end
 
-      # Callback when battery charge level changes
-      @on_charge_level_changed : Proc(BatChargeLevel?, BatChargeLevel, Nil)?
-
-      def on_charge_level_changed(&block : BatChargeLevel?, BatChargeLevel -> Nil)
-        @on_charge_level_changed = block
+      # Called with the previous and the new value when the charge level changes
+      def on_charge_level_changed(&block : BatChargeLevel?, BatChargeLevel? -> Nil) : Nil
+        on_bat_charge_level_changed(&block)
       end
 
-      # Callback when battery replacement needed status changes
-      @on_replacement_needed_changed : Proc(Bool?, Bool, Nil)?
-
-      def on_replacement_needed_changed(&block : Bool?, Bool -> Nil)
-        @on_replacement_needed_changed = block
+      # Called with the previous and the new value when replacement-needed changes
+      def on_replacement_needed_changed(&block : Bool?, Bool? -> Nil) : Nil
+        on_bat_replacement_needed_changed(&block)
       end
     end
   end
