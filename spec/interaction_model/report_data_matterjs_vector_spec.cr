@@ -25,6 +25,17 @@ require "../spec_helper"
 MATTERJS_REPORT_DATA_VECTOR = "153601153501260055156878370124020024032824040918240201181818290424ff0118"
 MATTERJS_DATA_VERSION       = 2020087125_u32
 
+# The same message as this library encodes it. Identical to the matter.js vector
+# except inside the AttributePath list, where our path fields carry their declared
+# width instead of the minimal one; see the last example below.
+#
+#   37 01                      tag 1: path (list)
+#     25 02 00 00              endpoint 0     (uint16)
+#     26 03 28 00 00 00        cluster 40     (uint32)
+#     26 04 09 00 00 00        attribute 9    (uint32)
+#   18
+OUR_REPORT_DATA_ENCODING = "15360115350126005515687837012502000026032800000026040900000018240201181818290424ff0118"
+
 private def assert_matches_vector(report : Matter::InteractionModel::ReportDataMessage)
   report.subscription_id.should be_nil
   report.event_reports.should be_nil
@@ -97,19 +108,32 @@ describe Matter::InteractionModel::ReportDataMessage do
       expected[expected.size - tail.bytesize // 2, tail.bytesize // 2].hexstring.should eq(tail)
     end
 
-    # Our AttributePath declares endpoint/cluster/attribute with `fixed_size: true`
-    # (src/matter/interaction_model/paths.cr) so they always encode at their declared
-    # width (uint16/uint32/uint32) for iOS compatibility, whereas matter.js/chip-tool use
-    # the minimal TLV integer width. For this vector the path list therefore differs:
+    # Our encoding of the path list is deliberately not matter.js's, and this pins
+    # the divergence rather than leaving it as an unmet goal.
+    #
+    # `AttributePath` declares endpoint/cluster/attribute with `fixed_size: true`
+    # (src/matter/interaction_model/paths.cr) so each field always encodes at its
+    # declared width (uint16/uint32/uint32), whereas matter.js and chip-tool emit the
+    # minimal TLV integer width. That is required, not incidental: Apple Home rejects
+    # structures whose integers are narrower than the spec's declared type (the same
+    # note sits on `Descriptor::DeviceTypeStruct`, where a narrow device type produces
+    # "Not Supported"), and those fields also have to hold the Bool wildcard marker
+    # iOS sends in place of an omitted field, so a width cannot be inferred from the
+    # runtime value.
     #
     #   matter.js: 24 02 00        24 03 28           24 04 09           (9 bytes)
     #   ours:      25 02 00 00     26 03 28 00 00 00  26 04 09 00 00 00  (16 bytes)
     #
     # giving a 43-byte encoding instead of 36; first differing byte is index 14
-    # (0x25 vs 0x24). Both decode to the same values. Flip this to `it` if the
-    # path encoding is ever changed to minimal width.
-    pending "encodes the vector byte-for-byte identically to matter.js (path fields use fixed_size widths)" do
-      build_vector_report.to_slice.hexstring.should eq(MATTERJS_REPORT_DATA_VECTOR)
+    # (0x25 vs 0x24). Both decode to the same values, which the examples above prove.
+    it "encodes the vector with fixed-width path fields, diverging from matter.js" do
+      build_vector_report.to_slice.hexstring.should eq(OUR_REPORT_DATA_ENCODING)
+
+      # The divergence is confined to the AttributePath list: the 14 bytes up to the
+      # "37 01" list opener and the 13 bytes from its terminator on are identical.
+      OUR_REPORT_DATA_ENCODING.should_not eq(MATTERJS_REPORT_DATA_VECTOR)
+      OUR_REPORT_DATA_ENCODING[0, 28].should eq(MATTERJS_REPORT_DATA_VECTOR[0, 28])
+      OUR_REPORT_DATA_ENCODING[-26..].should eq(MATTERJS_REPORT_DATA_VECTOR[-26..])
     end
   end
 end

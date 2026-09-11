@@ -8,7 +8,7 @@ require "../../src/matter/cluster/groups"
 # The mandatory server clusters of the given light device type, so the node
 # accepts the endpoint.
 private def light_endpoint(endpoint_id : UInt16, device_type : Matter::DeviceType) : Matter::Endpoint
-  number = Matter::DataType::EndpointNumber.new(endpoint_id)
+  number = endpoint(endpoint_id)
   endpoint = Matter::Endpoint.new(number, device_type)
   endpoint.add_cluster(Matter::Cluster::Identify.new(number))
   endpoint.add_cluster(Matter::Cluster::Groups.new(number))

@@ -57,7 +57,7 @@ private def light_clusters(endpoint : Matter::DataType::EndpointNumber) : Array(
 end
 
 private def light_clusters(endpoint_id : UInt16) : Array(Matter::Cluster::Base)
-  light_clusters(Matter::DataType::EndpointNumber.new(endpoint_id))
+  light_clusters(endpoint(endpoint_id))
 end
 
 private def add_light(device : TestBridgeDevice, endpoint_id : UInt16) : Bool
@@ -89,7 +89,7 @@ describe "Dynamic Endpoint Management" do
       device = TestBridgeDevice.new
 
       endpoint_id = 1_u16
-      endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
+      endpoint = endpoint(endpoint_id)
 
       bridged_info = Matter::Cluster::BridgedDeviceBasicInformation.new(
         endpoint,
@@ -178,7 +178,7 @@ describe "Dynamic Endpoint Management" do
     it "raises when the device type's mandatory clusters are missing" do
       device = TestBridgeDevice.new
 
-      endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+      endpoint = endpoint(1)
 
       expect_raises(Matter::ConfigurationError, /Missing required cluster/) do
         device.add_endpoint(
@@ -195,7 +195,7 @@ describe "Dynamic Endpoint Management" do
       device = TestBridgeDevice.new
 
       endpoint_id = 1_u16
-      endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
+      endpoint = endpoint(endpoint_id)
       bridged_info = Matter::Cluster::BridgedDeviceBasicInformation.new(endpoint)
 
       device.add_endpoint(

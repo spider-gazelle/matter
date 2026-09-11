@@ -9,7 +9,7 @@ require "../../src/matter/cluster/groups"
 # An On/Off Light endpoint with every mandatory server cluster, so `add_endpoint`
 # accepts it.
 private def on_off_light(endpoint_id : UInt16) : Matter::Endpoint
-  number = Matter::DataType::EndpointNumber.new(endpoint_id)
+  number = endpoint(endpoint_id)
   endpoint = Matter::Endpoint.new(number, Matter::DeviceType.on_off_light)
   endpoint.add_cluster(Matter::Cluster::Identify.new(number))
   endpoint.add_cluster(Matter::Cluster::Groups.new(number))
@@ -120,16 +120,16 @@ describe Matter::Node do
 
   describe "configuration errors" do
     it "raises when a cluster was built for another endpoint" do
-      endpoint = Matter::Endpoint.new(Matter::DataType::EndpointNumber.new(1_u16))
+      endpoint = Matter::Endpoint.new(endpoint(1))
 
       expect_raises(Matter::ConfigurationError, /does not match/) do
-        endpoint.add_cluster(Matter::Cluster::OnOff.new(Matter::DataType::EndpointNumber.new(2_u16)))
+        endpoint.add_cluster(build(Matter::Cluster::OnOff, 2))
       end
     end
 
     it "raises when a mandatory cluster of the device type is missing" do
       node = Matter::Node.new
-      number = Matter::DataType::EndpointNumber.new(1_u16)
+      number = endpoint(1)
       endpoint = Matter::Endpoint.new(number, Matter::DeviceType.on_off_light)
       endpoint.add_cluster(Matter::Cluster::OnOff.new(number))
 

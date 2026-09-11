@@ -32,8 +32,8 @@ private def event_subscription_fixture(
     fabric_table: Matter::FabricTable.new(storage)
   )
 
-  endpoint = Matter::Endpoint.new(Matter::DataType::EndpointNumber.new(ENDPOINT))
-  lock = Matter::Cluster::DoorLock.new(endpoint_id: Matter::DataType::EndpointNumber.new(ENDPOINT))
+  endpoint = Matter::Endpoint.new(endpoint(ENDPOINT))
+  lock = build(Matter::Cluster::DoorLock, ENDPOINT)
   endpoint.add_cluster(lock)
   handler.node.add_endpoint(endpoint)
   handler.setup_cluster_notifications

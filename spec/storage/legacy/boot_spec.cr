@@ -70,7 +70,7 @@ class LegacyBootDevice < Matter::Device
   end
 
   protected def device_clusters : Array(Matter::Cluster::Base)
-    endpoint = Matter::DataType::EndpointNumber.new(LIGHT_ENDPOINT)
+    endpoint = endpoint(LIGHT_ENDPOINT)
     @switch = Matter::Cluster::OnOff.new(endpoint, feature_map: Matter::Cluster::OnOff::Feature::Lighting)
     @level = Matter::Cluster::LevelControl.new(endpoint)
     @groups = Matter::Cluster::Groups.new(endpoint)

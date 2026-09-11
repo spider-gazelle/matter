@@ -15,7 +15,7 @@ describe "Access Control Integration" do
   describe "commissioning workflow" do
     it "creates default ACL entry during commissioning" do
       # Setup: Create a device with Access Control cluster
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      endpoint_id = endpoint(0)
       acl_cluster = Matter::Cluster::AccessControl.new(endpoint_id)
 
       # Initially no ACL entries
@@ -60,7 +60,7 @@ describe "Access Control Integration" do
     end
 
     it "enforces ACL for non-admin subjects" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      endpoint_id = endpoint(0)
       acl_cluster = Matter::Cluster::AccessControl.new(endpoint_id)
 
       fabric_index = 1_u8
@@ -112,7 +112,7 @@ describe "Access Control Integration" do
 
   describe "multi-fabric isolation" do
     it "isolates ACLs between fabrics" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      endpoint_id = endpoint(0)
       acl_cluster = Matter::Cluster::AccessControl.new(endpoint_id)
 
       # Same subject ID on two different fabrics
@@ -170,7 +170,7 @@ describe "Access Control Integration" do
     end
 
     it "removes fabric ACLs when fabric is removed" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      endpoint_id = endpoint(0)
       acl_cluster = Matter::Cluster::AccessControl.new(endpoint_id)
 
       # Add ACLs for three fabrics
@@ -202,7 +202,7 @@ describe "Access Control Integration" do
 
   describe "target-specific access control" do
     it "restricts access to specific clusters" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      endpoint_id = endpoint(0)
       acl_cluster = Matter::Cluster::AccessControl.new(endpoint_id)
 
       subject = 0x1111_u64
@@ -241,7 +241,7 @@ describe "Access Control Integration" do
     end
 
     it "restricts access to specific endpoints" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      endpoint_id = endpoint(0)
       acl_cluster = Matter::Cluster::AccessControl.new(endpoint_id)
 
       subject = 0x2222_u64
@@ -280,7 +280,7 @@ describe "Access Control Integration" do
     end
 
     it "allows multiple targets in single ACL entry" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      endpoint_id = endpoint(0)
       acl_cluster = Matter::Cluster::AccessControl.new(endpoint_id)
 
       subject = 0x3333_u64
@@ -348,7 +348,7 @@ describe "Access Control Integration" do
 
   describe "ACL attribute read/write via TLV" do
     it "allows admin to read and update ACL list" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      endpoint_id = endpoint(0)
       acl_cluster = Matter::Cluster::AccessControl.new(endpoint_id)
 
       fabric_index = 1_u8
@@ -416,7 +416,7 @@ describe "Access Control Integration" do
     end
 
     it "persists ACL across encode/decode cycles" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      endpoint_id = endpoint(0)
       cluster1 = Matter::Cluster::AccessControl.new(endpoint_id)
 
       # Create complex ACL with multiple entries and targets
@@ -489,7 +489,7 @@ describe "Access Control Integration" do
 
   describe "privilege hierarchy" do
     it "demonstrates privilege levels in practice" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
+      endpoint_id = endpoint(0)
       acl_cluster = Matter::Cluster::AccessControl.new(endpoint_id)
 
       fabric_index = 1_u8

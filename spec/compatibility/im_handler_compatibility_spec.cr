@@ -29,16 +29,13 @@ describe "IMHandler - matter.js Compatibility" do
       clusters = {} of Tuple(UInt16, UInt32) => Matter::Cluster::Base
 
       # GeneralCommissioning cluster (0x0030) on endpoint 0
-      general_commissioning = Matter::Cluster::GeneralCommissioning.new(
-        Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      general_commissioning = build(Matter::Cluster::GeneralCommissioning, 0)
       # Set data version to match matter.js (version: 3544487608 = 0xd34496b8)
       general_commissioning.data_version = 0xd34496b8_u32
       clusters[{0_u16, 0x0030_u32}] = general_commissioning
 
       # BasicInformation cluster (0x0028) on endpoint 0
-      basic_info = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      basic_info = build(Matter::Cluster::BasicInformation, 0,
         vendor_id: 65521_u16,  # 0xFFF1 - matches matter.js
         product_id: 32768_u16, # 0x8000 - matches matter.js
         vendor_name: "matter-node.js",
@@ -129,14 +126,11 @@ describe "IMHandler - matter.js Compatibility" do
       # Initialize clusters
       clusters = {} of Tuple(UInt16, UInt32) => Matter::Cluster::Base
 
-      general_commissioning = Matter::Cluster::GeneralCommissioning.new(
-        Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      general_commissioning = build(Matter::Cluster::GeneralCommissioning, 0)
       general_commissioning.data_version = 0xd34496b8_u32
       clusters[{0_u16, 0x0030_u32}] = general_commissioning
 
-      basic_info = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      basic_info = build(Matter::Cluster::BasicInformation, 0,
         vendor_id: 65521_u16,
         product_id: 32768_u16
       )
@@ -189,14 +183,11 @@ describe "IMHandler - matter.js Compatibility" do
       # Initialize clusters with matter.js values
       clusters = {} of Tuple(UInt16, UInt32) => Matter::Cluster::Base
 
-      general_commissioning = Matter::Cluster::GeneralCommissioning.new(
-        Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      general_commissioning = build(Matter::Cluster::GeneralCommissioning, 0)
       general_commissioning.data_version = 0xd34496b8_u32
       clusters[{0_u16, 0x0030_u32}] = general_commissioning
 
-      basic_info = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      basic_info = build(Matter::Cluster::BasicInformation, 0,
         vendor_id: 65521_u16,
         product_id: 32768_u16
       )

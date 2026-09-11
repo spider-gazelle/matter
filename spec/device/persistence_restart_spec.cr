@@ -49,7 +49,7 @@ class PersistenceRestartDevice < Matter::Device
   end
 
   protected def device_clusters : Array(Matter::Cluster::Base)
-    endpoint = Matter::DataType::EndpointNumber.new(LIGHT_ENDPOINT)
+    endpoint = endpoint(LIGHT_ENDPOINT)
     @switch = Matter::Cluster::OnOff.new(endpoint, feature_map: Matter::Cluster::OnOff::Feature::Lighting)
 
     # Identify and Groups are mandatory on an On/Off Light.

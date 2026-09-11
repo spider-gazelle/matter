@@ -27,7 +27,7 @@ ensure
 end
 
 private def on_off_cluster(endpoint : UInt16 = 1_u16) : Matter::Cluster::OnOff
-  Matter::Cluster::OnOff.new(Matter::DataType::EndpointNumber.new(endpoint))
+  build(Matter::Cluster::OnOff, endpoint)
 end
 
 private def build_fabric(fabric_index : UInt8) : Matter::Fabric
