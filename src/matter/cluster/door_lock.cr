@@ -366,8 +366,8 @@ module Matter
           Events::LockOperation.new(
             lock_operation_type: operation,
             operation_source: source,
-            fabric_index: fabric_index ? DataType::FabricIndex.new(fabric_index) : nil,
-            source_node: @request_peer_node_id.try { |node_id| DataType::NodeId.new(node_id) }
+            fabric_index: fabric_index,
+            source_node: @request_peer_node_id
           ),
           fabric_index
         )
@@ -581,8 +581,8 @@ module Matter
             user_type: user.user_type,
             credential_rule: user.credential_rule,
             credentials: user.credentials.empty? ? nil : user.credentials,
-            creator_fabric_index: fabric_index_from_u8(user.creator_fabric_index),
-            last_modified_fabric_index: fabric_index_from_u8(user.last_modified_fabric_index),
+            creator_fabric_index: user.creator_fabric_index,
+            last_modified_fabric_index: user.last_modified_fabric_index,
             next_user_index: next_user
           )
         else
@@ -713,8 +713,8 @@ module Matter
           GetCredentialStatusResponse.new(
             credential_exists: true,
             user_index: credential.user_index,
-            creator_fabric_index: fabric_index_from_u8(credential.creator_fabric_index),
-            last_modified_fabric_index: fabric_index_from_u8(credential.last_modified_fabric_index),
+            creator_fabric_index: credential.creator_fabric_index,
+            last_modified_fabric_index: credential.last_modified_fabric_index,
             next_credential_index: next_index
           )
         else
@@ -1079,11 +1079,6 @@ module Matter
       private def pin_from_slice(pin_slice : Slice(UInt8)?) : String?
         return unless pin_slice
         String.new(pin_slice)
-      end
-
-      private def fabric_index_from_u8(index : UInt8?) : DataType::FabricIndex?
-        return unless index
-        DataType::FabricIndex.new(index)
       end
     end
   end

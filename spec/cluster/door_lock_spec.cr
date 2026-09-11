@@ -255,4 +255,48 @@ describe Matter::Cluster::DoorLock do
       response.status_code.should eq(Def::StatusCode::InvalidField)
     end
   end
+
+  # A wired event callback is what production does (`Node` installs one), and
+  # what every other spec here leaves nil. Emission serializes the payload, so a
+  # field whose type TLV cannot encode turns a command into Failure only when a
+  # journal is attached -- which is how lock/unlock reached chip-tool broken
+  # while the unit suite stayed green.
+  describe "event emission through a wired callback" do
+    it "journals a LockOperation and still succeeds for a remote lock" do
+      cluster = build(Matter::Cluster::DoorLock, require_pin_for_remote_operation: true, default_pin_code: "2468")
+      emitted = [] of Tuple(UInt32, TLV::Any, UInt8?)
+      cluster.on_event_emitted = ->(_ep : UInt16, _cl : UInt32, event : UInt32, _pr : Matter::InteractionModel::EventPriority, data : TLV::Any, fabric : UInt8?) do
+        emitted << {event, data, fabric}
+        nil
+      end
+      cluster.request_fabric_index = 1_u8
+      cluster.request_peer_node_id = 0x1B669_u64
+
+      request = Def::LockDoorRequest.new(pin_code: "2468".to_slice)
+      expect_success(invoke(cluster, Matter::Cluster::DoorLock::CMD_LOCK_DOOR, request, fabric_index: 1_u8))
+
+      emitted.size.should eq(1)
+      event_id, payload, fabric = emitted.first
+      event_id.should eq(Matter::Cluster::DoorLock::EVENT_LOCK_OPERATION)
+      fabric.should eq(1_u8)
+
+      decoded = Def::Events::LockOperation.from_tlv(payload)
+      decoded.lock_operation_type.should eq(Def::LockOperationType::Lock)
+      decoded.fabric_index.should eq(1_u8)
+      decoded.source_node.should eq(0x1B669_u64)
+    end
+
+    it "journals a DoorStateChange" do
+      cluster = build(Matter::Cluster::DoorLock, feature_map: Matter::Cluster::DoorLock::Feature::DoorPositionSensor)
+      emitted = [] of UInt32
+      cluster.on_event_emitted = ->(_ep : UInt16, _cl : UInt32, event : UInt32, _pr : Matter::InteractionModel::EventPriority, _data : TLV::Any, _fabric : UInt8?) do
+        emitted << event
+        nil
+      end
+
+      cluster.update_door_state(Def::DoorState::DoorOpen)
+
+      emitted.should contain(Matter::Cluster::DoorLock::EVENT_DOOR_STATE_CHANGE)
+    end
+  end
 end

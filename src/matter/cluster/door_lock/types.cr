@@ -451,10 +451,10 @@ module Matter
         property credentials : Array(Credential)?
 
         @[TLV::Field(tag: 7)]
-        property creator_fabric_index : DataType::FabricIndex?
+        property creator_fabric_index : UInt8?
 
         @[TLV::Field(tag: 8)]
-        property last_modified_fabric_index : DataType::FabricIndex?
+        property last_modified_fabric_index : UInt8?
 
         @[TLV::Field(tag: 9)]
         property next_user_index : UInt16?
@@ -467,8 +467,8 @@ module Matter
           @user_type : UserType? = nil,
           @credential_rule : CredentialRule? = nil,
           @credentials : Array(Credential)? = nil,
-          @creator_fabric_index : DataType::FabricIndex? = nil,
-          @last_modified_fabric_index : DataType::FabricIndex? = nil,
+          @creator_fabric_index : UInt8? = nil,
+          @last_modified_fabric_index : UInt8? = nil,
           @next_user_index : UInt16? = nil,
         )
         end
@@ -559,10 +559,10 @@ module Matter
         property user_index : UInt16?
 
         @[TLV::Field(tag: 2)]
-        property creator_fabric_index : DataType::FabricIndex?
+        property creator_fabric_index : UInt8?
 
         @[TLV::Field(tag: 3)]
-        property last_modified_fabric_index : DataType::FabricIndex?
+        property last_modified_fabric_index : UInt8?
 
         @[TLV::Field(tag: 4)]
         property next_credential_index : UInt16?
@@ -570,8 +570,8 @@ module Matter
         def initialize(
           @credential_exists : Bool,
           @user_index : UInt16? = nil,
-          @creator_fabric_index : DataType::FabricIndex? = nil,
-          @last_modified_fabric_index : DataType::FabricIndex? = nil,
+          @creator_fabric_index : UInt8? = nil,
+          @last_modified_fabric_index : UInt8? = nil,
           @next_credential_index : UInt16? = nil,
         )
         end
@@ -879,12 +879,12 @@ module Matter
           # that can be determined for the given operation source. This shall NOT be null if the operation source is
           # "Remote".
           @[TLV::Field(tag: 3)]
-          property fabric_index : DataType::FabricIndex?
+          property fabric_index : UInt8?
 
           # The Node ID of the node that performed the lock operation. This shall be null if there is no Node associated
           # with the given operation source. This shall NOT be null if the operation source is "Remote".
           @[TLV::Field(tag: 4)]
-          property source_node : DataType::NodeId?
+          property source_node : UInt64?
 
           # The list of credentials used in performing the lock operation. This shall be null if no credentials were
           # involved.
@@ -895,8 +895,8 @@ module Matter
             @lock_operation_type : LockOperationType,
             @operation_source : OperationSource,
             @user_index : UInt16? = nil,
-            @fabric_index : DataType::FabricIndex? = nil,
-            @source_node : DataType::NodeId? = nil,
+            @fabric_index : UInt8? = nil,
+            @source_node : UInt64? = nil,
             @credentials : Array(Credential)? = nil,
           )
           end
@@ -927,12 +927,12 @@ module Matter
           # that can be determined for the given operation source. This shall NOT be null if the operation source is
           # "Remote".
           @[TLV::Field(tag: 4)]
-          property fabric_index : DataType::FabricIndex?
+          property fabric_index : UInt8?
 
           # The Node ID of the node that performed the lock operation. This shall be null if there is no Node associated
           # with the given operation source. This shall NOT be null if the operation source is "Remote".
           @[TLV::Field(tag: 5)]
-          property source_node : DataType::NodeId?
+          property source_node : UInt64?
 
           # The list of credentials used in performing the lock operation. This shall be null if no credentials were
           # involved.
@@ -976,13 +976,13 @@ module Matter
           # The fabric index of the fabric that performed the change (if any). This shall be null if there is no fabric
           # that can be determined to have caused the change. This shall NOT be null if the operation source is "Remote".
           @[TLV::Field(tag: 4)]
-          property fabric_index : DataType::FabricIndex?
+          property fabric_index : UInt8?
 
           # The Node ID that that performed the change (if any). The Node ID of the node that performed the change. This
           # shall be null if there was no Node involved in the change. This shall NOT be null if the operation source is
           # "Remote".
           @[TLV::Field(tag: 5)]
-          property source_node : DataType::NodeId?
+          property source_node : UInt64?
 
           # This is the index of the specific item that was changed (e.g. schedule, PIN, RFID, etc.) in the list of
           # items identified by LockDataType. This shall be null if the LockDataType does not correspond to a list that
