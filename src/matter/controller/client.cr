@@ -104,8 +104,9 @@ module Matter
         requires_ack : Bool = true,
         acknowledged_message_id : UInt32? = nil,
       ) : Nil
-        exchange = @transport.exchange_manager.get_exchange(exchange_id)
-        raise Matter::ProtocolError.new("unknown exchange_id=#{exchange_id}") unless exchange
+        unless @transport.exchange_manager.get_exchange(exchange_id)
+          raise Matter::ProtocolError.new("unknown exchange_id=#{exchange_id}")
+        end
 
         packet_header = Codec::MessageCodec::PacketHeader.new(
           session_id: 0_u16,
@@ -133,7 +134,7 @@ module Matter
           payload: payload.to_slice
         )
 
-        @transport.send_message(message, peer, exchange)
+        @transport.send_message(message, peer)
       end
 
       # Send an encrypted request on an existing secure session.

@@ -73,7 +73,7 @@ describe Matter::Transport::UDPTransport do
       # Message counter should start at 0
       initial_counter = transport.message_counter.counter
 
-      transport.send_message(message, peer_address, nil)
+      transport.send_message(message, peer_address)
 
       # Counter should have incremented
       transport.message_counter.counter.should eq(initial_counter + 1)
@@ -114,7 +114,7 @@ describe Matter::Transport::UDPTransport do
           payload: Bytes[i.to_u8]
         )
 
-        transport.send_message(message, peer_address, nil)
+        transport.send_message(message, peer_address)
       end
 
       transport.message_counter.counter.should eq(initial_counter + 3)
