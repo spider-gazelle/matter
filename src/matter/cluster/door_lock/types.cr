@@ -117,6 +117,7 @@ module Matter
         Unlock             = 1
         NonAccessUserEvent = 2
         ForcedUserEvent    = 3
+        Unlatch            = 4
       end
 
       # The OperationSource enumeration shall indicate the source of the Lock/Unlock operation performed.
@@ -889,6 +890,16 @@ module Matter
           # involved.
           @[TLV::Field(tag: 5)]
           property credentials : Array(Credential)?
+
+          def initialize(
+            @lock_operation_type : LockOperationType,
+            @operation_source : OperationSource,
+            @user_index : UInt16? = nil,
+            @fabric_index : DataType::FabricIndex? = nil,
+            @source_node : DataType::NodeId? = nil,
+            @credentials : Array(Credential)? = nil,
+          )
+          end
         end
 
         # Body of the DoorLock lockOperationError event
@@ -936,6 +947,9 @@ module Matter
           # The new door state for this door event.
           @[TLV::Field(tag: 0)]
           property door_state : DoorState
+
+          def initialize(@door_state : DoorState)
+          end
         end
 
         # Body of the DoorLock lockUserChange event

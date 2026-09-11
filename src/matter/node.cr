@@ -1,5 +1,6 @@
 require "./endpoint"
 require "./error"
+require "./event_journal"
 
 module Matter
   # The data model of one Matter node: its endpoints, and a flat
@@ -28,7 +29,16 @@ module Matter
     getter on_attribute_changed : Proc(UInt16, UInt32, UInt32, Nil)?
     getter on_version_changed : Proc(Cluster::Base, Nil)?
 
-    def initialize
+    # Called with the journaled record whenever any cluster on the node emits
+    # an event. The record is already in `event_journal` by then, so a reader
+    # that missed the callback still finds the event.
+    getter on_event_emitted : Proc(EventJournal::Record, Nil)?
+
+    # The node's event store. Event numbers are node wide, so every cluster
+    # shares this one journal.
+    getter event_journal : EventJournal
+
+    def initialize(@event_journal : EventJournal = EventJournal.new)
       @endpoints = {} of UInt16 => Endpoint
       @clusters = {} of Tuple(UInt16, UInt32) => Cluster::Base
     end
@@ -84,6 +94,7 @@ module Matter
         @clusters.delete({endpoint_id, cluster_id})
         cluster.on_attribute_changed = nil
         cluster.on_version_changed = nil
+        cluster.on_event_emitted = nil
       end
 
       endpoint
@@ -146,6 +157,15 @@ module Matter
       callback
     end
 
+    # Called with the journaled record whenever any cluster on the node emits
+    # an event. Applied to every cluster present now and to every cluster added
+    # later, exactly as `on_attribute_changed` is.
+    def on_event_emitted=(callback : Proc(EventJournal::Record, Nil)?)
+      @on_event_emitted = callback
+      each_cluster(&.on_event_emitted=(event_callback))
+      callback
+    end
+
     # Called with the cluster whenever any cluster on the node bumps its data
     # version. Applied to every cluster present now and to every cluster added
     # later.
@@ -183,7 +203,26 @@ module Matter
 
     private def apply_callbacks(cluster : Cluster::Base) : Nil
       cluster.on_attribute_changed = @on_attribute_changed
+      cluster.on_event_emitted = event_callback
       apply_version_callback(cluster)
+    end
+
+    # Journals every emitted event, then hands the record to the observer.
+    # Wired unconditionally: the journal must see an event even when nothing
+    # is subscribed yet.
+    private def event_callback : Cluster::EventEmittedCallback
+      ->(endpoint_id : UInt16, cluster_id : UInt32, event_id : UInt32, priority : InteractionModel::EventPriority, data : TLV::Any, fabric_index : UInt8?) do
+        record = @event_journal.record(
+          endpoint: endpoint_id,
+          cluster: cluster_id,
+          event: event_id,
+          priority: priority,
+          data: data,
+          fabric_index: fabric_index
+        )
+        @on_event_emitted.try(&.call(record))
+        nil
+      end
     end
 
     private def apply_version_callback(cluster : Cluster::Base) : Nil

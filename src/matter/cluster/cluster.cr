@@ -88,14 +88,21 @@ module Matter
       property id : DataType::EventId
       property name : String
       property priority : InteractionModel::EventPriority
+      # Privilege required to read the event
+      property access : InteractionModel::EntryPrivilege
 
       def initialize(
         @id : DataType::EventId,
         @name : String,
         @priority : InteractionModel::EventPriority = InteractionModel::EventPriority::Info,
+        @access : InteractionModel::EntryPrivilege = InteractionModel::EntryPrivilege::View,
       )
       end
     end
+
+    # Called with `(endpoint, cluster, event, priority, data, fabric_index)`
+    # whenever a cluster emits one of its declared events.
+    alias EventEmittedCallback = Proc(UInt16, UInt32, UInt32, InteractionModel::EventPriority, TLV::Any, UInt8?, Nil)
 
     # Base class for all cluster implementations. Concrete clusters declare
     # their elements with the `DSL` macros (see `dsl.cr`).
@@ -120,6 +127,10 @@ module Matter
       # Called from `increment_version` after every data version bump; the
       # persistence layer uses it to mark this cluster dirty.
       property on_version_changed : Proc(Nil)?
+
+      # Callback for emitted events (wired by `Node` exactly as
+      # `on_attribute_changed` is; the node journals what arrives here).
+      property on_event_emitted : EventEmittedCallback?
 
       # Separates the endpoint and cluster id in `persistence_key`.
       PERSISTENCE_KEY_SEPARATOR = "-"
@@ -461,6 +472,45 @@ module Matter
       # Get command metadata by ID
       def get_command_metadata(command_id : UInt32) : CommandMetadata?
         commands.find { |cmd| cmd.id.id == command_id }
+      end
+
+      # Get event metadata by ID
+      def get_event_metadata(event_id : UInt32) : EventMetadata?
+        events.find { |event| event.id.id == event_id }
+      end
+
+      # Emits one of this cluster's declared events.
+      #
+      # The priority comes from the declaration, so a cluster cannot report the
+      # same event at two priorities. Emitting an event the cluster does not
+      # declare - or one gated off by its feature map - is a configuration bug
+      # and raises rather than silently dropping the event.
+      #
+      # *fabric_index* marks the event as fabric scoped: only readers on that
+      # fabric will see it. Leave it `nil` for a node-scoped event.
+      def emit_event(event_id : UInt32, data : TLV::Any, fabric_index : UInt8? = nil) : Nil
+        metadata = get_event_metadata(event_id)
+        unless metadata
+          raise ConfigurationError.new(
+            "#{self.class.name} does not declare event 0x#{event_id.to_s(16)} (endpoint #{@endpoint_id.number})"
+          )
+        end
+
+        @on_event_emitted.try(&.call(
+          @endpoint_id.number,
+          @cluster_id.id,
+          event_id,
+          metadata.priority,
+          data,
+          fabric_index
+        ))
+      end
+
+      # :ditto:
+      #
+      # Encodes a `TLV::Serializable` payload struct first.
+      def emit_event(event_id : UInt32, payload : TLV::Serializable, fabric_index : UInt8? = nil) : Nil
+        emit_event(event_id, payload.to_tlv(nil), fabric_index)
       end
 
       # The id of this cluster's document in the `clusters` collection:
