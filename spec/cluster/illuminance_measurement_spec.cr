@@ -1,11 +1,9 @@
 require "../spec_helper"
 
 describe Matter::Cluster::IlluminanceMeasurement do
-  endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-
   describe "initialization" do
     it "creates with default values" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::IlluminanceMeasurement)
       cluster.measured_value.should be_nil
       cluster.min_measured_value.should be_nil
       cluster.max_measured_value.should be_nil
@@ -14,8 +12,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
     end
 
     it "creates with custom values" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: 5000_u16,
         min_measured_value: 1_u16,
         max_measured_value: 10000_u16,
@@ -31,8 +28,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
 
     it "validates min_measured_value minimum (must be >= 1)" do
       expect_raises(ArgumentError, /min_measured_value must be between 1 and 65533/) do
-        Matter::Cluster::IlluminanceMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::IlluminanceMeasurement,
           min_measured_value: 0_u16
         )
       end
@@ -40,8 +36,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
 
     it "validates min_measured_value maximum (must be <= 65533)" do
       expect_raises(ArgumentError, /min_measured_value must be between 1 and 65533/) do
-        Matter::Cluster::IlluminanceMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::IlluminanceMeasurement,
           min_measured_value: 65534_u16
         )
       end
@@ -49,8 +44,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
 
     it "validates max_measured_value maximum" do
       expect_raises(ArgumentError, /max_measured_value must be <= 65534/) do
-        Matter::Cluster::IlluminanceMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::IlluminanceMeasurement,
           max_measured_value: 65535_u16
         )
       end
@@ -58,8 +52,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
 
     it "validates min/max relationship" do
       expect_raises(ArgumentError, /min_measured_value must be <= max_measured_value/) do
-        Matter::Cluster::IlluminanceMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::IlluminanceMeasurement,
           min_measured_value: 10000_u16,
           max_measured_value: 5000_u16
         )
@@ -68,8 +61,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
 
     it "validates measured value is within range" do
       expect_raises(ArgumentError, /measured_value must be <= max_measured_value/) do
-        Matter::Cluster::IlluminanceMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::IlluminanceMeasurement,
           measured_value: 15000_u16,
           min_measured_value: 1_u16,
           max_measured_value: 10000_u16
@@ -78,8 +70,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
     end
 
     it "allows measured_value of 0 (too low to measure)" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: 0_u16,
         min_measured_value: 1_u16,
         max_measured_value: 10000_u16
@@ -89,8 +80,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
 
     it "validates tolerance maximum" do
       expect_raises(ArgumentError, /tolerance must be <= 2048/) do
-        Matter::Cluster::IlluminanceMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::IlluminanceMeasurement,
           tolerance: 2049_u16
         )
       end
@@ -99,7 +89,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
 
   describe "attributes" do
     it "has required attributes" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(endpoint_id, tolerance: 0_u16, light_sensor_type: Matter::Cluster::IlluminanceMeasurement::LightSensorType::Photodiode)
+      cluster = build(Matter::Cluster::IlluminanceMeasurement, tolerance: 0_u16, light_sensor_type: Matter::Cluster::IlluminanceMeasurement::LightSensorType::Photodiode)
       attrs = cluster.attributes
       attrs.size.should eq(5)
       attrs.map(&.name).should contain("measuredValue")
@@ -110,83 +100,76 @@ describe Matter::Cluster::IlluminanceMeasurement do
     end
 
     it "reads MeasuredValue when set" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: 5000_u16
       )
       read(cluster, Matter::Cluster::IlluminanceMeasurement::ATTR_MEASURED_VALUE).should eq(5000)
     end
 
     it "reads MeasuredValue as null when not set" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::IlluminanceMeasurement)
       read(cluster, Matter::Cluster::IlluminanceMeasurement::ATTR_MEASURED_VALUE).should be_nil
     end
 
     it "reads MeasuredValue as 0 (too low to measure)" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: 0_u16
       )
       read(cluster, Matter::Cluster::IlluminanceMeasurement::ATTR_MEASURED_VALUE).should eq(0)
     end
 
     it "reads MinMeasuredValue when set" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         min_measured_value: 1_u16
       )
       read(cluster, Matter::Cluster::IlluminanceMeasurement::ATTR_MIN_MEASURED_VALUE).should eq(1)
     end
 
     it "reads MinMeasuredValue as null when not set" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::IlluminanceMeasurement)
       read(cluster, Matter::Cluster::IlluminanceMeasurement::ATTR_MIN_MEASURED_VALUE).should be_nil
     end
 
     it "reads MaxMeasuredValue when set" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         max_measured_value: 10000_u16
       )
       read(cluster, Matter::Cluster::IlluminanceMeasurement::ATTR_MAX_MEASURED_VALUE).should eq(10000)
     end
 
     it "reads MaxMeasuredValue as null when not set" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::IlluminanceMeasurement)
       read(cluster, Matter::Cluster::IlluminanceMeasurement::ATTR_MAX_MEASURED_VALUE).should be_nil
     end
 
     it "reads Tolerance when set" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         tolerance: 100_u16
       )
       read(cluster, Matter::Cluster::IlluminanceMeasurement::ATTR_TOLERANCE).should eq(100)
     end
 
     it "returns unsupported for Tolerance when not set" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::IlluminanceMeasurement)
       read_status(cluster, Matter::Cluster::IlluminanceMeasurement::ATTR_TOLERANCE).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
 
     it "reads LightSensorType when set" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         light_sensor_type: Matter::Cluster::IlluminanceMeasurement::LightSensorType::CMOS
       )
       read(cluster, Matter::Cluster::IlluminanceMeasurement::ATTR_LIGHT_SENSOR_TYPE).should eq(1_u8) # CMOS = 1
     end
 
     it "returns unsupported for LightSensorType when not set" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::IlluminanceMeasurement)
       read_status(cluster, Matter::Cluster::IlluminanceMeasurement::ATTR_LIGHT_SENSOR_TYPE).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 
   describe "update_illuminance" do
     it "updates illuminance value" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: 5000_u16,
         min_measured_value: 1_u16,
         max_measured_value: 10000_u16
@@ -196,8 +179,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
     end
 
     it "accepts nil for unknown illuminance" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: 5000_u16
       )
       cluster.update_illuminance(nil)
@@ -205,8 +187,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
     end
 
     it "accepts 0 for too low to measure" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: 5000_u16,
         min_measured_value: 1_u16,
         max_measured_value: 10000_u16
@@ -216,8 +197,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
     end
 
     it "rejects illuminance below minimum" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: 5000_u16,
         min_measured_value: 1000_u16,
         max_measured_value: 10000_u16
@@ -228,8 +208,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
     end
 
     it "rejects illuminance above maximum" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: 5000_u16,
         min_measured_value: 1_u16,
         max_measured_value: 10000_u16
@@ -240,8 +219,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
     end
 
     it "calls callback when illuminance changes" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: 5000_u16
       )
 
@@ -258,8 +236,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
     end
 
     it "doesn't call callback when illuminance doesn't change" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: 5000_u16
       )
 
@@ -273,8 +250,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
     end
 
     it "increments data version only on changes" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: 5000_u16
       )
 
@@ -287,8 +263,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
     end
 
     it "notifies attribute subscribers when illuminance changes" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: 5000_u16
       )
 
@@ -313,8 +288,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
     end
 
     it "does not notify attribute subscribers when illuminance is unchanged" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: 5000_u16
       )
 
@@ -377,14 +351,12 @@ describe Matter::Cluster::IlluminanceMeasurement do
     it "models a room light sensor" do
       # Typical indoor lighting: 100-500 lux
       # Range: very dim (1 lx) to bright (1000 lx)
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
 
       # Convert range to measured values
       min_val = Matter::Cluster::IlluminanceMeasurement.from_lux(1.0)    # 1 lux
       max_val = Matter::Cluster::IlluminanceMeasurement.from_lux(1000.0) # 1000 lux
 
-      sensor = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::IlluminanceMeasurement,
         measured_value: Matter::Cluster::IlluminanceMeasurement.from_lux(300.0), # 300 lux - typical
         min_measured_value: min_val,
         max_measured_value: max_val,
@@ -413,10 +385,8 @@ describe Matter::Cluster::IlluminanceMeasurement do
       # Overcast day: 1,000 lux
       # Full daylight: 10,000 - 25,000 lux
       # Direct sunlight: 32,000 - 100,000 lux
-      endpoint_id = Matter::DataType::EndpointNumber.new(2_u16)
 
-      sensor = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::IlluminanceMeasurement, 2,
         measured_value: Matter::Cluster::IlluminanceMeasurement.from_lux(10000.0), # Bright day
         min_measured_value: Matter::Cluster::IlluminanceMeasurement.from_lux(100.0),
         max_measured_value: Matter::Cluster::IlluminanceMeasurement.from_lux(100000.0),
@@ -439,10 +409,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
     end
 
     it "handles very low light (too low to measure)" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(3_u16)
-
-      sensor = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::IlluminanceMeasurement, 3,
         measured_value: Matter::Cluster::IlluminanceMeasurement.from_lux(10.0),
         min_measured_value: 1_u16,
         max_measured_value: 20000_u16
@@ -458,10 +425,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
     end
 
     it "handles sensor failure (unknown illuminance)" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(4_u16)
-
-      sensor = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::IlluminanceMeasurement, 4,
         measured_value: Matter::Cluster::IlluminanceMeasurement.from_lux(500.0)
       )
 
@@ -477,15 +441,13 @@ describe Matter::Cluster::IlluminanceMeasurement do
 
     it "works with different sensor types" do
       # Photodiode sensor
-      photodiode = Matter::Cluster::IlluminanceMeasurement.new(
-        Matter::DataType::EndpointNumber.new(5_u16),
+      photodiode = build(Matter::Cluster::IlluminanceMeasurement, 5,
         light_sensor_type: Matter::Cluster::IlluminanceMeasurement::LightSensorType::Photodiode
       )
       photodiode.light_sensor_type.should eq(Matter::Cluster::IlluminanceMeasurement::LightSensorType::Photodiode)
 
       # CMOS sensor
-      cmos = Matter::Cluster::IlluminanceMeasurement.new(
-        Matter::DataType::EndpointNumber.new(6_u16),
+      cmos = build(Matter::Cluster::IlluminanceMeasurement, 6,
         light_sensor_type: Matter::Cluster::IlluminanceMeasurement::LightSensorType::CMOS
       )
       cmos.light_sensor_type.should eq(Matter::Cluster::IlluminanceMeasurement::LightSensorType::CMOS)
@@ -494,7 +456,7 @@ describe Matter::Cluster::IlluminanceMeasurement do
 
   describe "error handling" do
     it "returns error for unsupported attributes" do
-      cluster = Matter::Cluster::IlluminanceMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::IlluminanceMeasurement)
       read_status(cluster, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end

@@ -4,7 +4,7 @@ require "../../src/matter/cluster/basic_information"
 
 describe Matter::Cluster::BasicInformation do
   it "persists writable attributes (node_label/location/local_config_disabled)" do
-    ep0 = Matter::DataType::EndpointNumber.new(0_u16)
+    ep0 = endpoint(0)
     cluster = Matter::Cluster::BasicInformation.new(
       endpoint_id: ep0,
       vendor_name: "Vendor",

@@ -1,11 +1,9 @@
 require "../spec_helper"
 
 describe Matter::Cluster::TimeFormatLocalization do
-  endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-
   describe "initialization" do
     it "creates with default values (24-hour format)" do
-      cluster = Matter::Cluster::TimeFormatLocalization.new(endpoint_id)
+      cluster = build(Matter::Cluster::TimeFormatLocalization)
       cluster.hour_format.should eq(Matter::Cluster::TimeFormatLocalization::HourFormat::Hr24)
       cluster.active_calendar_type.should be_nil
       cluster.supported_calendar_types.should be_nil
@@ -13,16 +11,14 @@ describe Matter::Cluster::TimeFormatLocalization do
     end
 
     it "creates with 12-hour format" do
-      cluster = Matter::Cluster::TimeFormatLocalization.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TimeFormatLocalization,
         hour_format: Matter::Cluster::TimeFormatLocalization::HourFormat::Hr12
       )
       cluster.hour_format.should eq(Matter::Cluster::TimeFormatLocalization::HourFormat::Hr12)
     end
 
     it "creates with calendar format feature" do
-      cluster = Matter::Cluster::TimeFormatLocalization.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TimeFormatLocalization,
         feature_map: Matter::Cluster::TimeFormatLocalization::Feature::CalendarFormat,
         active_calendar_type: Matter::Cluster::TimeFormatLocalization::CalendarType::Gregorian,
         supported_calendar_types: [
@@ -40,8 +36,7 @@ describe Matter::Cluster::TimeFormatLocalization do
 
     it "validates active calendar type is in supported list" do
       expect_raises(ArgumentError, /active_calendar_type must be in supported_calendar_types/) do
-        Matter::Cluster::TimeFormatLocalization.new(
-          endpoint_id,
+        build(Matter::Cluster::TimeFormatLocalization,
           feature_map: Matter::Cluster::TimeFormatLocalization::Feature::CalendarFormat,
           active_calendar_type: Matter::Cluster::TimeFormatLocalization::CalendarType::Gregorian,
           supported_calendar_types: [
@@ -54,8 +49,7 @@ describe Matter::Cluster::TimeFormatLocalization do
 
     it "validates no duplicates in supported calendar types" do
       expect_raises(ArgumentError, /supported_calendar_types must not contain duplicates/) do
-        Matter::Cluster::TimeFormatLocalization.new(
-          endpoint_id,
+        build(Matter::Cluster::TimeFormatLocalization,
           feature_map: Matter::Cluster::TimeFormatLocalization::Feature::CalendarFormat,
           supported_calendar_types: [
             Matter::Cluster::TimeFormatLocalization::CalendarType::Gregorian,
@@ -68,15 +62,14 @@ describe Matter::Cluster::TimeFormatLocalization do
 
   describe "attributes" do
     it "has required base attributes" do
-      cluster = Matter::Cluster::TimeFormatLocalization.new(endpoint_id)
+      cluster = build(Matter::Cluster::TimeFormatLocalization)
       attrs = cluster.attributes
       attrs.size.should eq(1)
       attrs.map(&.name).should contain("hourFormat")
     end
 
     it "has calendar format attributes when feature enabled" do
-      cluster = Matter::Cluster::TimeFormatLocalization.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TimeFormatLocalization,
         feature_map: Matter::Cluster::TimeFormatLocalization::Feature::CalendarFormat,
         active_calendar_type: Matter::Cluster::TimeFormatLocalization::CalendarType::Gregorian,
         supported_calendar_types: [
@@ -91,16 +84,14 @@ describe Matter::Cluster::TimeFormatLocalization do
     end
 
     it "reads HourFormat" do
-      cluster = Matter::Cluster::TimeFormatLocalization.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TimeFormatLocalization,
         hour_format: Matter::Cluster::TimeFormatLocalization::HourFormat::Hr12
       )
       read(cluster, Matter::Cluster::TimeFormatLocalization::ATTR_HOUR_FORMAT).should eq(0_u8) # Hr12 = 0
     end
 
     it "reads ActiveCalendarType when set" do
-      cluster = Matter::Cluster::TimeFormatLocalization.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TimeFormatLocalization,
         feature_map: Matter::Cluster::TimeFormatLocalization::Feature::CalendarFormat,
         active_calendar_type: Matter::Cluster::TimeFormatLocalization::CalendarType::Coptic,
         supported_calendar_types: [
@@ -111,13 +102,12 @@ describe Matter::Cluster::TimeFormatLocalization do
     end
 
     it "returns unsupported for ActiveCalendarType when not set" do
-      cluster = Matter::Cluster::TimeFormatLocalization.new(endpoint_id)
+      cluster = build(Matter::Cluster::TimeFormatLocalization)
       read_status(cluster, Matter::Cluster::TimeFormatLocalization::ATTR_ACTIVE_CALENDAR_TYPE).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
 
     it "reads SupportedCalendarTypes when set" do
-      cluster = Matter::Cluster::TimeFormatLocalization.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TimeFormatLocalization,
         feature_map: Matter::Cluster::TimeFormatLocalization::Feature::CalendarFormat,
         active_calendar_type: Matter::Cluster::TimeFormatLocalization::CalendarType::Buddhist,
         supported_calendar_types: [
@@ -131,15 +121,14 @@ describe Matter::Cluster::TimeFormatLocalization do
     end
 
     it "marks HourFormat as writable" do
-      cluster = Matter::Cluster::TimeFormatLocalization.new(endpoint_id)
+      cluster = build(Matter::Cluster::TimeFormatLocalization)
       attr = cluster.attributes.find { |attribute| attribute.name == "hourFormat" }
       attr.should_not be_nil
       attr.as(Matter::Cluster::AttributeMetadata).writable?.should be_true
     end
 
     it "marks ActiveCalendarType as writable" do
-      cluster = Matter::Cluster::TimeFormatLocalization.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TimeFormatLocalization,
         feature_map: Matter::Cluster::TimeFormatLocalization::Feature::CalendarFormat,
         active_calendar_type: Matter::Cluster::TimeFormatLocalization::CalendarType::Gregorian,
         supported_calendar_types: [
@@ -155,8 +144,7 @@ describe Matter::Cluster::TimeFormatLocalization do
   describe "write_attribute" do
     describe "HourFormat" do
       it "writes valid hour format" do
-        cluster = Matter::Cluster::TimeFormatLocalization.new(
-          endpoint_id,
+        cluster = build(Matter::Cluster::TimeFormatLocalization,
           hour_format: Matter::Cluster::TimeFormatLocalization::HourFormat::Hr24
         )
 
@@ -170,7 +158,7 @@ describe Matter::Cluster::TimeFormatLocalization do
       end
 
       it "writes UseActiveLocale hour format" do
-        cluster = Matter::Cluster::TimeFormatLocalization.new(endpoint_id)
+        cluster = build(Matter::Cluster::TimeFormatLocalization)
 
         status = write(cluster,
           Matter::Cluster::TimeFormatLocalization::ATTR_HOUR_FORMAT,
@@ -181,7 +169,7 @@ describe Matter::Cluster::TimeFormatLocalization do
       end
 
       it "rejects invalid hour format value" do
-        cluster = Matter::Cluster::TimeFormatLocalization.new(endpoint_id)
+        cluster = build(Matter::Cluster::TimeFormatLocalization)
 
         status = write(cluster,
           Matter::Cluster::TimeFormatLocalization::ATTR_HOUR_FORMAT,
@@ -192,8 +180,7 @@ describe Matter::Cluster::TimeFormatLocalization do
       end
 
       it "calls callback when hour format changes" do
-        cluster = Matter::Cluster::TimeFormatLocalization.new(
-          endpoint_id,
+        cluster = build(Matter::Cluster::TimeFormatLocalization,
           hour_format: Matter::Cluster::TimeFormatLocalization::HourFormat::Hr24
         )
 
@@ -215,8 +202,7 @@ describe Matter::Cluster::TimeFormatLocalization do
 
     describe "ActiveCalendarType" do
       it "writes valid calendar type (from matter.js test)" do
-        cluster = Matter::Cluster::TimeFormatLocalization.new(
-          endpoint_id,
+        cluster = build(Matter::Cluster::TimeFormatLocalization,
           feature_map: Matter::Cluster::TimeFormatLocalization::Feature::CalendarFormat,
           hour_format: Matter::Cluster::TimeFormatLocalization::HourFormat::Hr24,
           active_calendar_type: Matter::Cluster::TimeFormatLocalization::CalendarType::Coptic,
@@ -236,8 +222,7 @@ describe Matter::Cluster::TimeFormatLocalization do
       end
 
       it "rejects invalid calendar type (from matter.js test)" do
-        cluster = Matter::Cluster::TimeFormatLocalization.new(
-          endpoint_id,
+        cluster = build(Matter::Cluster::TimeFormatLocalization,
           feature_map: Matter::Cluster::TimeFormatLocalization::Feature::CalendarFormat,
           hour_format: Matter::Cluster::TimeFormatLocalization::HourFormat::Hr24,
           active_calendar_type: Matter::Cluster::TimeFormatLocalization::CalendarType::Coptic,
@@ -260,7 +245,7 @@ describe Matter::Cluster::TimeFormatLocalization do
       end
 
       it "rejects calendar type when feature not enabled" do
-        cluster = Matter::Cluster::TimeFormatLocalization.new(endpoint_id)
+        cluster = build(Matter::Cluster::TimeFormatLocalization)
 
         status = write(cluster,
           Matter::Cluster::TimeFormatLocalization::ATTR_ACTIVE_CALENDAR_TYPE,
@@ -271,8 +256,7 @@ describe Matter::Cluster::TimeFormatLocalization do
       end
 
       it "calls callback when calendar type changes" do
-        cluster = Matter::Cluster::TimeFormatLocalization.new(
-          endpoint_id,
+        cluster = build(Matter::Cluster::TimeFormatLocalization,
           feature_map: Matter::Cluster::TimeFormatLocalization::Feature::CalendarFormat,
           active_calendar_type: Matter::Cluster::TimeFormatLocalization::CalendarType::Buddhist,
           supported_calendar_types: [
@@ -298,8 +282,7 @@ describe Matter::Cluster::TimeFormatLocalization do
     end
 
     it "returns error for read-only attributes" do
-      cluster = Matter::Cluster::TimeFormatLocalization.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TimeFormatLocalization,
         feature_map: Matter::Cluster::TimeFormatLocalization::Feature::CalendarFormat,
         active_calendar_type: Matter::Cluster::TimeFormatLocalization::CalendarType::Gregorian,
         supported_calendar_types: [
@@ -315,7 +298,7 @@ describe Matter::Cluster::TimeFormatLocalization do
     end
 
     it "returns error for unsupported attributes" do
-      cluster = Matter::Cluster::TimeFormatLocalization.new(endpoint_id)
+      cluster = build(Matter::Cluster::TimeFormatLocalization)
       status = write(cluster, 0x9999_u32, 1_u8)
       status.should be_a(Matter::InteractionModel::Status)
       status.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
@@ -324,8 +307,7 @@ describe Matter::Cluster::TimeFormatLocalization do
 
   describe "practical scenarios" do
     it "models a US device with 12-hour format and Gregorian calendar" do
-      device = Matter::Cluster::TimeFormatLocalization.new(
-        endpoint_id,
+      device = build(Matter::Cluster::TimeFormatLocalization,
         feature_map: Matter::Cluster::TimeFormatLocalization::Feature::CalendarFormat,
         hour_format: Matter::Cluster::TimeFormatLocalization::HourFormat::Hr12,
         active_calendar_type: Matter::Cluster::TimeFormatLocalization::CalendarType::Gregorian,
@@ -339,8 +321,7 @@ describe Matter::Cluster::TimeFormatLocalization do
     end
 
     it "models a European device with 24-hour format" do
-      device = Matter::Cluster::TimeFormatLocalization.new(
-        endpoint_id,
+      device = build(Matter::Cluster::TimeFormatLocalization,
         feature_map: Matter::Cluster::TimeFormatLocalization::Feature::CalendarFormat,
         hour_format: Matter::Cluster::TimeFormatLocalization::HourFormat::Hr24,
         active_calendar_type: Matter::Cluster::TimeFormatLocalization::CalendarType::Gregorian,
@@ -353,8 +334,7 @@ describe Matter::Cluster::TimeFormatLocalization do
     end
 
     it "models a multi-cultural device supporting multiple calendars" do
-      device = Matter::Cluster::TimeFormatLocalization.new(
-        endpoint_id,
+      device = build(Matter::Cluster::TimeFormatLocalization,
         feature_map: Matter::Cluster::TimeFormatLocalization::Feature::CalendarFormat,
         hour_format: Matter::Cluster::TimeFormatLocalization::HourFormat::Hr24,
         active_calendar_type: Matter::Cluster::TimeFormatLocalization::CalendarType::Gregorian,
@@ -387,8 +367,7 @@ describe Matter::Cluster::TimeFormatLocalization do
     end
 
     it "models user changing hour format preference" do
-      device = Matter::Cluster::TimeFormatLocalization.new(
-        endpoint_id,
+      device = build(Matter::Cluster::TimeFormatLocalization,
         hour_format: Matter::Cluster::TimeFormatLocalization::HourFormat::Hr12
       )
 
@@ -416,8 +395,7 @@ describe Matter::Cluster::TimeFormatLocalization do
     end
 
     it "models a simple device without calendar format feature" do
-      device = Matter::Cluster::TimeFormatLocalization.new(
-        endpoint_id,
+      device = build(Matter::Cluster::TimeFormatLocalization,
         hour_format: Matter::Cluster::TimeFormatLocalization::HourFormat::Hr24
       )
 
@@ -435,7 +413,7 @@ describe Matter::Cluster::TimeFormatLocalization do
 
   describe "error handling" do
     it "returns error for unsupported attribute reads" do
-      cluster = Matter::Cluster::TimeFormatLocalization.new(endpoint_id)
+      cluster = build(Matter::Cluster::TimeFormatLocalization)
       read_status(cluster, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end

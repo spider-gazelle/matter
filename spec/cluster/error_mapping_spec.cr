@@ -55,7 +55,7 @@ private class RaisingCluster < Matter::Cluster::Base
 end
 
 private def build_raising_cluster(failure : Exception?) : RaisingCluster
-  cluster = RaisingCluster.new(Matter::DataType::EndpointNumber.new(1_u16))
+  cluster = build(RaisingCluster)
   cluster.failure = failure
   cluster
 end

@@ -10,8 +10,7 @@ require "../../src/matter/cluster/level_control"
 describe Matter::Cluster::LevelControl do
   describe "initialization" do
     it "creates level control cluster" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id)
+      cluster = build(Matter::Cluster::LevelControl)
 
       cluster.cluster_id.id.should eq(0x0008_u32)
       cluster.name.should eq("LevelControl")
@@ -21,9 +20,7 @@ describe Matter::Cluster::LevelControl do
     end
 
     it "initializes with custom values" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::LevelControl,
         current_level: 127_u8,
         min_level: 10_u8,
         max_level: 200_u8
@@ -37,8 +34,7 @@ describe Matter::Cluster::LevelControl do
 
   describe "attributes" do
     it "has required attributes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id)
+      cluster = build(Matter::Cluster::LevelControl)
 
       attributes = cluster.attributes
       attributes.should_not be_empty
@@ -58,29 +54,25 @@ describe Matter::Cluster::LevelControl do
     end
 
     it "reads CurrentLevel attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 100_u8)
+      cluster = build(Matter::Cluster::LevelControl, current_level: 100_u8)
 
       read(cluster, Matter::Cluster::LevelControl::ATTR_CURRENT_LEVEL).should eq(100_u8)
     end
 
     it "reads MinLevel attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id, min_level: 5_u8)
+      cluster = build(Matter::Cluster::LevelControl, min_level: 5_u8)
 
       read(cluster, Matter::Cluster::LevelControl::ATTR_MIN_LEVEL).should eq(5_u8)
     end
 
     it "reads MaxLevel attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id, max_level: 200_u8)
+      cluster = build(Matter::Cluster::LevelControl, max_level: 200_u8)
 
       read(cluster, Matter::Cluster::LevelControl::ATTR_MAX_LEVEL).should eq(200_u8)
     end
 
     it "reads RemainingTime attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id)
+      cluster = build(Matter::Cluster::LevelControl)
 
       read(cluster, Matter::Cluster::LevelControl::ATTR_REMAINING_TIME).should eq(0_u16)
     end
@@ -88,8 +80,7 @@ describe Matter::Cluster::LevelControl do
 
   describe "commands" do
     it "has required commands" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id)
+      cluster = build(Matter::Cluster::LevelControl)
 
       commands = cluster.commands
       commands.size.should be >= 4
@@ -109,8 +100,7 @@ describe Matter::Cluster::LevelControl do
     end
 
     it "executes MoveToLevel command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 0_u8)
+      cluster = build(Matter::Cluster::LevelControl, current_level: 0_u8)
 
       cluster.current_level.should eq(0_u8)
 
@@ -131,8 +121,7 @@ describe Matter::Cluster::LevelControl do
     end
 
     it "executes Move command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 100_u8)
+      cluster = build(Matter::Cluster::LevelControl, current_level: 100_u8)
 
       request = Matter::Cluster::LevelControl::MoveRequest.new(
         move_mode: Matter::Cluster::LevelControl::MoveMode::Up,
@@ -150,8 +139,7 @@ describe Matter::Cluster::LevelControl do
     end
 
     it "executes Step command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 100_u8)
+      cluster = build(Matter::Cluster::LevelControl, current_level: 100_u8)
 
       request = Matter::Cluster::LevelControl::StepRequest.new(
         step_mode: Matter::Cluster::LevelControl::StepMode::Up,
@@ -171,8 +159,7 @@ describe Matter::Cluster::LevelControl do
     end
 
     it "executes Stop command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id)
+      cluster = build(Matter::Cluster::LevelControl)
 
       request = Matter::Cluster::LevelControl::StopRequest.new(
         mask: 0_u8,
@@ -204,9 +191,7 @@ describe Matter::Cluster::LevelControl do
 
   describe "level boundaries" do
     it "clamps level to min boundary" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::LevelControl,
         current_level: 100_u8,
         min_level: 50_u8
       )
@@ -227,9 +212,7 @@ describe Matter::Cluster::LevelControl do
     end
 
     it "clamps level to max boundary" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::LevelControl,
         current_level: 100_u8,
         max_level: 200_u8
       )
@@ -252,8 +235,7 @@ describe Matter::Cluster::LevelControl do
 
   describe "step command boundaries" do
     it "steps up within range" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 100_u8)
+      cluster = build(Matter::Cluster::LevelControl, current_level: 100_u8)
 
       invoke(cluster,
         Matter::Cluster::LevelControl::CMD_STEP,
@@ -270,8 +252,7 @@ describe Matter::Cluster::LevelControl do
     end
 
     it "steps down within range" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 100_u8)
+      cluster = build(Matter::Cluster::LevelControl, current_level: 100_u8)
 
       invoke(cluster,
         Matter::Cluster::LevelControl::CMD_STEP,
@@ -288,9 +269,7 @@ describe Matter::Cluster::LevelControl do
     end
 
     it "clamps step up to max" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::LevelControl,
         current_level: 240_u8,
         max_level: 254_u8
       )
@@ -310,9 +289,7 @@ describe Matter::Cluster::LevelControl do
     end
 
     it "clamps step down to min" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::LevelControl,
         current_level: 10_u8,
         min_level: 0_u8
       )
@@ -334,8 +311,7 @@ describe Matter::Cluster::LevelControl do
 
   describe "callbacks" do
     it "calls level changed callback" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 50_u8)
+      cluster = build(Matter::Cluster::LevelControl, current_level: 50_u8)
 
       old_level = 0_u8
       new_level = 0_u8
@@ -362,8 +338,7 @@ describe Matter::Cluster::LevelControl do
 
   describe "data versioning" do
     it "increments version when level changes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 50_u8)
+      cluster = build(Matter::Cluster::LevelControl, current_level: 50_u8)
 
       initial_version = cluster.data_version
 
@@ -383,9 +358,7 @@ describe Matter::Cluster::LevelControl do
 
   describe "persistence" do
     it "saves and restores state" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::LevelControl,
         current_level: 50_u8,
         min_level: 1_u8,
         max_level: 200_u8,
@@ -412,8 +385,7 @@ describe Matter::Cluster::LevelControl do
       saved["on_level"].should eq(42_i64)
       saved["data_version"].should eq(12_i64)
 
-      restored = Matter::Cluster::LevelControl.new(
-        endpoint_id,
+      restored = build(Matter::Cluster::LevelControl,
         current_level: 1_u8,
         min_level: 1_u8,
         max_level: 254_u8,
@@ -443,7 +415,7 @@ describe Matter::Cluster::LevelControl do
 
   describe "OnLevel writes" do
     it "rejects a level outside MinLevel..MaxLevel with ConstraintError" do
-      cluster = Matter::Cluster::LevelControl.new(endpoint(1), min_level: 10_u8, max_level: 200_u8)
+      cluster = build(Matter::Cluster::LevelControl, min_level: 10_u8, max_level: 200_u8)
 
       expect_status(write(cluster, Matter::Cluster::LevelControl::ATTR_ON_LEVEL, 201_u8), Matter::InteractionModel::StatusCode::ConstraintError)
       expect_status(write(cluster, Matter::Cluster::LevelControl::ATTR_ON_LEVEL, 9_u8), Matter::InteractionModel::StatusCode::ConstraintError)
@@ -465,7 +437,7 @@ describe Matter::Cluster::LevelControl do
 
     nullable_attributes.each do |attribute_id, populated|
       it "accepts null for attribute 0x#{attribute_id.to_s(16)}" do
-        cluster = Matter::Cluster::LevelControl.new(endpoint(1),
+        cluster = build(Matter::Cluster::LevelControl,
           feature_map: Matter::Cluster::LevelControl::Feature::OnOff | Matter::Cluster::LevelControl::Feature::Lighting)
         expect_success(write(cluster, attribute_id, populated))
         read(cluster, attribute_id).should eq(populated)
@@ -481,8 +453,7 @@ describe Matter::Cluster::LevelControl do
 
   describe "error handling" do
     it "returns error for unsupported attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id)
+      cluster = build(Matter::Cluster::LevelControl)
 
       read_status(cluster, 0x9999_u32).status.should eq(
         Matter::InteractionModel::StatusCode::UnsupportedAttribute
@@ -490,8 +461,7 @@ describe Matter::Cluster::LevelControl do
     end
 
     it "returns error for unsupported command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControl.new(endpoint_id)
+      cluster = build(Matter::Cluster::LevelControl)
 
       result = invoke(cluster, 0x99_u32, Bytes.new(0))
       result.should be_a(Matter::InteractionModel::Status)
@@ -503,8 +473,7 @@ describe Matter::Cluster::LevelControl do
 
   describe "practical scenarios" do
     it "dims a light from full to half" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      light = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 254_u8)
+      light = build(Matter::Cluster::LevelControl, current_level: 254_u8)
 
       invoke(light,
         Matter::Cluster::LevelControl::CMD_MOVE_TO_LEVEL,
@@ -520,8 +489,7 @@ describe Matter::Cluster::LevelControl do
     end
 
     it "brightens a light gradually" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      light = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 50_u8)
+      light = build(Matter::Cluster::LevelControl, current_level: 50_u8)
 
       5.times do
         invoke(light,
@@ -540,9 +508,7 @@ describe Matter::Cluster::LevelControl do
     end
 
     it "fades out to minimum" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      light = Matter::Cluster::LevelControl.new(
-        endpoint_id,
+      light = build(Matter::Cluster::LevelControl,
         current_level: 200_u8,
         min_level: 10_u8
       )

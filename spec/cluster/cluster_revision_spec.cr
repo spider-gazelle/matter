@@ -18,7 +18,7 @@ private alias Base = Matter::Cluster::Base
 # `macro inherited`. One example per cluster whose revision is not the default.
 describe "Cluster::Base ClusterRevision" do
   it "reports the Base default for a cluster that does not set CLUSTER_REVISION" do
-    cluster = Matter::Cluster::BooleanState.new(endpoint(1))
+    cluster = build(Matter::Cluster::BooleanState)
 
     Base::CLUSTER_REVISION.should eq(1_u16)
     cluster.cluster_revision.should eq(Base::CLUSTER_REVISION)
@@ -38,7 +38,7 @@ describe "Cluster::Base ClusterRevision" do
                    {Matter::Cluster::WindowCovering, 6_u16},
                  ] %}
     it "reports {{ pair[0] }}::CLUSTER_REVISION ({{ pair[1] }})" do
-      cluster = {{ pair[0] }}.new(endpoint(1))
+      cluster = build({{ pair[0] }})
 
       {{ pair[0] }}::CLUSTER_REVISION.should eq({{ pair[1] }})
       cluster.cluster_revision.should eq({{ pair[0] }}::CLUSTER_REVISION)

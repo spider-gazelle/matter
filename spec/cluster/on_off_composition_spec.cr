@@ -7,8 +7,7 @@ describe Matter::Cluster::OnOff do
   describe "feature-based composition" do
     describe "base cluster (no features)" do
       it "has base attributes" do
-        cluster = Matter::Cluster::OnOff.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        cluster = build(Matter::Cluster::OnOff,
           feature_map: Matter::Cluster::OnOff::Feature::None
         )
 
@@ -27,8 +26,7 @@ describe Matter::Cluster::OnOff do
       end
 
       it "does not have Lighting attributes" do
-        cluster = Matter::Cluster::OnOff.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        cluster = build(Matter::Cluster::OnOff,
           feature_map: Matter::Cluster::OnOff::Feature::None
         )
 
@@ -41,8 +39,7 @@ describe Matter::Cluster::OnOff do
       end
 
       it "has Off, On, and Toggle commands" do
-        cluster = Matter::Cluster::OnOff.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        cluster = build(Matter::Cluster::OnOff,
           feature_map: Matter::Cluster::OnOff::Feature::None
         )
 
@@ -54,8 +51,7 @@ describe Matter::Cluster::OnOff do
       end
 
       it "does not have Lighting commands" do
-        cluster = Matter::Cluster::OnOff.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        cluster = build(Matter::Cluster::OnOff,
           feature_map: Matter::Cluster::OnOff::Feature::None
         )
 
@@ -69,8 +65,7 @@ describe Matter::Cluster::OnOff do
 
     describe "with Lighting feature" do
       it "has Lighting attributes" do
-        cluster = Matter::Cluster::OnOff.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        cluster = build(Matter::Cluster::OnOff,
           feature_map: Matter::Cluster::OnOff::Feature::Lighting
         )
 
@@ -83,8 +78,7 @@ describe Matter::Cluster::OnOff do
       end
 
       it "has Lighting commands" do
-        cluster = Matter::Cluster::OnOff.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        cluster = build(Matter::Cluster::OnOff,
           feature_map: Matter::Cluster::OnOff::Feature::Lighting
         )
 
@@ -96,8 +90,7 @@ describe Matter::Cluster::OnOff do
       end
 
       it "still has On and Toggle commands" do
-        cluster = Matter::Cluster::OnOff.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        cluster = build(Matter::Cluster::OnOff,
           feature_map: Matter::Cluster::OnOff::Feature::Lighting
         )
 
@@ -110,8 +103,7 @@ describe Matter::Cluster::OnOff do
 
     describe "with OffOnly feature" do
       it "only has Off command" do
-        cluster = Matter::Cluster::OnOff.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        cluster = build(Matter::Cluster::OnOff,
           feature_map: Matter::Cluster::OnOff::Feature::OffOnly
         )
 
@@ -123,8 +115,7 @@ describe Matter::Cluster::OnOff do
       end
 
       it "rejects On command" do
-        cluster = Matter::Cluster::OnOff.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        cluster = build(Matter::Cluster::OnOff,
           feature_map: Matter::Cluster::OnOff::Feature::OffOnly
         )
 
@@ -134,8 +125,7 @@ describe Matter::Cluster::OnOff do
       end
 
       it "rejects Toggle command" do
-        cluster = Matter::Cluster::OnOff.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        cluster = build(Matter::Cluster::OnOff,
           feature_map: Matter::Cluster::OnOff::Feature::OffOnly
         )
 
@@ -147,8 +137,7 @@ describe Matter::Cluster::OnOff do
 
     describe "with DeadFrontBehavior feature" do
       it "can be combined with Lighting" do
-        cluster = Matter::Cluster::OnOff.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        cluster = build(Matter::Cluster::OnOff,
           feature_map: Matter::Cluster::OnOff::Feature::Lighting |
                        Matter::Cluster::OnOff::Feature::DeadFrontBehavior
         )
@@ -162,8 +151,7 @@ describe Matter::Cluster::OnOff do
   describe "illegal feature combinations" do
     it "rejects Lighting + OffOnly" do
       expect_raises(ArgumentError, /Lighting and OffOnly features cannot be combined/) do
-        Matter::Cluster::OnOff.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        build(Matter::Cluster::OnOff,
           feature_map: Matter::Cluster::OnOff::Feature::Lighting |
                        Matter::Cluster::OnOff::Feature::OffOnly
         )
@@ -172,8 +160,7 @@ describe Matter::Cluster::OnOff do
 
     it "rejects DeadFrontBehavior + OffOnly" do
       expect_raises(ArgumentError, /DeadFrontBehavior and OffOnly features cannot be combined/) do
-        Matter::Cluster::OnOff.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+        build(Matter::Cluster::OnOff,
           feature_map: Matter::Cluster::OnOff::Feature::DeadFrontBehavior |
                        Matter::Cluster::OnOff::Feature::OffOnly
         )
@@ -183,8 +170,7 @@ describe Matter::Cluster::OnOff do
 
   describe "attribute read access" do
     it "returns UnsupportedAttribute for Lighting attrs without feature" do
-      cluster = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      cluster = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::None
       )
 
@@ -193,8 +179,7 @@ describe Matter::Cluster::OnOff do
     end
 
     it "can read Lighting attrs with feature enabled" do
-      cluster = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      cluster = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::Lighting
       )
 
@@ -208,8 +193,7 @@ describe Matter::Cluster::OnOff do
 
   describe "attribute write access" do
     it "returns UnsupportedAttribute for Lighting writes without feature" do
-      cluster = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      cluster = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::None
       )
 
@@ -218,8 +202,7 @@ describe Matter::Cluster::OnOff do
     end
 
     it "can write Lighting attrs with feature enabled" do
-      cluster = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      cluster = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::Lighting
       )
 
@@ -232,8 +215,7 @@ describe Matter::Cluster::OnOff do
 
   describe "command invocation" do
     it "rejects Lighting commands without feature" do
-      cluster = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      cluster = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::None
       )
 
@@ -243,8 +225,7 @@ describe Matter::Cluster::OnOff do
     end
 
     it "accepts Lighting commands with feature enabled" do
-      cluster = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      cluster = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::Lighting
       )
 
@@ -262,8 +243,7 @@ describe Matter::Cluster::OnOff do
 
   describe "globalSceneControl behavior" do
     it "sets globalSceneControl to true on On command" do
-      cluster = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      cluster = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::Lighting
       )
 
@@ -272,8 +252,7 @@ describe Matter::Cluster::OnOff do
     end
 
     it "sets globalSceneControl to false on Off command" do
-      cluster = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      cluster = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::Lighting
       )
 
@@ -288,13 +267,11 @@ describe Matter::Cluster::OnOff do
 
   describe "element counts" do
     it "has more attributes with Lighting feature" do
-      base = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      base = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::None
       )
 
-      lighting = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      lighting = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::Lighting
       )
 
@@ -302,13 +279,11 @@ describe Matter::Cluster::OnOff do
     end
 
     it "has more commands with Lighting feature" do
-      base = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      base = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::None
       )
 
-      lighting = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      lighting = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::Lighting
       )
 
@@ -316,13 +291,11 @@ describe Matter::Cluster::OnOff do
     end
 
     it "has fewer commands with OffOnly feature" do
-      base = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      base = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::None
       )
 
-      off_only = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      off_only = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::OffOnly
       )
 
@@ -335,8 +308,7 @@ describe Matter::Cluster::OnOff do
 
   describe "feature map" do
     it "returns correct feature map value" do
-      cluster = Matter::Cluster::OnOff.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      cluster = build(Matter::Cluster::OnOff,
         feature_map: Matter::Cluster::OnOff::Feature::Lighting |
                      Matter::Cluster::OnOff::Feature::DeadFrontBehavior
       )

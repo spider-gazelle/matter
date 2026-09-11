@@ -173,7 +173,7 @@ private alias Privilege = Matter::InteractionModel::EntryPrivilege
 private alias StatusCode = Matter::InteractionModel::StatusCode
 
 private def widget(feature_map : Widget::Feature = Widget::Feature::None) : Widget
-  Widget.new(endpoint(1), feature_map: feature_map)
+  build(Widget, feature_map: feature_map)
 end
 
 private def attribute_metadata(cluster : Widget, attribute_id : UInt32) : Matter::Cluster::AttributeMetadata
@@ -212,12 +212,12 @@ describe Matter::Cluster::DSL do
     end
 
     it "generates a constructor taking the feature map" do
-      Widget.new(endpoint(2)).feature_map.should eq(Widget::Feature::None)
+      build(Widget, 2).feature_map.should eq(Widget::Feature::None)
       widget(Widget::Feature::Alpha).feature_map.alpha?.should be_true
     end
 
     it "takes name: and persist_state:" do
-      gadget = DslSpec::Gadget.new(endpoint(1))
+      gadget = build(DslSpec::Gadget)
       gadget.name.should eq("Renamed")
       gadget.knob = 3_u8
       gadget.save_state.should be_nil

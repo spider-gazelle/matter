@@ -23,8 +23,7 @@ module Matter::Cluster
   describe GeneralCommissioning do
     describe "initialization" do
       it "creates general commissioning cluster" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         cluster.cluster_id.id.should eq(0x0030_u32)
         cluster.name.should eq("GeneralCommissioning")
@@ -35,16 +34,14 @@ module Matter::Cluster
 
     describe "attributes" do
       it "reads Breadcrumb attribute" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         # UInt64 value 0 is TLV-encoded as 2 bytes (tag + value)
         read_tlv(cluster, GeneralCommissioning::ATTR_BREADCRUMB).to_slice.size.should eq(2)
       end
 
       it "writes Breadcrumb attribute" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         # Encode UInt64 value
         new_value = 0x1234567890ABCDEF_u64
@@ -59,39 +56,34 @@ module Matter::Cluster
       end
 
       it "reads BasicCommissioningInfo attribute" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         value = cluster.read_attribute(GeneralCommissioning::ATTR_BASIC_COMMISSIONING_INFO)
         value.should be_a(TLV::Any)
       end
 
       it "reads RegulatoryConfig attribute" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         value = cluster.read_attribute(GeneralCommissioning::ATTR_REGULATORY_CONFIG)
         value.should be_a(TLV::Any)
       end
 
       it "reads LocationCapability attribute" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         value = cluster.read_attribute(GeneralCommissioning::ATTR_LOCATION_CAPABILITY)
         value.should be_a(TLV::Any)
       end
 
       it "reads SupportsConcurrentConnection attribute" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         read(cluster, GeneralCommissioning::ATTR_SUPPORTS_CONCURRENT_CONNECTION).should be_true
       end
 
       it "returns status for unsupported attribute write" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         status = write(cluster,
           GeneralCommissioning::ATTR_REGULATORY_CONFIG,
@@ -104,8 +96,7 @@ module Matter::Cluster
 
     describe "metadata" do
       it "provides attribute metadata" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         attributes = cluster.attributes
         attributes.should_not be_empty
@@ -119,8 +110,7 @@ module Matter::Cluster
       end
 
       it "provides command metadata" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         commands = cluster.commands
         commands.should_not be_empty
@@ -164,8 +154,7 @@ module Matter::Cluster
 
     describe "commands" do
       it "handles ArmFailSafe command" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         command_data = create_arm_failsafe_request_tlv(60_u16, 0x1234_u64)
         result = invoke(cluster, GeneralCommissioning::CMD_ARM_FAIL_SAFE, command_data)
@@ -173,8 +162,7 @@ module Matter::Cluster
       end
 
       it "handles SetRegulatoryConfig command" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         command_data = create_set_regulatory_config_request_tlv(2_u8, "US", 0x5678_u64) # IndoorOutdoor
         result = invoke(cluster, GeneralCommissioning::CMD_SET_REGULATORY_CONFIG, command_data)
@@ -182,8 +170,7 @@ module Matter::Cluster
       end
 
       it "handles CommissioningComplete command" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         # CommissioningComplete has no request parameters, but still needs empty TLV structure
         result = invoke(cluster, GeneralCommissioning::CMD_COMMISSIONING_COMPLETE, Bytes.new(0))
@@ -193,16 +180,14 @@ module Matter::Cluster
 
     describe "fail-safe management" do
       it "tracks fail-safe state" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         cluster.failsafe_armed?.should be_false
         cluster.fail_safe_expiry_time.should be_nil
       end
 
       it "arms fail-safe" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         cluster.arm_fail_safe(60_u16)
         cluster.failsafe_armed?.should be_true
@@ -210,8 +195,7 @@ module Matter::Cluster
       end
 
       it "disarms fail-safe" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         cluster.arm_fail_safe(60_u16)
         cluster.failsafe_armed?.should be_true
@@ -222,8 +206,7 @@ module Matter::Cluster
       end
 
       it "checks if fail-safe is expired" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         cluster.arm_fail_safe(0_u16) # Expired immediately
         cluster.fail_safe_expired?.should be_true
@@ -232,30 +215,26 @@ module Matter::Cluster
 
     describe "regulatory configuration" do
       it "tracks regulatory config" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         cluster.regulatory_config.should eq(GeneralCommissioning::RegulatoryLocationType::IndoorOutdoor)
       end
 
       it "updates regulatory config" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         cluster.regulatory_config = GeneralCommissioning::RegulatoryLocationType::Indoor
         cluster.regulatory_config.should eq(GeneralCommissioning::RegulatoryLocationType::Indoor)
       end
 
       it "tracks country code" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         cluster.country_code.should eq("XX")
       end
 
       it "updates country code" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         cluster.country_code = "US"
         cluster.country_code.should eq("US")
@@ -264,15 +243,13 @@ module Matter::Cluster
 
     describe "breadcrumb tracking" do
       it "tracks breadcrumb value" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         cluster.breadcrumb.should eq(0_u64)
       end
 
       it "updates breadcrumb" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         cluster.breadcrumb = 0x123456789ABCDEF0_u64
         cluster.breadcrumb.should eq(0x123456789ABCDEF0_u64)
@@ -281,8 +258,7 @@ module Matter::Cluster
 
     describe "commissioning info" do
       it "provides basic commissioning info" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         info = cluster.basic_commissioning_info
         info.fail_safe_expiry_length.should eq(60_u16)
@@ -290,8 +266,7 @@ module Matter::Cluster
       end
 
       it "supports concurrent connection" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         cluster.supports_concurrent_connection?.should be_true
       end
@@ -299,8 +274,7 @@ module Matter::Cluster
 
     describe "location capability" do
       it "tracks location capability" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = GeneralCommissioning.new(endpoint_id)
+        cluster = build(GeneralCommissioning, 0)
 
         cluster.location_capability.should eq(GeneralCommissioning::RegulatoryLocationType::IndoorOutdoor)
       end

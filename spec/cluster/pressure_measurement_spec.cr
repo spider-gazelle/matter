@@ -1,11 +1,9 @@
 require "../spec_helper"
 
 describe Matter::Cluster::PressureMeasurement do
-  endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-
   describe "initialization" do
     it "creates with default values" do
-      cluster = Matter::Cluster::PressureMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::PressureMeasurement)
       cluster.measured_value.should be_nil
       cluster.min_measured_value.should be_nil
       cluster.max_measured_value.should be_nil
@@ -13,8 +11,7 @@ describe Matter::Cluster::PressureMeasurement do
     end
 
     it "creates with custom values" do
-      cluster = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::PressureMeasurement,
         measured_value: 1013_i16, # 101.3 kPa (standard atmosphere)
         min_measured_value: 800_i16,
         max_measured_value: 1200_i16,
@@ -28,8 +25,7 @@ describe Matter::Cluster::PressureMeasurement do
 
     it "validates min_measured_value maximum (must be <= 32766)" do
       expect_raises(ArgumentError, /min_measured_value must be <= 32766/) do
-        Matter::Cluster::PressureMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::PressureMeasurement,
           min_measured_value: 32767_i16
         )
       end
@@ -37,8 +33,7 @@ describe Matter::Cluster::PressureMeasurement do
 
     it "validates min/max relationship" do
       expect_raises(ArgumentError, /min_measured_value must be <= max_measured_value/) do
-        Matter::Cluster::PressureMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::PressureMeasurement,
           min_measured_value: 1200_i16,
           max_measured_value: 800_i16
         )
@@ -47,8 +42,7 @@ describe Matter::Cluster::PressureMeasurement do
 
     it "validates measured value is within range" do
       expect_raises(ArgumentError, /measured_value must be <= max_measured_value/) do
-        Matter::Cluster::PressureMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::PressureMeasurement,
           measured_value: 1500_i16,
           min_measured_value: 800_i16,
           max_measured_value: 1200_i16
@@ -58,16 +52,14 @@ describe Matter::Cluster::PressureMeasurement do
 
     it "validates tolerance maximum" do
       expect_raises(ArgumentError, /tolerance must be <= 2048/) do
-        Matter::Cluster::PressureMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::PressureMeasurement,
           tolerance: 2049_u16
         )
       end
     end
 
     it "allows negative pressure values" do
-      cluster = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::PressureMeasurement,
         measured_value: -100_i16, # -10.0 kPa (vacuum)
         min_measured_value: -1000_i16,
         max_measured_value: 2000_i16
@@ -78,7 +70,7 @@ describe Matter::Cluster::PressureMeasurement do
 
   describe "attributes" do
     it "has required attributes" do
-      cluster = Matter::Cluster::PressureMeasurement.new(endpoint_id, tolerance: 0_u16)
+      cluster = build(Matter::Cluster::PressureMeasurement, tolerance: 0_u16)
       attrs = cluster.attributes
       attrs.size.should eq(4)
       attrs.map(&.name).should contain("measuredValue")
@@ -88,62 +80,57 @@ describe Matter::Cluster::PressureMeasurement do
     end
 
     it "reads MeasuredValue when set" do
-      cluster = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::PressureMeasurement,
         measured_value: 1013_i16
       )
       read(cluster, Matter::Cluster::PressureMeasurement::ATTR_MEASURED_VALUE).should eq(1013)
     end
 
     it "reads MeasuredValue as null when not set" do
-      cluster = Matter::Cluster::PressureMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::PressureMeasurement)
       read(cluster, Matter::Cluster::PressureMeasurement::ATTR_MEASURED_VALUE).should be_nil
     end
 
     it "reads MinMeasuredValue when set" do
-      cluster = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::PressureMeasurement,
         min_measured_value: 800_i16
       )
       read(cluster, Matter::Cluster::PressureMeasurement::ATTR_MIN_MEASURED_VALUE).should eq(800)
     end
 
     it "reads MinMeasuredValue as null when not set" do
-      cluster = Matter::Cluster::PressureMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::PressureMeasurement)
       read(cluster, Matter::Cluster::PressureMeasurement::ATTR_MIN_MEASURED_VALUE).should be_nil
     end
 
     it "reads MaxMeasuredValue when set" do
-      cluster = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::PressureMeasurement,
         max_measured_value: 1200_i16
       )
       read(cluster, Matter::Cluster::PressureMeasurement::ATTR_MAX_MEASURED_VALUE).should eq(1200)
     end
 
     it "reads MaxMeasuredValue as null when not set" do
-      cluster = Matter::Cluster::PressureMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::PressureMeasurement)
       read(cluster, Matter::Cluster::PressureMeasurement::ATTR_MAX_MEASURED_VALUE).should be_nil
     end
 
     it "reads Tolerance when set" do
-      cluster = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::PressureMeasurement,
         tolerance: 10_u16
       )
       read(cluster, Matter::Cluster::PressureMeasurement::ATTR_TOLERANCE).should eq(10)
     end
 
     it "returns unsupported for Tolerance when not set" do
-      cluster = Matter::Cluster::PressureMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::PressureMeasurement)
       read_status(cluster, Matter::Cluster::PressureMeasurement::ATTR_TOLERANCE).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 
   describe "update_pressure" do
     it "updates pressure value" do
-      cluster = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::PressureMeasurement,
         measured_value: 1013_i16,
         min_measured_value: 800_i16,
         max_measured_value: 1200_i16
@@ -153,8 +140,7 @@ describe Matter::Cluster::PressureMeasurement do
     end
 
     it "accepts nil for unknown pressure" do
-      cluster = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::PressureMeasurement,
         measured_value: 1013_i16
       )
       cluster.update_pressure(nil)
@@ -162,8 +148,7 @@ describe Matter::Cluster::PressureMeasurement do
     end
 
     it "rejects pressure below minimum" do
-      cluster = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::PressureMeasurement,
         measured_value: 1013_i16,
         min_measured_value: 800_i16,
         max_measured_value: 1200_i16
@@ -174,8 +159,7 @@ describe Matter::Cluster::PressureMeasurement do
     end
 
     it "rejects pressure above maximum" do
-      cluster = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::PressureMeasurement,
         measured_value: 1013_i16,
         min_measured_value: 800_i16,
         max_measured_value: 1200_i16
@@ -186,8 +170,7 @@ describe Matter::Cluster::PressureMeasurement do
     end
 
     it "calls callback when pressure changes" do
-      cluster = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::PressureMeasurement,
         measured_value: 1013_i16
       )
 
@@ -204,8 +187,7 @@ describe Matter::Cluster::PressureMeasurement do
     end
 
     it "doesn't call callback when pressure doesn't change" do
-      cluster = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::PressureMeasurement,
         measured_value: 1013_i16
       )
 
@@ -219,8 +201,7 @@ describe Matter::Cluster::PressureMeasurement do
     end
 
     it "increments data version only on changes" do
-      cluster = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::PressureMeasurement,
         measured_value: 1013_i16
       )
 
@@ -293,10 +274,8 @@ describe Matter::Cluster::PressureMeasurement do
     it "models a barometric pressure sensor (weather station)" do
       # Standard atmospheric pressure: 101.325 kPa = 1013.25 hPa
       # Typical range: 950-1050 hPa (95-105 kPa)
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
 
-      sensor = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::PressureMeasurement,
         measured_value: 1013_i16, # 101.3 kPa (1013 hPa)
         min_measured_value: 950_i16,
         max_measured_value: 1050_i16,
@@ -324,10 +303,8 @@ describe Matter::Cluster::PressureMeasurement do
     it "models an altitude-compensated sensor" do
       # Sea level: 101.3 kPa
       # Mountain (2000m): ~79.5 kPa
-      endpoint_id = Matter::DataType::EndpointNumber.new(2_u16)
 
-      sensor = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::PressureMeasurement, 2,
         measured_value: 795_i16, # 79.5 kPa (altitude pressure)
         min_measured_value: 600_i16,
         max_measured_value: 1050_i16
@@ -340,10 +317,8 @@ describe Matter::Cluster::PressureMeasurement do
 
     it "models a vacuum sensor (industrial)" do
       # Vacuum applications use negative pressure relative to atmospheric
-      endpoint_id = Matter::DataType::EndpointNumber.new(3_u16)
 
-      sensor = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::PressureMeasurement, 3,
         measured_value: -500_i16, # -50.0 kPa (vacuum)
         min_measured_value: -1000_i16,
         max_measured_value: 100_i16
@@ -360,10 +335,7 @@ describe Matter::Cluster::PressureMeasurement do
     end
 
     it "handles sensor failure (unknown pressure)" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(4_u16)
-
-      sensor = Matter::Cluster::PressureMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::PressureMeasurement, 4,
         measured_value: 1013_i16
       )
 
@@ -397,7 +369,7 @@ describe Matter::Cluster::PressureMeasurement do
 
   describe "error handling" do
     it "returns error for unsupported attributes" do
-      cluster = Matter::Cluster::PressureMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::PressureMeasurement)
       read_status(cluster, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end

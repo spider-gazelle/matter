@@ -4,8 +4,7 @@ require "../../src/matter/cluster/groups"
 
 describe Matter::Cluster::Groups do
   it "persists group table" do
-    endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-    cluster = Matter::Cluster::Groups.new(endpoint)
+    cluster = build(Matter::Cluster::Groups)
 
     # Add group 0x0001 named "Test"
     invoke(cluster, Matter::Cluster::Groups::CMD_ADD_GROUP,
@@ -19,7 +18,7 @@ describe Matter::Cluster::Groups do
     document["groups"].should eq(Matter::Storage::Document{"1" => "Test"})
     document["data_version"].should eq(7_i64)
 
-    cluster2 = Matter::Cluster::Groups.new(endpoint)
+    cluster2 = build(Matter::Cluster::Groups)
     cluster2.restore_state(document)
 
     cluster2.group_count.should eq(1)

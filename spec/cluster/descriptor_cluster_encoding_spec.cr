@@ -4,8 +4,7 @@ require "../../src/matter/cluster/descriptor"
 describe Matter::Cluster::Descriptor do
   describe "TLV encoding" do
     it "encodes DeviceTypeList as TLV Array (not List)" do
-      endpoint = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::Descriptor.new(endpoint)
+      cluster = build(Matter::Cluster::Descriptor, 0)
 
       # Add a device type
       cluster.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
@@ -26,8 +25,7 @@ describe Matter::Cluster::Descriptor do
     end
 
     it "encodes ServerList as TLV Array" do
-      endpoint = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::Descriptor.new(endpoint)
+      cluster = build(Matter::Cluster::Descriptor, 0)
 
       # ServerList should already have CLUSTER_ID from initialize
       encoded = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_SERVER_LIST).to_slice
@@ -37,8 +35,7 @@ describe Matter::Cluster::Descriptor do
     end
 
     it "encodes PartsList as TLV Array" do
-      endpoint = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::Descriptor.new(endpoint)
+      cluster = build(Matter::Cluster::Descriptor, 0)
       cluster.add_part(1_u16)
 
       encoded = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_PARTS_LIST).to_slice
@@ -48,8 +45,7 @@ describe Matter::Cluster::Descriptor do
     end
 
     it "encodes AttributeList as TLV Array" do
-      endpoint = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::Descriptor.new(endpoint)
+      cluster = build(Matter::Cluster::Descriptor, 0)
 
       encoded = read_tlv(cluster, Matter::Cluster::Base::GLOBAL_ATTRIBUTE_LIST).to_slice
 
@@ -58,8 +54,7 @@ describe Matter::Cluster::Descriptor do
     end
 
     it "encodes DeviceTypeList elements with anonymous tags" do
-      endpoint = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::Descriptor.new(endpoint)
+      cluster = build(Matter::Cluster::Descriptor, 0)
 
       cluster.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0016_u32,

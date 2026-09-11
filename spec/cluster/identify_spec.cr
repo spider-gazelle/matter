@@ -17,8 +17,7 @@ end
 describe Matter::Cluster::Identify do
   describe "initialization" do
     it "creates identify cluster" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       cluster.cluster_id.id.should eq(0x0003_u32)
       cluster.name.should eq("Identify")
@@ -27,9 +26,7 @@ describe Matter::Cluster::Identify do
     end
 
     it "initializes with custom identify type" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::Identify,
         identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLight
       )
 
@@ -39,8 +36,7 @@ describe Matter::Cluster::Identify do
 
   describe "attributes" do
     it "has required attributes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       attributes = cluster.attributes
       attributes.should_not be_empty
@@ -61,16 +57,13 @@ describe Matter::Cluster::Identify do
     end
 
     it "reads IdentifyTime attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       read(cluster, Matter::Cluster::Identify::ATTR_IDENTIFY_TIME).should eq(0_u16)
     end
 
     it "reads IdentifyType attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::Identify,
         identify_type: Matter::Cluster::Identify::IdentifyType::AudibleBeep
       )
 
@@ -78,8 +71,7 @@ describe Matter::Cluster::Identify do
     end
 
     it "writes IdentifyTime attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       # Encode 60 seconds as raw uint16
       status = write(cluster,
@@ -92,8 +84,7 @@ describe Matter::Cluster::Identify do
     end
 
     it "rejects writing to IdentifyType" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       status = write(cluster,
         Matter::Cluster::Identify::ATTR_IDENTIFY_TYPE,
@@ -106,8 +97,7 @@ describe Matter::Cluster::Identify do
 
   describe "commands" do
     it "has required commands" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       commands = cluster.commands
       commands.size.should eq(2)
@@ -122,8 +112,7 @@ describe Matter::Cluster::Identify do
     end
 
     it "executes Identify command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       cluster.identify_time.should eq(0_u16)
 
@@ -139,8 +128,7 @@ describe Matter::Cluster::Identify do
     end
 
     it "executes TriggerEffect command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       # Encode effect (Blink) and effect variant as TLV struct
       result = invoke(cluster,
@@ -156,8 +144,7 @@ describe Matter::Cluster::Identify do
     end
 
     it "stops identify when time is 0" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       # Start identifying
       invoke(cluster, Matter::Cluster::Identify::CMD_IDENTIFY, encode_identify_command(10_u16))
@@ -201,8 +188,7 @@ describe Matter::Cluster::Identify do
 
   describe "identify state" do
     it "tracks identifying state" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       cluster.identifying?.should be_false
 
@@ -214,8 +200,7 @@ describe Matter::Cluster::Identify do
     end
 
     it "can check remaining identify time" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       invoke(cluster, Matter::Cluster::Identify::CMD_IDENTIFY, encode_identify_command(120_u16))
       cluster.identify_time.should eq(120_u16)
@@ -224,8 +209,7 @@ describe Matter::Cluster::Identify do
 
   describe "callbacks" do
     it "calls identify callback when started" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       callback_called = false
       cluster.on_identify_started do
@@ -237,8 +221,7 @@ describe Matter::Cluster::Identify do
     end
 
     it "calls identify callback when stopped" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       callback_called = false
       cluster.on_identify_stopped do
@@ -253,8 +236,7 @@ describe Matter::Cluster::Identify do
     end
 
     it "calls effect callback on TriggerEffect" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       received_effect = Matter::Cluster::Identify::EffectIdentifier::Blink
       received_variant = Matter::Cluster::Identify::EffectVariant::Default
@@ -279,9 +261,7 @@ describe Matter::Cluster::Identify do
 
   describe "different identify types" do
     it "creates cluster for visible light device" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::Identify,
         identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLight
       )
 
@@ -289,9 +269,7 @@ describe Matter::Cluster::Identify do
     end
 
     it "creates cluster for LED device" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::Identify,
         identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLED
       )
 
@@ -299,9 +277,7 @@ describe Matter::Cluster::Identify do
     end
 
     it "creates cluster for audible device" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::Identify,
         identify_type: Matter::Cluster::Identify::IdentifyType::AudibleBeep
       )
 
@@ -309,9 +285,7 @@ describe Matter::Cluster::Identify do
     end
 
     it "creates cluster for display device" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::Identify,
         identify_type: Matter::Cluster::Identify::IdentifyType::Display
       )
 
@@ -319,9 +293,7 @@ describe Matter::Cluster::Identify do
     end
 
     it "creates cluster for actuator device" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::Identify,
         identify_type: Matter::Cluster::Identify::IdentifyType::Actuator
       )
 
@@ -331,15 +303,13 @@ describe Matter::Cluster::Identify do
 
   describe "error handling" do
     it "returns error for unsupported attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       read_status(cluster, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
 
     it "returns error for unsupported command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       result = invoke(cluster, 0x99_u32, Bytes.new(0))
       result.should be_a(Matter::InteractionModel::Status)
@@ -351,8 +321,7 @@ describe Matter::Cluster::Identify do
 
   describe "data versioning" do
     it "increments version when identify time changes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       initial_version = cluster.data_version
 
@@ -361,8 +330,7 @@ describe Matter::Cluster::Identify do
     end
 
     it "increments version when writing IdentifyTime" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::Identify.new(endpoint_id)
+      cluster = build(Matter::Cluster::Identify)
 
       initial_version = cluster.data_version
 

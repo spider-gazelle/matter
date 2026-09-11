@@ -8,6 +8,17 @@ def endpoint(number : Int) : Matter::DataType::EndpointNumber
   Matter::DataType::EndpointNumber.new(number.to_u16)
 end
 
+# Constructs a cluster on `endpoint(number)`, forwarding any keyword arguments
+# to its constructor. The concrete class is returned, so cluster-specific
+# methods stay available:
+#
+#   build(Matter::Cluster::OnOff)                    # endpoint 1, defaults
+#   build(Matter::Cluster::Descriptor, 0)            # endpoint 0
+#   build(Matter::Cluster::OnOff, on_off: true)      # endpoint 1, initial state
+def build(klass : T.class, endpoint : Int = 1, **kwargs) forall T
+  klass.new(endpoint(endpoint), **kwargs)
+end
+
 # Reads an attribute and returns it as a `TLV::Any`, for lists and structures
 # (`read_tlv(cluster, id).as_list`, `LabelStruct.from_tlv(read_tlv(...))`).
 # Raises when the cluster answers with a status instead of a value.

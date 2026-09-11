@@ -4,8 +4,7 @@ require "../../src/matter/cluster/on_off"
 describe Matter::Cluster::OnOff do
   describe "initialization" do
     it "creates on/off cluster with default off state" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id)
+      cluster = build(Matter::Cluster::OnOff)
 
       cluster.cluster_id.id.should eq(0x0006_u32)
       cluster.name.should eq("OnOff")
@@ -13,8 +12,7 @@ describe Matter::Cluster::OnOff do
     end
 
     it "creates on/off cluster with initial on state" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: true)
+      cluster = build(Matter::Cluster::OnOff, on_off: true)
 
       cluster.on_off?.should be_true
     end
@@ -22,8 +20,7 @@ describe Matter::Cluster::OnOff do
 
   describe "attributes" do
     it "has required OnOff attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id)
+      cluster = build(Matter::Cluster::OnOff)
 
       attributes = cluster.attributes
       attributes.should_not be_empty
@@ -37,22 +34,19 @@ describe Matter::Cluster::OnOff do
     end
 
     it "reads OnOff attribute when off" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: false)
+      cluster = build(Matter::Cluster::OnOff, on_off: false)
 
       read(cluster, Matter::Cluster::OnOff::ATTR_ON_OFF).should be_false
     end
 
     it "reads OnOff attribute when on" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: true)
+      cluster = build(Matter::Cluster::OnOff, on_off: true)
 
       read(cluster, Matter::Cluster::OnOff::ATTR_ON_OFF).should be_true
     end
 
     it "rejects writing to read-only OnOff attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id)
+      cluster = build(Matter::Cluster::OnOff)
 
       status = write(cluster,
         Matter::Cluster::OnOff::ATTR_ON_OFF,
@@ -65,8 +59,7 @@ describe Matter::Cluster::OnOff do
 
   describe "commands" do
     it "has required commands" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id)
+      cluster = build(Matter::Cluster::OnOff)
 
       commands = cluster.commands
       commands.size.should be >= 3
@@ -86,8 +79,7 @@ describe Matter::Cluster::OnOff do
 
     describe "Off command" do
       it "turns off when already off" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: false)
+        cluster = build(Matter::Cluster::OnOff, on_off: false)
 
         result = invoke(cluster, Matter::Cluster::OnOff::CMD_OFF, Bytes.new(0))
 
@@ -97,8 +89,7 @@ describe Matter::Cluster::OnOff do
       end
 
       it "turns off when on" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: true)
+        cluster = build(Matter::Cluster::OnOff, on_off: true)
 
         cluster.on_off?.should be_true
 
@@ -109,8 +100,7 @@ describe Matter::Cluster::OnOff do
       end
 
       it "updates attribute value after Off command" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: true)
+        cluster = build(Matter::Cluster::OnOff, on_off: true)
 
         invoke(cluster, Matter::Cluster::OnOff::CMD_OFF, Bytes.new(0))
 
@@ -120,8 +110,7 @@ describe Matter::Cluster::OnOff do
 
     describe "On command" do
       it "turns on when already on" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: true)
+        cluster = build(Matter::Cluster::OnOff, on_off: true)
 
         result = invoke(cluster, Matter::Cluster::OnOff::CMD_ON, Bytes.new(0))
 
@@ -130,8 +119,7 @@ describe Matter::Cluster::OnOff do
       end
 
       it "turns on when off" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: false)
+        cluster = build(Matter::Cluster::OnOff, on_off: false)
 
         cluster.on_off?.should be_false
 
@@ -142,8 +130,7 @@ describe Matter::Cluster::OnOff do
       end
 
       it "updates attribute value after On command" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: false)
+        cluster = build(Matter::Cluster::OnOff, on_off: false)
 
         invoke(cluster, Matter::Cluster::OnOff::CMD_ON, Bytes.new(0))
 
@@ -153,8 +140,7 @@ describe Matter::Cluster::OnOff do
 
     describe "Toggle command" do
       it "toggles from off to on" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: false)
+        cluster = build(Matter::Cluster::OnOff, on_off: false)
 
         result = invoke(cluster, Matter::Cluster::OnOff::CMD_TOGGLE, Bytes.new(0))
 
@@ -163,8 +149,7 @@ describe Matter::Cluster::OnOff do
       end
 
       it "toggles from on to off" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: true)
+        cluster = build(Matter::Cluster::OnOff, on_off: true)
 
         result = invoke(cluster, Matter::Cluster::OnOff::CMD_TOGGLE, Bytes.new(0))
 
@@ -173,8 +158,7 @@ describe Matter::Cluster::OnOff do
       end
 
       it "toggles multiple times correctly" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: false)
+        cluster = build(Matter::Cluster::OnOff, on_off: false)
 
         cluster.on_off?.should be_false
 
@@ -191,9 +175,7 @@ describe Matter::Cluster::OnOff do
 
     describe "OffWithEffect command" do
       it "executes OffWithEffect command with Lighting feature" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOff.new(
-          endpoint_id,
+        cluster = build(Matter::Cluster::OnOff,
           on_off: true,
           feature_map: Matter::Cluster::OnOff::Feature::Lighting
         )
@@ -208,9 +190,7 @@ describe Matter::Cluster::OnOff do
 
     describe "OnWithRecallGlobalScene command" do
       it "executes OnWithRecallGlobalScene command with Lighting feature" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOff.new(
-          endpoint_id,
+        cluster = build(Matter::Cluster::OnOff,
           on_off: false,
           feature_map: Matter::Cluster::OnOff::Feature::Lighting
         )
@@ -224,9 +204,7 @@ describe Matter::Cluster::OnOff do
 
     describe "OnWithTimedOff command" do
       it "executes OnWithTimedOff command with Lighting feature" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOff.new(
-          endpoint_id,
+        cluster = build(Matter::Cluster::OnOff,
           on_off: false,
           feature_map: Matter::Cluster::OnOff::Feature::Lighting
         )
@@ -242,8 +220,7 @@ describe Matter::Cluster::OnOff do
 
   describe "callbacks" do
     it "calls callback when turning on" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: false)
+      cluster = build(Matter::Cluster::OnOff, on_off: false)
 
       callback_called = false
       new_state = false
@@ -260,8 +237,7 @@ describe Matter::Cluster::OnOff do
     end
 
     it "calls callback when turning off" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: true)
+      cluster = build(Matter::Cluster::OnOff, on_off: true)
 
       callback_called = false
       new_state = true
@@ -278,8 +254,7 @@ describe Matter::Cluster::OnOff do
     end
 
     it "calls callback on each toggle" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: false)
+      cluster = build(Matter::Cluster::OnOff, on_off: false)
 
       call_count = 0
       states = [] of Bool
@@ -298,8 +273,7 @@ describe Matter::Cluster::OnOff do
     end
 
     it "does not call callback if state doesn't change" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: true)
+      cluster = build(Matter::Cluster::OnOff, on_off: true)
 
       callback_called = false
 
@@ -316,8 +290,7 @@ describe Matter::Cluster::OnOff do
     # Behavioral test migrated from matter.js
     # packages/node/test/behaviors/on-off/OnOffServerTest.ts
     it "properly supports observers on toggle sequence" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: false)
+      cluster = build(Matter::Cluster::OnOff, on_off: false)
 
       observed_values = [] of Bool
 
@@ -336,8 +309,7 @@ describe Matter::Cluster::OnOff do
 
   describe "data versioning" do
     it "increments version when state changes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: false)
+      cluster = build(Matter::Cluster::OnOff, on_off: false)
 
       initial_version = cluster.data_version
 
@@ -347,8 +319,7 @@ describe Matter::Cluster::OnOff do
     end
 
     it "increments version on each state change" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: false)
+      cluster = build(Matter::Cluster::OnOff, on_off: false)
 
       initial_version = cluster.data_version
 
@@ -360,8 +331,7 @@ describe Matter::Cluster::OnOff do
     end
 
     it "does not increment version if state unchanged" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id, on_off: true)
+      cluster = build(Matter::Cluster::OnOff, on_off: true)
 
       initial_version = cluster.data_version
 
@@ -373,8 +343,7 @@ describe Matter::Cluster::OnOff do
 
   describe "error handling" do
     it "returns error for unsupported attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id)
+      cluster = build(Matter::Cluster::OnOff)
 
       read_status(cluster, 0x9999_u32).status.should eq(
         Matter::InteractionModel::StatusCode::UnsupportedAttribute
@@ -382,8 +351,7 @@ describe Matter::Cluster::OnOff do
     end
 
     it "returns error for unsupported command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::OnOff.new(endpoint_id)
+      cluster = build(Matter::Cluster::OnOff)
 
       result = invoke(cluster, 0x99_u32, Bytes.new(0))
       result.should be_a(Matter::InteractionModel::Status)
@@ -395,8 +363,7 @@ describe Matter::Cluster::OnOff do
 
   describe "practical scenarios" do
     it "simulates light switch sequence" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      light = Matter::Cluster::OnOff.new(endpoint_id)
+      light = build(Matter::Cluster::OnOff)
 
       # Initially off
       light.on_off?.should be_false
@@ -411,8 +378,7 @@ describe Matter::Cluster::OnOff do
     end
 
     it "simulates toggle button presses" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      outlet = Matter::Cluster::OnOff.new(endpoint_id)
+      outlet = build(Matter::Cluster::OnOff)
 
       states = [] of Bool
 
@@ -426,8 +392,7 @@ describe Matter::Cluster::OnOff do
     end
 
     it "tracks state changes with callback" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      device = Matter::Cluster::OnOff.new(endpoint_id)
+      device = build(Matter::Cluster::OnOff)
 
       transitions = [] of String
 
@@ -446,11 +411,8 @@ describe Matter::Cluster::OnOff do
 
   describe "integration with other clusters" do
     it "maintains state independently per endpoint" do
-      endpoint1 = Matter::DataType::EndpointNumber.new(1_u16)
-      endpoint2 = Matter::DataType::EndpointNumber.new(2_u16)
-
-      cluster1 = Matter::Cluster::OnOff.new(endpoint1, on_off: false)
-      cluster2 = Matter::Cluster::OnOff.new(endpoint2, on_off: true)
+      cluster1 = build(Matter::Cluster::OnOff, on_off: false)
+      cluster2 = build(Matter::Cluster::OnOff, 2, on_off: true)
 
       cluster1.on_off?.should be_false
       cluster2.on_off?.should be_true

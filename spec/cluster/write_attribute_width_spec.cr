@@ -73,7 +73,7 @@ private def write_via_im(cluster : Matter::Cluster::Base, attribute_id : UInt32,
 end
 
 describe "write_attribute with typed TLV values (chip-tool)" do
-  endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+  endpoint = endpoint(1)
   success = Matter::InteractionModel::StatusCode::Success.value
 
   it "writes Identify IdentifyTime (uint16) sent as a single TLV byte" do
@@ -128,7 +128,7 @@ describe "write_attribute with typed TLV values (chip-tool)" do
   end
 
   it "writes BasicInformation NodeLabel, Location (string) and LocalConfigDisabled (bool)" do
-    basic = Matter::Cluster::BasicInformation.new(endpoint_id: Matter::DataType::EndpointNumber.new(0_u16))
+    basic = build(Matter::Cluster::BasicInformation, 0)
 
     result = write_via_im(basic, Matter::Cluster::BasicInformation::ATTR_NODE_LABEL, TLV::Any.new("Kitchen"))
     result.status.status.should eq success
@@ -215,7 +215,7 @@ end
 
 describe "FanControl writes through the interaction model" do
   it "writes UInt8 attribute via round-tripped TLV bytes (simulating iOS wire format)" do
-    endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+    endpoint = endpoint(1)
     fan = Matter::Cluster::FanControl.new(
       endpoint,
       fan_mode: Matter::Cluster::FanControl::FanMode::Off,
@@ -261,7 +261,7 @@ describe "FanControl writes through the interaction model" do
   end
 
   it "writes FanMode enum via TLV round-trip" do
-    endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+    endpoint = endpoint(1)
     fan = Matter::Cluster::FanControl.new(
       endpoint,
       fan_mode: Matter::Cluster::FanControl::FanMode::Off,
@@ -304,7 +304,7 @@ end
 
 describe "TLV attribute type preservation" do
   it "distinguishes the unsigned value 20 from null" do
-    cluster = Matter::Cluster::OnOff.new(endpoint(1), feature_map: Matter::Cluster::OnOff::Feature::Lighting)
+    cluster = build(Matter::Cluster::OnOff, feature_map: Matter::Cluster::OnOff::Feature::Lighting)
     attribute = Matter::Cluster::OnOff::ATTR_START_UP_ON_OFF
 
     expect_success(write(cluster, attribute, 1_u8))
@@ -315,7 +315,7 @@ describe "TLV attribute type preservation" do
   end
 
   it "accepts a wider unsigned encoding without truncating overflow" do
-    cluster = Matter::Cluster::Identify.new(endpoint(1))
+    cluster = build(Matter::Cluster::Identify)
     attribute = Matter::Cluster::Identify::ATTR_IDENTIFY_TIME
 
     expect_success(write(cluster, attribute, TLV::Any.new(300_u64, fixed_size: true)))
@@ -325,11 +325,11 @@ describe "TLV attribute type preservation" do
   end
 
   it "keeps signed values distinct from unsigned values" do
-    fan = Matter::Cluster::FanControl.new(endpoint(1))
+    fan = build(Matter::Cluster::FanControl)
     expect_status(write(fan, Matter::Cluster::FanControl::ATTR_PERCENT_SETTING, -1_i8), Matter::InteractionModel::StatusCode::InvalidDataType)
     expect_status(write(fan, Matter::Cluster::FanControl::ATTR_PERCENT_SETTING, true), Matter::InteractionModel::StatusCode::InvalidDataType)
 
-    thermostat = Matter::Cluster::Thermostat.new(endpoint(1))
+    thermostat = build(Matter::Cluster::Thermostat)
     expect_success(write(thermostat, Matter::Cluster::Thermostat::ATTR_OCCUPIED_HEATING_SETPOINT, 2100_u16))
     thermostat.occupied_heating_setpoint.should eq(2100_i16)
   end
@@ -338,7 +338,7 @@ describe "TLV attribute type preservation" do
   # only accepts unsigned TLV encodings, so a positive value sent as a signed
   # integer is still the wrong data type even though it would fit.
   it "rejects a signed encoding of a positive value for an unsigned attribute" do
-    fan = Matter::Cluster::FanControl.new(endpoint(1))
+    fan = build(Matter::Cluster::FanControl)
     original = fan.percent_setting
 
     expect_status(write(fan, Matter::Cluster::FanControl::ATTR_PERCENT_SETTING, 100_i8), Matter::InteractionModel::StatusCode::InvalidDataType)
@@ -348,7 +348,7 @@ end
 
 describe "UTF-8 attribute writes" do
   it "rejects malformed UTF-8 from a real WriteRequest without changing state" do
-    cluster = Matter::Cluster::BasicInformation.new(endpoint(0))
+    cluster = build(Matter::Cluster::BasicInformation, 0)
     original_label = cluster.node_label
     original_version = cluster.data_version
     # A two-byte UTF-8 lead byte followed by an ASCII byte is invalid.
@@ -362,11 +362,11 @@ describe "UTF-8 attribute writes" do
   end
 
   it "a mistyped enum write yields InvalidDataType" do
-    fan = Matter::Cluster::FanControl.new(endpoint(1))
+    fan = build(Matter::Cluster::FanControl)
     expect_status(write(fan, Matter::Cluster::FanControl::ATTR_FAN_MODE, "auto"), Matter::InteractionModel::StatusCode::InvalidDataType)
     fan.fan_mode.should eq(Matter::Cluster::FanControl::FanMode::Off)
 
-    cluster = EnumWriteCluster.new(endpoint(1))
+    cluster = build(EnumWriteCluster)
     expect_status(write(cluster, EnumWriteCluster::ATTR_MODE, "auto"), Matter::InteractionModel::StatusCode::InvalidDataType)
     cluster.mode.should eq(Matter::Cluster::FanControl::FanMode::Off)
   end

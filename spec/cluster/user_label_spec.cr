@@ -4,8 +4,7 @@ require "../../src/matter/cluster/label_struct"
 
 describe Matter::Cluster::UserLabel do
   it "creates a UserLabel cluster with empty label list by default" do
-    endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-    cluster = Matter::Cluster::UserLabel.new(endpoint_id)
+    cluster = build(Matter::Cluster::UserLabel)
 
     cluster.cluster_id.id.should eq(0x0041_u32)
     cluster.name.should eq("UserLabel")
@@ -13,8 +12,7 @@ describe Matter::Cluster::UserLabel do
   end
 
   it "exposes LabelList as writable attribute" do
-    endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-    cluster = Matter::Cluster::UserLabel.new(endpoint_id)
+    cluster = build(Matter::Cluster::UserLabel)
 
     meta = cluster.attributes.find { |attr| attr.id.id == Matter::Cluster::UserLabel::ATTR_LABEL_LIST }
     meta.should_not be_nil
@@ -25,8 +23,7 @@ describe Matter::Cluster::UserLabel do
   end
 
   it "writes LabelList from TLV and updates stored value" do
-    endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-    cluster = Matter::Cluster::UserLabel.new(endpoint_id)
+    cluster = build(Matter::Cluster::UserLabel)
 
     new_labels = [
       Matter::Cluster::LabelStruct.new("room", "living"),
@@ -45,16 +42,14 @@ describe Matter::Cluster::UserLabel do
   end
 
   it "rejects invalid LabelList writes" do
-    endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-    cluster = Matter::Cluster::UserLabel.new(endpoint_id)
+    cluster = build(Matter::Cluster::UserLabel)
 
     status = write(cluster, Matter::Cluster::UserLabel::ATTR_LABEL_LIST, 123_u8)
     status.status.should eq(Matter::InteractionModel::StatusCode::InvalidDataType)
   end
 
   it "rejects LabelList entries longer than 16 bytes with ConstraintError" do
-    endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-    cluster = Matter::Cluster::UserLabel.new(endpoint_id)
+    cluster = build(Matter::Cluster::UserLabel)
 
     too_long = [Matter::Cluster::LabelStruct.new("room", "a" * (Matter::Cluster::UserLabel::LABEL_MAX_LENGTH + 1))]
     status = write(cluster, Matter::Cluster::UserLabel::ATTR_LABEL_LIST, too_long)
@@ -63,8 +58,7 @@ describe Matter::Cluster::UserLabel do
   end
 
   it "persists and restores label list state" do
-    endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-    cluster = Matter::Cluster::UserLabel.new(endpoint_id, [
+    cluster = build(Matter::Cluster::UserLabel, label_list: [
       Matter::Cluster::LabelStruct.new("a", "b"),
     ])
 
@@ -73,7 +67,7 @@ describe Matter::Cluster::UserLabel do
     document["label_list"].should eq([Matter::Storage::Document{"label" => "a", "value" => "b"}] of Matter::Storage::Type)
     document["data_version"].should eq(3_i64)
 
-    restored = Matter::Cluster::UserLabel.new(endpoint_id)
+    restored = build(Matter::Cluster::UserLabel)
     restored.restore_state(document)
     restored.data_version.should eq(3_u32)
     restored.label_list.size.should eq(1)

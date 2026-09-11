@@ -5,11 +5,9 @@ require "tlv"
 describe Matter::Cluster::NetworkCommissioning do
   describe "initialization" do
     it "creates WiFi network commissioning cluster" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::WiFi,
-        Matter::Cluster::NetworkCommissioning::Feature::WiFiNetworkInterface
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi,
+        feature_map: Matter::Cluster::NetworkCommissioning::Feature::WiFiNetworkInterface
       )
 
       cluster.cluster_id.id.should eq(0x0031_u32)
@@ -20,22 +18,18 @@ describe Matter::Cluster::NetworkCommissioning do
     end
 
     it "creates Thread network commissioning cluster" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::Thread,
-        Matter::Cluster::NetworkCommissioning::Feature::ThreadNetworkInterface
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::Thread,
+        feature_map: Matter::Cluster::NetworkCommissioning::Feature::ThreadNetworkInterface
       )
 
       cluster.network_type.should eq(Matter::Cluster::NetworkCommissioning::NetworkType::Thread)
     end
 
     it "creates Ethernet network commissioning cluster" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::Ethernet,
-        Matter::Cluster::NetworkCommissioning::Feature::EthernetNetworkInterface
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::Ethernet,
+        feature_map: Matter::Cluster::NetworkCommissioning::Feature::EthernetNetworkInterface
       )
 
       cluster.network_type.should eq(Matter::Cluster::NetworkCommissioning::NetworkType::Ethernet)
@@ -74,50 +68,40 @@ describe Matter::Cluster::NetworkCommissioning do
 
   describe "attributes" do
     it "reads MaxNetworks attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
       )
 
       read(cluster, Matter::Cluster::NetworkCommissioning::ATTR_MAX_NETWORKS).should eq(1_u8)
     end
 
     it "reads ScanMaxTimeSeconds attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
       )
 
       read(cluster, Matter::Cluster::NetworkCommissioning::ATTR_SCAN_MAX_TIME_SECONDS).should eq(30_u8)
     end
 
     it "reads ConnectMaxTimeSeconds attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
       )
 
       read(cluster, Matter::Cluster::NetworkCommissioning::ATTR_CONNECT_MAX_TIME_SECONDS).should eq(60_u8)
     end
 
     it "reads InterfaceEnabled attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
       )
 
       read(cluster, Matter::Cluster::NetworkCommissioning::ATTR_INTERFACE_ENABLED).should be_true
     end
 
     it "writes InterfaceEnabled attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
       )
 
       status = write(cluster,
@@ -130,10 +114,8 @@ describe Matter::Cluster::NetworkCommissioning do
     end
 
     it "reads LastNetworkingStatus when nil" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
       )
 
       # TLV null encoding - check it's a null type
@@ -141,10 +123,8 @@ describe Matter::Cluster::NetworkCommissioning do
     end
 
     it "returns status for unsupported attribute write" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
       )
 
       status = write(cluster,
@@ -168,10 +148,8 @@ describe Matter::Cluster::NetworkCommissioning do
 
   describe "metadata" do
     it "provides attribute metadata" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
       )
 
       attributes = cluster.attributes
@@ -186,10 +164,8 @@ describe Matter::Cluster::NetworkCommissioning do
     end
 
     it "provides command metadata" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
       )
 
       commands = cluster.commands
@@ -261,10 +237,8 @@ describe Matter::Cluster::NetworkCommissioning do
 
   describe "network management" do
     it "tracks networks list" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
       )
 
       cluster.networks.should be_empty
@@ -278,10 +252,8 @@ describe Matter::Cluster::NetworkCommissioning do
     end
 
     it "finds connected network" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
       )
 
       ssid1 = "Network1".to_slice
@@ -296,10 +268,8 @@ describe Matter::Cluster::NetworkCommissioning do
     end
 
     it "returns nil when no network connected" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id,
-        Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
+      cluster = build(Matter::Cluster::NetworkCommissioning,
+        network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi
       )
 
       cluster.connected_network.should be_nil
@@ -341,8 +311,7 @@ describe Matter::Cluster::NetworkCommissioning do
   describe "protocol-level TLV command handling" do
     it "handles ScanNetworks TLV command" do
       backend = Matter::Network::TestBackend.new
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      cluster = build(Matter::Cluster::NetworkCommissioning,
         network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi,
         backend: backend
       )
@@ -362,8 +331,7 @@ describe Matter::Cluster::NetworkCommissioning do
 
     it "handles AddOrUpdateWiFiNetwork TLV command" do
       backend = Matter::Network::TestBackend.new
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      cluster = build(Matter::Cluster::NetworkCommissioning,
         network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi,
         backend: backend
       )
@@ -385,8 +353,7 @@ describe Matter::Cluster::NetworkCommissioning do
 
     it "answers OutOfRange when a request field violates its length constraint" do
       backend = Matter::Network::TestBackend.new
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      cluster = build(Matter::Cluster::NetworkCommissioning,
         network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi,
         backend: backend
       )
@@ -405,8 +372,7 @@ describe Matter::Cluster::NetworkCommissioning do
 
     it "handles ConnectNetwork TLV command" do
       backend = Matter::Network::TestBackend.new
-      cluster = Matter::Cluster::NetworkCommissioning.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+      cluster = build(Matter::Cluster::NetworkCommissioning,
         network_type: Matter::Cluster::NetworkCommissioning::NetworkType::WiFi,
         backend: backend
       )
