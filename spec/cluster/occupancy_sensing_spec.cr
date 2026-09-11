@@ -10,9 +10,9 @@ describe Matter::Cluster::OccupancySensingCluster do
       cluster.occupancy_sensor_type.should eq(Matter::Cluster::OccupancySensingCluster::OccupancySensorType::PIR)
       cluster.occupancy_sensor_type_bitmap.should eq(0x01_u8) # Bit 0 = PIR
       cluster.hold_time.should be_nil
-      cluster.pir_occupied_to_unoccupied_delay.should be_nil
-      cluster.pir_unoccupied_to_occupied_delay.should be_nil
-      cluster.pir_unoccupied_to_occupied_threshold.should be_nil
+      cluster.pir_occupied_to_unoccupied_delay.should eq(0_u16)
+      cluster.pir_unoccupied_to_occupied_delay.should eq(0_u16)
+      cluster.pir_unoccupied_to_occupied_threshold.should eq(1_u8)
     end
 
     it "creates with occupied state" do
@@ -70,8 +70,8 @@ describe Matter::Cluster::OccupancySensingCluster do
     it "has required attributes" do
       cluster = Matter::Cluster::OccupancySensingCluster.new(endpoint_id)
       attrs = cluster.attributes
-      # Base attributes (3) + PIR feature attributes (3)
-      attrs.size.should eq(6)
+      # Base attributes (3) + optional HoldTime + PIR feature attributes (3)
+      attrs.size.should eq(7)
       attrs.map(&.name).should contain("occupancy")
       attrs.map(&.name).should contain("occupancySensorType")
       attrs.map(&.name).should contain("occupancySensorTypeBitmap")
@@ -157,12 +157,12 @@ describe Matter::Cluster::OccupancySensingCluster do
         endpoint_id,
         pir_unoccupied_to_occupied_threshold: 3_u8
       )
-      read(cluster, Matter::Cluster::OccupancySensingCluster::ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH).should eq(3_u8)
+      read(cluster, Matter::Cluster::OccupancySensingCluster::ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESHOLD).should eq(3_u8)
     end
 
     it "returns default value for PIRUnoccupiedToOccupiedThreshold when not explicitly set" do
       cluster = Matter::Cluster::OccupancySensingCluster.new(endpoint_id)
-      read(cluster, Matter::Cluster::OccupancySensingCluster::ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH).should eq(1_u8) # Default value is 1
+      read(cluster, Matter::Cluster::OccupancySensingCluster::ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESHOLD).should eq(1_u8) # Default value is 1
     end
 
     it "returns unsupported for PIRUnoccupiedToOccupiedThreshold when PIR feature disabled" do
@@ -170,7 +170,7 @@ describe Matter::Cluster::OccupancySensingCluster do
         endpoint_id,
         feature_map: Matter::Cluster::OccupancySensingCluster::Feature::None
       )
-      read_status(cluster, Matter::Cluster::OccupancySensingCluster::ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, Matter::Cluster::OccupancySensingCluster::ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESHOLD).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 

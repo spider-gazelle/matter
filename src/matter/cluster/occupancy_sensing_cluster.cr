@@ -20,46 +20,19 @@ module Matter
     #
     # Specification: Matter 1.4 § 2.7
     class OccupancySensingCluster < Base
-      CLUSTER_ID = 0x0406_u32
+      cluster 0x0406, revision: 5
 
-      # Feature flags
-      @[Flags]
-      enum Feature : UInt32
-        Other           = 0x01 # OTHER - Other sensing modality
-        PassiveInfrared = 0x02 # PIR - PIR sensing
-        Ultrasonic      = 0x04 # US - Ultrasonic sensing
-        PhysicalContact = 0x08 # PHY - Physical contact sensing
-        ActiveInfrared  = 0x10 # AIR - Active IR sensing
-        Radar           = 0x20 # RADAR - Radar/microwave sensing
-        RfSensing       = 0x40 # RFSENS - RF signal analysis
-        Vision          = 0x80 # VIS - Vision-based sensing
-      end
-
-      # Attributes - Required
-      ATTR_OCCUPANCY                    = 0x0000_u32
-      ATTR_OCCUPANCY_SENSOR_TYPE        = 0x0001_u32
-      ATTR_OCCUPANCY_SENSOR_TYPE_BITMAP = 0x0002_u32
-
-      # Attributes - Optional (all features)
-      ATTR_HOLD_TIME = 0x0003_u32
-
-      # Attributes - PIR feature
-      ATTR_PIR_OCCUPIED_TO_UNOCCUPIED_DELAY  = 0x0010_u32
-      ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_DELAY  = 0x0011_u32
-      ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH = 0x0012_u32
-
-      # Attributes - Ultrasonic feature
-      ATTR_ULTRASONIC_OCCUPIED_TO_UNOCCUPIED_DELAY  = 0x0020_u32
-      ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_DELAY  = 0x0021_u32
-      ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_THRESH = 0x0022_u32
-
-      # Attributes - PhysicalContact feature
-      ATTR_PHYSICAL_CONTACT_OCCUPIED_TO_UNOCCUPIED_DELAY  = 0x0030_u32
-      ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_DELAY  = 0x0031_u32
-      ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_THRESH = 0x0032_u32
+      feature :other, bit: 0            # OTHER - Other sensing modality
+      feature :passive_infrared, bit: 1 # PIR - PIR sensing
+      feature :ultrasonic, bit: 2       # US - Ultrasonic sensing
+      feature :physical_contact, bit: 3 # PHY - Physical contact sensing
+      feature :active_infrared, bit: 4  # AIR - Active IR sensing
+      feature :radar, bit: 5            # RADAR - Radar/microwave sensing
+      feature :rf_sensing, bit: 6       # RFSENS - RF signal analysis
+      feature :vision, bit: 7           # VIS - Vision-based sensing
 
       # Occupancy sensor types (legacy enum)
-      enum OccupancySensorType
+      enum OccupancySensorType : UInt8
         PIR              = 0
         Ultrasonic       = 1
         PIRAndUltrasonic = 2
@@ -67,378 +40,78 @@ module Matter
       end
 
       # Occupancy bitmap (bit 0 = occupied)
-      OCCUPANCY_OCCUPIED = 0x01_u8
+      OCCUPANCY_OCCUPIED   = 0x01_u8
+      OCCUPANCY_UNOCCUPIED = 0x00_u8
 
-      # Feature map
-      property feature_map : Feature
+      # OccupancySensorTypeBitmap (bit 0 = PIR)
+      SENSOR_TYPE_BITMAP_PIR = 0x01_u8
 
-      # Required attributes
-      property occupancy : UInt8
-      property occupancy_sensor_type : OccupancySensorType
-      property occupancy_sensor_type_bitmap : UInt8
+      # Specification defaults and limits of the per-modality delays and thresholds
+      DEFAULT_DELAY     =  0_u16
+      DEFAULT_THRESHOLD =   1_u8
+      MIN_THRESHOLD     =   1_u8
+      MAX_THRESHOLD     = 254_u8
 
-      # Optional attribute (all features)
-      property hold_time : UInt16?
+      attribute 0x0000, :occupancy, UInt8, default: OCCUPANCY_UNOCCUPIED, max: OCCUPANCY_OCCUPIED
+      attribute 0x0001, :occupancy_sensor_type, OccupancySensorType, default: OccupancySensorType::PIR, fixed: true
+      attribute 0x0002, :occupancy_sensor_type_bitmap, UInt8, default: SENSOR_TYPE_BITMAP_PIR, fixed: true
+      attribute 0x0003, :hold_time, UInt16, nullable: true, optional: true, writable: true, write_access: :manage
 
-      # PIR-specific attributes (PassiveInfrared feature)
-      property pir_occupied_to_unoccupied_delay : UInt16?
-      property pir_unoccupied_to_occupied_delay : UInt16?
-      property pir_unoccupied_to_occupied_threshold : UInt8?
+      attribute 0x0010, :pir_occupied_to_unoccupied_delay, UInt16, default: DEFAULT_DELAY, writable: true, write_access: :manage, optional: true, requires: :passive_infrared
+      attribute 0x0011, :pir_unoccupied_to_occupied_delay, UInt16, default: DEFAULT_DELAY, writable: true, write_access: :manage, optional: true, requires: :passive_infrared
+      attribute 0x0012, :pir_unoccupied_to_occupied_threshold, UInt8, default: DEFAULT_THRESHOLD, writable: true, write_access: :manage, optional: true, min: MIN_THRESHOLD, max: MAX_THRESHOLD, requires: :passive_infrared
 
-      # Ultrasonic-specific attributes (Ultrasonic feature)
-      property ultrasonic_occupied_to_unoccupied_delay : UInt16?
-      property ultrasonic_unoccupied_to_occupied_delay : UInt16?
-      property ultrasonic_unoccupied_to_occupied_threshold : UInt8?
+      attribute 0x0020, :ultrasonic_occupied_to_unoccupied_delay, UInt16, default: DEFAULT_DELAY, writable: true, write_access: :manage, optional: true, requires: :ultrasonic
+      attribute 0x0021, :ultrasonic_unoccupied_to_occupied_delay, UInt16, default: DEFAULT_DELAY, writable: true, write_access: :manage, optional: true, requires: :ultrasonic
+      attribute 0x0022, :ultrasonic_unoccupied_to_occupied_threshold, UInt8, default: DEFAULT_THRESHOLD, writable: true, write_access: :manage, optional: true, min: MIN_THRESHOLD, max: MAX_THRESHOLD, requires: :ultrasonic
 
-      # PhysicalContact-specific attributes (PhysicalContact feature)
-      property physical_contact_occupied_to_unoccupied_delay : UInt16?
-      property physical_contact_unoccupied_to_occupied_delay : UInt16?
-      property physical_contact_unoccupied_to_occupied_threshold : UInt8?
+      attribute 0x0030, :physical_contact_occupied_to_unoccupied_delay, UInt16, default: DEFAULT_DELAY, writable: true, write_access: :manage, optional: true, requires: :physical_contact
+      attribute 0x0031, :physical_contact_unoccupied_to_occupied_delay, UInt16, default: DEFAULT_DELAY, writable: true, write_access: :manage, optional: true, requires: :physical_contact
+      attribute 0x0032, :physical_contact_unoccupied_to_occupied_threshold, UInt8, default: DEFAULT_THRESHOLD, writable: true, write_access: :manage, optional: true, min: MIN_THRESHOLD, max: MAX_THRESHOLD, requires: :physical_contact
+
+      event 0x00, :occupancy_changed, priority: :info
 
       def initialize(endpoint_id : DataType::EndpointNumber,
                      @feature_map : Feature = Feature::PassiveInfrared,
-                     @occupancy : UInt8 = 0_u8,
+                     @occupancy : UInt8 = OCCUPANCY_UNOCCUPIED,
                      @occupancy_sensor_type : OccupancySensorType = OccupancySensorType::PIR,
-                     @occupancy_sensor_type_bitmap : UInt8 = 0x01_u8, # Bit 0 = PIR
+                     @occupancy_sensor_type_bitmap : UInt8 = SENSOR_TYPE_BITMAP_PIR,
                      @hold_time : UInt16? = nil,
-                     # PIR feature attributes
-                     @pir_occupied_to_unoccupied_delay : UInt16? = nil,
-                     @pir_unoccupied_to_occupied_delay : UInt16? = nil,
-                     @pir_unoccupied_to_occupied_threshold : UInt8? = nil,
-                     # Ultrasonic feature attributes
-                     @ultrasonic_occupied_to_unoccupied_delay : UInt16? = nil,
-                     @ultrasonic_unoccupied_to_occupied_delay : UInt16? = nil,
-                     @ultrasonic_unoccupied_to_occupied_threshold : UInt8? = nil,
-                     # PhysicalContact feature attributes
-                     @physical_contact_occupied_to_unoccupied_delay : UInt16? = nil,
-                     @physical_contact_unoccupied_to_occupied_delay : UInt16? = nil,
-                     @physical_contact_unoccupied_to_occupied_threshold : UInt8? = nil)
+                     @pir_occupied_to_unoccupied_delay : UInt16 = DEFAULT_DELAY,
+                     @pir_unoccupied_to_occupied_delay : UInt16 = DEFAULT_DELAY,
+                     @pir_unoccupied_to_occupied_threshold : UInt8 = DEFAULT_THRESHOLD,
+                     @ultrasonic_occupied_to_unoccupied_delay : UInt16 = DEFAULT_DELAY,
+                     @ultrasonic_unoccupied_to_occupied_delay : UInt16 = DEFAULT_DELAY,
+                     @ultrasonic_unoccupied_to_occupied_threshold : UInt8 = DEFAULT_THRESHOLD,
+                     @physical_contact_occupied_to_unoccupied_delay : UInt16 = DEFAULT_DELAY,
+                     @physical_contact_unoccupied_to_occupied_delay : UInt16 = DEFAULT_DELAY,
+                     @physical_contact_unoccupied_to_occupied_threshold : UInt8 = DEFAULT_THRESHOLD)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
-        # Validate occupancy is a bitmap (should be 0 or 1 for bit 0)
-        raise ArgumentError.new("occupancy must be <= 1") if @occupancy > 1_u8
-
-        # Validate PIR threshold if provided (1-254 per spec)
-        if threshold = @pir_unoccupied_to_occupied_threshold
-          raise ArgumentError.new("pir_unoccupied_to_occupied_threshold must be between 1 and 254") if threshold < 1_u8 || threshold > 254_u8
-        end
-
-        # Validate Ultrasonic threshold if provided (1-254 per spec)
-        if threshold = @ultrasonic_unoccupied_to_occupied_threshold
-          raise ArgumentError.new("ultrasonic_unoccupied_to_occupied_threshold must be between 1 and 254") if threshold < 1_u8 || threshold > 254_u8
-        end
-
-        # Validate PhysicalContact threshold if provided (1-254 per spec)
-        if threshold = @physical_contact_unoccupied_to_occupied_threshold
-          raise ArgumentError.new("physical_contact_unoccupied_to_occupied_threshold must be between 1 and 254") if threshold < 1_u8 || threshold > 254_u8
-        end
+        raise ArgumentError.new("occupancy must be <= #{OCCUPANCY_OCCUPIED}") if @occupancy > OCCUPANCY_OCCUPIED
+        validate_threshold("pir_unoccupied_to_occupied_threshold", @pir_unoccupied_to_occupied_threshold)
+        validate_threshold("ultrasonic_unoccupied_to_occupied_threshold", @ultrasonic_unoccupied_to_occupied_threshold)
+        validate_threshold("physical_contact_unoccupied_to_occupied_threshold", @physical_contact_unoccupied_to_occupied_threshold)
       end
 
-      def name : String
-        "OccupancySensing"
+      # HoldTime is optional: unsupported until configured.
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
+        return InteractionModel::Status.unsupported_attribute if attribute_id == ATTR_HOLD_TIME && @hold_time.nil?
+        super
       end
 
-      def attributes : Array(AttributeMetadata)
-        attrs = [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_OCCUPANCY),
-            "occupancy",
-            :uint8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_OCCUPANCY_SENSOR_TYPE),
-            "occupancySensorType",
-            :uint8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_OCCUPANCY_SENSOR_TYPE_BITMAP),
-            "occupancySensorTypeBitmap",
-            :uint8,
-            writable: false
-          ),
-        ]
-
-        # HoldTime is optional for all features
-        if @hold_time
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_HOLD_TIME),
-            "holdTime",
-            :uint16,
-            writable: true
-          )
-        end
-
-        # PIR feature attributes
-        if @feature_map.passive_infrared?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PIR_OCCUPIED_TO_UNOCCUPIED_DELAY),
-            "pirOccupiedToUnoccupiedDelay",
-            :uint16,
-            writable: true
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_DELAY),
-            "pirUnoccupiedToOccupiedDelay",
-            :uint16,
-            writable: true
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH),
-            "pirUnoccupiedToOccupiedThreshold",
-            :uint8,
-            writable: true
-          )
-        end
-
-        # Ultrasonic feature attributes
-        if @feature_map.ultrasonic?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_ULTRASONIC_OCCUPIED_TO_UNOCCUPIED_DELAY),
-            "ultrasonicOccupiedToUnoccupiedDelay",
-            :uint16,
-            writable: true
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_DELAY),
-            "ultrasonicUnoccupiedToOccupiedDelay",
-            :uint16,
-            writable: true
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_THRESH),
-            "ultrasonicUnoccupiedToOccupiedThreshold",
-            :uint8,
-            writable: true
-          )
-        end
-
-        # PhysicalContact feature attributes
-        if @feature_map.physical_contact?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PHYSICAL_CONTACT_OCCUPIED_TO_UNOCCUPIED_DELAY),
-            "physicalContactOccupiedToUnoccupiedDelay",
-            :uint16,
-            writable: true
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_DELAY),
-            "physicalContactUnoccupiedToOccupiedDelay",
-            :uint16,
-            writable: true
-          )
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_THRESH),
-            "physicalContactUnoccupiedToOccupiedThreshold",
-            :uint8,
-            writable: true
-          )
-        end
-
-        attrs
+      # Reports the occupancy state; `occupancy=` with a device-facing name
+      def update_occupancy(occupied : Bool) : Nil
+        self.occupancy = occupied ? OCCUPANCY_OCCUPIED : OCCUPANCY_UNOCCUPIED
       end
 
-      def commands : Array(CommandMetadata)
-        [] of CommandMetadata # No commands for sensing clusters
-      end
-
-      # Report the sensing modality features to controllers.
-      protected def feature_map_tlv : TLV::Any
-        tlv(@feature_map.value)
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
-        case attribute_id
-        when ATTR_OCCUPANCY
-          tlv(@occupancy)
-        when ATTR_OCCUPANCY_SENSOR_TYPE
-          tlv(@occupancy_sensor_type.value.to_u8)
-        when ATTR_OCCUPANCY_SENSOR_TYPE_BITMAP
-          tlv(@occupancy_sensor_type_bitmap)
-        when ATTR_HOLD_TIME
-          if hold_time = @hold_time
-            tlv(hold_time)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-          # PIR feature attributes
-        when ATTR_PIR_OCCUPIED_TO_UNOCCUPIED_DELAY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.passive_infrared?
-          if delay = @pir_occupied_to_unoccupied_delay
-            tlv(delay)
-          else
-            tlv(0_u16) # Default value
-          end
-        when ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_DELAY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.passive_infrared?
-          if delay = @pir_unoccupied_to_occupied_delay
-            tlv(delay)
-          else
-            tlv(0_u16) # Default value
-          end
-        when ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.passive_infrared?
-          if threshold = @pir_unoccupied_to_occupied_threshold
-            tlv(threshold)
-          else
-            tlv(1_u8) # Default value
-          end
-          # Ultrasonic feature attributes
-        when ATTR_ULTRASONIC_OCCUPIED_TO_UNOCCUPIED_DELAY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.ultrasonic?
-          if delay = @ultrasonic_occupied_to_unoccupied_delay
-            tlv(delay)
-          else
-            tlv(0_u16)
-          end
-        when ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_DELAY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.ultrasonic?
-          if delay = @ultrasonic_unoccupied_to_occupied_delay
-            tlv(delay)
-          else
-            tlv(0_u16)
-          end
-        when ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_THRESH
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.ultrasonic?
-          if threshold = @ultrasonic_unoccupied_to_occupied_threshold
-            tlv(threshold)
-          else
-            tlv(1_u8)
-          end
-          # PhysicalContact feature attributes
-        when ATTR_PHYSICAL_CONTACT_OCCUPIED_TO_UNOCCUPIED_DELAY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.physical_contact?
-          if delay = @physical_contact_occupied_to_unoccupied_delay
-            tlv(delay)
-          else
-            tlv(0_u16)
-          end
-        when ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_DELAY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.physical_contact?
-          if delay = @physical_contact_unoccupied_to_occupied_delay
-            tlv(delay)
-          else
-            tlv(0_u16)
-          end
-        when ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_THRESH
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.physical_contact?
-          if threshold = @physical_contact_unoccupied_to_occupied_threshold
-            tlv(threshold)
-          else
-            tlv(1_u8)
-          end
-        else
-          super
-        end
-      end
-
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        case attribute_id
-        when ATTR_HOLD_TIME
-          delay = decode?(value, UInt16)
-          return InteractionModel::Status.invalid_data_type unless delay
-          @hold_time = delay
-          increment_version
-          InteractionModel::Status.success
-          # PIR feature attributes
-        when ATTR_PIR_OCCUPIED_TO_UNOCCUPIED_DELAY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.passive_infrared?
-          delay = decode?(value, UInt16)
-          return InteractionModel::Status.invalid_data_type unless delay
-          @pir_occupied_to_unoccupied_delay = delay
-          increment_version
-          InteractionModel::Status.success
-        when ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_DELAY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.passive_infrared?
-          delay = decode?(value, UInt16)
-          return InteractionModel::Status.invalid_data_type unless delay
-          @pir_unoccupied_to_occupied_delay = delay
-          increment_version
-          InteractionModel::Status.success
-        when ATTR_PIR_UNOCCUPIED_TO_OCCUPIED_THRESH
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.passive_infrared?
-          threshold = narrow_u8?(value)
-          return InteractionModel::Status.invalid_data_type unless threshold
-          return InteractionModel::Status.constraint_error if threshold < 1_u8 || threshold > 254_u8
-          @pir_unoccupied_to_occupied_threshold = threshold
-          increment_version
-          InteractionModel::Status.success
-          # Ultrasonic feature attributes
-        when ATTR_ULTRASONIC_OCCUPIED_TO_UNOCCUPIED_DELAY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.ultrasonic?
-          delay = decode?(value, UInt16)
-          return InteractionModel::Status.invalid_data_type unless delay
-          @ultrasonic_occupied_to_unoccupied_delay = delay
-          increment_version
-          InteractionModel::Status.success
-        when ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_DELAY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.ultrasonic?
-          delay = decode?(value, UInt16)
-          return InteractionModel::Status.invalid_data_type unless delay
-          @ultrasonic_unoccupied_to_occupied_delay = delay
-          increment_version
-          InteractionModel::Status.success
-        when ATTR_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_THRESH
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.ultrasonic?
-          threshold = narrow_u8?(value)
-          return InteractionModel::Status.invalid_data_type unless threshold
-          return InteractionModel::Status.constraint_error if threshold < 1_u8 || threshold > 254_u8
-          @ultrasonic_unoccupied_to_occupied_threshold = threshold
-          increment_version
-          InteractionModel::Status.success
-          # PhysicalContact feature attributes
-        when ATTR_PHYSICAL_CONTACT_OCCUPIED_TO_UNOCCUPIED_DELAY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.physical_contact?
-          delay = decode?(value, UInt16)
-          return InteractionModel::Status.invalid_data_type unless delay
-          @physical_contact_occupied_to_unoccupied_delay = delay
-          increment_version
-          InteractionModel::Status.success
-        when ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_DELAY
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.physical_contact?
-          delay = decode?(value, UInt16)
-          return InteractionModel::Status.invalid_data_type unless delay
-          @physical_contact_unoccupied_to_occupied_delay = delay
-          increment_version
-          InteractionModel::Status.success
-        when ATTR_PHYSICAL_CONTACT_UNOCCUPIED_TO_OCCUPIED_THRESH
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.physical_contact?
-          threshold = narrow_u8?(value)
-          return InteractionModel::Status.invalid_data_type unless threshold
-          return InteractionModel::Status.constraint_error if threshold < 1_u8 || threshold > 254_u8
-          @physical_contact_unoccupied_to_occupied_threshold = threshold
-          increment_version
-          InteractionModel::Status.success
-        else
-          super
-        end
-      end
-
-      # Update the occupancy state
-      def update_occupancy(occupied : Bool)
-        old_value = @occupancy
-        new_value = occupied ? OCCUPANCY_OCCUPIED : 0_u8
-
-        @occupancy = new_value
-
-        # Invoke callback if value changed
-        if old_value != new_value
-          increment_version_and_notify(ATTR_OCCUPANCY)
-          @on_occupancy_changed.try &.call(old_value, new_value)
-        end
-      end
-
-      # Check if currently occupied
       def occupied? : Bool
         (@occupancy & OCCUPANCY_OCCUPIED) != 0
       end
 
-      # Callback when occupancy changes
-      @on_occupancy_changed : Proc(UInt8, UInt8, Nil)?
-
-      def on_occupancy_changed(&block : UInt8, UInt8 -> Nil)
-        @on_occupancy_changed = block
+      private def validate_threshold(name : String, threshold : UInt8) : Nil
+        return if (MIN_THRESHOLD..MAX_THRESHOLD).includes?(threshold)
+        raise ArgumentError.new("#{name} must be between #{MIN_THRESHOLD} and #{MAX_THRESHOLD}")
       end
     end
   end
