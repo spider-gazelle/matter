@@ -261,7 +261,7 @@ describe "SubscribeRequestMessage with wildcard paths" do
     end
 
     it "handles wildcard path expansion with OnOff cluster" do
-      endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+      endpoint = endpoint(1)
       on_off = Matter::Cluster::OnOff.new(endpoint)
 
       clusters = {
@@ -298,8 +298,8 @@ describe "SubscribeRequestMessage with wildcard paths" do
       subscribe_request = request.as(Matter::InteractionModel::SubscribeRequestMessage)
       subscribe_request.data_version_filters.should be_nil
 
-      endpoint0 = Matter::DataType::EndpointNumber.new(0_u16)
-      endpoint1 = Matter::DataType::EndpointNumber.new(1_u16)
+      endpoint0 = endpoint(0)
+      endpoint1 = endpoint(1)
 
       admin = Matter::Cluster::AdministratorCommissioning.new(endpoint0)
       fan = Matter::Cluster::FanControl.new(
@@ -384,7 +384,7 @@ describe "SubscribeRequestMessage with wildcard paths" do
       subscribe_request = request.as(Matter::InteractionModel::SubscribeRequestMessage)
       subscribe_request.data_version_filters.as(Array(TLV::Any)).size.should eq(22)
 
-      endpoint1 = Matter::DataType::EndpointNumber.new(1_u16)
+      endpoint1 = endpoint(1)
       broken_cluster = BrokenTlvCluster.new(endpoint1)
       clusters = {
         {1_u16, BrokenTlvCluster::CLUSTER_ID} => broken_cluster.as(Matter::Cluster::Base),
@@ -423,7 +423,7 @@ describe "SubscribeRequestMessage with wildcard paths" do
       request.should_not be_nil
       subscribe_request = request.as(Matter::InteractionModel::SubscribeRequestMessage)
 
-      endpoint1 = Matter::DataType::EndpointNumber.new(1_u16)
+      endpoint1 = endpoint(1)
       raising_cluster = RaisingReadCluster.new(endpoint1)
       clusters = {
         {1_u16, RaisingReadCluster::CLUSTER_ID} => raising_cluster.as(Matter::Cluster::Base),

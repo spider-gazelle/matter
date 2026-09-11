@@ -7,7 +7,7 @@ require "../../src/matter/cluster/identify"
 require "../../src/matter/cluster/groups"
 require "../../src/matter/cluster/scenes_management"
 
-private ENDPOINT_ID = Matter::DataType::EndpointNumber.new(1_u16)
+private ENDPOINT_ID = endpoint(1)
 
 # Every mandatory server cluster of an On/Off Light except the Descriptor,
 # which the endpoint injects itself.
@@ -52,7 +52,7 @@ describe Matter::Endpoint do
 
     it "rejects cluster with mismatched endpoint ID" do
       endpoint = Matter::Endpoint.new(ENDPOINT_ID, Matter::DeviceType.on_off_light)
-      other_endpoint_id = Matter::DataType::EndpointNumber.new(2_u16)
+      other_endpoint_id = endpoint(2)
 
       expect_raises(Matter::ConfigurationError, /does not match/) do
         endpoint.add_cluster(Matter::Cluster::OnOff.new(other_endpoint_id))

@@ -21,7 +21,7 @@ describe "Subscription report exchange regression" do
       fabric_table: fabric_table
     )
 
-    endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+    endpoint = endpoint(1)
     on_off = Matter::Cluster::OnOff.new(endpoint, on_off: false)
     handler.clusters[{1_u16, Matter::Cluster::OnOff::CLUSTER_ID}] = on_off
 

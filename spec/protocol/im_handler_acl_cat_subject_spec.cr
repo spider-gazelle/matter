@@ -8,7 +8,7 @@ require "../../src/matter/protocol/im_handler"
 
 describe "IMHandler ACL CAT subjects" do
   it "authorizes reads when peer presents matching CAT subject" do
-    endpoint_0 = Matter::DataType::EndpointNumber.new(0_u16)
+    endpoint_0 = endpoint(0)
 
     acl_cluster = Matter::Cluster::AccessControl.new(endpoint_0)
     descriptor = Matter::Cluster::Descriptor.new(endpoint_0)

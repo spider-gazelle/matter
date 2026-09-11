@@ -12,8 +12,8 @@ private record EventFixture,
 # A node with a door lock on endpoint 1 and nothing journaled yet.
 private def event_fixture : EventFixture
   node = Matter::Node.new
-  endpoint = Matter::Endpoint.new(Matter::DataType::EndpointNumber.new(ENDPOINT))
-  lock = Matter::Cluster::DoorLock.new(endpoint_id: Matter::DataType::EndpointNumber.new(ENDPOINT))
+  endpoint = Matter::Endpoint.new(endpoint(ENDPOINT))
+  lock = build(Matter::Cluster::DoorLock, ENDPOINT)
   endpoint.add_cluster(lock)
   node.add_endpoint(endpoint)
   EventFixture.new(node, lock)

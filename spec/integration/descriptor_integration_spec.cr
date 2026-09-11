@@ -45,7 +45,7 @@ describe "Descriptor Integration" do
   describe "simple on/off light device" do
     it "describes a basic light endpoint" do
       # Endpoint 1: On/Off Light
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+      endpoint_id = endpoint(1)
       descriptor = Matter::Cluster::Descriptor.new(endpoint_id)
 
       # Device Type: On/Off Light (0x0100)
@@ -90,7 +90,7 @@ describe "Descriptor Integration" do
 
   describe "dimmable light device" do
     it "describes a dimmable light with multiple device types" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
+      endpoint_id = endpoint(1)
       descriptor = Matter::Cluster::Descriptor.new(endpoint_id)
 
       # Device Types: Dimmable Light (0x0101) which also includes On/Off Light
@@ -122,7 +122,7 @@ describe "Descriptor Integration" do
   describe "root endpoint with child endpoints" do
     it "describes device hierarchy with parts list" do
       # Endpoint 0: Root Node (aggregator for child endpoints)
-      root_endpoint = Matter::DataType::EndpointNumber.new(0_u16)
+      root_endpoint = endpoint(0)
       root_descriptor = Matter::Cluster::Descriptor.new(root_endpoint)
 
       # Device Type: Root Node (0x0016)
@@ -165,7 +165,7 @@ describe "Descriptor Integration" do
       # This simulates a dual light fixture with one Matter node controlling two lights
 
       # Endpoint 0: Root
-      root = Matter::Cluster::Descriptor.new(Matter::DataType::EndpointNumber.new(0_u16))
+      root = build(Matter::Cluster::Descriptor, 0)
       root.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0016_u32, # Root Node
         revision: 1_u16
@@ -177,7 +177,7 @@ describe "Descriptor Integration" do
         .add_part(2_u16)
 
       # Endpoint 1: First Light
-      light1 = Matter::Cluster::Descriptor.new(Matter::DataType::EndpointNumber.new(1_u16))
+      light1 = build(Matter::Cluster::Descriptor, 1)
       light1.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0100_u32, # On/Off Light
         revision: 2_u16
@@ -186,7 +186,7 @@ describe "Descriptor Integration" do
         .add_server(Matter::Cluster::OnOff)
 
       # Endpoint 2: Second Light
-      light2 = Matter::Cluster::Descriptor.new(Matter::DataType::EndpointNumber.new(2_u16))
+      light2 = build(Matter::Cluster::Descriptor, 2)
       light2.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0100_u32, # On/Off Light
         revision: 2_u16
@@ -219,7 +219,7 @@ describe "Descriptor Integration" do
       # For example, a Zigbee bridge that exposes Zigbee lights via Matter
 
       # Endpoint 0: Root (Aggregator)
-      root = Matter::Cluster::Descriptor.new(Matter::DataType::EndpointNumber.new(0_u16))
+      root = build(Matter::Cluster::Descriptor, 0)
       root.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x000E_u32, # Aggregator (bridge)
         revision: 1_u16
@@ -239,7 +239,7 @@ describe "Descriptor Integration" do
       root.parts_list.size.should eq(5)
 
       # Each bridged device would have its own endpoint with descriptor
-      bridged_light = Matter::Cluster::Descriptor.new(Matter::DataType::EndpointNumber.new(1_u16))
+      bridged_light = build(Matter::Cluster::Descriptor, 1)
       bridged_light.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0100_u32, # On/Off Light
         revision: 2_u16
@@ -263,7 +263,7 @@ describe "Descriptor Integration" do
       # Client clusters indicate outbound bindings
 
       # Endpoint 1: On/Off Light Switch
-      switch = Matter::Cluster::Descriptor.new(Matter::DataType::EndpointNumber.new(1_u16))
+      switch = build(Matter::Cluster::Descriptor, 1)
 
       # Device Type: On/Off Light Switch (0x0103)
       switch.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
@@ -300,7 +300,7 @@ describe "Descriptor Integration" do
       # This simulates what a controller does during commissioning
 
       # Step 1: Controller reads endpoint 0 descriptor
-      root = Matter::Cluster::Descriptor.new(Matter::DataType::EndpointNumber.new(0_u16))
+      root = build(Matter::Cluster::Descriptor, 0)
       root.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0016_u32, # Root Node
         revision: 1_u16
@@ -349,7 +349,7 @@ describe "Descriptor Integration" do
 
   describe "device capability matching" do
     it "identifies device capabilities from descriptor" do
-      endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+      endpoint = endpoint(1)
       descriptor = Matter::Cluster::Descriptor.new(endpoint)
 
       # Extended Color Light
@@ -400,7 +400,7 @@ describe "Descriptor Integration" do
     it "verifies endpoint 0 has all mandatory clusters" do
       # Endpoint 0 (root) MUST have specific mandatory clusters per Matter spec
 
-      root = Matter::Cluster::Descriptor.new(Matter::DataType::EndpointNumber.new(0_u16))
+      root = build(Matter::Cluster::Descriptor, 0)
       root.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0016_u32, # Root Node
         revision: 1_u16

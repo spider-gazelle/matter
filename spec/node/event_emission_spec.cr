@@ -3,9 +3,8 @@ require "../spec_helper"
 private ENDPOINT_NUMBER = 1_u16
 
 private def bridged_endpoint : Matter::Endpoint
-  endpoint = Matter::Endpoint.new(Matter::DataType::EndpointNumber.new(ENDPOINT_NUMBER))
-  endpoint.add_cluster(Matter::Cluster::BridgedDeviceBasicInformation.new(
-    endpoint_id: Matter::DataType::EndpointNumber.new(ENDPOINT_NUMBER),
+  endpoint = Matter::Endpoint.new(endpoint(ENDPOINT_NUMBER))
+  endpoint.add_cluster(build(Matter::Cluster::BridgedDeviceBasicInformation, ENDPOINT_NUMBER,
     node_label: "Bridged"
   ))
   endpoint
@@ -19,7 +18,7 @@ describe "Cluster event emission" do
   describe Matter::Cluster::Base do
     describe "#emit_event" do
       it "raises for an event the cluster does not declare" do
-        cluster = Matter::Cluster::OnOff.new(Matter::DataType::EndpointNumber.new(ENDPOINT_NUMBER))
+        cluster = build(Matter::Cluster::OnOff, ENDPOINT_NUMBER)
 
         expect_raises(Matter::ConfigurationError, /does not declare event 0x0/) do
           cluster.emit_event(0_u32, TLV::Any.new(1_u32, nil))
@@ -27,8 +26,7 @@ describe "Cluster event emission" do
       end
 
       it "raises for an event gated off by the feature map" do
-        cluster = Matter::Cluster::DoorLock.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(ENDPOINT_NUMBER),
+        cluster = build(Matter::Cluster::DoorLock, ENDPOINT_NUMBER,
           feature_map: Matter::Cluster::DoorLock::Feature::None
         )
 
@@ -38,7 +36,7 @@ describe "Cluster event emission" do
       end
 
       it "hands the declared priority and the fabric to the callback" do
-        cluster = Matter::Cluster::BasicInformation.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = build(Matter::Cluster::BasicInformation, 0)
 
         seen = [] of Tuple(UInt16, UInt32, UInt32, Matter::InteractionModel::EventPriority, UInt8?)
         cluster.on_event_emitted = ->(endpoint : UInt16, cluster_id : UInt32, event : UInt32, priority : Matter::InteractionModel::EventPriority, _data : TLV::Any, fabric : UInt8?) do
@@ -60,7 +58,7 @@ describe "Cluster event emission" do
 
     describe "declared event metadata" do
       it "carries the declared priority and the default read privilege" do
-        cluster = Matter::Cluster::BasicInformation.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = build(Matter::Cluster::BasicInformation, 0)
 
         start_up = cluster.get_event_metadata(Matter::Cluster::BasicInformation::EVENT_START_UP).as(Matter::Cluster::EventMetadata)
         start_up.priority.critical?.should be_true
@@ -119,8 +117,8 @@ describe "Cluster event emission" do
   describe Matter::Cluster::DoorLock do
     it "emits a LockOperation event for a remote lock and unlock" do
       node = Matter::Node.new
-      endpoint = Matter::Endpoint.new(Matter::DataType::EndpointNumber.new(ENDPOINT_NUMBER))
-      lock = Matter::Cluster::DoorLock.new(endpoint_id: Matter::DataType::EndpointNumber.new(ENDPOINT_NUMBER))
+      endpoint = Matter::Endpoint.new(endpoint(ENDPOINT_NUMBER))
+      lock = build(Matter::Cluster::DoorLock, ENDPOINT_NUMBER)
       endpoint.add_cluster(lock)
       node.add_endpoint(endpoint)
 
@@ -145,8 +143,8 @@ describe "Cluster event emission" do
 
     it "emits a DoorStateChange event when the door position sensor reports" do
       node = Matter::Node.new
-      endpoint = Matter::Endpoint.new(Matter::DataType::EndpointNumber.new(ENDPOINT_NUMBER))
-      lock = Matter::Cluster::DoorLock.new(endpoint_id: Matter::DataType::EndpointNumber.new(ENDPOINT_NUMBER))
+      endpoint = Matter::Endpoint.new(endpoint(ENDPOINT_NUMBER))
+      lock = build(Matter::Cluster::DoorLock, ENDPOINT_NUMBER)
       endpoint.add_cluster(lock)
       node.add_endpoint(endpoint)
 

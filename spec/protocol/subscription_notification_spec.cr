@@ -34,7 +34,7 @@ describe "Subscription Notifications" do
   describe Matter::Cluster::Base do
     describe "#on_attribute_changed callback" do
       it "can set and retrieve the callback" do
-        endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+        endpoint = endpoint(1)
         cluster = Matter::Cluster::OnOff.new(endpoint)
 
         callback_called = false
@@ -46,7 +46,7 @@ describe "Subscription Notifications" do
       end
 
       it "callback is nil by default" do
-        endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+        endpoint = endpoint(1)
         cluster = Matter::Cluster::OnOff.new(endpoint)
 
         cluster.on_attribute_changed.should be_nil
@@ -57,7 +57,7 @@ describe "Subscription Notifications" do
   describe Matter::Cluster::OnOff do
     describe "attribute change notifications" do
       it "notifies when on_off state changes via On command" do
-        endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+        endpoint = endpoint(1)
         cluster = Matter::Cluster::OnOff.new(endpoint, on_off: false)
 
         notification_received = false
@@ -81,7 +81,7 @@ describe "Subscription Notifications" do
       end
 
       it "notifies when on_off state changes via Off command" do
-        endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+        endpoint = endpoint(1)
         cluster = Matter::Cluster::OnOff.new(endpoint, on_off: true)
 
         notification_received = false
@@ -99,7 +99,7 @@ describe "Subscription Notifications" do
       end
 
       it "notifies when on_off state changes via Toggle command" do
-        endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+        endpoint = endpoint(1)
         cluster = Matter::Cluster::OnOff.new(endpoint, on_off: false)
 
         notification_count = 0
@@ -118,7 +118,7 @@ describe "Subscription Notifications" do
       end
 
       it "does not notify when state doesn't change" do
-        endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+        endpoint = endpoint(1)
         cluster = Matter::Cluster::OnOff.new(endpoint, on_off: false)
 
         notification_count = 0
@@ -133,7 +133,7 @@ describe "Subscription Notifications" do
       end
 
       it "increments data_version when notifying" do
-        endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+        endpoint = endpoint(1)
         cluster = Matter::Cluster::OnOff.new(endpoint, on_off: false)
 
         initial_version = cluster.data_version
@@ -144,7 +144,7 @@ describe "Subscription Notifications" do
       end
 
       it "calls both on_attribute_changed and on_state_changed callbacks" do
-        endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+        endpoint = endpoint(1)
         cluster = Matter::Cluster::OnOff.new(endpoint, on_off: false)
 
         attribute_callback_called = false
@@ -397,7 +397,7 @@ describe "Subscription Notifications" do
         )
 
         # Add a test cluster
-        endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+        endpoint = endpoint(1)
         on_off = Matter::Cluster::OnOff.new(endpoint)
         handler.clusters[{1_u16, Matter::Cluster::OnOff::CLUSTER_ID}] = on_off
 

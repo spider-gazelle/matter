@@ -31,7 +31,7 @@ describe "Protocol concurrency" do
       fabric_table: Matter::FabricTable.new(storage)
     )
 
-    endpoint = Matter::DataType::EndpointNumber.new(1_u16)
+    endpoint = endpoint(1)
     on_off = ProbedOnOff.new(endpoint, on_off: false)
     handler.clusters[{1_u16, Matter::Cluster::OnOff::CLUSTER_ID}] = on_off
 
