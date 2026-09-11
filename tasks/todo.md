@@ -94,7 +94,7 @@ Detailed plan: [phase5-plan.md](phase5-plan.md).
       accessors, tables, dispatch, global lists, validation, persistence) proven on boolean_state, on_off,
       level_control; `spec/cluster/dsl_spec.cr` (boolean_state 64→31, on_off 563→184, level_control
       720→173 lines; `AttributeMetadata#write_access` split from the read privilege)
-- [ ] Step 2: migrate the remaining 33 clusters smallest first (facade clusters: declarations only)
+- [x] Step 2: migrate the remaining 33 clusters smallest first (facade clusters: declarations only)
 - [ ] Step 3: definitions folded into clusters, `EntryPrivilege` to interaction_model, class/file rename
       (`Cluster::OnOff`), `Cluster::Registry`, global-list ordering re-baselined
 - [ ] `./test` green at each step end; iOS smoke test by the user at the end
