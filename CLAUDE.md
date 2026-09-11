@@ -1,12 +1,48 @@
 ## Working on this project
 
-This is a crystal lang matter protocol library. Use `crystal tool format` and `./bin/ameba` to format and lint code.
-Run specs using `crystal spec -v --error-trace` make sure to run specs using a subagent. You can also run individual spec files or use `focus: true` to isolate the spec you're working on.
+This is a Crystal lang Matter protocol library. Format and lint with `crystal tool format` and
+`./bin/ameba`; both must be clean before anything is done.
 
-When working on example code, make sure it compiles and validate using the offical `chip-tool` via e2e tests.
-Examples must commission successfully and chip-tool must be able to read and write relevant cluster attributes.
+Run specs with `crystal spec -v --error-trace`, **via a subagent** so the output stays out of the
+main context. Individual spec files and `focus: true` work as usual; `MATTER_SPEC_LOG` sets the
+spec log level (default `warn`).
 
-Clone https://github.com/matter-js/matter.js and use it as a reference.
+`./test` runs everything inside docker compose: the unit specs plus the end-to-end specs that
+commission every example device with the official `chip-tool`. `./test --unit-only`,
+`./test --e2e-only` and `./test -- e2e/spec/<file>_spec.cr` narrow it down. Example code must
+compile *and* pass e2e: a device has to commission, and chip-tool has to read and write the
+relevant cluster attributes. Container logs land in `tmp/e2e/logs/`.
+
+Clone https://github.com/matter-js/matter.js and use it as a reference implementation.
+
+Documentation lives in `README.md`, `CHANGELOG.md` and `docs/` — `docs/architecture.md` is the map
+of how a datagram reaches a cluster and where persistence, events and commissioning sit.
+
+## Conventions
+
+- Singular directory names; classes named for the thing (`Cluster::OnOff`, `Fabric::Table`).
+  No `Cluster` suffix on cluster classes.
+- Explicit require tree, no `**` globs. `require "matter"` is the device library only; the
+  controller is behind `require "matter/controller"`, and `matter/storage/legacy` and
+  `matter/storage/cli` are required explicitly.
+- Layers only reach downwards (see the stack in `docs/architecture.md`). `Matter::Storage` depends
+  on nothing else in the library — keep it that way.
+- No magic numbers. Every meaningful literal gets a named constant or an enum member; enums are
+  preferred.
+- `Matter::Error` hierarchy; no bare string raises; every rescue either logs with context or
+  re-raises.
+- `InteractionModel::Status` factory methods (`Status.success`, `Status.constraint_error`,
+  `Status.cluster_failure(code)`), never `Status.new(StatusCode::…)`.
+- Log sources mirror the file tree (`matter.session.pase`); `spec/log_sources_spec.cr` fails on
+  drift.
+- Cluster constants are `ATTR_`, `CMD_` and `EVENT_` prefixed; `CLUSTER_REVISION` is always the
+  revision value, never an attribute id.
+- Clusters are written on the cluster DSL (`src/matter/cluster/dsl.cr`) and devices on the device
+  DSL (`src/matter/device/dsl.cr`); the rules are documented at the top of each. Reach for a new
+  DSL keyword before a workaround in a cluster.
+- TLV via `@[TLV::Field]` structs only — no manual tag indexing, no raw little-endian slices.
+  Values cross the cluster boundary as `TLV::Any`; wire encoding stays in the protocol layer.
+- Persistence via `Storage::Document` / `Storage::Record` only.
 
 ## 1. Plan Node Default
 - Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
@@ -61,4 +97,3 @@ Clone https://github.com/matter-js/matter.js and use it as a reference.
 
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.  
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
-
