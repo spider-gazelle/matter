@@ -1,6 +1,5 @@
 require "./cluster"
-require "tlv"
-require "log"
+require "./definitions/identify"
 
 module Matter
   module Cluster
@@ -13,18 +12,7 @@ module Matter
     #
     # Matter Spec: Application 1.2
     class IdentifyCluster < Base
-      Log        = ::Log.for("matter.cluster.identify")
-      CLUSTER_ID = 0x0003_u32
-
-      # Attributes (using ATTR_ prefix for consistency)
-      ATTR_IDENTIFY_TIME = 0x0000_u32
-      ATTR_IDENTIFY_TYPE = 0x0001_u32
-
-      CLUSTER_REVISION = 4_u16
-
-      # Commands
-      CMD_IDENTIFY       = 0x00_u32
-      CMD_TRIGGER_EFFECT = 0x40_u32
+      cluster 0x0003, revision: 6
 
       # Identify Type enum - indicates how the device identifies itself
       enum IdentifyType : UInt8
@@ -36,148 +24,51 @@ module Matter
         Actuator     = 5 # Physical actuator (e.g., lock/unlock, open/close)
       end
 
-      # Effect Identifier enum - visual/audible effects for identification
-      enum EffectIdentifier : UInt8
-        Blink         =   0 # Blink light
-        Breathe       =   1 # Breathe effect (fade in/out)
-        Okay          =   2 # "Okay" confirmation effect
-        ChannelChange =  11 # Channel change effect
-        FinishEffect  = 254 # Finish current effect
-        StopEffect    = 255 # Stop current effect
-      end
+      alias EffectIdentifier = Definitions::Identify::EffectIdentifier
+      alias EffectVariant = Definitions::Identify::EffectVariant
 
-      # Effect Variant enum
-      enum EffectVariant : UInt8
-        Default = 0 # Default variant of the effect
-      end
+      # Remaining identify time in seconds; volatile, so not persisted
+      attribute 0x0000, :identify_time, UInt16, default: 0_u16, writable: true, persist: false
+      attribute 0x0001, :identify_type, IdentifyType, default: IdentifyType::None, fixed: true
 
-      # Attribute storage
-      property identify_time : UInt16 # Remaining identify time in seconds
-      property identify_type : IdentifyType
+      command 0x00, :identify, request: Definitions::Identify::Request
+      command 0x40, :trigger_effect, request: Definitions::Identify::TriggerEffectRequest
 
-      # Callbacks
+      # Whether the start / stop callbacks last saw an active identification
+      @identifying = false
+
       @on_identify_started : Proc(Nil)?
       @on_identify_stopped : Proc(Nil)?
       @on_trigger_effect : Proc(EffectIdentifier, EffectVariant, Nil)?
 
-      def initialize(endpoint_id : DataType::EndpointNumber,
-                     @identify_type : IdentifyType = IdentifyType::None)
+      def initialize(endpoint_id : DataType::EndpointNumber, @identify_type : IdentifyType = IdentifyType::None)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
-        @identify_time = 0_u16
       end
 
-      def name : String
-        "Identify"
+      # A controller may start or stop identification by writing the time too
+      after_write :identify_time do
+        sync_identify_callbacks
       end
 
-      def attributes : Array(AttributeMetadata)
-        [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_IDENTIFY_TIME),
-            "IdentifyTime",
-            :uint16,
-            writable: true
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_IDENTIFY_TYPE),
-            "IdentifyType",
-            :uint8,
-            writable: false
-          ),
-        ]
-      end
+      # ------------------------------------------------------------------------
+      # Commands
+      # ------------------------------------------------------------------------
 
-      def commands : Array(CommandMetadata)
-        [
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_IDENTIFY),
-            "Identify"
-          ),
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_TRIGGER_EFFECT),
-            "TriggerEffect"
-          ),
-        ]
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_IDENTIFY_TIME
-          tlv(@identify_time)
-        when ATTR_IDENTIFY_TYPE
-          tlv(@identify_type.value)
-        when GLOBAL_FEATURE_MAP
-          tlv(0_u32) # No features for basic Identify
-        else
-          super
-        end
-      end
-
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        case attribute_id
-        when ATTR_IDENTIFY_TIME
-          new_time = decode?(value, UInt16)
-          return InteractionModel::Status.invalid_data_type unless new_time
-          @identify_time = new_time
-          increment_version
-          InteractionModel::Status.success
-        else
-          super
-        end
-      end
-
-      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
-        case command_id
-        when CMD_IDENTIFY
-          handle_identify_command(fields)
-        when CMD_TRIGGER_EFFECT
-          handle_trigger_effect_command(fields)
-        else
-          super
-        end
-      end
-
-      # Handle Identify command
-      # Command fields: IdentifyTime (tag 0, uint16) - seconds to identify
-      private def handle_identify_command(fields : TLV::Any?) : InteractionModel::Status
-        req = Definitions::Identify::Request.from_tlv(fields || tlv(nil))
-        new_time = req.identify_time
-
-        was_identifying = identifying?
-        @identify_time = new_time
-        increment_version
-
-        # Trigger callbacks
-        if new_time > 0 && !was_identifying
-          @on_identify_started.try &.call
-        elsif new_time == 0 && was_identifying
-          @on_identify_stopped.try &.call
-        end
-
+      def identify(request : Definitions::Identify::Request) : InteractionModel::Status
+        self.identify_time = request.identify_time
+        sync_identify_callbacks
         InteractionModel::Status.success
-      rescue ex
-        Log.error(exception: ex) { "Identify command TLV parsing error (fields=#{fields.inspect})" }
-        InteractionModel::Status.invalid_command
       end
 
-      # Handle TriggerEffect command
-      # Command fields: EffectIdentifier (tag 0, enum8), EffectVariant (tag 1, enum8)
-      private def handle_trigger_effect_command(fields : TLV::Any?) : InteractionModel::Status
-        req = Definitions::Identify::TriggerEffectRequest.from_tlv(fields || tlv(nil))
-
-        # Convert from Definitions enum to cluster enum
-        effect = EffectIdentifier.from_value(req.effect_identifier.value)
-        variant = EffectVariant.from_value(req.effect_variany.value)
-
-        @on_trigger_effect.try &.call(effect, variant)
-
+      def trigger_effect(request : Definitions::Identify::TriggerEffectRequest) : InteractionModel::Status
+        @on_trigger_effect.try &.call(request.effect_identifier, request.effect_variany)
         InteractionModel::Status.success
-      rescue ex
-        Log.error(exception: ex) { "TriggerEffect command TLV parsing error (fields=#{fields.inspect})" }
-        InteractionModel::Status.invalid_command
       end
 
-      # Check if device is currently identifying
+      # ------------------------------------------------------------------------
+      # Public Interface
+      # ------------------------------------------------------------------------
+
       def identifying? : Bool
         @identify_time > 0
       end
@@ -197,16 +88,20 @@ module Matter
         @on_trigger_effect = block
       end
 
-      # Helper: Decrement identify time (call this periodically, e.g., every second)
-      def tick
-        if @identify_time > 0
-          @identify_time -= 1
-          increment_version
+      # Counts the identify time down by one second; call once a second while
+      # identifying.
+      def tick : Nil
+        return unless identifying?
+        self.identify_time = @identify_time - 1
+        sync_identify_callbacks
+      end
 
-          if @identify_time == 0
-            @on_identify_stopped.try &.call
-          end
-        end
+      # Fires the started / stopped callback when the identifying state
+      # flipped since the last call.
+      private def sync_identify_callbacks : Nil
+        return if @identifying == identifying?
+        @identifying = identifying?
+        @identifying ? @on_identify_started.try(&.call) : @on_identify_stopped.try(&.call)
       end
     end
   end
