@@ -7,6 +7,7 @@ module Matter
 end
 
 require "./cluster/cluster"
+require "./cluster/registry"
 require "./cluster/label_struct"
 
 require "./cluster/color_control_utils"
