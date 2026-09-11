@@ -118,8 +118,9 @@ Detailed plan: [phase6-plan.md](phase6-plan.md).
 - [x] Step 3: `commissioning/` module (cycle broken) + Failsafe/Window/Credential services; facade clusters
       become thin DSL fronts
 - [x] Step 4: CASE deduplicated; event journal, emission, read and subscription path
-- [ ] Step 5: `Matter::Device` DSL + `examples/support/`; all ten examples rewritten
-- [ ] `./test` green at steps 1, 2, 3, 5; iOS smoke test by the user
+- [x] Step 5: `Matter::Device` DSL + `examples/support/`; all ten examples rewritten
+- [x] `./test` green (2026-09-12: 2546 unit + 66 e2e, device validation 20/20); iOS smoke test by the user
+      still outstanding
 
 ## Phase 7: Close out
 Detailed plan: [phase7-plan.md](phase7-plan.md).
@@ -289,6 +290,39 @@ Detailed plan: [phase7-plan.md](phase7-plan.md).
 | cluster implementation lines (excl. dsl/base/registry/utils) | ~17,750 | ~14,000 (types files included) |
 | `AttributeMetadata.new` / `CommandMetadata.new` outside dsl.cr | 291 / 103 | 0 / 0 |
 | unit examples | 2305 | 2394 |
+
+### Phase 6 (2026-09-12)
+- `Matter::Node` + `Endpoint` own the clusters: endpoints hold them, a flat index keeps protocol lookups
+  O(1), device types are validated at `add_endpoint` (which caught four fixtures declaring a device type
+  without its mandatory clusters, including the bridge's lights missing Groups), descriptor population and
+  scene wiring live on `Endpoint`, and the dead second interaction-model path is gone.
+- `MessageHandler` 2635 -> 364 lines, decomposed into `MrpCache`, `SessionRegistry` (owns the one lock),
+  `SubscriptionManager` (one chunk ladder, reports under the registry lock), `SecureChannel` (handshakes
+  keyed by exchange id, so two commissioners no longer collide), `InteractionRouter` and `ResponseSender`.
+  Bugs fixed on the way: two racing cleanup fibers, subscriptions completed via standalone-ack never
+  persisted (lost on restart), handshake state never cleared after Sigma3, and writes to a closed store.
+  The transport's retransmit engine was deleted: it had no caller and could never have run.
+- `commissioning/` module with the cluster require cycle broken via `RollbackTargets`; `FailsafeService`,
+  `WindowService` and `CredentialService` hold the logic, so operational credentials went 1570 -> 591,
+  administrator commissioning 694 -> 335, general commissioning 725 -> 473. Five never-wired callbacks deleted.
+- CASE: one certificate validation and one key derivation; the initiator now uses the spec constants and
+  salts (it previously could not have interoperated, and `establish_session` had no callers to notice).
+- Events end to end: `EventJournal` on `Node` with per-priority rings, `Cluster::Base#emit_event` and DSL
+  `emit_<name>` helpers, `EventDataIB`/`EventStatusIB`/`EventReportIB`, `IMHandler.read_events` sharing the
+  report chunk budget, subscriptions carrying event paths and a persisted cursor with urgency bypassing
+  min-interval damping. Door lock and both basic-information clusters emit.
+- `Matter::Device` DSL (`identity`, `storage`, `network`, `endpoint`, `endpoint_template`, `on`) plus
+  `examples/support/`: the ten examples went 3383 -> 1191 lines, typed accessors replace the nilable-cast
+  dance, and the bridge's hand-rolled persistence became template parameters in the `app` collection.
+- The e2e gate caught what the unit suite could not: door lock event payloads typed their fabric index and
+  source node as datatype wrappers with no TLV encoder, so every lock command failed against chip-tool once
+  a node wired the event callback. Fixed with a spec that attaches a callback.
+
+| Metric | after Phase 5 | after Phase 6 |
+|---|---|---|
+| `message_handler.cr` lines | 2635 | 364 |
+| example lines (ten devices) | 3383 | 1191 + 347 shared |
+| unit examples | 2394 | 2546 |
 
 ### Phase 5 Step 2b (2026-09-11)
 - DSL: `computed:` (reader `name` / `name(fabric_index)`, writer `name=` when writable),

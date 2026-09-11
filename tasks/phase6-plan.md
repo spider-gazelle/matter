@@ -1,7 +1,7 @@
 # Phase 6 sub-plan: device model and protocol decomposition
 
 The seven-phase plan is in `tasks/todo.md`. Phases 0-5 are done on `refactor/cleanup` (2394 unit examples
-green). Status: **approved 2026-09-12**.
+green). Status: **complete 2026-09-12; all gates green**.
 
 ## Context
 
