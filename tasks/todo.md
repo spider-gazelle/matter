@@ -110,7 +110,7 @@ Detailed plan: [phase5-plan.md](phase5-plan.md).
 
 ## Phase 6: Device model and protocol decomposition
 Detailed plan: [phase6-plan.md](phase6-plan.md).
-- [ ] Step 1: `Node`/`Endpoint` own the clusters (flat index, device-type validation, descriptor + scene
+- [x] Step 1: `Node`/`Endpoint` own the clusters (flat index, device-type validation, descriptor + scene
       wiring moved off `Device::Base`, dead second IM path deleted)
 - [ ] Step 2: decompose `MessageHandler` (`MrpCache`, `SessionRegistry` owning the lock,
       `SubscriptionManager` with one chunk ladder, `SecureChannel` keyed by exchange, `InteractionRouter`);
