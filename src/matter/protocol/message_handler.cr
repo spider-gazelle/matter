@@ -15,6 +15,8 @@ require "../interaction_model/status_code"
 require "../interaction_model/tlv_messages"
 require "./im_handler"
 require "./mrp_cache"
+require "./response_sender"
+require "./subscription_manager"
 require "./persistence"
 require "./session_registry"
 require "tlv"
@@ -52,6 +54,12 @@ module Matter
 
       # Sessions, subscriptions and the lock every protocol fiber shares.
       getter registry : SessionRegistry
+
+      # The subscription handshakes and report fan-out.
+      getter subscriptions : SubscriptionManager
+
+      # Encrypts and sends everything the node puts on the wire.
+      getter sender : ResponseSender
 
       # The data model this handler serves: endpoints, their clusters and the
       # flat index the Interaction Model resolves paths against.
@@ -91,42 +99,6 @@ module Matter
       property case_responder_session_id : UInt16?
       property case_fabric : Fabric?
 
-      # Pending subscription responses - keyed by exchange_id
-      # After sending ReportData, we wait for StatusResponse before sending SubscribeResponse
-      # Supports chunked responses - remaining_chunks stores chunks yet to be sent
-      class PendingSubscription
-        property subscription_id : UInt32
-        property min_interval : UInt16
-        property max_interval : UInt16
-        property peer : Socket::IPAddress
-        property session : Session::SecureContext
-        property original_msg : Codec::MessageCodec::Message
-        property remaining_chunks : Array(Tuple(Bytes, Bool))
-        property attribute_paths : Array(InteractionModel::AttributePath)
-
-        def initialize(@subscription_id, @min_interval, @max_interval, @peer, @session, @original_msg, @attribute_paths, @remaining_chunks = [] of Tuple(Bytes, Bool))
-        end
-      end
-
-      @pending_subscriptions : Hash(UInt16, PendingSubscription) = {} of UInt16 => PendingSubscription
-
-      # Pending read responses - keyed by exchange_id
-      # For chunked ReadResponses, we wait for StatusResponse/ACK before sending next chunk
-      class PendingReadResponse
-        property peer : Socket::IPAddress
-        property session : Session::SecureContext
-        property original_msg : Codec::MessageCodec::Message
-        property remaining_chunks : Array(Tuple(Bytes, Bool))
-
-        def initialize(@peer, @session, @original_msg, @remaining_chunks = [] of Tuple(Bytes, Bool))
-        end
-      end
-
-      @pending_read_responses : Hash(UInt16, PendingReadResponse) = {} of UInt16 => PendingReadResponse
-
-      # Cached encrypted responses, replayed when a peer retransmits a request.
-      @mrp_cache : MrpCache
-
       # Timed Interaction support (IM TimedRequest message type 0x0A).
       #
       # Keyed by (session_id, exchange_id) to scope to a secure session.
@@ -156,10 +128,6 @@ module Matter
       delegate process_pending_cleanups, process_expired_subscriptions, to: @registry
       delegate cancel_cleanup_on_traffic, mark_transport_failure, mark_case_resumption_failed, to: @registry
       delegate renew_subscription, find_matching_subscription, to: @registry
-
-      # Exchange ID counter for initiating new exchanges (e.g., subscription updates)
-      # Start at a random value to avoid conflicts with controller-initiated exchanges
-      @next_exchange_id : UInt16 = Random.rand(UInt16).to_u16
 
       def initialize(
         @transport : Transport::UDPTransport,
@@ -196,6 +164,9 @@ module Matter
         # Initialize clusters
         @node = Node.new
         initialize_clusters
+
+        @sender = ResponseSender.new(@transport, @mrp_cache)
+        @subscriptions = SubscriptionManager.new(@registry, @node, @sender)
 
         # Set ourselves as the message handler
         @transport.on_message = ->(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) do
@@ -342,100 +313,19 @@ module Matter
       # It enables automatic subscription updates when attributes change
       def setup_cluster_notifications
         @node.on_attribute_changed = ->(ep : UInt16, cl : UInt32, attr : UInt32) do
-          notify_subscriptions(ep, cl, attr)
+          @subscriptions.notify(ep, cl, attr)
         end
         Log.debug { "Set up attribute change notifications for #{clusters.size} cluster(s)" }
       end
 
-      # Handle attribute change and send updates to matching subscriptions
-      # This is called by clusters when their attributes change
-      def notify_subscriptions(endpoint_id : UInt16, cluster_id : UInt32, attribute_id : UInt32)
-        notify_subscriptions_batched([{endpoint_id, cluster_id, attribute_id}])
+      # Reports one changed attribute to every subscription watching it.
+      def notify_subscriptions(endpoint_id : UInt16, cluster_id : UInt32, attribute_id : UInt32) : Nil
+        @subscriptions.notify(endpoint_id, cluster_id, attribute_id)
       end
 
-      # Batch multiple attribute changes into a single subscription update
-      # This is important to avoid overwhelming controllers (especially iOS) with rapid-fire updates.
-      # Each tuple is (endpoint_id, cluster_id, attribute_id).
-      def notify_subscriptions_batched(attributes : Array(Tuple(UInt16, UInt32, UInt32)))
-        return if attributes.empty?
-
-        # Reports are raised from cluster callbacks on arbitrary fibers; the
-        # registry lock is what keeps the exchange id counter and the session
-        # message counters consistent with inbound message handling.
-        @registry.synchronize do
-          notify_locked(attributes)
-        end
-      end
-
-      # Builds and sends one ReportData per matching subscription.
-      # The caller must hold the registry lock.
-      private def notify_locked(attributes : Array(Tuple(UInt16, UInt32, UInt32)))
-        Log.debug { "notify_subscriptions_batched: #{attributes.size} attribute(s), active=#{@registry.active_subscriptions.size}" }
-
-        @registry.active_subscriptions.each do |sub_id, subscription|
-          attribute_reports = [] of InteractionModel::AttributeReportIB
-
-          attributes.each do |(endpoint_id, cluster_id, attribute_id)|
-            matches = subscription.matches?(endpoint_id, cluster_id, attribute_id)
-            next unless matches
-
-            # Read the current attribute value
-            cluster = clusters[{endpoint_id, cluster_id}]?
-            unless cluster
-              Log.warn { "Subscription update skipped: cluster not found (endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)})" }
-              next
-            end
-
-            # Build attribute report for this attribute
-            value = cluster.read_attribute(attribute_id, subscription.session.fabric_index)
-            case value
-            when TLV::Any
-              attr_path = InteractionModel::AttributePath.new(
-                endpoint: endpoint_id,
-                cluster: cluster_id,
-                attribute: attribute_id
-              )
-
-              attr_data = InteractionModel::AttributeDataIB.new(
-                path: attr_path,
-                data: value,
-                data_version: cluster.data_version
-              )
-
-              attribute_reports << InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
-            else
-              Log.warn { "Subscription update skipped: read_attribute returned #{value.class} (endpoint=#{endpoint_id}, cluster=0x#{cluster_id.to_s(16)}, attr=0x#{attribute_id.to_s(16)})" }
-            end
-          end
-
-          # Send batched update if we have any reports
-          if attribute_reports.size > 0
-            Log.debug { "Sending batched subscription update: subscription_id=#{sub_id}, peer=#{subscription.peer}, reports=#{attribute_reports.size}" }
-
-            report_data = IMHandler.encode_report_data(attribute_reports, subscription.subscription_id)
-            Log.trace { "Subscription update ReportData TLV (#{report_data.size} bytes): #{report_data.hexstring}" }
-
-            send_subscription_update(subscription, report_data)
-            subscription.last_report_time = Time.utc
-          end
-        end
-      end
-
-      # Send a subscription update (ReportData) to a subscriber
-      private def send_subscription_update(subscription : ActiveSubscription, payload : Bytes)
-        session = subscription.session
-        new_exchange_id = @next_exchange_id
-        @next_exchange_id = @next_exchange_id &+ 1
-        payload_header = Codec::MessageCodec::PayloadHeader.new(
-          exchange_id: new_exchange_id,
-          protocol_id: PROTOCOL_INTERACTION_MODEL,
-          message_type: InteractionModel::MessageType::ReportData.value,
-          initiator_message: true,
-          requires_acknowledge: true
-        )
-        udp_packet, _ = Session::SecureMessage.encode(session, payload_header, payload,
-          source_node_id: session.local_node_id)
-        @transport.send_raw(udp_packet, subscription.peer)
+      # Reports a batch of changed attributes, one ReportData per subscription.
+      def notify_subscriptions_batched(attributes : Array(Tuple(UInt16, UInt32, UInt32))) : Nil
+        @subscriptions.notify_batched(attributes)
       end
 
       # Main message routing entry point
@@ -630,7 +520,7 @@ module Matter
         Log.info { "TimedRequest: timeout_ms=#{timeout_ms} (session_id=#{session.session_id} exchange=#{exchange_id})" }
 
         status = InteractionModel::StatusResponseMessage.new(status: InteractionModel::StatusCode::Success.value)
-        send_im_response(
+        @sender.send_im_response(
           original_msg: original_msg,
           peer: peer,
           session: session,
@@ -667,123 +557,15 @@ module Matter
           Log.error(exception: ex) { "Failed to parse StatusResponse (#{decrypted.size} bytes): #{decrypted.hexstring}" }
         end
 
-        # Check if this StatusResponse is for a pending subscription
-        exchange_id = original_msg.payload_header.exchange_id
-        if pending = @pending_subscriptions.delete(exchange_id)
-          if status_code == InteractionModel::StatusCode::Success.value
-            # Success - check if there are more chunks to send
-            if !pending.remaining_chunks.empty?
-              # Send next chunk
-              next_chunk, _ = pending.remaining_chunks.shift
-              Log.debug { "StatusResponse for subscription #{pending.subscription_id}: sending next chunk (#{pending.remaining_chunks.size} remaining)" }
+        # A StatusResponse either acknowledges a ReportData chunk of ours, or
+        # is a bare acknowledgement we owe an ACK for.
+        success = status_code == InteractionModel::StatusCode::Success.value
+        return if @subscriptions.advance(original_msg.payload_header.exchange_id, original_msg, success)
 
-              # Send next ReportData chunk
-              send_im_response(
-                original_msg: original_msg,
-                peer: pending.peer,
-                session: pending.session,
-                message_type: InteractionModel::MessageType::ReportData.value,
-                payload: next_chunk
-              )
-
-              # Put pending subscription back to wait for next StatusResponse
-              @pending_subscriptions[exchange_id] = pending
-              Log.debug { "Sent ReportData chunk, waiting for StatusResponse (subscription #{pending.subscription_id})" }
-            else
-              # All chunks sent - send SubscribeResponse to complete the subscription
-              Log.debug { "All ReportData chunks sent for subscription #{pending.subscription_id}; sending SubscribeResponse" }
-
-              # Encode SubscribeResponse as TLV
-              subscribe_response_tlv = IMHandler.encode_subscribe_response(pending.subscription_id, pending.max_interval)
-              Log.trace { "Encoded SubscribeResponse TLV (#{subscribe_response_tlv.size} bytes): #{subscribe_response_tlv.hexstring}" }
-
-              # Send SubscribeResponse
-              send_im_response(
-                original_msg: original_msg,
-                peer: pending.peer,
-                session: pending.session,
-                message_type: InteractionModel::MessageType::SubscribeResponse.value,
-                payload: subscribe_response_tlv
-              )
-
-              # Move subscription to active subscriptions for ongoing updates
-              active_sub = ActiveSubscription.new(
-                subscription_id: pending.subscription_id,
-                min_interval: pending.min_interval,
-                max_interval: pending.max_interval,
-                peer: pending.peer,
-                session: pending.session,
-                attribute_paths: pending.attribute_paths,
-                exchange_id: exchange_id
-              )
-              @registry.add_subscription(active_sub)
-            end
-          else
-            # Error - subscription failed
-            Log.warn { "StatusResponse error for subscription #{pending.subscription_id}, aborting subscription" }
-          end
-          # Check if this StatusResponse is for a pending read response
-        elsif pending_read = @pending_read_responses.delete(exchange_id)
-          if status_code == InteractionModel::StatusCode::Success.value
-            # Success - check if there are more chunks to send
-            if !pending_read.remaining_chunks.empty?
-              # Send next chunk
-              next_chunk, _ = pending_read.remaining_chunks.shift
-              Log.debug { "StatusResponse for read response: sending next chunk (#{pending_read.remaining_chunks.size} remaining)" }
-
-              # Send next ReportData chunk
-              send_im_response(
-                original_msg: original_msg,
-                peer: pending_read.peer,
-                session: pending_read.session,
-                message_type: InteractionModel::MessageType::ReportData.value,
-                payload: next_chunk
-              )
-
-              # Put pending read back to wait for next StatusResponse
-              if !pending_read.remaining_chunks.empty?
-                @pending_read_responses[exchange_id] = pending_read
-                Log.debug { "Sent ReportData chunk, waiting for StatusResponse (read response)" }
-              else
-                Log.debug { "Sent final ReportData chunk for read response" }
-              end
-            else
-              # All chunks already sent - nothing more to do for read responses
-              Log.debug { "StatusResponse received for read response, all chunks already sent" }
-            end
-          else
-            # Error - read failed
-            Log.warn { "StatusResponse error for read response, aborting" }
-          end
-        else
-          # This StatusResponse is not for a pending subscription or read -
-          # it's likely an acknowledgment for a subscription update we sent.
-          # We still need to send an ACK back if required.
-          if original_msg.payload_header.requires_acknowledge?
-            Log.trace { "StatusResponse requires ACK, sending standalone ACK" }
-            send_encrypted_ack(original_msg, peer, session)
-          end
+        if original_msg.payload_header.requires_acknowledge?
+          Log.trace { "StatusResponse requires ACK, sending standalone ACK" }
+          @sender.send_encrypted_ack(original_msg, peer, session)
         end
-      end
-
-      # Send a standalone ACK for an encrypted message
-      # Used when we receive a message that requires acknowledgment but we don't have another response to send
-      private def send_encrypted_ack(
-        original_msg : Codec::MessageCodec::Message,
-        peer : Socket::IPAddress,
-        session : Session::SecureContext,
-      ) : Nil
-        payload_header = Codec::MessageCodec::PayloadHeader.new(
-          exchange_id: original_msg.payload_header.exchange_id,
-          protocol_id: PROTOCOL_SECURE_CHANNEL,
-          message_type: MSG_STANDALONE_ACK,
-          initiator_message: !original_msg.payload_header.initiator_message?,
-          requires_acknowledge: false,
-          acknowledged_message_id: original_msg.packet_header.message_id
-        )
-        udp_packet, _ = Session::SecureMessage.encode(session, payload_header, Bytes.empty,
-          source_node_id: session.local_node_id, destination_node_id: session.peer_node_id)
-        @transport.send_raw(udp_packet, peer)
       end
 
       # Handle ReadRequest - parse, read attributes, encode response, encrypt and send
@@ -823,12 +605,12 @@ module Matter
 
         # Get first chunk to send
         first_chunk, is_last = chunks.first
-        remaining_chunks = chunks.size > 1 ? chunks[1..] : [] of Tuple(Bytes, Bool)
+        remaining_chunks = chunks[1..].map(&.[0])
 
         Log.debug { "Sending first chunk (#{first_chunk.size} bytes), #{remaining_chunks.size} remaining, is_last=#{is_last}" }
 
         # Send first ReportData chunk
-        send_im_response(
+        @sender.send_im_response(
           original_msg: original_msg,
           peer: peer,
           session: session,
@@ -839,15 +621,14 @@ module Matter
 
         Log.debug { "Sent ReadResponse chunk 1/#{chunks.size}" }
 
-        # If there are more chunks, store pending read response
-        if !remaining_chunks.empty?
+        # If there are more chunks, wait for the controller to acknowledge this one
+        unless remaining_chunks.empty?
           exchange_id = original_msg.payload_header.exchange_id
-          @pending_read_responses[exchange_id] = PendingReadResponse.new(
+          @subscriptions.await_read(exchange_id, SubscriptionManager::PendingRead.new(
             peer: peer,
             session: session,
-            original_msg: original_msg,
             remaining_chunks: remaining_chunks
-          )
+          ))
           Log.debug { "Waiting for StatusResponse/ACK on exchange #{exchange_id} (#{remaining_chunks.size} chunks remaining)" }
         end
       rescue ex
@@ -913,12 +694,12 @@ module Matter
 
         # Get first chunk to send
         first_chunk, _ = chunks.first
-        remaining_chunks = chunks.size > 1 ? chunks[1..] : [] of Tuple(Bytes, Bool)
+        remaining_chunks = chunks[1..].map(&.[0])
 
         Log.debug { "Sending first chunk (#{first_chunk.size} bytes), #{remaining_chunks.size} remaining" }
 
         # Send first ReportData chunk
-        send_im_response(
+        @sender.send_im_response(
           original_msg: original_msg,
           peer: peer,
           session: session,
@@ -945,16 +726,15 @@ module Matter
         # Store pending subscription - we'll send more chunks or SubscribeResponse after receiving StatusResponse
         # The exchange_id is used to correlate the StatusResponse with this subscription
         exchange_id = original_msg.payload_header.exchange_id
-        @pending_subscriptions[exchange_id] = PendingSubscription.new(
+        @subscriptions.await_subscription(exchange_id, SubscriptionManager::PendingSubscription.new(
           subscription_id: subscription_id,
           min_interval: min_interval,
           max_interval: max_interval,
           peer: peer,
           session: session,
-          original_msg: original_msg,
           attribute_paths: attribute_paths,
           remaining_chunks: remaining_chunks
-        )
+        ))
 
         Log.debug { "Waiting for StatusResponse on exchange #{exchange_id} (#{remaining_chunks.size} chunks remaining)" }
       rescue ex
@@ -988,7 +768,7 @@ module Matter
               "(session_id=#{session.session_id} exchange=#{original_msg.payload_header.exchange_id} peer=#{peer.address}:#{peer.port})"
             end
             status = InteractionModel::StatusResponseMessage.new(status: InteractionModel::StatusCode::Timeout.value)
-            send_im_response(
+            @sender.send_im_response(
               original_msg: original_msg,
               peer: peer,
               session: session,
@@ -1026,7 +806,7 @@ module Matter
         Log.debug { "Encoded WriteResponse TLV (#{response_tlv.size} bytes): #{response_tlv.hexstring}" }
 
         # Send encrypted IM response
-        send_im_response(
+        @sender.send_im_response(
           original_msg: original_msg,
           peer: peer,
           session: session,
@@ -1067,7 +847,7 @@ module Matter
               "(session_id=#{session.session_id} exchange=#{original_msg.payload_header.exchange_id} peer=#{peer.address}:#{peer.port})"
             end
             status = InteractionModel::StatusResponseMessage.new(status: InteractionModel::StatusCode::Timeout.value)
-            send_im_response(
+            @sender.send_im_response(
               original_msg: original_msg,
               peer: peer,
               session: session,
@@ -1106,7 +886,7 @@ module Matter
         Log.debug { "Encoded InvokeResponse TLV (#{response_tlv.size} bytes): #{response_tlv.hexstring}" }
 
         # Send encrypted IM response
-        send_im_response(
+        @sender.send_im_response(
           original_msg: original_msg,
           peer: peer,
           session: session,
@@ -1122,32 +902,6 @@ module Matter
           "exchange=#{original_msg.payload_header.exchange_id} msg_id=#{original_msg.packet_header.message_id} " \
           "payload_hex=#{decrypted.hexstring}"
         end
-      end
-
-      # Encrypt and send an Interaction Model response
-      private def send_im_response(
-        original_msg : Codec::MessageCodec::Message,
-        peer : Socket::IPAddress,
-        session : Session::SecureContext,
-        message_type : UInt8,
-        payload : Bytes,
-        cache_for_mrp : Bool = false,
-      ) : Nil
-        payload_header = Codec::MessageCodec::PayloadHeader.new(
-          exchange_id: original_msg.payload_header.exchange_id,
-          protocol_id: PROTOCOL_INTERACTION_MODEL,
-          message_type: message_type,
-          initiator_message: !original_msg.payload_header.initiator_message?,
-          requires_acknowledge: true,
-          acknowledged_message_id: original_msg.payload_header.requires_acknowledge? ? original_msg.packet_header.message_id : nil
-        )
-        udp_packet, _ = Session::SecureMessage.encode(session, payload_header, payload,
-          source_node_id: original_msg.packet_header.destination_node_id || session.local_node_id,
-          destination_node_id: original_msg.packet_header.source_node_id)
-        if cache_for_mrp && original_msg.packet_header.session_id != 0
-          @mrp_cache.store(original_msg.packet_header.session_id, original_msg.packet_header.message_id, udp_packet.dup)
-        end
-        @transport.send_raw(udp_packet, peer)
       end
 
       # Handle PBKDF Parameter Request (first step of PASE)
@@ -1407,102 +1161,15 @@ module Matter
       # Handle Standalone ACK messages
       # These are sent when a peer wants to acknowledge a message but has no other data to send
       # For chunked ReportData, iPhone may send StandaloneAck instead of StatusResponse between chunks
-      private def handle_standalone_ack(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
+      private def handle_standalone_ack(msg : Codec::MessageCodec::Message, _peer : Socket::IPAddress) : Nil
         Log.debug { "Received StandaloneAck" }
-
-        # If the ACK includes an acknowledged message ID, log it
         if ack_msg_id = msg.payload_header.acknowledged_message_id
           Log.debug { "  Acknowledging message ID: #{ack_msg_id}" }
         end
 
-        exchange_id = msg.payload_header.exchange_id
-
-        # Check if this ACK is for a pending subscription with remaining chunks
-        # iPhone sends StandaloneAck (instead of StatusResponse) to acknowledge intermediate ReportData chunks
-        if pending = @pending_subscriptions[exchange_id]?
-          if !pending.remaining_chunks.empty?
-            # Send next chunk
-            next_chunk, _ = pending.remaining_chunks.shift
-            Log.debug { "StandaloneAck for subscription #{pending.subscription_id}: sending next chunk (#{pending.remaining_chunks.size} remaining)" }
-
-            # Send next ReportData chunk
-            send_im_response(
-              original_msg: pending.original_msg,
-              peer: pending.peer,
-              session: pending.session,
-              message_type: InteractionModel::MessageType::ReportData.value,
-              payload: next_chunk
-            )
-
-            # If there are more chunks, keep waiting
-            if !pending.remaining_chunks.empty?
-              Log.debug { "Sent ReportData chunk, waiting for ACK/StatusResponse (subscription #{pending.subscription_id})" }
-            else
-              # Last chunk sent, wait for StatusResponse to send SubscribeResponse
-              Log.debug { "Sent final ReportData chunk, waiting for StatusResponse to complete subscription (subscription #{pending.subscription_id})" }
-            end
-          elsif pending.remaining_chunks.empty?
-            # All chunks were sent, this ACK might be for the final chunk
-            # Now we need to send SubscribeResponse
-            Log.debug { "StandaloneAck after final chunk: sending SubscribeResponse for subscription #{pending.subscription_id}" }
-
-            # Remove from pending
-            @pending_subscriptions.delete(exchange_id)
-
-            # Encode and send SubscribeResponse
-            subscribe_response_tlv = IMHandler.encode_subscribe_response(pending.subscription_id, pending.max_interval)
-            Log.trace { "Encoded SubscribeResponse TLV (#{subscribe_response_tlv.size} bytes): #{subscribe_response_tlv.hexstring}" }
-
-            send_im_response(
-              original_msg: pending.original_msg,
-              peer: pending.peer,
-              session: pending.session,
-              message_type: InteractionModel::MessageType::SubscribeResponse.value,
-              payload: subscribe_response_tlv
-            )
-
-            # Move subscription to active subscriptions for ongoing updates
-            active_sub = ActiveSubscription.new(
-              subscription_id: pending.subscription_id,
-              min_interval: pending.min_interval,
-              max_interval: pending.max_interval,
-              peer: pending.peer,
-              session: pending.session,
-              attribute_paths: pending.attribute_paths,
-              exchange_id: exchange_id
-            )
-            @registry.add_subscription(active_sub)
-          end
-          # Check if this ACK is for a pending read response with remaining chunks
-        elsif pending_read = @pending_read_responses[exchange_id]?
-          if !pending_read.remaining_chunks.empty?
-            # Send next chunk
-            next_chunk, _ = pending_read.remaining_chunks.shift
-            Log.debug { "StandaloneAck for read response: sending next chunk (#{pending_read.remaining_chunks.size} remaining)" }
-
-            # Send next ReportData chunk
-            send_im_response(
-              original_msg: pending_read.original_msg,
-              peer: pending_read.peer,
-              session: pending_read.session,
-              message_type: InteractionModel::MessageType::ReportData.value,
-              payload: next_chunk
-            )
-
-            # If there are more chunks, keep waiting
-            if pending_read.remaining_chunks.empty?
-              # Last chunk sent, remove from pending
-              @pending_read_responses.delete(exchange_id)
-              Log.debug { "Sent final ReportData chunk for read response" }
-            else
-              Log.debug { "Sent ReportData chunk, waiting for ACK/StatusResponse (read response)" }
-            end
-          else
-            # All chunks were sent, remove from pending
-            @pending_read_responses.delete(exchange_id)
-            Log.debug { "StandaloneAck received after final chunk for read response" }
-          end
-        end
+        # iOS acknowledges intermediate ReportData chunks with a bare MRP ACK
+        # rather than a StatusResponse; both drive the same ladder.
+        @subscriptions.advance(msg.payload_header.exchange_id, msg)
       end
 
       # Handle StatusReport messages (sent by controllers to indicate errors or status)

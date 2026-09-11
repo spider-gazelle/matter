@@ -8,39 +8,9 @@ require "../../src/matter/protocol/message_handler"
 require "../../src/matter/session/secure_message"
 require "../../src/matter/transport/udp_transport"
 
-# Captures outbound packets without actually sending them.
-class CaptureTransport < Matter::Transport::UDPTransport
-  getter sent_packets : Array(Tuple(Bytes, Socket::IPAddress)) = [] of Tuple(Bytes, Socket::IPAddress)
-
-  # Avoid binding OS UDP sockets in the spec environment.
-  def self.new_for_spec : self
-    transport = allocate
-    transport.initialize_for_spec
-    transport
-  end
-
-  protected def initialize_for_spec : Nil
-    @sent_packets = [] of Tuple(Bytes, Socket::IPAddress)
-  end
-
-  def send_raw(data : Bytes | Slice(UInt8), peer_address : Socket::IPAddress) : Nil
-    slice = data.to_slice
-    buf = Bytes.new(slice.size)
-    buf.copy_from(slice)
-    @sent_packets << {buf, peer_address}
-  end
-end
-
-# Spec helper: allow deterministic exchange IDs without changing production code.
-class Matter::Protocol::MessageHandler
-  def __set_next_exchange_id_for_spec(value : UInt16) : Nil
-    @next_exchange_id = value
-  end
-end
-
 describe "Subscription report exchange regression" do
   it "sends subscription ReportData on a new exchange (initiator=true)" do
-    transport = CaptureTransport.new_for_spec
+    transport = Matter::Spec::CaptureTransport.new_for_spec
     storage = Matter::Storage::Memory.new
     fabric_table = Matter::FabricTable.new(storage)
 
@@ -87,7 +57,7 @@ describe "Subscription report exchange regression" do
     handler.active_subscriptions[subscription.subscription_id] = subscription
 
     update_exchange_id = 0xBEEF_u16
-    handler.__set_next_exchange_id_for_spec(update_exchange_id)
+    handler.sender.next_exchange_id = update_exchange_id
 
     # Trigger a subscription update send.
     handler.notify_subscriptions(1_u16, Matter::Cluster::OnOff::CLUSTER_ID, Matter::Cluster::OnOff::ATTR_ON_OFF)
