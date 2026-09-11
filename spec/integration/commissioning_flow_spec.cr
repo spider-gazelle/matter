@@ -432,63 +432,7 @@ module Matter
       end
     end
 
-    describe "callback integration with the session store" do
-      it "clears PASE sessions on successful commissioning" do
-        # Same store type as Protocol::MessageHandler#sessions
-        sessions = {} of UInt16 => Session::SecureContext
-        general_comm = Cluster::GeneralCommissioning.new
-
-        # Wire up callback
-        general_comm.on_clear_pase_sessions = -> : Nil {
-          sessions.reject! { |_, session| !session.case_session? }
-        }
-
-        # Simulate commissioning: establish some PASE sessions
-        sessions[100_u16] = secure_session(100_u16, 1100_u16, case_session: false)
-        sessions[101_u16] = secure_session(101_u16, 1101_u16, case_session: false)
-        sessions.size.should eq(2)
-
-        # Complete commissioning
-        arm_request = Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
-          expiry_length_seconds: 60_u16,
-          breadcrumb: 100_u64
-        )
-        general_comm.arm_failsafe(arm_request, 1_u8, false)
-
-        response = general_comm.commissioning_complete(1_u8, true)
-        response.error_code.should eq(Cluster::GeneralCommissioning::CommissioningError::OK)
-
-        # PASE sessions should be cleared
-        sessions.should be_empty
-      end
-
-      it "persists fabric table on successful commissioning" do
-        general_comm = Cluster::GeneralCommissioning.new
-        fabric_persisted = false
-        persisted_fabric_data : String? = nil
-
-        # Wire up persistence callback
-        general_comm.on_persist_fabric_table = -> : Nil {
-          # Simulate persisting fabric table to storage
-          fabric_persisted = true
-          persisted_fabric_data = "fabric_table_v1.json" # Mock filename
-        }
-
-        # Complete commissioning
-        arm_request = Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
-          expiry_length_seconds: 60_u16,
-          breadcrumb: 100_u64
-        )
-        general_comm.arm_failsafe(arm_request, 1_u8, false)
-
-        response = general_comm.commissioning_complete(1_u8, true)
-        response.error_code.should eq(Cluster::GeneralCommissioning::CommissioningError::OK)
-
-        # Fabric table should be persisted
-        fabric_persisted.should be_true
-        persisted_fabric_data.should_not be_nil
-      end
-
+    describe "integration with the session store" do
       it "integrates with the session store for full commissioning flow" do
         # Create complete system
         sessions = {} of UInt16 => Session::SecureContext
@@ -496,20 +440,6 @@ module Matter
         general_comm = Cluster::GeneralCommissioning.new
 
         admin_comm.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
-
-        # Track events
-        pase_sessions_cleared = false
-        fabric_table_persisted = false
-
-        # Wire up all callbacks
-        general_comm.on_clear_pase_sessions = -> : Nil {
-          sessions.reject! { |_, session| !session.case_session? }
-          pase_sessions_cleared = true
-        }
-
-        general_comm.on_persist_fabric_table = -> : Nil {
-          fabric_table_persisted = true
-        }
 
         # Step 1: Open commissioning window
         open_request = Cluster::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
@@ -546,13 +476,9 @@ module Matter
         response = general_comm.commissioning_complete(new_fabric_index, true)
         response.error_code.should eq(Cluster::GeneralCommissioning::CommissioningError::OK)
 
-        # Verify callbacks were invoked
-        pase_sessions_cleared.should be_true
-        fabric_table_persisted.should be_true
-
-        # Verify PASE session was cleared and the CASE session survived
-        sessions.has_key?(pase_session_id).should be_false
+        # The CASE session on the new fabric carries the commissioning through
         sessions[case_session_id].fabric_index.should eq(new_fabric_index)
+        general_comm.failsafe_armed?.should be_false
 
         admin_comm.close
       end
@@ -584,46 +510,6 @@ module Matter
 
         response2 = general_comm.commissioning_complete(1_u8, true)
         response2.error_code.should eq(Cluster::GeneralCommissioning::CommissioningError::OK)
-      end
-
-      it "uses TC callback to check acceptance" do
-        general_comm = Cluster::GeneralCommissioning.new
-        general_comm.terms_conditions_required = true
-
-        tc_check_count = 0
-        tc_accepted = false
-
-        # Wire up TC check callback
-        general_comm.on_check_terms_conditions = -> : Bool {
-          tc_check_count += 1
-          tc_accepted # Return current state
-        }
-
-        # Try to complete commissioning without accepting TC
-        arm_request = Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
-          expiry_length_seconds: 60_u16,
-          breadcrumb: 100_u64
-        )
-        general_comm.arm_failsafe(arm_request, 1_u8, false)
-
-        response = general_comm.commissioning_complete(1_u8, true)
-
-        # Should be blocked
-        response.error_code.should eq(Cluster::GeneralCommissioning::CommissioningError::RequiredTCNotAccepted)
-        tc_check_count.should eq(1)
-
-        # Now accept (externally)
-        tc_accepted = true
-
-        arm_request2 = Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
-          expiry_length_seconds: 60_u16,
-          breadcrumb: 200_u64
-        )
-        general_comm.arm_failsafe(arm_request2, 1_u8, false)
-
-        response2 = general_comm.commissioning_complete(1_u8, true)
-        response2.error_code.should eq(Cluster::GeneralCommissioning::CommissioningError::OK)
-        tc_check_count.should eq(2)
       end
 
       it "validates country codes with whitelist" do

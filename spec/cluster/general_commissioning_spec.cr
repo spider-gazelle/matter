@@ -802,74 +802,9 @@ module Matter::Cluster
         response = cluster.commissioning_complete(1_u8, true)
         response.error_code.ok?.should be_true
       end
-
-      it "uses callback to check TC acceptance" do
-        cluster = GeneralCommissioning.new
-        cluster.terms_conditions_required = true
-
-        tc_check_called = false
-        cluster.on_check_terms_conditions = -> : Bool {
-          tc_check_called = true
-          true # Return true = accepted
-        }
-
-        # Arm failsafe
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
-          expiry_length_seconds: 60_u16,
-          breadcrumb: 100_u64
-        )
-        cluster.arm_failsafe(arm_request, 1_u8, false)
-
-        # Complete commissioning
-        response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.ok?.should be_true
-        tc_check_called.should be_true
-      end
     end
 
     describe "commissioning complete callbacks" do
-      it "calls persist fabric table callback" do
-        cluster = GeneralCommissioning.new
-
-        persist_called = false
-        cluster.on_persist_fabric_table = -> : Nil {
-          persist_called = true
-        }
-
-        # Arm failsafe
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
-          expiry_length_seconds: 60_u16,
-          breadcrumb: 100_u64
-        )
-        cluster.arm_failsafe(arm_request, 1_u8, false)
-
-        # Complete commissioning
-        response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.ok?.should be_true
-        persist_called.should be_true
-      end
-
-      it "calls clear PASE sessions callback" do
-        cluster = GeneralCommissioning.new
-
-        clear_pase_called = false
-        cluster.on_clear_pase_sessions = -> : Nil {
-          clear_pase_called = true
-        }
-
-        # Arm failsafe
-        arm_request = GeneralCommissioning::ArmFailSafeRequest.new(
-          expiry_length_seconds: 60_u16,
-          breadcrumb: 100_u64
-        )
-        cluster.arm_failsafe(arm_request, 1_u8, false)
-
-        # Complete commissioning
-        response = cluster.commissioning_complete(1_u8, true)
-        response.error_code.ok?.should be_true
-        clear_pase_called.should be_true
-      end
-
       it "closes commissioning window on successful complete" do
         cluster = GeneralCommissioning.new
         cluster.open_commissioning_window

@@ -6,3 +6,5 @@
 require "./commissioning/rollback_targets"
 require "./commissioning/failsafe_timer"
 require "./commissioning/failsafe_context"
+require "./commissioning/outcome"
+require "./commissioning/failsafe_service"
