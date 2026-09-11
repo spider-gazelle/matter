@@ -474,7 +474,7 @@ module MatterAirConditioner
                return
              end
 
-      thermostat.system_mode = mode
+      thermostat.mode = mode
     end
 
     private def set_cool_setpoint(parts : Array(String)) : Nil

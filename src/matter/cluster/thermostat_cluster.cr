@@ -10,15 +10,11 @@ module Matter
     #
     # Specification: Matter 1.4 § 4.3
     class ThermostatCluster < Base
-      CLUSTER_ID = 0x0201_u32
+      cluster 0x0201, revision: 9
 
-      # Feature flags
-      @[Flags]
-      enum Feature : UInt32
-        Heating  = 0x01 # HEAT - Heating capability
-        Cooling  = 0x02 # COOL - Cooling capability
-        Automode = 0x20 # AUTO - Automatic setpoint management
-      end
+      feature :heating, bit: 0  # HEAT - Heating capability
+      feature :cooling, bit: 1  # COOL - Cooling capability
+      feature :automode, bit: 5 # AUTO - Automatic setpoint management
 
       # System mode values
       enum SystemMode : UInt8
@@ -50,68 +46,48 @@ module Matter
         CoolingAndHeatingWithReheat = 5
       end
 
-      # Attributes
-      ATTR_LOCAL_TEMPERATURE             = 0x0000_u32
-      ATTR_OUTDOOR_TEMPERATURE           = 0x0001_u32
-      ATTR_ABS_MIN_HEAT_SETPOINT_LIMIT   = 0x0003_u32
-      ATTR_ABS_MAX_HEAT_SETPOINT_LIMIT   = 0x0004_u32
-      ATTR_ABS_MIN_COOL_SETPOINT_LIMIT   = 0x0005_u32
-      ATTR_ABS_MAX_COOL_SETPOINT_LIMIT   = 0x0006_u32
-      ATTR_OCCUPIED_COOLING_SETPOINT     = 0x0011_u32
-      ATTR_OCCUPIED_HEATING_SETPOINT     = 0x0012_u32
-      ATTR_MIN_HEAT_SETPOINT_LIMIT       = 0x0015_u32
-      ATTR_MAX_HEAT_SETPOINT_LIMIT       = 0x0016_u32
-      ATTR_MIN_COOL_SETPOINT_LIMIT       = 0x0017_u32
-      ATTR_MAX_COOL_SETPOINT_LIMIT       = 0x0018_u32
-      ATTR_MIN_SETPOINT_DEAD_BAND        = 0x0019_u32
-      ATTR_CONTROL_SEQUENCE_OF_OPERATION = 0x001B_u32
-      ATTR_SYSTEM_MODE                   = 0x001C_u32
-      ATTR_THERMOSTAT_RUNNING_MODE       = 0x001E_u32
-
-      # Commands
-      CMD_SETPOINT_RAISE_LOWER = 0x00_u32
-
       # Default temperature limits (in 0.01°C)
       DEFAULT_ABS_MIN_HEAT =  700_i16 #  7.00°C
       DEFAULT_ABS_MAX_HEAT = 3000_i16 # 30.00°C
       DEFAULT_ABS_MIN_COOL = 1600_i16 # 16.00°C
       DEFAULT_ABS_MAX_COOL = 3200_i16 # 32.00°C
 
-      # Feature map
-      property feature_map : Feature
+      # Default setpoints (in 0.01°C)
+      DEFAULT_COOLING_SETPOINT = 2600_i16 # 26.00°C
+      DEFAULT_HEATING_SETPOINT = 2000_i16 # 20.00°C
 
-      # Required attributes
-      property local_temperature : Int16?
+      # MinSetpointDeadBand is in 0.1°C steps, bounded by the spec
+      DEFAULT_DEAD_BAND =  25_i8 # 2.5°C
+      MIN_DEAD_BAND     =   0_i8
+      MAX_DEAD_BAND     = 127_i8
 
-      # Setpoints (in 0.01°C)
-      property occupied_cooling_setpoint : Int16
-      property occupied_heating_setpoint : Int16
+      # Setpoint deltas (SetpointRaiseLower amount, MinSetpointDeadBand) are
+      # in 0.1°C; the setpoints in 0.01°C
+      DECI_TO_CENTI_DEGREES = 10_i16
 
-      # Absolute limits (read-only)
-      property abs_min_heat_setpoint_limit : Int16
-      property abs_max_heat_setpoint_limit : Int16
-      property abs_min_cool_setpoint_limit : Int16
-      property abs_max_cool_setpoint_limit : Int16
+      attribute 0x0000, :local_temperature, Int16, nullable: true
+      attribute 0x0003, :abs_min_heat_setpoint_limit, Int16, default: DEFAULT_ABS_MIN_HEAT, fixed: true, optional: true, requires: :heating
+      attribute 0x0004, :abs_max_heat_setpoint_limit, Int16, default: DEFAULT_ABS_MAX_HEAT, fixed: true, optional: true, requires: :heating
+      attribute 0x0005, :abs_min_cool_setpoint_limit, Int16, default: DEFAULT_ABS_MIN_COOL, fixed: true, optional: true, requires: :cooling
+      attribute 0x0006, :abs_max_cool_setpoint_limit, Int16, default: DEFAULT_ABS_MAX_COOL, fixed: true, optional: true, requires: :cooling
+      attribute 0x0011, :occupied_cooling_setpoint, Int16, default: DEFAULT_COOLING_SETPOINT, writable: true, requires: :cooling
+      attribute 0x0012, :occupied_heating_setpoint, Int16, default: DEFAULT_HEATING_SETPOINT, writable: true, requires: :heating
+      attribute 0x0015, :min_heat_setpoint_limit, Int16, default: DEFAULT_ABS_MIN_HEAT, writable: true, write_access: :manage, optional: true, requires: :heating
+      attribute 0x0016, :max_heat_setpoint_limit, Int16, default: DEFAULT_ABS_MAX_HEAT, writable: true, write_access: :manage, optional: true, requires: :heating
+      attribute 0x0017, :min_cool_setpoint_limit, Int16, default: DEFAULT_ABS_MIN_COOL, writable: true, write_access: :manage, optional: true, requires: :cooling
+      attribute 0x0018, :max_cool_setpoint_limit, Int16, default: DEFAULT_ABS_MAX_COOL, writable: true, write_access: :manage, optional: true, requires: :cooling
+      attribute 0x0019, :min_setpoint_dead_band, Int8, default: DEFAULT_DEAD_BAND, writable: true, write_access: :manage, min: MIN_DEAD_BAND, max: MAX_DEAD_BAND, requires: :automode
+      attribute 0x001B, :control_sequence_of_operation, ControlSequenceOfOperation, default: ControlSequenceOfOperation::CoolingAndHeating, writable: true, write_access: :manage
+      attribute 0x001C, :system_mode, SystemMode, default: SystemMode::Off, writable: true, write_access: :manage
+      attribute 0x001E, :thermostat_running_mode, ThermostatRunningMode, default: ThermostatRunningMode::Off, optional: true, requires: :automode
 
-      # Configurable limits
-      property min_heat_setpoint_limit : Int16
-      property max_heat_setpoint_limit : Int16
-      property min_cool_setpoint_limit : Int16
-      property max_cool_setpoint_limit : Int16
-
-      # Dead band (in 0.1°C, for Auto mode)
-      property min_setpoint_dead_band : Int8
-
-      # Mode control
-      property control_sequence_of_operation : ControlSequenceOfOperation
-      property system_mode : SystemMode
-      property thermostat_running_mode : ThermostatRunningMode
+      command 0x00, :setpoint_raise_lower, request: Definitions::Thermostat::SetpointRaiseLowerRequest
 
       def initialize(endpoint_id : DataType::EndpointNumber,
                      @feature_map : Feature = Feature::Cooling | Feature::Heating,
                      @local_temperature : Int16? = nil,
-                     @occupied_cooling_setpoint : Int16 = 2600_i16,
-                     @occupied_heating_setpoint : Int16 = 2000_i16,
+                     @occupied_cooling_setpoint : Int16 = DEFAULT_COOLING_SETPOINT,
+                     @occupied_heating_setpoint : Int16 = DEFAULT_HEATING_SETPOINT,
                      @abs_min_heat_setpoint_limit : Int16 = DEFAULT_ABS_MIN_HEAT,
                      @abs_max_heat_setpoint_limit : Int16 = DEFAULT_ABS_MAX_HEAT,
                      @abs_min_cool_setpoint_limit : Int16 = DEFAULT_ABS_MIN_COOL,
@@ -120,444 +96,12 @@ module Matter
                      @max_heat_setpoint_limit : Int16 = DEFAULT_ABS_MAX_HEAT,
                      @min_cool_setpoint_limit : Int16 = DEFAULT_ABS_MIN_COOL,
                      @max_cool_setpoint_limit : Int16 = DEFAULT_ABS_MAX_COOL,
-                     @min_setpoint_dead_band : Int8 = 25_i8,
+                     @min_setpoint_dead_band : Int8 = DEFAULT_DEAD_BAND,
                      @control_sequence_of_operation : ControlSequenceOfOperation = ControlSequenceOfOperation::CoolingAndHeating,
                      @system_mode : SystemMode = SystemMode::Off,
                      @thermostat_running_mode : ThermostatRunningMode = ThermostatRunningMode::Off)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
-        validate_setpoint_limits
-        validate_system_mode(@system_mode)
-      end
-
-      def name : String
-        "Thermostat"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        attrs = [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_LOCAL_TEMPERATURE),
-            "LocalTemperature",
-            :int16,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_CONTROL_SEQUENCE_OF_OPERATION),
-            "ControlSequenceOfOperation",
-            :uint8,
-            writable: true
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_SYSTEM_MODE),
-            "SystemMode",
-            :uint8,
-            writable: true
-          ),
-        ]
-
-        if @feature_map.cooling?
-          attrs.concat([
-            AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_ABS_MIN_COOL_SETPOINT_LIMIT),
-              "AbsMinCoolSetpointLimit",
-              :int16,
-              writable: false
-            ),
-            AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_ABS_MAX_COOL_SETPOINT_LIMIT),
-              "AbsMaxCoolSetpointLimit",
-              :int16,
-              writable: false
-            ),
-            AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_OCCUPIED_COOLING_SETPOINT),
-              "OccupiedCoolingSetpoint",
-              :int16,
-              writable: true
-            ),
-            AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_MIN_COOL_SETPOINT_LIMIT),
-              "MinCoolSetpointLimit",
-              :int16,
-              writable: true
-            ),
-            AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_MAX_COOL_SETPOINT_LIMIT),
-              "MaxCoolSetpointLimit",
-              :int16,
-              writable: true
-            ),
-          ])
-        end
-
-        if @feature_map.heating?
-          attrs.concat([
-            AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_ABS_MIN_HEAT_SETPOINT_LIMIT),
-              "AbsMinHeatSetpointLimit",
-              :int16,
-              writable: false
-            ),
-            AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_ABS_MAX_HEAT_SETPOINT_LIMIT),
-              "AbsMaxHeatSetpointLimit",
-              :int16,
-              writable: false
-            ),
-            AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_OCCUPIED_HEATING_SETPOINT),
-              "OccupiedHeatingSetpoint",
-              :int16,
-              writable: true
-            ),
-            AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_MIN_HEAT_SETPOINT_LIMIT),
-              "MinHeatSetpointLimit",
-              :int16,
-              writable: true
-            ),
-            AttributeMetadata.new(
-              DataType::AttributeId.new(ATTR_MAX_HEAT_SETPOINT_LIMIT),
-              "MaxHeatSetpointLimit",
-              :int16,
-              writable: true
-            ),
-          ])
-        end
-
-        if @feature_map.automode?
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MIN_SETPOINT_DEAD_BAND),
-            "MinSetpointDeadBand",
-            :int8,
-            writable: true
-          )
-        end
-
-        attrs << AttributeMetadata.new(
-          DataType::AttributeId.new(ATTR_THERMOSTAT_RUNNING_MODE),
-          "ThermostatRunningMode",
-          :uint8,
-          writable: false
-        )
-
-        attrs
-      end
-
-      def commands : Array(CommandMetadata)
-        [
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_SETPOINT_RAISE_LOWER),
-            "SetpointRaiseLower"
-          ),
-        ]
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
-        case attribute_id
-        when ATTR_LOCAL_TEMPERATURE
-          if temp = @local_temperature
-            tlv(temp)
-          else
-            tlv(nil)
-          end
-        when ATTR_ABS_MIN_HEAT_SETPOINT_LIMIT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          tlv(@abs_min_heat_setpoint_limit)
-        when ATTR_ABS_MAX_HEAT_SETPOINT_LIMIT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          tlv(@abs_max_heat_setpoint_limit)
-        when ATTR_ABS_MIN_COOL_SETPOINT_LIMIT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          tlv(@abs_min_cool_setpoint_limit)
-        when ATTR_ABS_MAX_COOL_SETPOINT_LIMIT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          tlv(@abs_max_cool_setpoint_limit)
-        when ATTR_OCCUPIED_COOLING_SETPOINT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          tlv(@occupied_cooling_setpoint)
-        when ATTR_OCCUPIED_HEATING_SETPOINT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          tlv(@occupied_heating_setpoint)
-        when ATTR_MIN_HEAT_SETPOINT_LIMIT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          tlv(@min_heat_setpoint_limit)
-        when ATTR_MAX_HEAT_SETPOINT_LIMIT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          tlv(@max_heat_setpoint_limit)
-        when ATTR_MIN_COOL_SETPOINT_LIMIT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          tlv(@min_cool_setpoint_limit)
-        when ATTR_MAX_COOL_SETPOINT_LIMIT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          tlv(@max_cool_setpoint_limit)
-        when ATTR_MIN_SETPOINT_DEAD_BAND
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.automode?
-          tlv(@min_setpoint_dead_band)
-        when ATTR_CONTROL_SEQUENCE_OF_OPERATION
-          tlv(@control_sequence_of_operation.value.to_u8)
-        when ATTR_SYSTEM_MODE
-          tlv(@system_mode.value.to_u8)
-        when ATTR_THERMOSTAT_RUNNING_MODE
-          tlv(@thermostat_running_mode.value.to_u8)
-        else
-          super
-        end
-      end
-
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        case attribute_id
-        when ATTR_OCCUPIED_COOLING_SETPOINT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          new_setpoint = signed?(value, Int16)
-          return InteractionModel::Status.invalid_data_type unless new_setpoint
-          return InteractionModel::Status.constraint_error unless new_setpoint >= @min_cool_setpoint_limit && new_setpoint <= @max_cool_setpoint_limit
-
-          old_setpoint = @occupied_cooling_setpoint
-          @occupied_cooling_setpoint = new_setpoint
-          @on_setpoint_changed.try &.call(:cool, old_setpoint, new_setpoint)
-          increment_version_and_notify(ATTR_OCCUPIED_COOLING_SETPOINT)
-          InteractionModel::Status.success
-        when ATTR_OCCUPIED_HEATING_SETPOINT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          new_setpoint = signed?(value, Int16)
-          return InteractionModel::Status.invalid_data_type unless new_setpoint
-          return InteractionModel::Status.constraint_error unless new_setpoint >= @min_heat_setpoint_limit && new_setpoint <= @max_heat_setpoint_limit
-
-          old_setpoint = @occupied_heating_setpoint
-          @occupied_heating_setpoint = new_setpoint
-          @on_setpoint_changed.try &.call(:heat, old_setpoint, new_setpoint)
-          increment_version_and_notify(ATTR_OCCUPIED_HEATING_SETPOINT)
-          InteractionModel::Status.success
-        when ATTR_SYSTEM_MODE
-          mode_value = narrow_u8?(value)
-          return InteractionModel::Status.invalid_data_type unless mode_value
-
-          begin
-            new_mode = SystemMode.from_value(mode_value)
-          rescue ex
-            Log.debug(exception: ex) { "Thermostat: SystemMode #{mode_value} out of range" }
-            return InteractionModel::Status.constraint_error
-          end
-
-          unless mode_allowed?(new_mode)
-            return InteractionModel::Status.constraint_error
-          end
-
-          old_mode = @system_mode
-          @system_mode = new_mode
-          update_running_mode
-          @on_system_mode_changed.try &.call(old_mode, new_mode)
-          increment_version_and_notify(ATTR_SYSTEM_MODE)
-          InteractionModel::Status.success
-        when ATTR_CONTROL_SEQUENCE_OF_OPERATION
-          seq_value = narrow_u8?(value)
-          return InteractionModel::Status.invalid_data_type unless seq_value
-
-          begin
-            new_seq = ControlSequenceOfOperation.from_value(seq_value)
-          rescue ex
-            Log.debug(exception: ex) { "Thermostat: ControlSequenceOfOperation #{seq_value} out of range" }
-            return InteractionModel::Status.constraint_error
-          end
-
-          @control_sequence_of_operation = new_seq
-          increment_version_and_notify(ATTR_CONTROL_SEQUENCE_OF_OPERATION)
-          InteractionModel::Status.success
-        when ATTR_MIN_HEAT_SETPOINT_LIMIT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          new_limit = signed?(value, Int16)
-          return InteractionModel::Status.invalid_data_type unless new_limit
-          return InteractionModel::Status.constraint_error unless new_limit >= @abs_min_heat_setpoint_limit && new_limit <= @max_heat_setpoint_limit
-
-          @min_heat_setpoint_limit = new_limit
-          increment_version_and_notify(ATTR_MIN_HEAT_SETPOINT_LIMIT)
-          InteractionModel::Status.success
-        when ATTR_MAX_HEAT_SETPOINT_LIMIT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.heating?
-          new_limit = signed?(value, Int16)
-          return InteractionModel::Status.invalid_data_type unless new_limit
-          return InteractionModel::Status.constraint_error unless new_limit >= @min_heat_setpoint_limit && new_limit <= @abs_max_heat_setpoint_limit
-
-          @max_heat_setpoint_limit = new_limit
-          increment_version_and_notify(ATTR_MAX_HEAT_SETPOINT_LIMIT)
-          InteractionModel::Status.success
-        when ATTR_MIN_COOL_SETPOINT_LIMIT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          new_limit = signed?(value, Int16)
-          return InteractionModel::Status.invalid_data_type unless new_limit
-          return InteractionModel::Status.constraint_error unless new_limit >= @abs_min_cool_setpoint_limit && new_limit <= @max_cool_setpoint_limit
-
-          @min_cool_setpoint_limit = new_limit
-          increment_version_and_notify(ATTR_MIN_COOL_SETPOINT_LIMIT)
-          InteractionModel::Status.success
-        when ATTR_MAX_COOL_SETPOINT_LIMIT
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.cooling?
-          new_limit = signed?(value, Int16)
-          return InteractionModel::Status.invalid_data_type unless new_limit
-          return InteractionModel::Status.constraint_error unless new_limit >= @min_cool_setpoint_limit && new_limit <= @abs_max_cool_setpoint_limit
-
-          @max_cool_setpoint_limit = new_limit
-          increment_version_and_notify(ATTR_MAX_COOL_SETPOINT_LIMIT)
-          InteractionModel::Status.success
-        when ATTR_MIN_SETPOINT_DEAD_BAND
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.automode?
-          dead_band = narrow_i8?(value)
-          return InteractionModel::Status.invalid_data_type unless dead_band
-
-          @min_setpoint_dead_band = dead_band
-          increment_version_and_notify(ATTR_MIN_SETPOINT_DEAD_BAND)
-          InteractionModel::Status.success
-        else
-          super
-        end
-      end
-
-      protected def handle_command(command_id : UInt32, command_data : TLV::Any?) : Cluster::CommandResponse | InteractionModel::Status
-        case command_id
-        when CMD_SETPOINT_RAISE_LOWER
-          handle_setpoint_raise_lower(command_data)
-        else
-          super
-        end
-      end
-
-      # Update local temperature (typically called from a paired temperature sensor)
-      def update_local_temperature(value : Int16?)
-        old_value = @local_temperature
-        @local_temperature = value
-
-        if old_value != value
-          increment_version_and_notify(ATTR_LOCAL_TEMPERATURE)
-          update_running_mode
-        end
-      end
-
-      # Programmatic setpoint update
-      def cooling_setpoint=(value : Int16)
-        return unless @feature_map.cooling?
-        return unless value >= @min_cool_setpoint_limit && value <= @max_cool_setpoint_limit
-
-        old = @occupied_cooling_setpoint
-        @occupied_cooling_setpoint = value
-        @on_setpoint_changed.try &.call(:cool, old, value) if old != value
-        increment_version if old != value
-      end
-
-      def heating_setpoint=(value : Int16)
-        return unless @feature_map.heating?
-        return unless value >= @min_heat_setpoint_limit && value <= @max_heat_setpoint_limit
-
-        old = @occupied_heating_setpoint
-        @occupied_heating_setpoint = value
-        @on_setpoint_changed.try &.call(:heat, old, value) if old != value
-        increment_version if old != value
-      end
-
-      # Programmatic mode change
-      def system_mode=(mode : SystemMode)
-        return unless mode_allowed?(mode)
-
-        old = @system_mode
-        @system_mode = mode
-        update_running_mode
-        @on_system_mode_changed.try &.call(old, mode) if old != mode
-        increment_version if old != mode
-      end
-
-      # Callbacks
-      @on_system_mode_changed : Proc(SystemMode, SystemMode, Nil)?
-      @on_setpoint_changed : Proc(Symbol, Int16, Int16, Nil)?
-
-      def on_system_mode_changed(&block : SystemMode, SystemMode -> Nil)
-        @on_system_mode_changed = block
-      end
-
-      def on_setpoint_changed(&block : Symbol, Int16, Int16 -> Nil)
-        @on_setpoint_changed = block
-      end
-
-      private def handle_setpoint_raise_lower(command_data : TLV::Any?) : InteractionModel::Status
-        request = Definitions::Thermostat::SetpointRaiseLowerRequest.from_tlv(command_data || tlv(nil))
-
-        # Amount is in 0.1°C steps, convert to 0.01°C
-        delta = request.amount.to_i16 * 10_i16
-
-        case request.mode
-        when Definitions::Thermostat::SetpointAdjustMode::Heat
-          if @feature_map.heating?
-            new_setpoint = (@occupied_heating_setpoint + delta).clamp(@min_heat_setpoint_limit, @max_heat_setpoint_limit)
-            old = @occupied_heating_setpoint
-            @occupied_heating_setpoint = new_setpoint
-            @on_setpoint_changed.try &.call(:heat, old, new_setpoint) if old != new_setpoint
-          end
-        when Definitions::Thermostat::SetpointAdjustMode::Cool
-          if @feature_map.cooling?
-            new_setpoint = (@occupied_cooling_setpoint + delta).clamp(@min_cool_setpoint_limit, @max_cool_setpoint_limit)
-            old = @occupied_cooling_setpoint
-            @occupied_cooling_setpoint = new_setpoint
-            @on_setpoint_changed.try &.call(:cool, old, new_setpoint) if old != new_setpoint
-          end
-        when Definitions::Thermostat::SetpointAdjustMode::Both
-          if @feature_map.heating?
-            new_heat = (@occupied_heating_setpoint + delta).clamp(@min_heat_setpoint_limit, @max_heat_setpoint_limit)
-            old_heat = @occupied_heating_setpoint
-            @occupied_heating_setpoint = new_heat
-            @on_setpoint_changed.try &.call(:heat, old_heat, new_heat) if old_heat != new_heat
-          end
-          if @feature_map.cooling?
-            new_cool = (@occupied_cooling_setpoint + delta).clamp(@min_cool_setpoint_limit, @max_cool_setpoint_limit)
-            old_cool = @occupied_cooling_setpoint
-            @occupied_cooling_setpoint = new_cool
-            @on_setpoint_changed.try &.call(:cool, old_cool, new_cool) if old_cool != new_cool
-          end
-        end
-
-        increment_version
-        InteractionModel::Status.success
-      end
-
-      private def update_running_mode
-        @thermostat_running_mode = case @system_mode
-                                   when SystemMode::Cool, SystemMode::Precooling
-                                     ThermostatRunningMode::Cool
-                                   when SystemMode::Heat, SystemMode::EmergencyHeat
-                                     ThermostatRunningMode::Heat
-                                   when SystemMode::Auto
-                                     # Determine based on temperature vs setpoints
-                                     if temp = @local_temperature
-                                       if temp > @occupied_cooling_setpoint
-                                         ThermostatRunningMode::Cool
-                                       elsif temp < @occupied_heating_setpoint
-                                         ThermostatRunningMode::Heat
-                                       else
-                                         ThermostatRunningMode::Off
-                                       end
-                                     else
-                                       ThermostatRunningMode::Off
-                                     end
-                                   else
-                                     ThermostatRunningMode::Off
-                                   end
-      end
-
-      private def mode_allowed?(mode : SystemMode) : Bool
-        case mode
-        when SystemMode::Off, SystemMode::FanOnly, SystemMode::Dry, SystemMode::Sleep
-          true
-        when SystemMode::Cool, SystemMode::Precooling
-          @feature_map.cooling?
-        when SystemMode::Heat, SystemMode::EmergencyHeat
-          @feature_map.heating?
-        when SystemMode::Auto
-          @feature_map.automode?
-        else
-          false
-        end
-      end
-
-      private def validate_setpoint_limits
         if @feature_map.heating?
           raise ArgumentError.new("min_heat_setpoint_limit must be >= abs minimum") if @min_heat_setpoint_limit < @abs_min_heat_setpoint_limit
           raise ArgumentError.new("max_heat_setpoint_limit must be <= abs maximum") if @max_heat_setpoint_limit > @abs_max_heat_setpoint_limit
@@ -567,16 +111,189 @@ module Matter
           raise ArgumentError.new("min_cool_setpoint_limit must be >= abs minimum") if @min_cool_setpoint_limit < @abs_min_cool_setpoint_limit
           raise ArgumentError.new("max_cool_setpoint_limit must be <= abs maximum") if @max_cool_setpoint_limit > @abs_max_cool_setpoint_limit
         end
-      end
 
-      private def validate_system_mode(mode : SystemMode)
-        unless mode_allowed?(mode)
-          raise ArgumentError.new("SystemMode #{mode} not supported with current features")
+        unless mode_allowed?(@system_mode)
+          raise ArgumentError.new("SystemMode #{@system_mode} not supported with current features")
         end
       end
 
-      protected def feature_map_tlv : TLV::Any
-        tlv(@feature_map.value)
+      # ------------------------------------------------------------------------
+      # Write hooks
+      # ------------------------------------------------------------------------
+
+      before_write :occupied_cooling_setpoint do |setpoint|
+        return InteractionModel::Status.constraint_error unless setpoint.in?(@min_cool_setpoint_limit..@max_cool_setpoint_limit)
+        keep_heating_below(setpoint)
+      end
+
+      before_write :occupied_heating_setpoint do |setpoint|
+        return InteractionModel::Status.constraint_error unless setpoint.in?(@min_heat_setpoint_limit..@max_heat_setpoint_limit)
+        keep_cooling_above(setpoint)
+      end
+
+      after_write :occupied_cooling_setpoint do
+        update_running_mode
+      end
+
+      after_write :occupied_heating_setpoint do
+        update_running_mode
+      end
+
+      before_write :min_heat_setpoint_limit do |limit|
+        InteractionModel::Status.constraint_error unless limit.in?(@abs_min_heat_setpoint_limit..@max_heat_setpoint_limit)
+      end
+
+      before_write :max_heat_setpoint_limit do |limit|
+        InteractionModel::Status.constraint_error unless limit.in?(@min_heat_setpoint_limit..@abs_max_heat_setpoint_limit)
+      end
+
+      before_write :min_cool_setpoint_limit do |limit|
+        InteractionModel::Status.constraint_error unless limit.in?(@abs_min_cool_setpoint_limit..@max_cool_setpoint_limit)
+      end
+
+      before_write :max_cool_setpoint_limit do |limit|
+        InteractionModel::Status.constraint_error unless limit.in?(@min_cool_setpoint_limit..@abs_max_cool_setpoint_limit)
+      end
+
+      before_write :system_mode do |mode|
+        InteractionModel::Status.constraint_error unless mode_allowed?(mode)
+      end
+
+      after_write :system_mode do
+        update_running_mode
+      end
+
+      # ------------------------------------------------------------------------
+      # Commands
+      # ------------------------------------------------------------------------
+
+      def setpoint_raise_lower(request : Definitions::Thermostat::SetpointRaiseLowerRequest) : InteractionModel::Status
+        delta = request.amount.to_i16 * DECI_TO_CENTI_DEGREES
+        mode = request.mode
+
+        if mode.heat? || mode.both?
+          self.heating_setpoint = (@occupied_heating_setpoint + delta).clamp(@min_heat_setpoint_limit, @max_heat_setpoint_limit)
+        end
+        if mode.cool? || mode.both?
+          self.cooling_setpoint = (@occupied_cooling_setpoint + delta).clamp(@min_cool_setpoint_limit, @max_cool_setpoint_limit)
+        end
+
+        InteractionModel::Status.success
+      end
+
+      # ------------------------------------------------------------------------
+      # Public Interface
+      # ------------------------------------------------------------------------
+
+      # Update local temperature (typically called from a paired temperature sensor)
+      def update_local_temperature(value : Int16?) : Nil
+        self.local_temperature = value
+        update_running_mode
+      end
+
+      # Programmatic setpoint updates; ignored outside the configured limits
+      def cooling_setpoint=(value : Int16) : Nil
+        return unless @feature_map.cooling?
+        return unless value.in?(@min_cool_setpoint_limit..@max_cool_setpoint_limit)
+
+        self.occupied_cooling_setpoint = value
+        update_running_mode
+      end
+
+      def heating_setpoint=(value : Int16) : Nil
+        return unless @feature_map.heating?
+        return unless value.in?(@min_heat_setpoint_limit..@max_heat_setpoint_limit)
+
+        self.occupied_heating_setpoint = value
+        update_running_mode
+      end
+
+      # Programmatic mode change; ignored when the mode needs an absent feature
+      def mode=(mode : SystemMode) : Nil
+        return unless mode_allowed?(mode)
+
+        self.system_mode = mode
+        update_running_mode
+      end
+
+      # Called with `:cool` or `:heat`, the previous and the new value whenever
+      # an occupied setpoint changes
+      def on_setpoint_changed(&block : Symbol, Int16, Int16 -> Nil) : Nil
+        on_occupied_cooling_setpoint_changed { |old_value, new_value| block.call(:cool, old_value, new_value) }
+        on_occupied_heating_setpoint_changed { |old_value, new_value| block.call(:heat, old_value, new_value) }
+      end
+
+      # ------------------------------------------------------------------------
+      # Helpers
+      # ------------------------------------------------------------------------
+
+      # The deadband the setpoints keep between them; only enforced with Automode
+      private def deadband : Int16
+        @feature_map.automode? ? @min_setpoint_dead_band.to_i16 * DECI_TO_CENTI_DEGREES : 0_i16
+      end
+
+      # Raises the cooling setpoint to keep the deadband above a new heating
+      # setpoint; rejected when that would exceed the cooling limit.
+      private def keep_cooling_above(heating : Int16) : InteractionModel::Status?
+        return unless @feature_map.cooling?
+        lowest_cooling = heating + deadband
+        return if @occupied_cooling_setpoint >= lowest_cooling
+        return InteractionModel::Status.constraint_error if lowest_cooling > @max_cool_setpoint_limit
+
+        self.occupied_cooling_setpoint = lowest_cooling
+        nil
+      end
+
+      # Lowers the heating setpoint to keep the deadband below a new cooling
+      # setpoint; rejected when that would fall under the heating limit.
+      private def keep_heating_below(cooling : Int16) : InteractionModel::Status?
+        return unless @feature_map.heating?
+        highest_heating = cooling - deadband
+        return if @occupied_heating_setpoint <= highest_heating
+        return InteractionModel::Status.constraint_error if highest_heating < @min_heat_setpoint_limit
+
+        self.occupied_heating_setpoint = highest_heating
+        nil
+      end
+
+      private def update_running_mode : Nil
+        self.thermostat_running_mode = case @system_mode
+                                       in .cool?, .precooling?
+                                         ThermostatRunningMode::Cool
+                                       in .heat?, .emergency_heat?
+                                         ThermostatRunningMode::Heat
+                                       in .auto?
+                                         auto_running_mode
+                                       in .off?, .fan_only?, .dry?, .sleep?
+                                         ThermostatRunningMode::Off
+                                       end
+      end
+
+      # In Auto the running mode follows the local temperature against the setpoints
+      private def auto_running_mode : ThermostatRunningMode
+        temperature = @local_temperature
+        return ThermostatRunningMode::Off unless temperature
+
+        if temperature > @occupied_cooling_setpoint
+          ThermostatRunningMode::Cool
+        elsif temperature < @occupied_heating_setpoint
+          ThermostatRunningMode::Heat
+        else
+          ThermostatRunningMode::Off
+        end
+      end
+
+      private def mode_allowed?(mode : SystemMode) : Bool
+        case mode
+        in .off?, .fan_only?, .dry?, .sleep?
+          true
+        in .cool?, .precooling?
+          @feature_map.cooling?
+        in .heat?, .emergency_heat?
+          @feature_map.heating?
+        in .auto?
+          @feature_map.automode?
+        end
       end
     end
   end
