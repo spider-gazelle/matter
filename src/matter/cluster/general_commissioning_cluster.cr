@@ -15,7 +15,7 @@ module Matter
     class GeneralCommissioningCluster < Base
       Log = ::Log.for("matter.cluster.general_commissioning")
 
-      CLUSTER_ID = 0x0030_u32
+      cluster 0x0030, revision: 2
 
       # ========================================================================
       # Enumerations
@@ -138,43 +138,34 @@ module Matter
       # Attributes
       # ========================================================================
 
-      ATTR_BREADCRUMB                     = 0x0000_u32
-      ATTR_BASIC_COMMISSIONING_INFO       = 0x0001_u32
-      ATTR_REGULATORY_CONFIG              = 0x0002_u32
-      ATTR_LOCATION_CAPABILITY            = 0x0003_u32
-      ATTR_SUPPORTS_CONCURRENT_CONNECTION = 0x0004_u32
-      ATTR_IS_COMMISSIONING_WITHOUT_POWER = 0x000C_u32 # TC feature attribute
+      # Failsafe and network commissioning windows default to 15 minutes
+      DEFAULT_COMMISSIONING_SECONDS = 900_u16
 
-      # Breadcrumb attribute (0x0000) - progress tracking during commissioning
-      property breadcrumb : UInt64 = 0_u64
+      # Progress tracking during commissioning; not persisted (Matter Core §11.10.6.1)
+      attribute 0x0000, :breadcrumb, UInt64, default: 0_u64, writable: true, persist: false, write_access: :administer
+      # Built from `max_cumulative_failsafe_seconds` / `max_network_commissioning_seconds` in `read_attribute`
+      attribute 0x0001, :basic_commissioning_info, BasicCommissioningInfo, default: BasicCommissioningInfo.new(DEFAULT_COMMISSIONING_SECONDS, DEFAULT_COMMISSIONING_SECONDS), fixed: true
+      attribute 0x0002, :regulatory_config, RegulatoryLocationType, default: RegulatoryLocationType::IndoorOutdoor
+      attribute 0x0003, :location_capability, RegulatoryLocationType, default: RegulatoryLocationType::IndoorOutdoor, fixed: true
+      attribute 0x0004, :supports_concurrent_connection, Bool, default: true, fixed: true
+      # Commissioning on backup power is not supported
+      attribute 0x000C, :is_commissioning_without_power, Bool, default: false
 
       # BasicCommissioningInfo attribute (0x0001)
       # Contains MaxCumulativeFailsafeSeconds and MaxNetworkCommissioningSeconds
-      property max_cumulative_failsafe_seconds : UInt16 = 900_u16   # 15 minutes default
-      property max_network_commissioning_seconds : UInt16 = 900_u16 # 15 minutes default
-
-      # RegulatoryConfig attribute (0x0002) - current regulatory location
-      property regulatory_config : RegulatoryLocationType = RegulatoryLocationType::IndoorOutdoor
+      property max_cumulative_failsafe_seconds : UInt16 = DEFAULT_COMMISSIONING_SECONDS
+      property max_network_commissioning_seconds : UInt16 = DEFAULT_COMMISSIONING_SECONDS
 
       # Country code (stored for rollback purposes)
       property country_code : String = "XX" # Default: unknown/unspecified
-
-      # LocationCapability attribute (0x0003) - supported regulatory locations
-      property location_capability : RegulatoryLocationType = RegulatoryLocationType::IndoorOutdoor
-
-      # SupportsConcurrentConnection attribute (0x0004)
-      property? supports_concurrent_connection : Bool = true
 
       # ========================================================================
       # Commands
       # ========================================================================
 
-      CMD_ARM_FAIL_SAFE                   = 0x00_u32
-      CMD_ARM_FAIL_SAFE_RESPONSE          = 0x01_u32
-      CMD_SET_REGULATORY_CONFIG           = 0x02_u32
-      CMD_SET_REGULATORY_CONFIG_RESPONSE  = 0x03_u32
-      CMD_COMMISSIONING_COMPLETE          = 0x04_u32
-      CMD_COMMISSIONING_COMPLETE_RESPONSE = 0x05_u32
+      command 0x00, :arm_fail_safe, request: Definitions::GeneralCommissioning::ArmFailSafeRequest, response: ArmFailSafeResponse, response_id: 0x01, access: :administer
+      command 0x02, :set_regulatory_config, request: Definitions::GeneralCommissioning::SetRegularConfigurationRequest, response: SetRegulatoryConfigResponse, response_id: 0x03, access: :administer
+      command 0x04, :commissioning_complete, response: CommissioningCompleteResponse, response_id: 0x05, access: :administer
 
       # ========================================================================
       # Feature Support
@@ -237,125 +228,21 @@ module Matter
       # Base Class Implementation
       # ========================================================================
 
-      def name : String
-        "GeneralCommissioning"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_BREADCRUMB),
-            "Breadcrumb",
-            :uint64,
-            writable: true
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_BASIC_COMMISSIONING_INFO),
-            "BasicCommissioningInfo",
-            :struct,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_REGULATORY_CONFIG),
-            "RegulatoryConfig",
-            :enum8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_LOCATION_CAPABILITY),
-            "LocationCapability",
-            :enum8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_SUPPORTS_CONCURRENT_CONNECTION),
-            "SupportsConcurrentConnection",
-            :bool,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_IS_COMMISSIONING_WITHOUT_POWER),
-            "IsCommissioningWithoutPower",
-            :bool,
-            writable: false
-          ),
-        ]
-      end
-
-      def commands : Array(CommandMetadata)
-        [
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_ARM_FAIL_SAFE),
-            "ArmFailSafe"
-          ),
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_SET_REGULATORY_CONFIG),
-            "SetRegulatoryConfig"
-          ),
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_COMMISSIONING_COMPLETE),
-            "CommissioningComplete"
-          ),
-        ]
-      end
-
+      # BasicCommissioningInfo is built from the configured windows.
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
-        when ATTR_BREADCRUMB
-          tlv(@breadcrumb)
         when ATTR_BASIC_COMMISSIONING_INFO
-          build_basic_commissioning_info
-        when ATTR_REGULATORY_CONFIG
-          tlv(@regulatory_config.value)
-        when ATTR_LOCATION_CAPABILITY
-          tlv(@location_capability.value)
-        when ATTR_SUPPORTS_CONCURRENT_CONNECTION
-          tlv(@supports_concurrent_connection)
-        when ATTR_IS_COMMISSIONING_WITHOUT_POWER
-          # Returns true if the device is currently commissioning without main power
-          # (e.g., using backup power during initial setup). We don't support this mode.
-          tlv(false)
-        else
-          super
-        end
-      end
-
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        case attribute_id
-        when ATTR_BREADCRUMB
-          if breadcrumb = decode?(value, UInt64)
-            @breadcrumb = breadcrumb
-            increment_version
-            InteractionModel::Status.success
-          else
-            InteractionModel::Status.invalid_data_type
-          end
-        else
-          super
-        end
-      end
-
-      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
-        case command_id
-        when CMD_ARM_FAIL_SAFE
-          handle_arm_fail_safe_tlv(fields)
-        when CMD_SET_REGULATORY_CONFIG
-          handle_set_regulatory_config_tlv(fields)
-        when CMD_COMMISSIONING_COMPLETE
-          handle_commissioning_complete_tlv(fields)
+          tlv(BasicCommissioningInfo.new(@max_cumulative_failsafe_seconds, @max_network_commissioning_seconds))
         else
           super
         end
       end
 
       # ========================================================================
-      # TLV Command Handlers (for Base class routing)
+      # Command entry points (DSL dispatch)
       # ========================================================================
 
-      private def handle_arm_fail_safe_tlv(fields : TLV::Any?) : Cluster::CommandResponse
-        # Parse TLV-encoded request
-        request_def = Definitions::GeneralCommissioning::ArmFailSafeRequest.from_tlv(fields || tlv(nil))
-
+      def arm_fail_safe(request_def : Definitions::GeneralCommissioning::ArmFailSafeRequest) : ArmFailSafeResponse
         # Convert to cluster request struct
         request = ArmFailSafeRequest.new(
           expiry_length_seconds: request_def.expiry_length_seconds,
@@ -363,24 +250,16 @@ module Matter
         )
 
         # Call public command handler with session context from base class invoke_command
-        # is_case_session and fabric_index are set by the base class before calling handle_command
-        response = arm_failsafe(
+        # is_case_session and fabric_index are set by the base class before dispatch
+        arm_failsafe(
           request: request,
           session_fabric_index: @fabric_index,
           is_pase_session: !@is_case_session
         )
-
-        # Encode response as TLV and return with response command ID
-        Cluster::CommandResponse.new(
-          command_id: CMD_ARM_FAIL_SAFE_RESPONSE,
-          response: tlv(response)
-        )
       end
 
-      private def handle_set_regulatory_config_tlv(fields : TLV::Any?) : Cluster::CommandResponse
-        # Parse TLV-encoded request
-        request_def = Definitions::GeneralCommissioning::SetRegularConfigurationRequest.from_tlv(fields || tlv(nil))
-
+      # ameba:disable Naming/AccessorMethodName
+      def set_regulatory_config(request_def : Definitions::GeneralCommissioning::SetRegularConfigurationRequest) : SetRegulatoryConfigResponse
         # Convert to cluster request struct
         request = SetRegulatoryConfigRequest.new(
           new_regulatory_config: RegulatoryLocationType.from_value(request_def.new_regulatory_configuration.value),
@@ -389,28 +268,14 @@ module Matter
         )
 
         # Call public command handler
-        response = (self.regulatory_config = request)
-
-        # Encode response as TLV and return with response command ID
-        Cluster::CommandResponse.new(
-          command_id: CMD_SET_REGULATORY_CONFIG_RESPONSE,
-          response: tlv(response)
-        )
+        self.regulatory_config = request
       end
 
-      private def handle_commissioning_complete_tlv(fields : TLV::Any?) : Cluster::CommandResponse
-        # CommissioningComplete has no request fields
-
+      def commissioning_complete : CommissioningCompleteResponse
         # Call public command handler with session context from base class invoke_command
-        response = commissioning_complete(
+        commissioning_complete(
           session_fabric_index: @fabric_index,
           is_case_session: @is_case_session
-        )
-
-        # Encode response as TLV and return with response command ID
-        Cluster::CommandResponse.new(
-          command_id: CMD_COMMISSIONING_COMPLETE_RESPONSE,
-          response: tlv(response)
         )
       end
 
@@ -844,20 +709,6 @@ module Matter
       # ========================================================================
       # TLV Encoding Helpers
       # ========================================================================
-
-      # Helper: Encode UInt64 as TLV bytes
-
-      # Helper: Encode BasicCommissioningInfo as TLV structure
-      private def build_basic_commissioning_info : TLV::Any
-        info = BasicCommissioningInfo.new(@max_cumulative_failsafe_seconds, @max_network_commissioning_seconds)
-        tlv(info)
-      end
-
-      # Encode ArmFailSafeResponse as TLV
-
-      # Encode SetRegulatoryConfigResponse as TLV
-
-      # Encode CommissioningCompleteResponse as TLV
     end
   end
 end

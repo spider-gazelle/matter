@@ -32,8 +32,8 @@ module Matter
     # - LastNetworkID (0x06): Network ID of last operation
     # - LastConnectErrorValue (0x07): Error value from last connect
     class NetworkCommissioningCluster < Base
-      Log        = ::Log.for("matter.cluster.network_commissioning")
-      CLUSTER_ID = 0x0031_u32
+      Log = ::Log.for("matter.cluster.network_commissioning")
+      cluster 0x0031, revision: 2
 
       # Network Types
       enum NetworkType : UInt8
@@ -42,13 +42,14 @@ module Matter
         Ethernet = 0x02
       end
 
-      # Feature flags
-      @[Flags]
-      enum Feature : UInt32
-        WiFiNetworkInterface     = 0x01 # Bit 0 - WiFi support
-        ThreadNetworkInterface   = 0x02 # Bit 1 - Thread support
-        EthernetNetworkInterface = 0x04 # Bit 2 - Ethernet support
-      end
+      feature :wi_fi_network_interface, bit: 0    # WI - WiFi support
+      feature :thread_network_interface, bit: 1   # TH - Thread support
+      feature :ethernet_network_interface, bit: 2 # ET - Ethernet support
+
+      DEFAULT_MAX_NETWORKS             =  1_u8
+      DEFAULT_SCAN_MAX_TIME_SECONDS    = 30_u8
+      DEFAULT_CONNECT_MAX_TIME_SECONDS = 60_u8
+      THREAD_VERSION_1_3               = 4_u16
 
       # NetworkCommissioningStatus Enum
       # Status codes returned by network commissioning commands
@@ -100,33 +101,15 @@ module Matter
         IsSynchronizedSleepyEndDeviceCapable = 0x10 # Bit 4
       end
 
-      # Attributes
-      ATTR_MAX_NETWORKS              = 0x0000_u32
-      ATTR_NETWORKS                  = 0x0001_u32
-      ATTR_SCAN_MAX_TIME_SECONDS     = 0x0002_u32
-      ATTR_CONNECT_MAX_TIME_SECONDS  = 0x0003_u32
-      ATTR_INTERFACE_ENABLED         = 0x0004_u32
-      ATTR_LAST_NETWORKING_STATUS    = 0x0005_u32
-      ATTR_LAST_NETWORK_ID           = 0x0006_u32
-      ATTR_LAST_CONNECT_ERROR_VALUE  = 0x0007_u32
-      ATTR_SUPPORTED_WIFI_BANDS      = 0x0008_u32
-      ATTR_SUPPORTED_THREAD_FEATURES = 0x0009_u32
-
-      # Commands
-      CMD_SCAN_NETWORKS                = 0x00_u32
-      CMD_SCAN_NETWORKS_RESPONSE       = 0x01_u32
-      CMD_ADD_OR_UPDATE_WIFI_NETWORK   = 0x02_u32
-      CMD_ADD_OR_UPDATE_THREAD_NETWORK = 0x03_u32
-      CMD_REMOVE_NETWORK               = 0x04_u32
-      CMD_NETWORK_CONFIG_RESPONSE      = 0x05_u32
-      CMD_CONNECT_NETWORK              = 0x06_u32
-      CMD_CONNECT_NETWORK_RESPONSE     = 0x07_u32
-      CMD_REORDER_NETWORK              = 0x08_u32
-
       # NetworkInfoStruct - Represents a configured network
       struct NetworkInfo
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property network_id : Bytes # 1-32 bytes (SSID or XPAN ID)
-        property? connected : Bool  # Current connection status
+
+        @[TLV::Field(tag: 1)]
+        property? connected : Bool # Current connection status
 
         def initialize(@network_id : Bytes, @connected : Bool)
           raise ArgumentError.new("network_id must be 1-32 bytes") unless network_id.size.in?(1..32)
@@ -289,26 +272,33 @@ module Matter
         end
       end
 
-      # Instance variables
+      attribute 0x0000, :max_networks, UInt8, default: DEFAULT_MAX_NETWORKS, fixed: true, read_access: :administer
+      attribute 0x0001, :networks, Array(NetworkInfo), default: [] of NetworkInfo, read_access: :administer
+      attribute 0x0002, :scan_max_time_seconds, UInt8, default: DEFAULT_SCAN_MAX_TIME_SECONDS, fixed: true, requires: [:wi_fi_network_interface, :thread_network_interface]
+      attribute 0x0003, :connect_max_time_seconds, UInt8, default: DEFAULT_CONNECT_MAX_TIME_SECONDS, fixed: true, requires: [:wi_fi_network_interface, :thread_network_interface]
+      # Persisted by `restore_network_state`, not by the DSL
+      attribute 0x0004, :interface_enabled, Bool, default: true, writable: true, persist: false, write_access: :administer
+      attribute 0x0005, :last_networking_status, NetworkCommissioningStatus, nullable: true, read_access: :administer
+      attribute 0x0006, :last_network_id, Bytes, nullable: true, read_access: :administer
+      attribute 0x0007, :last_connect_error_value, Int32, nullable: true, read_access: :administer
+      attribute 0x0008, :supported_wifi_bands, Array(WiFiBandEnum), default: [] of WiFiBandEnum, fixed: true, requires: :wi_fi_network_interface
+      attribute 0x0009, :supported_thread_features, ThreadCapabilitiesBitmap, default: ThreadCapabilitiesBitmap::None, fixed: true, requires: :thread_network_interface
+      attribute 0x000A, :thread_version, UInt16, default: THREAD_VERSION_1_3, fixed: true, requires: :thread_network_interface
+
+      command 0x00, :scan_networks, request: Definitions::NetworkCommissioning::ScanAvailableNetworksRequest, response: Definitions::NetworkCommissioning::ScanNetworksResponse, response_id: 0x01, access: :administer, requires: [:wi_fi_network_interface, :thread_network_interface]
+      command 0x02, :add_or_update_wifi_network, request: Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest, response: Definitions::NetworkCommissioning::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: :wi_fi_network_interface
+      command 0x03, :add_or_update_thread_network, request: Definitions::NetworkCommissioning::AddOrUpdateThreadNetworkRequest, response: Definitions::NetworkCommissioning::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: :thread_network_interface
+      command 0x04, :remove_network, request: Definitions::NetworkCommissioning::RemoveNetworkRequest, response: Definitions::NetworkCommissioning::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: [:wi_fi_network_interface, :thread_network_interface]
+      command 0x06, :connect_network, request: Definitions::NetworkCommissioning::ConnectNetworkRequest, response: Definitions::NetworkCommissioning::ConnectNetworkResponse, response_id: 0x07, access: :administer, requires: [:wi_fi_network_interface, :thread_network_interface]
+      command 0x08, :reorder_network, request: Definitions::NetworkCommissioning::ReorderNetworkRequest, response: Definitions::NetworkCommissioning::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: [:wi_fi_network_interface, :thread_network_interface]
+
       property network_type : NetworkType
-      property feature_map : Feature
-      property max_networks : UInt8
-      property networks : Array(NetworkInfo)
-      property scan_max_time_seconds : UInt8
-      property connect_max_time_seconds : UInt8
-      property? interface_enabled : Bool
-      property last_networking_status : NetworkCommissioningStatus?
-      property last_network_id : Bytes?
-      property last_connect_error_value : Int32?
 
       # WiFi-specific
       property wifi_credentials : Hash(Bytes, Bytes) # SSID -> password
-      property supported_wifi_bands : Array(WiFiBandEnum)?
 
       # Thread-specific
       property thread_credentials : Hash(Bytes, Bytes) # Extended PAN ID -> credentials
-      property supported_thread_features : ThreadCapabilitiesBitmap?
-      property thread_version : UInt16?
 
       # Platform backend for network operations (required)
       property backend : Network::Backend?
@@ -322,11 +312,11 @@ module Matter
       def initialize(
         endpoint_id : DataType::EndpointNumber = DataType::EndpointNumber.new(0_u16),
         @network_type : NetworkType = NetworkType::WiFi,
-        @max_networks : UInt8 = 1_u8,
+        @max_networks : UInt8 = DEFAULT_MAX_NETWORKS,
         @feature_map : Feature = Feature::None,
         features : Feature? = nil,
-        @scan_max_time_seconds : UInt8 = 30_u8,
-        @connect_max_time_seconds : UInt8 = 60_u8,
+        @scan_max_time_seconds : UInt8 = DEFAULT_SCAN_MAX_TIME_SECONDS,
+        @connect_max_time_seconds : UInt8 = DEFAULT_CONNECT_MAX_TIME_SECONDS,
         @backend : Network::Backend? = nil,
       )
         # Allow 'features' parameter as alias for 'feature_map' for compatibility
@@ -350,30 +340,17 @@ module Matter
 
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
-        @networks = [] of NetworkInfo
-        @interface_enabled = true
-        @last_networking_status = nil
-        @last_network_id = nil
-        @last_connect_error_value = nil
         @connected_network_index = nil
 
         @wifi_credentials = {} of Bytes => Bytes
         @thread_credentials = {} of Bytes => Bytes
 
-        # Initialize WiFi-specific attributes if WiFi feature enabled
-        if @feature_map.includes?(Feature::WiFiNetworkInterface)
+        # Interface capabilities advertised by the feature-gated attributes
+        if @feature_map.wi_fi_network_interface?
           @supported_wifi_bands = [WiFiBandEnum::Band2G4, WiFiBandEnum::Band5G]
-        else
-          @supported_wifi_bands = nil
         end
-
-        # Initialize Thread-specific attributes if Thread feature enabled
-        if @feature_map.includes?(Feature::ThreadNetworkInterface)
+        if @feature_map.thread_network_interface?
           @supported_thread_features = ThreadCapabilitiesBitmap::IsRouterCapable | ThreadCapabilitiesBitmap::IsFullThreadDevice
-          @thread_version = 4_u16 # Thread 1.3
-        else
-          @supported_thread_features = nil
-          @thread_version = nil
         end
 
         @breadcrumb_callback = nil
@@ -388,168 +365,9 @@ module Matter
         initialize(
           endpoint_id,
           network_type,
-          max_networks: 1_u8,
+          max_networks: DEFAULT_MAX_NETWORKS,
           feature_map: feature
         )
-      end
-
-      def name : String
-        "NetworkCommissioning"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MAX_NETWORKS),
-            "MaxNetworks",
-            :uint8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_NETWORKS),
-            "Networks",
-            :array,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_SCAN_MAX_TIME_SECONDS),
-            "ScanMaxTimeSeconds",
-            :uint8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_CONNECT_MAX_TIME_SECONDS),
-            "ConnectMaxTimeSeconds",
-            :uint8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_INTERFACE_ENABLED),
-            "InterfaceEnabled",
-            :bool,
-            writable: true
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_LAST_NETWORKING_STATUS),
-            "LastNetworkingStatus",
-            :uint8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_LAST_NETWORK_ID),
-            "LastNetworkID",
-            :octstr,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_LAST_CONNECT_ERROR_VALUE),
-            "LastConnectErrorValue",
-            :int32,
-            writable: false
-          ),
-        ]
-      end
-
-      def commands : Array(CommandMetadata)
-        [
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_SCAN_NETWORKS),
-            "ScanNetworks"
-          ),
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_ADD_OR_UPDATE_WIFI_NETWORK),
-            "AddOrUpdateWiFiNetwork"
-          ),
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_ADD_OR_UPDATE_THREAD_NETWORK),
-            "AddOrUpdateThreadNetwork"
-          ),
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_REMOVE_NETWORK),
-            "RemoveNetwork"
-          ),
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_CONNECT_NETWORK),
-            "ConnectNetwork"
-          ),
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_REORDER_NETWORK),
-            "ReorderNetwork"
-          ),
-        ]
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_MAX_NETWORKS
-          tlv(@max_networks)
-        when ATTR_SCAN_MAX_TIME_SECONDS
-          tlv(@scan_max_time_seconds)
-        when ATTR_CONNECT_MAX_TIME_SECONDS
-          tlv(@connect_max_time_seconds)
-        when ATTR_INTERFACE_ENABLED
-          tlv(@interface_enabled)
-        when ATTR_LAST_NETWORKING_STATUS
-          tlv(@last_networking_status.try(&.value))
-        when ATTR_LAST_NETWORK_ID
-          tlv(@last_network_id)
-        when ATTR_LAST_CONNECT_ERROR_VALUE
-          tlv(@last_connect_error_value)
-        when ATTR_NETWORKS
-          build_networks
-        when GLOBAL_FEATURE_MAP
-          tlv(@feature_map.value)
-        else
-          super
-        end
-      end
-
-      # Encode the Networks attribute as TLV array
-      private def build_networks : TLV::Any
-        networks = @networks.map do |network|
-          Definitions::NetworkCommissioning::NetworkInformation.new(
-            network_id: network.network_id,
-            connected: network.connected?
-          )
-        end
-        tlv(networks)
-      end
-
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        case attribute_id
-        when ATTR_INTERFACE_ENABLED
-          enabled = decode?(value, Bool)
-          if enabled.nil?
-            InteractionModel::Status.invalid_data_type
-          else
-            @interface_enabled = enabled
-            increment_version
-            InteractionModel::Status.success
-          end
-        else
-          super
-        end
-      end
-
-      # Protocol-level command handling
-      # Parses TLV-encoded request bytes, calls high-level handlers, and encodes TLV response
-      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
-        case command_id
-        when CMD_SCAN_NETWORKS
-          Cluster::CommandResponse.new(CMD_SCAN_NETWORKS_RESPONSE, handle_scan_networks_tlv(fields))
-        when CMD_ADD_OR_UPDATE_WIFI_NETWORK
-          Cluster::CommandResponse.new(CMD_NETWORK_CONFIG_RESPONSE, handle_add_or_update_wifi_network_tlv(fields))
-        when CMD_ADD_OR_UPDATE_THREAD_NETWORK
-          Cluster::CommandResponse.new(CMD_NETWORK_CONFIG_RESPONSE, handle_add_or_update_thread_network_tlv(fields))
-        when CMD_REMOVE_NETWORK
-          Cluster::CommandResponse.new(CMD_NETWORK_CONFIG_RESPONSE, handle_remove_network_tlv(fields))
-        when CMD_CONNECT_NETWORK
-          Cluster::CommandResponse.new(CMD_CONNECT_NETWORK_RESPONSE, handle_connect_network_tlv(fields))
-        when CMD_REORDER_NETWORK
-          Cluster::CommandResponse.new(CMD_NETWORK_CONFIG_RESPONSE, handle_reorder_network_tlv(fields))
-        else
-          super
-        end
       end
 
       # Command handlers that accept struct parameters (used by tests and high-level API)
@@ -912,17 +730,16 @@ module Matter
       # A request DTO rejected a field (oversized ssid / credentials / dataset /
       # network_id): answer `OutOfRange` with the validation message instead of
       # failing the whole command.
-      private def out_of_range_config_response(command : String, ex : ArgumentError) : TLV::Any
+      private def out_of_range_config_response(command : String, ex : ArgumentError) : Definitions::NetworkCommissioning::NetworkConfigurationResponse
         Log.warn(exception: ex) { "#{command} rejected" }
         Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
           status_code: OUT_OF_RANGE_STATUS,
           debug_text: ex.message
-        ).to_tlv(nil)
+        )
       end
 
-      private def handle_scan_networks_tlv(fields : TLV::Any?) : TLV::Any
+      def scan_networks(tlv_req : Definitions::NetworkCommissioning::ScanAvailableNetworksRequest) : Definitions::NetworkCommissioning::ScanNetworksResponse
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::ScanAvailableNetworksRequest.from_tlv(fields || tlv(nil))
 
         # Convert to simple struct
         req = begin
@@ -935,7 +752,7 @@ module Matter
           return Definitions::NetworkCommissioning::ScanNetworksResponse.new(
             status_code: OUT_OF_RANGE_STATUS,
             debug_text: ex.message
-          ).to_tlv(nil)
+          )
         end
 
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
@@ -979,12 +796,11 @@ module Matter
           debug_text: response.debug_text,
           wifi_scan_results: wifi_results.try { |wifi_res| wifi_res.empty? ? nil : wifi_res },
           thread_scan_results: thread_results.try { |thread_res| thread_res.empty? ? nil : thread_res }
-        ).to_tlv(nil)
+        )
       end
 
-      private def handle_add_or_update_wifi_network_tlv(fields : TLV::Any?) : TLV::Any
+      def add_or_update_wifi_network(tlv_req : Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest) : Definitions::NetworkCommissioning::NetworkConfigurationResponse
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest.from_tlv(fields || tlv(nil))
 
         # Convert to simple struct
         req = begin
@@ -1005,12 +821,11 @@ module Matter
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           network_index: response.network_index
-        ).to_tlv(nil)
+        )
       end
 
-      private def handle_add_or_update_thread_network_tlv(fields : TLV::Any?) : TLV::Any
+      def add_or_update_thread_network(tlv_req : Definitions::NetworkCommissioning::AddOrUpdateThreadNetworkRequest) : Definitions::NetworkCommissioning::NetworkConfigurationResponse
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::AddOrUpdateThreadNetworkRequest.from_tlv(fields || tlv(nil))
 
         # Convert to simple struct
         req = begin
@@ -1030,12 +845,11 @@ module Matter
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           network_index: response.network_index
-        ).to_tlv(nil)
+        )
       end
 
-      private def handle_remove_network_tlv(fields : TLV::Any?) : TLV::Any
+      def remove_network(tlv_req : Definitions::NetworkCommissioning::RemoveNetworkRequest) : Definitions::NetworkCommissioning::NetworkConfigurationResponse
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::RemoveNetworkRequest.from_tlv(fields || tlv(nil))
 
         # Convert to simple struct
         req = begin
@@ -1055,12 +869,11 @@ module Matter
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           network_index: response.network_index
-        ).to_tlv(nil)
+        )
       end
 
-      private def handle_connect_network_tlv(fields : TLV::Any?) : TLV::Any
+      def connect_network(tlv_req : Definitions::NetworkCommissioning::ConnectNetworkRequest) : Definitions::NetworkCommissioning::ConnectNetworkResponse
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::ConnectNetworkRequest.from_tlv(fields || tlv(nil))
 
         # Convert to simple struct
         req = begin
@@ -1073,7 +886,7 @@ module Matter
           return Definitions::NetworkCommissioning::ConnectNetworkResponse.new(
             status_code: OUT_OF_RANGE_STATUS,
             debug_text: ex.message
-          ).to_tlv(nil)
+          )
         end
 
         # Call high-level handler (pass true - failsafe checks done at protocol layer)
@@ -1084,12 +897,11 @@ module Matter
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           error_value: response.error_value
-        ).to_tlv(nil)
+        )
       end
 
-      private def handle_reorder_network_tlv(fields : TLV::Any?) : TLV::Any
+      def reorder_network(tlv_req : Definitions::NetworkCommissioning::ReorderNetworkRequest) : Definitions::NetworkCommissioning::NetworkConfigurationResponse
         # Parse TLV request
-        tlv_req = Definitions::NetworkCommissioning::ReorderNetworkRequest.from_tlv(fields || tlv(nil))
 
         # Convert to simple struct
         req = begin
@@ -1110,7 +922,7 @@ module Matter
           status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           network_index: response.network_index
-        ).to_tlv(nil)
+        )
       end
 
       # Restore network state from snapshot (used during failsafe rollback)

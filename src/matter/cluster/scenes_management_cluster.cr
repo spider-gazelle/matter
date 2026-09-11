@@ -379,42 +379,26 @@ module Matter
     end
 
     class ScenesManagementCluster < Base
-      Log        = ::Log.for("matter.cluster.scenes_management")
-      CLUSTER_ID = 0x0062_u32
+      Log = ::Log.for("matter.cluster.scenes_management")
 
-      # Feature flags
-      @[Flags]
-      enum Feature : UInt32
-        SceneNames = 0x01 # SN - Store names for scenes
-      end
+      cluster 0x0062, revision: 1
 
-      # Attribute IDs
-      ATTR_SCENE_TABLE_SIZE  = 0x0001_u32 # Fixed attribute
-      ATTR_FABRIC_SCENE_INFO = 0x0002_u32 # Fabric-scoped list
-
-      # Command IDs
-      CMD_ADD_SCENE            = 0x00_u32
-      CMD_VIEW_SCENE           = 0x01_u32
-      CMD_REMOVE_SCENE         = 0x02_u32
-      CMD_REMOVE_ALL_SCENES    = 0x03_u32
-      CMD_STORE_SCENE          = 0x04_u32
-      CMD_RECALL_SCENE         = 0x05_u32
-      CMD_GET_SCENE_MEMBERSHIP = 0x06_u32
-      CMD_COPY_SCENE           = 0x40_u32 # Optional
-
-      # Response IDs
-      CMD_ADD_SCENE_RESPONSE            = 0x00_u32
-      CMD_VIEW_SCENE_RESPONSE           = 0x01_u32
-      CMD_REMOVE_SCENE_RESPONSE         = 0x02_u32
-      CMD_REMOVE_ALL_SCENES_RESPONSE    = 0x03_u32
-      CMD_STORE_SCENE_RESPONSE          = 0x04_u32
-      CMD_GET_SCENE_MEMBERSHIP_RESPONSE = 0x06_u32
-      CMD_COPY_SCENE_RESPONSE           = 0x40_u32
+      feature :scene_names, bit: 0 # SN - Store names for scenes
 
       # Scenes are fabric-scoped, but the command handlers do not yet take the
       # accessing fabric from the session, so scene tables and SceneInfo
       # default to the first commissioned fabric.
       DEFAULT_FABRIC_INDEX = 1_u8
+
+      # Minimum Scene Table size the specification allows (Matter 1.4 §1.4.8.1).
+      DEFAULT_SCENE_TABLE_SIZE = 16_u16
+
+      # Largest exact capacity a SceneInfo / GetSceneMembershipResponse can
+      # report; 0xFE means "at least one" and 0xFF "unknown".
+      MAX_REPORTED_CAPACITY = 253
+
+      # CopyScene mode bit: copy every scene of the source group.
+      COPY_MODE_ALL_SCENES = 0x01_u8
 
       # SceneInfo structure for fabric-scoped scene info
       struct SceneInfo
@@ -432,7 +416,7 @@ module Matter
           @current_scene = 0xFF_u8,
           @current_group = 0_u16,
           @scene_valid = false,
-          @remaining_capacity = 16_u8,
+          @remaining_capacity = DEFAULT_SCENE_TABLE_SIZE.to_u8,
           @fabric_index = DEFAULT_FABRIC_INDEX,
         )
         end
@@ -550,17 +534,25 @@ module Matter
         end
       end
 
-      # Feature map
-      property feature_map : Feature
+      # Scene table size (total across all fabrics)
+      attribute 0x0001, :scene_table_size, UInt16, default: DEFAULT_SCENE_TABLE_SIZE, fixed: true
+      # Computed per accessing fabric from `scene_info_by_fabric` in `read_attribute`.
+      attribute 0x0002, :fabric_scene_info, Array(SceneInfoTlv), default: [] of SceneInfoTlv, fabric_scoped: true
+
+      command 0x00, :add_scene, request: AddSceneRequest, response: SceneStatusResponse, access: :manage
+      command 0x01, :view_scene, request: ViewSceneRequest, response: ViewSceneResponseTlv
+      command 0x02, :remove_scene, request: RemoveSceneRequest, response: SceneStatusResponse, access: :manage
+      command 0x03, :remove_all_scenes, request: RemoveAllScenesRequest, response: RemoveAllScenesResponse, access: :manage
+      command 0x04, :store_scene, request: StoreSceneRequest, response: SceneStatusResponse, access: :manage
+      command 0x05, :recall_scene, request: RecallSceneRequest
+      command 0x06, :get_scene_membership, request: GetSceneMembershipRequest, response: GetSceneMembershipResponse
+      command 0x40, :copy_scene, request: CopySceneRequest, response: CopySceneResponse, access: :manage, optional: true
 
       # Scene storage: {fabric_index, group_id, scene_id} => SceneData
       property scenes : Hash({UInt8, UInt16, UInt8}, SceneData)
 
-      # Per-fabric scene info
-      property fabric_scene_info : Hash(UInt8, SceneInfo)
-
-      # Scene table size (total across all fabrics)
-      property scene_table_size : UInt16
+      # Per-fabric scene info, the source of the FabricSceneInfo attribute
+      property scene_info_by_fabric : Hash(UInt8, SceneInfo)
 
       # Callback for when scene is recalled (legacy - use apply_extension_field_sets instead)
       property on_recall_scene : Proc(UInt16, UInt8, Nil)?
@@ -576,99 +568,26 @@ module Matter
       def initialize(
         endpoint_id : DataType::EndpointNumber,
         @feature_map : Feature = Feature::SceneNames,
-        @scene_table_size : UInt16 = 16_u16,
+        @scene_table_size : UInt16 = DEFAULT_SCENE_TABLE_SIZE,
       )
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
         @scenes = Hash({UInt8, UInt16, UInt8}, SceneData).new
-        @fabric_scene_info = Hash(UInt8, SceneInfo).new
+        @scene_info_by_fabric = Hash(UInt8, SceneInfo).new
       end
 
-      def name : String
-        "ScenesManagement"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        [
-          AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_SCENE_TABLE_SIZE),
-            name: "SceneTableSize",
-            type: :uint16,
-            writable: false,
-            fixed: true
-          ),
-          AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_FABRIC_SCENE_INFO),
-            name: "FabricSceneInfo",
-            type: :list,
-            writable: false
-          ),
-        ]
-      end
-
-      def commands : Array(CommandMetadata)
-        [
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_ADD_SCENE),
-            name: "AddScene",
-            access: Definitions::AccessControl::EntryPrivilege::Manage
-          ),
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_VIEW_SCENE),
-            name: "ViewScene"
-          ),
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_REMOVE_SCENE),
-            name: "RemoveScene",
-            access: Definitions::AccessControl::EntryPrivilege::Manage
-          ),
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_REMOVE_ALL_SCENES),
-            name: "RemoveAllScenes",
-            access: Definitions::AccessControl::EntryPrivilege::Manage
-          ),
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_STORE_SCENE),
-            name: "StoreScene",
-            access: Definitions::AccessControl::EntryPrivilege::Manage
-          ),
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_RECALL_SCENE),
-            name: "RecallScene"
-          ),
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_GET_SCENE_MEMBERSHIP),
-            name: "GetSceneMembership"
-          ),
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_COPY_SCENE),
-            name: "CopyScene",
-            optional: true,
-            access: Definitions::AccessControl::EntryPrivilege::Manage
-          ),
-        ]
-      end
-
+      # FabricSceneInfo is computed for the accessing fabric.
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
-        when ATTR_SCENE_TABLE_SIZE
-          tlv(@scene_table_size)
         when ATTR_FABRIC_SCENE_INFO
           fabric_scene_info_tlv(fabric_index || DEFAULT_FABRIC_INDEX)
-        when GLOBAL_FEATURE_MAP
-          tlv(@feature_map.value)
         else
-          super(attribute_id, fabric_index)
+          super
         end
-      end
-
-      protected def feature_map_tlv : TLV::Any
-        tlv(@feature_map.value)
       end
 
       # Encode FabricSceneInfo as TLV array
       private def fabric_scene_info_tlv(fabric_index : UInt8) : TLV::Any
-        # Get or create scene info for this fabric
-        scene_info = @fabric_scene_info[fabric_index]? || SceneInfo.new(fabric_index: fabric_index)
+        scene_info = @scene_info_by_fabric[fabric_index]? || SceneInfo.new(fabric_index: fabric_index)
 
         tlv_info = SceneInfoTlv.new(
           scene_count: scene_info.scene_count,
@@ -679,121 +598,68 @@ module Matter
           fabric_index: fabric_index
         )
 
-        # Wrap in array
         tlv([tlv_info])
       end
 
-      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
-        case command_id
-        when CMD_ADD_SCENE
-          Cluster::CommandResponse.new(CMD_ADD_SCENE_RESPONSE, handle_add_scene(fields))
-        when CMD_VIEW_SCENE
-          Cluster::CommandResponse.new(CMD_VIEW_SCENE_RESPONSE, handle_view_scene(fields))
-        when CMD_REMOVE_SCENE
-          Cluster::CommandResponse.new(CMD_REMOVE_SCENE_RESPONSE, handle_remove_scene(fields))
-        when CMD_REMOVE_ALL_SCENES
-          Cluster::CommandResponse.new(CMD_REMOVE_ALL_SCENES_RESPONSE, handle_remove_all_scenes(fields))
-        when CMD_STORE_SCENE
-          Cluster::CommandResponse.new(CMD_STORE_SCENE_RESPONSE, handle_store_scene(fields))
-        when CMD_RECALL_SCENE
-          # RecallScene has no response in ScenesManagement
-          handle_recall_scene(fields)
-        when CMD_GET_SCENE_MEMBERSHIP
-          Cluster::CommandResponse.new(CMD_GET_SCENE_MEMBERSHIP_RESPONSE, handle_get_scene_membership(fields))
-        when CMD_COPY_SCENE
-          Cluster::CommandResponse.new(CMD_COPY_SCENE_RESPONSE, handle_copy_scene(fields))
-        else
-          InteractionModel::Status.unsupported_command
-        end
-      end
+      # ------------------------------------------------------------------------
+      # Commands
+      # ------------------------------------------------------------------------
 
-      # Handle AddScene command
-      private def handle_add_scene(fields : TLV::Any?) : TLV::Any
-        req = decode(fields, AddSceneRequest)
-
+      def add_scene(request : AddSceneRequest) : SceneStatusResponse
         fabric_index = DEFAULT_FABRIC_INDEX
-        key = {fabric_index, req.group_id, req.scene_id}
+        key = {fabric_index, request.group_id, request.scene_id}
 
-        # Check capacity
-        fabric_scenes = @scenes.count { |k, _| k[0] == fabric_index }
-        if fabric_scenes >= @scene_table_size && !@scenes.has_key?(key)
-          return scene_status_response(InteractionModel::StatusCode::ResourceExhausted, req.group_id, req.scene_id)
+        if fabric_full?(fabric_index) && !@scenes.has_key?(key)
+          return scene_status_response(InteractionModel::StatusCode::ResourceExhausted, request.group_id, request.scene_id)
         end
 
-        extension_fields = (req.extension_field_sets || [] of TLV::Any).map do |value|
+        extension_fields = (request.extension_field_sets || [] of TLV::Any).map do |value|
           field_set = ExtensionFieldSetTlv.from_tlv(value)
           attributes = field_set.attribute_value_list.map { |pair| {pair.attribute_id, pair.attribute_value} }
           ExtensionFieldSet.new(field_set.cluster_id, attributes)
         end
-        @scenes[key] = SceneData.new(req.transition_time, req.scene_name || "", extension_fields)
+        @scenes[key] = SceneData.new(request.transition_time, request.scene_name || "", extension_fields)
         update_fabric_scene_info(fabric_index)
 
-        scene_status_response(InteractionModel::StatusCode::Success, req.group_id, req.scene_id)
-      rescue ex
-        Log.warn(exception: ex) { "AddScene: failed to parse request (fields=#{fields})" }
-        scene_status_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
+        scene_status_response(InteractionModel::StatusCode::Success, request.group_id, request.scene_id)
       end
 
-      # Handle ViewScene command
-      private def handle_view_scene(fields : TLV::Any?) : TLV::Any
-        req = decode(fields, ViewSceneRequest)
-
-        fabric_index = DEFAULT_FABRIC_INDEX
-        key = {fabric_index, req.group_id, req.scene_id}
+      def view_scene(request : ViewSceneRequest) : ViewSceneResponseTlv
+        key = {DEFAULT_FABRIC_INDEX, request.group_id, request.scene_id}
 
         if scene = @scenes[key]?
-          view_scene_response(InteractionModel::StatusCode::Success, req.group_id, req.scene_id, scene)
+          view_scene_response(InteractionModel::StatusCode::Success, request.group_id, request.scene_id, scene)
         else
-          view_scene_response(InteractionModel::StatusCode::NotFound, req.group_id, req.scene_id, nil)
+          view_scene_response(InteractionModel::StatusCode::NotFound, request.group_id, request.scene_id, nil)
         end
-      rescue ex
-        Log.warn(exception: ex) { "ViewScene: failed to parse request (fields=#{fields})" }
-        view_scene_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8, nil)
       end
 
-      # Handle RemoveScene command
-      private def handle_remove_scene(fields : TLV::Any?) : TLV::Any
-        req = decode(fields, RemoveSceneRequest)
-
+      def remove_scene(request : RemoveSceneRequest) : SceneStatusResponse
         fabric_index = DEFAULT_FABRIC_INDEX
-        key = {fabric_index, req.group_id, req.scene_id}
+        key = {fabric_index, request.group_id, request.scene_id}
 
         if @scenes.delete(key)
           update_fabric_scene_info(fabric_index)
-          scene_status_response(InteractionModel::StatusCode::Success, req.group_id, req.scene_id)
+          scene_status_response(InteractionModel::StatusCode::Success, request.group_id, request.scene_id)
         else
-          scene_status_response(InteractionModel::StatusCode::NotFound, req.group_id, req.scene_id)
+          scene_status_response(InteractionModel::StatusCode::NotFound, request.group_id, request.scene_id)
         end
-      rescue ex
-        Log.warn(exception: ex) { "RemoveScene: failed to parse request (fields=#{fields})" }
-        scene_status_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
       end
 
-      # Handle RemoveAllScenes command
-      private def handle_remove_all_scenes(fields : TLV::Any?) : TLV::Any
-        req = decode(fields, RemoveAllScenesRequest)
-
+      def remove_all_scenes(request : RemoveAllScenesRequest) : RemoveAllScenesResponse
         fabric_index = DEFAULT_FABRIC_INDEX
-        @scenes.reject! { |k, _| k[0] == fabric_index && k[1] == req.group_id }
+        @scenes.reject! { |key, _| key[0] == fabric_index && key[1] == request.group_id }
         update_fabric_scene_info(fabric_index)
 
-        remove_all_response(InteractionModel::StatusCode::Success, req.group_id)
-      rescue ex
-        Log.warn(exception: ex) { "RemoveAllScenes: failed to parse request (fields=#{fields})" }
-        remove_all_response(InteractionModel::StatusCode::InvalidCommand, 0_u16)
+        RemoveAllScenesResponse.new(InteractionModel::StatusCode::Success.value, request.group_id)
       end
 
-      # Handle StoreScene command
-      private def handle_store_scene(fields : TLV::Any?) : TLV::Any
-        req = decode(fields, StoreSceneRequest)
-
+      def store_scene(request : StoreSceneRequest) : SceneStatusResponse
         fabric_index = DEFAULT_FABRIC_INDEX
-        key = {fabric_index, req.group_id, req.scene_id}
+        key = {fabric_index, request.group_id, request.scene_id}
 
-        # Check capacity
-        fabric_scenes = @scenes.count { |k, _| k[0] == fabric_index }
-        if fabric_scenes >= @scene_table_size && !@scenes.has_key?(key)
-          return scene_status_response(InteractionModel::StatusCode::ResourceExhausted, req.group_id, req.scene_id)
+        if fabric_full?(fabric_index) && !@scenes.has_key?(key)
+          return scene_status_response(InteractionModel::StatusCode::ResourceExhausted, request.group_id, request.scene_id)
         end
 
         # Get extension field sets from other clusters (if callback is set)
@@ -806,119 +672,94 @@ module Matter
         )
         update_fabric_scene_info(fabric_index)
 
-        Log.debug { "Stored scene #{req.scene_id} in group #{req.group_id} with #{extension_fields.size} extension field set(s)" }
+        Log.debug { "Stored scene #{request.scene_id} in group #{request.group_id} with #{extension_fields.size} extension field set(s)" }
 
-        scene_status_response(InteractionModel::StatusCode::Success, req.group_id, req.scene_id)
-      rescue ex
-        Log.error(exception: ex) { "Error storing scene (fields=#{fields})" }
-        scene_status_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
+        scene_status_response(InteractionModel::StatusCode::Success, request.group_id, request.scene_id)
       end
 
-      # Handle RecallScene command
-      private def handle_recall_scene(fields : TLV::Any?) : InteractionModel::Status
-        req = decode(fields, RecallSceneRequest)
-
+      def recall_scene(request : RecallSceneRequest) : InteractionModel::Status
         fabric_index = DEFAULT_FABRIC_INDEX
-        key = {fabric_index, req.group_id, req.scene_id}
+        key = {fabric_index, request.group_id, request.scene_id}
 
         scene_data = @scenes[key]?
-        unless scene_data
-          return InteractionModel::Status.not_found
-        end
+        return InteractionModel::Status.not_found unless scene_data
 
-        # Update scene info
-        info = @fabric_scene_info[fabric_index]? || SceneInfo.new(fabric_index: fabric_index)
-        info.current_scene = req.scene_id
-        info.current_group = req.group_id
+        info = @scene_info_by_fabric[fabric_index]? || SceneInfo.new(fabric_index: fabric_index)
+        info.current_scene = request.scene_id
+        info.current_group = request.group_id
         info.scene_valid = true
-        @fabric_scene_info[fabric_index] = info
+        @scene_info_by_fabric[fabric_index] = info
 
         # Apply extension field sets to other clusters
         if scene_data.extension_field_sets.size > 0
-          Log.debug { "Recalling scene #{req.scene_id} from group #{req.group_id} with #{scene_data.extension_field_sets.size} extension field set(s)" }
+          Log.debug { "Recalling scene #{request.scene_id} from group #{request.group_id} with #{scene_data.extension_field_sets.size} extension field set(s)" }
           @apply_extension_field_sets.try(&.call(scene_data.extension_field_sets))
         end
 
         # Legacy callback
-        @on_recall_scene.try(&.call(req.group_id, req.scene_id))
+        @on_recall_scene.try(&.call(request.group_id, request.scene_id))
 
         InteractionModel::Status.success
-      rescue ex
-        Log.error(exception: ex) { "Error recalling scene (fields=#{fields})" }
-        InteractionModel::Status.invalid_command
       end
 
-      # Handle GetSceneMembership command
-      private def handle_get_scene_membership(fields : TLV::Any?) : TLV::Any
-        req = decode(fields, GetSceneMembershipRequest)
-
+      def get_scene_membership(request : GetSceneMembershipRequest) : GetSceneMembershipResponse
         fabric_index = DEFAULT_FABRIC_INDEX
-        scene_list = [] of UInt8
-        @scenes.each do |key, _|
-          if key[0] == fabric_index && key[1] == req.group_id
-            scene_list << key[2]
-          end
-        end
+        scene_list = @scenes.keys.select { |key| key[0] == fabric_index && key[1] == request.group_id }.map { |key| key[2] }
 
-        fabric_scenes = @scenes.count { |k, _| k[0] == fabric_index }
-        remaining = (@scene_table_size - fabric_scenes).clamp(0, 253).to_u8
-
-        membership_response(InteractionModel::StatusCode::Success, remaining, req.group_id, scene_list)
-      rescue ex
-        Log.warn(exception: ex) { "GetSceneMembership: failed to parse request (fields=#{fields})" }
-        membership_response(InteractionModel::StatusCode::InvalidCommand, nil, 0_u16, nil)
+        GetSceneMembershipResponse.new(
+          status: InteractionModel::StatusCode::Success.value,
+          group_id: request.group_id,
+          capacity: remaining_capacity(fabric_index),
+          scene_list: scene_list
+        )
       end
 
-      # Handle CopyScene command
-      private def handle_copy_scene(fields : TLV::Any?) : TLV::Any
-        req = decode(fields, CopySceneRequest)
-
+      def copy_scene(request : CopySceneRequest) : CopySceneResponse
         fabric_index = DEFAULT_FABRIC_INDEX
-        copy_all = (req.mode & 0x01) != 0
+        copy_all = (request.mode & COPY_MODE_ALL_SCENES) != 0
 
         if copy_all
-          # Copy all scenes from group_from to group_to
-          @scenes.select { |k, _| k[0] == fabric_index && k[1] == req.group_identifier_from }.each do |key, data|
-            new_key = {fabric_index, req.group_identifier_to, key[2]}
+          @scenes.select { |key, _| key[0] == fabric_index && key[1] == request.group_identifier_from }.each do |key, data|
+            new_key = {fabric_index, request.group_identifier_to, key[2]}
             @scenes[new_key] = SceneData.new(data.transition_time, data.scene_name, data.extension_field_sets)
           end
         else
-          # Copy single scene
-          source_key = {fabric_index, req.group_identifier_from, req.scene_identifier_from}
+          source_key = {fabric_index, request.group_identifier_from, request.scene_identifier_from}
           if data = @scenes[source_key]?
-            dest_key = {fabric_index, req.group_identifier_to, req.scene_identifier_to}
+            dest_key = {fabric_index, request.group_identifier_to, request.scene_identifier_to}
             @scenes[dest_key] = SceneData.new(data.transition_time, data.scene_name, data.extension_field_sets)
           else
-            return copy_response(InteractionModel::StatusCode::NotFound, req.group_identifier_from, req.scene_identifier_from)
+            return copy_response(InteractionModel::StatusCode::NotFound, request.group_identifier_from, request.scene_identifier_from)
           end
         end
 
         update_fabric_scene_info(fabric_index)
-        copy_response(InteractionModel::StatusCode::Success, req.group_identifier_from, req.scene_identifier_from)
-      rescue ex
-        Log.warn(exception: ex) { "CopyScene: failed to parse request (fields=#{fields})" }
-        copy_response(InteractionModel::StatusCode::InvalidCommand, 0_u16, 0_u8)
+        copy_response(InteractionModel::StatusCode::Success, request.group_identifier_from, request.scene_identifier_from)
+      end
+
+      private def fabric_full?(fabric_index : UInt8) : Bool
+        scene_count(fabric_index) >= @scene_table_size
+      end
+
+      private def remaining_capacity(fabric_index : UInt8) : UInt8
+        (@scene_table_size - scene_count(fabric_index)).clamp(0, MAX_REPORTED_CAPACITY).to_u8
       end
 
       # Update fabric scene info after changes
       private def update_fabric_scene_info(fabric_index : UInt8)
-        info = @fabric_scene_info[fabric_index]? || SceneInfo.new(fabric_index: fabric_index)
-        fabric_scenes = @scenes.count { |k, _| k[0] == fabric_index }
-        info.scene_count = fabric_scenes.to_u8
-        info.remaining_capacity = (@scene_table_size - fabric_scenes).clamp(0, 253).to_u8
-        @fabric_scene_info[fabric_index] = info
-        increment_version
+        info = @scene_info_by_fabric[fabric_index]? || SceneInfo.new(fabric_index: fabric_index)
+        info.scene_count = scene_count(fabric_index).to_u8
+        info.remaining_capacity = remaining_capacity(fabric_index)
+        @scene_info_by_fabric[fabric_index] = info
+        increment_version_and_notify(ATTR_FABRIC_SCENE_INFO)
       end
 
-      # Response encoding methods using TLV::Serializable
-
-      private def scene_status_response(status : InteractionModel::StatusCode, group_id : UInt16, scene_id : UInt8) : TLV::Any
-        SceneStatusResponse.new(status.value, group_id, scene_id).to_tlv(nil)
+      private def scene_status_response(status : InteractionModel::StatusCode, group_id : UInt16, scene_id : UInt8) : SceneStatusResponse
+        SceneStatusResponse.new(status.value, group_id, scene_id)
       end
 
-      private def view_scene_response(status : InteractionModel::StatusCode, group_id : UInt16, scene_id : UInt8, scene : SceneData?) : TLV::Any
+      private def view_scene_response(status : InteractionModel::StatusCode, group_id : UInt16, scene_id : UInt8, scene : SceneData?) : ViewSceneResponseTlv
         if scene && status == InteractionModel::StatusCode::Success
-          # Convert extension field sets to TLV structs
           ext_fields = scene.extension_field_sets.map do |efs|
             attr_pairs = efs.attribute_value_list.map do |attr_id, attr_value|
               AttributeValuePairTlv.from_attribute_value(attr_id, attr_value)
@@ -933,40 +774,20 @@ module Matter
             transition_time: scene.transition_time,
             scene_name: scene.scene_name,
             extension_field_sets: ext_fields.empty? ? nil : ext_fields
-          ).to_tlv(nil)
+          )
         else
-          ViewSceneResponseTlv.new(
-            status: status.value,
-            group_id: group_id,
-            scene_id: scene_id
-          ).to_tlv(nil)
+          ViewSceneResponseTlv.new(status: status.value, group_id: group_id, scene_id: scene_id)
         end
       end
 
-      private def remove_all_response(status : InteractionModel::StatusCode, group_id : UInt16) : TLV::Any
-        RemoveAllScenesResponse.new(status.value, group_id).to_tlv(nil)
-      end
-
-      private def membership_response(status : InteractionModel::StatusCode, capacity : UInt8?, group_id : UInt16, scene_list : Array(UInt8)?) : TLV::Any
-        list = if scene_list && status == InteractionModel::StatusCode::Success
-                 scene_list
-               end
-        GetSceneMembershipResponse.new(
-          status: status.value,
-          group_id: group_id,
-          capacity: capacity,
-          scene_list: list
-        ).to_tlv(nil)
-      end
-
-      private def copy_response(status : InteractionModel::StatusCode, group_from : UInt16, scene_from : UInt8) : TLV::Any
-        CopySceneResponse.new(status.value, group_from, scene_from).to_tlv(nil)
+      private def copy_response(status : InteractionModel::StatusCode, group_from : UInt16, scene_from : UInt8) : CopySceneResponse
+        CopySceneResponse.new(status.value, group_from, scene_from)
       end
 
       # Public API
 
       def scene_count(fabric_index : UInt8 = DEFAULT_FABRIC_INDEX) : Int32
-        @scenes.count { |k, _| k[0] == fabric_index }
+        @scenes.count { |key, _| key[0] == fabric_index }
       end
 
       def has_scene?(group_id : UInt16, scene_id : UInt8, fabric_index : UInt8 = DEFAULT_FABRIC_INDEX) : Bool
@@ -974,10 +795,10 @@ module Matter
       end
 
       def invalidate_current_scene(fabric_index : UInt8 = DEFAULT_FABRIC_INDEX)
-        if info = @fabric_scene_info[fabric_index]?
+        if info = @scene_info_by_fabric[fabric_index]?
           info.scene_valid = false
-          @fabric_scene_info[fabric_index] = info
-          increment_version
+          @scene_info_by_fabric[fabric_index] = info
+          increment_version_and_notify(ATTR_FABRIC_SCENE_INFO)
         end
       end
 
@@ -986,7 +807,7 @@ module Matter
       def save_state : Storage::Document?
         PersistedState.new(
           scenes: @scenes.map { |key, data| PersistedScene.from_scene(key, data) },
-          fabric_scene_info: @fabric_scene_info,
+          fabric_scene_info: @scene_info_by_fabric,
           data_version: @data_version
         ).to_document
       end
@@ -997,7 +818,7 @@ module Matter
         @scenes.clear
         state.scenes.each { |scene| @scenes[scene.key] = scene.to_scene_data }
 
-        @fabric_scene_info = state.fabric_scene_info
+        @scene_info_by_fabric = state.fabric_scene_info
         @data_version = state.data_version
       rescue ex
         Log.error(exception: ex) { "ScenesManagement restore_state failed; starting fresh" }

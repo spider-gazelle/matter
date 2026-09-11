@@ -87,7 +87,7 @@ module Matter::Cluster
         window_status = attributes.find { |attr| attr.id.id == AdministratorCommissioningCluster::ATTR_WINDOW_STATUS }
         window_status.should_not be_nil
         window_status_attr = window_status.as(AttributeMetadata)
-        window_status_attr.name.should eq("WindowStatus")
+        window_status_attr.name.should eq("windowStatus")
         window_status_attr.writable?.should be_false
       end
 
@@ -101,7 +101,7 @@ module Matter::Cluster
 
         open_window = commands.find { |cmd| cmd.id.id == AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW }
         open_window.should_not be_nil
-        open_window.as(CommandMetadata).name.should eq("OpenCommissioningWindow")
+        open_window.as(CommandMetadata).name.should eq("openCommissioningWindow")
       end
     end
 
@@ -192,7 +192,7 @@ module Matter::Cluster
 
         request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(commissioning_timeout: 900_u16)
         cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
-        cluster.revoke_commissioning
+        cluster.revoke_commissioning!
 
         stops.should eq(1)
       end
@@ -234,9 +234,8 @@ module Matter::Cluster
             bad_tlv
           )
 
-          result.should be_a(Matter::InteractionModel::Status | CommandResponse)
-          # Should return PAKEParameterError status
-          result.as(Matter::InteractionModel::Status).status.value.should eq(1_u8) # StatusCode::PAKEParameterError
+          # A request that fails to decode is an InvalidCommand
+          expect_status(result, Matter::InteractionModel::StatusCode::InvalidCommand)
         end
 
         it "returns busy status when window already open" do
@@ -299,10 +298,8 @@ module Matter::Cluster
             bad_tlv
           )
 
-          result.should be_a(Matter::InteractionModel::Status | CommandResponse)
-          # Should return Busy error status (error handling for parse failure)
-          # Implementation returns Failure (1) instead
-          result.as(Matter::InteractionModel::Status).status.value.should eq(1_u8) # StatusCode::Failure
+          # A request that fails to decode is an InvalidCommand
+          expect_status(result, Matter::InteractionModel::StatusCode::InvalidCommand)
         end
 
         it "returns busy status when window already open" do
@@ -964,7 +961,7 @@ module Matter::Cluster
         cluster.window_open?.should be_true
 
         # Revoke window
-        cluster.revoke_commissioning
+        cluster.revoke_commissioning!
 
         cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
         cluster.admin_fabric_index.should be_nil
@@ -983,7 +980,7 @@ module Matter::Cluster
         cluster.window_open?.should be_true
 
         # Revoke window
-        cluster.revoke_commissioning
+        cluster.revoke_commissioning!
 
         cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
         cluster.window_open?.should be_false
@@ -993,7 +990,7 @@ module Matter::Cluster
         cluster = AdministratorCommissioningCluster.new
 
         expect_raises(AdministratorCommissioningCluster::WindowNotOpenError, /No commissioning window/) do
-          cluster.revoke_commissioning
+          cluster.revoke_commissioning!
         end
       end
     end
@@ -1033,7 +1030,7 @@ module Matter::Cluster
         sleep 0.1.seconds
 
         # Revoke before timeout
-        cluster.revoke_commissioning
+        cluster.revoke_commissioning!
         cluster.window_open?.should be_false
 
         # Wait to ensure timeout doesn't fire
@@ -1328,7 +1325,7 @@ module Matter::Cluster
         cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
         callback_invoked.should be_false # Not invoked yet
 
-        cluster.revoke_commissioning
+        cluster.revoke_commissioning!
 
         callback_invoked.should be_true
       end
@@ -1349,7 +1346,7 @@ module Matter::Cluster
         cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
         callback_invoked.should be_false # Not invoked yet
 
-        cluster.revoke_commissioning
+        cluster.revoke_commissioning!
 
         callback_invoked.should be_true
       end
@@ -1373,7 +1370,7 @@ module Matter::Cluster
         cluster.open_commissioning_window(request, 1_u8, 0x1234_u16)
         cluster.window_open?.should be_true
 
-        cluster.revoke_commissioning
+        cluster.revoke_commissioning!
         cluster.window_open?.should be_false
       end
 

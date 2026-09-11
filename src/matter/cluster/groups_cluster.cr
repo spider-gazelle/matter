@@ -12,44 +12,28 @@ module Matter
     #
     # Specification: Matter 1.4 § 1.3
     class GroupsCluster < Base
-      CLUSTER_ID = 0x0004_u32
+      cluster 0x0004, revision: 4
+
+      feature :group_names, bit: 0 # GN - Store names for groups
 
       @[Flags]
       enum NameSupport : UInt8
         GroupNames = 0x01
       end
 
-      # Feature flags
-      @[Flags]
-      enum Feature : UInt32
-        GroupNames = 0x01 # GN - Store names for groups
-      end
-
-      # Attribute IDs
-      NAME_SUPPORT = 0x0000_u32
-
-      # Command IDs
-      CMD_ADD_GROUP                = 0x00_u32
-      CMD_VIEW_GROUP               = 0x01_u32
-      CMD_GET_GROUP_MEMBERSHIP     = 0x02_u32
-      CMD_REMOVE_GROUP             = 0x03_u32
-      CMD_REMOVE_ALL_GROUPS        = 0x04_u32
-      CMD_ADD_GROUP_IF_IDENTIFYING = 0x05_u32
-
-      # Response IDs
-      CMD_ADD_GROUP_RESPONSE            = 0x00_u32
-      CMD_VIEW_GROUP_RESPONSE           = 0x01_u32
-      CMD_GET_GROUP_MEMBERSHIP_RESPONSE = 0x02_u32
-      CMD_REMOVE_GROUP_RESPONSE         = 0x03_u32
-
-      CLUSTER_REVISION = 4_u16
-
       # Group 0 is reserved and names are bounded in UTF-8 bytes (Matter 1.4 §1.3.7.1).
       GROUP_ID_MIN          = 1_u16
       GROUP_NAME_MAX_LENGTH =    16
+      DEFAULT_MAX_GROUPS    = 16_u8
 
-      # Feature map
-      property feature_map : Feature
+      attribute 0x0000, :name_support, NameSupport, default: NameSupport::None
+
+      command 0x00, :add_group, request: Definitions::Groups::AddGroupRequest, response: Definitions::Groups::AddGroupResponse
+      command 0x01, :view_group, request: Definitions::Groups::ViewGroupRequest, response: Definitions::Groups::ViewGroupResponse
+      command 0x02, :get_group_membership, request: Definitions::Groups::GetGroupMembershipRequest, response: Definitions::Groups::GetGroupMembershipResponse
+      command 0x03, :remove_group, request: Definitions::Groups::RemoveGroupRequest, response: Definitions::Groups::RemoveGroupResponse
+      command 0x04, :remove_all_groups
+      command 0x05, :add_group_if_identifying, request: Definitions::Groups::AddGroupIfIdentifyingRequest
 
       # Group storage: GroupId => GroupName
       property groups : Hash(UInt16, String)
@@ -57,133 +41,63 @@ module Matter
       def initialize(
         endpoint_id : DataType::EndpointNumber,
         @feature_map : Feature = Feature::GroupNames,
-        max_groups : UInt8 = 16_u8,
+        @max_groups : UInt8 = DEFAULT_MAX_GROUPS,
       )
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
         @groups = Hash(UInt16, String).new
-        @max_groups = max_groups
-        @attribute_values[NAME_SUPPORT] = tlv((@feature_map.group_names? ? NameSupport::GroupNames : NameSupport::None).value)
+        @name_support = @feature_map.group_names? ? NameSupport::GroupNames : NameSupport::None
       end
 
-      def name : String
-        "Groups"
+      # ------------------------------------------------------------------------
+      # Commands
+      # ------------------------------------------------------------------------
+
+      def add_group(request : Definitions::Groups::AddGroupRequest) : Definitions::Groups::AddGroupResponse
+        status = store_group(request.group_id.id, request.group_name)
+        Definitions::Groups::AddGroupResponse.new(status, request.group_id)
       end
 
-      def attributes : Array(AttributeMetadata)
-        # Only cluster-specific attributes - global attributes (FeatureMap, ClusterRevision, etc.)
-        # are handled by the base class
-        [
-          AttributeMetadata.new(
-            id: DataType::AttributeId.new(NAME_SUPPORT),
-            name: "nameSupport",
-            type: :uint8,
-            writable: false,
-            default: tlv((@feature_map.group_names? ? NameSupport::GroupNames : NameSupport::None).value)
-          ),
-        ]
+      def view_group(request : Definitions::Groups::ViewGroupRequest) : Definitions::Groups::ViewGroupResponse
+        group_id = request.group_id.id
+        group_name = @groups[group_id]?
+        status = if !valid_group_id?(group_id)
+                   InteractionModel::StatusCode::ConstraintError
+                 elsif group_name
+                   InteractionModel::StatusCode::Success
+                 else
+                   InteractionModel::StatusCode::NotFound
+                 end
+        Definitions::Groups::ViewGroupResponse.new(status, request.group_id, group_name || "")
       end
 
-      # Override to provide correct feature map
-      protected def feature_map_tlv : TLV::Any
-        tlv(@feature_map.value)
+      def get_group_membership(request : Definitions::Groups::GetGroupMembershipRequest) : Definitions::Groups::GetGroupMembershipResponse
+        requested = request.group_list.map(&.id)
+        members = @groups.keys.select { |id| requested.empty? || requested.includes?(id) }.map { |id| DataType::GroupId.new(id) }
+        capacity = (@max_groups - @groups.size).to_u8
+        Definitions::Groups::GetGroupMembershipResponse.new(capacity, members)
       end
 
-      # Override to provide generated commands (response commands)
-      protected def generated_command_list_tlv : TLV::Any
-        # Response commands generated by this cluster
-        tlv([
-          CMD_ADD_GROUP_RESPONSE,
-          CMD_VIEW_GROUP_RESPONSE,
-          CMD_GET_GROUP_MEMBERSHIP_RESPONSE,
-          CMD_REMOVE_GROUP_RESPONSE,
-        ])
+      def remove_group(request : Definitions::Groups::RemoveGroupRequest) : Definitions::Groups::RemoveGroupResponse
+        status = delete_group(request.group_id.id)
+        Definitions::Groups::RemoveGroupResponse.new(status, request.group_id)
       end
 
-      def commands : Array(CommandMetadata)
-        [
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_ADD_GROUP),
-            name: "addGroup"
-          ),
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_VIEW_GROUP),
-            name: "viewGroup"
-          ),
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_GET_GROUP_MEMBERSHIP),
-            name: "getGroupMembership"
-          ),
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_REMOVE_GROUP),
-            name: "removeGroup"
-          ),
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_REMOVE_ALL_GROUPS),
-            name: "removeAllGroups"
-          ),
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_ADD_GROUP_IF_IDENTIFYING),
-            name: "addGroupIfIdentifying"
-          ),
-        ]
+      def remove_all_groups : InteractionModel::Status
+        @groups.clear
+        increment_version
+        InteractionModel::Status.success
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when NAME_SUPPORT
-          tlv(((@feature_map.group_names? ? NameSupport::GroupNames : NameSupport::None).value))
-        when GLOBAL_FEATURE_MAP
-          tlv(@feature_map.value)
-        else
-          super(attribute_id)
-        end
-      end
-
-      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
-        case command_id
-        when CMD_ADD_GROUP
-          req = decode(fields, Definitions::Groups::AddGroupRequest)
-          status = add_group(req.group_id.id, req.group_name)
-          Cluster::CommandResponse.new(CMD_ADD_GROUP_RESPONSE, tlv(Definitions::Groups::AddGroupResponse.new(status, req.group_id)))
-        when CMD_VIEW_GROUP
-          req = decode(fields, Definitions::Groups::ViewGroupRequest)
-          group_name = @groups[req.group_id.id]?
-          status = if !valid_group_id?(req.group_id.id)
-                     InteractionModel::StatusCode::ConstraintError
-                   elsif group_name
-                     InteractionModel::StatusCode::Success
-                   else
-                     InteractionModel::StatusCode::NotFound
-                   end
-          Cluster::CommandResponse.new(CMD_VIEW_GROUP_RESPONSE, tlv(Definitions::Groups::ViewGroupResponse.new(status, req.group_id, group_name || "")))
-        when CMD_GET_GROUP_MEMBERSHIP
-          req = decode(fields, Definitions::Groups::GetGroupMembershipRequest)
-          requested = req.group_list.map(&.id)
-          members = @groups.keys.select { |id| requested.empty? || requested.includes?(id) }.map { |id| DataType::GroupId.new(id) }
-          capacity = (@max_groups - @groups.size).to_u8
-          Cluster::CommandResponse.new(CMD_GET_GROUP_MEMBERSHIP_RESPONSE, tlv(Definitions::Groups::GetGroupMembershipResponse.new(capacity, members)))
-        when CMD_REMOVE_GROUP
-          req = decode(fields, Definitions::Groups::RemoveGroupRequest)
-          status = remove_group(req.group_id.id)
-          Cluster::CommandResponse.new(CMD_REMOVE_GROUP_RESPONSE, tlv(Definitions::Groups::RemoveGroupResponse.new(status, req.group_id)))
-        when CMD_REMOVE_ALL_GROUPS
-          remove_all_groups
-          InteractionModel::Status.success
-        when CMD_ADD_GROUP_IF_IDENTIFYING
-          req = decode(fields, Definitions::Groups::AddGroupIfIdentifyingRequest)
-          # No response struct is defined for this command, so the outcome is the command status.
-          InteractionModel::Status.new(add_group(req.group_id.id, req.group_name))
-        else
-          InteractionModel::Status.unsupported_command
-        end
+      # No response struct is defined for this command, so the outcome is the command status.
+      def add_group_if_identifying(request : Definitions::Groups::AddGroupIfIdentifyingRequest) : InteractionModel::Status
+        InteractionModel::Status.new(store_group(request.group_id.id, request.group_name))
       end
 
       private def valid_group_id?(group_id : UInt16) : Bool
         group_id >= GROUP_ID_MIN
       end
 
-      # Add a group
-      private def add_group(group_id : UInt16, group_name : String) : InteractionModel::StatusCode
+      private def store_group(group_id : UInt16, group_name : String) : InteractionModel::StatusCode
         unless valid_group_id?(group_id) && group_name.bytesize <= GROUP_NAME_MAX_LENGTH
           return InteractionModel::StatusCode::ConstraintError
         end
@@ -196,8 +110,7 @@ module Matter
         InteractionModel::StatusCode::Success
       end
 
-      # Remove a group
-      private def remove_group(group_id : UInt16) : InteractionModel::StatusCode
+      private def delete_group(group_id : UInt16) : InteractionModel::StatusCode
         return InteractionModel::StatusCode::ConstraintError unless valid_group_id?(group_id)
         if @groups.delete(group_id)
           increment_version
@@ -205,12 +118,6 @@ module Matter
         else
           InteractionModel::StatusCode::NotFound
         end
-      end
-
-      # Remove all groups
-      private def remove_all_groups
-        @groups.clear
-        increment_version
       end
 
       # ------------------------------------------------------------------------

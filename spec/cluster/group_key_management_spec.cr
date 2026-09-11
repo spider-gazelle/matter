@@ -36,7 +36,7 @@ module Matter::Cluster
         cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
         cluster.max_groups_per_fabric.should eq(12)
         cluster.max_group_keys_per_fabric.should eq(3)
-        cluster.features.should eq(GroupKeyManagementCluster::Feature::None)
+        cluster.feature_map.should eq(GroupKeyManagementCluster::Feature::None)
       end
 
       it "creates cluster with custom settings" do
