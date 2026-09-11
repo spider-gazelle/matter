@@ -109,17 +109,25 @@ Detailed plan: [phase5-plan.md](phase5-plan.md).
       and format all green on c9361a4); iOS smoke test by the user
 
 ## Phase 6: Device model and protocol decomposition
-- [ ] Endpoint/Node model + `ClusterRegistry`
-- [ ] Split `MessageHandler` (SessionRegistry, SubscriptionManager, SecureChannelHandler, InteractionRouter, MRP)
-- [ ] `commissioning/` module; `FailsafeParticipant`; facade clusters over services
-- [ ] Device DSL; rewrite examples and `device_validation.cr`
-- [ ] Deduplicate CASE
-- [ ] `./test`; iOS smoke test
+Detailed plan: [phase6-plan.md](phase6-plan.md).
+- [ ] Step 1: `Node`/`Endpoint` own the clusters (flat index, device-type validation, descriptor + scene
+      wiring moved off `Device::Base`, dead second IM path deleted)
+- [ ] Step 2: decompose `MessageHandler` (`MrpCache`, `SessionRegistry` owning the lock,
+      `SubscriptionManager` with one chunk ladder, `SecureChannel` keyed by exchange, `InteractionRouter`);
+      target <= 600 lines
+- [ ] Step 3: `commissioning/` module (cycle broken) + Failsafe/Window/Credential services; facade clusters
+      become thin DSL fronts
+- [ ] Step 4: CASE deduplicated; event journal, emission, read and subscription path
+- [ ] Step 5: `Matter::Device` DSL + `examples/support/`; all ten examples rewritten
+- [ ] `./test` green at steps 1, 2, 3, 5; iOS smoke test by the user
 
 ## Phase 7: Close out
-- [ ] Spec reorg tranche 2
-- [ ] Docs, changelog, CLAUDE.md
-- [ ] Full gates; PR to develop
+Detailed plan: [phase7-plan.md](phase7-plan.md).
+- [ ] Step 1: spec tranche 2 (`build` helper + `endpoint(n)` sweep, split the eleven 600+ line specs,
+      specs for the Phase 6 objects, resolve the one true pending)
+- [ ] Step 2: `CHANGELOG.md`, README architecture/controller/DSL sections, `docs/architecture.md`,
+      `AGENTS.md` pointer, `shard.yml` 0.2.0
+- [ ] Step 3: CI build job for every example + storage CLI + e2e specs; final gates; PR to develop
 
 ## Phase 3 Step 2: consumers onto `Storage::Backend`, delete the legacy layer
 - [x] `Matter::Debouncer` (single fiber, trigger/flush/cancel) shared by cluster/fabric/session writes
