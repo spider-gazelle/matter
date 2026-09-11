@@ -208,4 +208,47 @@ describe Matter::Protocol::Persistence::StorageBackend do
       storage.ids(SUBSCRIPTIONS).should eq(["10"])
     end
   end
+  describe "a closed store" do
+    it "drops writes instead of raising, so a sweep or debouncer fiber in flight is harmless" do
+      storage = Matter::Storage::Memory.new
+      registry = build_registry(storage)
+      backend = Matter::Protocol::Persistence::StorageBackend.new(storage)
+      session = case_session(111_u16, 1_u8)
+      backend.session_established(registry, session)
+
+      storage.close
+
+      # Every hook the background fibers reach is a no-op once the store is shut
+      backend.session_established(registry, case_session(222_u16, 1_u8))
+      backend.session_updated(registry, session)
+      backend.session_removed(registry, 111_u16)
+      backend.subscription_established(registry, build_subscription(1_u32, session))
+      backend.subscription_removed(registry, 1_u32)
+      backend.flush_pending_writes
+
+      storage.open
+      storage.ids(SESSIONS).should eq(["111"])
+      storage.ids(SUBSCRIPTIONS).should be_empty
+    end
+
+    it "drops a debounced flush whose store closed while it was pending" do
+      storage = Matter::Storage::Memory.new
+      registry = build_registry(storage)
+      backend = Matter::Protocol::Persistence::StorageBackend.new(storage)
+      debouncer = Matter::Debouncer.new(1.hour) { }
+      backend.write_debouncer = debouncer
+
+      session = case_session(111_u16, 1_u8)
+      backend.session_established(registry, session)
+      session.local_message_counter = 42_u32
+      backend.session_updated(registry, session)
+
+      storage.close
+      backend.flush_pending_writes
+      storage.open
+
+      storage.read(SESSIONS, "111").as(Matter::Storage::Document)["local_message_counter"].should_not eq(42_i64)
+      debouncer.cancel
+    end
+  end
 end

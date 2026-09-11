@@ -42,7 +42,11 @@ module Matter
         # `flush_pending_writes` from the debounced action.
         property write_debouncer : Debouncer?
 
+        # The deferred writes. `session_updated` runs under the registry lock
+        # and `flush_pending_writes` on the debouncer's own fiber, so the set
+        # needs a lock of its own; the store is written outside it.
         @dirty_sessions : Hash(UInt16, Session::SecureContext) = Hash(UInt16, Session::SecureContext).new
+        @dirty_mutex : Mutex = Mutex.new
 
         def initialize(@backend : Storage::Backend)
         end
@@ -64,7 +68,7 @@ module Matter
           return unless session.case_session?
 
           if debouncer = @write_debouncer
-            @dirty_sessions[session.session_id] = session
+            @dirty_mutex.synchronize { @dirty_sessions[session.session_id] = session }
             debouncer.trigger
           else
             write_session(session)
@@ -74,13 +78,17 @@ module Matter
         end
 
         def session_removed(registry : SessionRegistry, session_id : UInt16) : Nil
-          @dirty_sessions.delete(session_id)
+          @dirty_mutex.synchronize { @dirty_sessions.delete(session_id) }
+          return unless store_open?("remove session #{session_id}")
+
           @backend.delete(SESSIONS, session_id.to_s)
         rescue ex
           Log.error(exception: ex) { "Failed to remove persisted session #{session_id}" }
         end
 
         def subscription_established(registry : SessionRegistry, subscription : ActiveSubscription) : Nil
+          return unless store_open?("persist subscription #{subscription.subscription_id}")
+
           @backend.transaction do
             @backend.write(SUBSCRIPTIONS, subscription.subscription_id.to_s, subscription.to_record.to_document)
             @backend.write(DEVICE, COUNTERS_ID, Storage::Document{NEXT_SUBSCRIPTION_ID_KEY => registry.next_subscription_id.to_i64})
@@ -93,23 +101,47 @@ module Matter
         end
 
         def subscription_removed(registry : SessionRegistry, subscription_id : UInt32) : Nil
+          return unless store_open?("remove subscription #{subscription_id}")
+
           @backend.delete(SUBSCRIPTIONS, subscription_id.to_s)
         rescue ex
           Log.error(exception: ex) { "Failed to remove persisted subscription #{subscription_id}" }
         end
 
         # Writes every session deferred by `session_updated`.
+        #
+        # The set is swapped under the lock and the store written outside it:
+        # a session updated while the write is in flight lands in the next
+        # flush instead of blocking the fiber that updated it.
         def flush_pending_writes : Nil
-          return if @dirty_sessions.empty?
+          pending = @dirty_mutex.synchronize do
+            next if @dirty_sessions.empty?
 
-          pending = @dirty_sessions.values
-          @dirty_sessions.clear
+            sessions = @dirty_sessions.values
+            @dirty_sessions.clear
+            sessions
+          end
+          return unless pending
+          return unless store_open?("flush #{pending.size} session write(s)")
+
           @backend.transaction do
             pending.each { |session| write_session(session) }
           end
         end
 
+        # Whether the store is still open. A node that has shut down can still
+        # have a sweep or debouncer fiber in flight; its writes are dropped
+        # with a debug line rather than raising `Matter::StorageError`.
+        private def store_open?(action : String) : Bool
+          return true if @backend.open?
+
+          Log.debug { "Storage closed, skipping #{action}" }
+          false
+        end
+
         private def write_session(session : Session::SecureContext) : Nil
+          return unless store_open?("write session #{session.session_id}")
+
           @backend.write(SESSIONS, session.session_id.to_s, session.to_record.to_document)
         end
 
