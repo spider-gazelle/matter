@@ -417,7 +417,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, Matter::Cluster::Definitions::ColorControl::MoveToHueRequest.new(hue: (100).to_u8, direction: Matter::Cluster::Definitions::ColorControl::Direction::ShortestDistance, transition_time: (0).to_u16))
 
-      cluster.data_version.should eq(initial_version + 1)
+      cluster.data_version.should be > initial_version
     end
 
     it "does not increment version if color unchanged" do

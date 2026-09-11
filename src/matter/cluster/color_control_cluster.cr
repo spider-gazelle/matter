@@ -17,756 +17,281 @@ module Matter
     #
     # Matter Spec: Application 3.2
     class ColorControlCluster < Base
-      CLUSTER_ID = 0x0300_u32
+      cluster 0x0300, revision: 7
+
+      feature :hue_saturation, bit: 0    # HS - Hue/saturation color specification
+      feature :enhanced_hue, bit: 1      # EHUE - Enhanced 16-bit hue precision
+      feature :color_loop, bit: 2        # CL - Color loop functionality
+      feature :xy, bit: 3                # XY - XY color space specification
+      feature :color_temperature, bit: 4 # CT - Color temperature control
+
+      alias Def = Definitions::ColorControl
 
       HUE_MODULUS          =     255
       SATURATION_MAXIMUM   = 254_u16
       ENHANCED_HUE_MODULUS =  65_536
       ENHANCED_HUE_SHIFT   =       8
 
-      # Feature flags
-      @[Flags]
-      enum Feature : UInt32
-        HueSaturation    = 0x01 # HS - Hue/saturation color specification
-        EnhancedHue      = 0x02 # EHUE - Enhanced 16-bit hue precision
-        ColorLoop        = 0x04 # CL - Color loop functionality
-        XY               = 0x08 # XY - XY color space specification
-        ColorTemperature = 0x10 # CT - Color temperature control
-      end
+      # Hue, saturation and xy chromaticity leave the top of their range unused
+      HUE_MAXIMUM       =        254_u8
+      CHROMATICITY_MAX  =    65_279_u16
+      NO_TRANSITION     =         0_u16
+      MIREDS_PER_KELVIN = 1_000_000_u32
 
-      # Attributes
-      ATTR_CURRENT_HUE                    = 0x0000_u32 # HS feature
-      ATTR_CURRENT_SATURATION             = 0x0001_u32 # HS feature
-      ATTR_REMAINING_TIME                 = 0x0002_u32
-      ATTR_CURRENT_X                      = 0x0003_u32 # XY feature
-      ATTR_CURRENT_Y                      = 0x0004_u32 # XY feature
-      ATTR_DRIFT_COMPENSATION             = 0x0005_u32
-      ATTR_COMPENSATION_TEXT              = 0x0006_u32
-      ATTR_COLOR_TEMPERATURE_MIREDS       = 0x0007_u32 # CT feature
-      ATTR_COLOR_MODE                     = 0x0008_u32
-      ATTR_OPTIONS                        = 0x000F_u32
-      ATTR_NUMBER_OF_PRIMARIES            = 0x0010_u32
-      ATTR_ENHANCED_CURRENT_HUE           = 0x4000_u32 # EHUE feature
-      ATTR_ENHANCED_COLOR_MODE            = 0x4001_u32
-      ATTR_COLOR_LOOP_ACTIVE              = 0x4002_u32 # CL feature
-      ATTR_COLOR_LOOP_DIRECTION           = 0x4003_u32 # CL feature
-      ATTR_COLOR_LOOP_TIME                = 0x4004_u32 # CL feature
-      ATTR_COLOR_LOOP_START_ENHANCED_HUE  = 0x4005_u32 # CL feature
-      ATTR_COLOR_LOOP_STORED_ENHANCED_HUE = 0x4006_u32 # CL feature
-      ATTR_COLOR_CAPABILITIES             = 0x400A_u32
-      ATTR_COLOR_TEMP_PHYSICAL_MIN_MIREDS = 0x400B_u32 # CT feature
-      ATTR_COLOR_TEMP_PHYSICAL_MAX_MIREDS = 0x400C_u32 # CT feature
-      ATTR_COUPLE_COLOR_TEMP_TO_LEVEL_MIN = 0x400D_u32 # CT feature (optional)
-      ATTR_START_UP_COLOR_TEMPERATURE     = 0x4010_u32 # CT feature (optional)
+      # Defaults for a tunable white light (mireds)
+      DEFAULT_COLOR_TEMPERATURE_MIREDS = 250_u16 # 4000K
+      DEFAULT_PHYSICAL_MIN_MIREDS      = 147_u16 # ~6800K
+      DEFAULT_PHYSICAL_MAX_MIREDS      = 500_u16 # ~2000K
+      PHYSICAL_MIN_MIREDS_LOWER_BOUND  =   1_u16
 
-      CLUSTER_REVISION = 6_u16
+      # Color loop defaults from the specification
+      DEFAULT_COLOR_LOOP_TIME       =     25_u16
+      DEFAULT_COLOR_LOOP_START_HUE  = 0x2300_u16
+      COLOR_LOOP_DIRECTION_DECREASE =       0_u8
 
-      # Commands - HueSaturation feature
-      CMD_MOVE_TO_HUE                = 0x00_u32 # HS
-      CMD_MOVE_HUE                   = 0x01_u32 # HS
-      CMD_STEP_HUE                   = 0x02_u32 # HS
-      CMD_MOVE_TO_SATURATION         = 0x03_u32 # HS
-      CMD_MOVE_SATURATION            = 0x04_u32 # HS
-      CMD_STEP_SATURATION            = 0x05_u32 # HS
-      CMD_MOVE_TO_HUE_AND_SATURATION = 0x06_u32 # HS
-      # Commands - XY feature
-      CMD_MOVE_TO_COLOR = 0x07_u32 # XY
-      CMD_MOVE_COLOR    = 0x08_u32 # XY
-      CMD_STEP_COLOR    = 0x09_u32 # XY
-      # Commands - ColorTemperature feature
-      CMD_MOVE_TO_COLOR_TEMPERATURE = 0x0A_u32 # CT
-      # Commands - EnhancedHue feature
-      CMD_ENHANCED_MOVE_TO_HUE                = 0x40_u32 # EHUE
-      CMD_ENHANCED_MOVE_HUE                   = 0x41_u32 # EHUE
-      CMD_ENHANCED_STEP_HUE                   = 0x42_u32 # EHUE
-      CMD_ENHANCED_MOVE_TO_HUE_AND_SATURATION = 0x43_u32 # EHUE
-      # Commands - ColorLoop feature
-      CMD_COLOR_LOOP_SET = 0x44_u32 # CL
-      # Commands - HS | XY | CT (any color feature)
-      CMD_STOP_MOVE_STEP = 0x47_u32
-      # Commands - ColorTemperature feature
-      CMD_MOVE_COLOR_TEMPERATURE = 0x4B_u32 # CT
-      CMD_STEP_COLOR_TEMPERATURE = 0x4C_u32 # CT
+      attribute 0x0000, :current_hue, UInt8, default: 0_u8, persist: true, scene: true, max: HUE_MAXIMUM, requires: :hue_saturation
+      attribute 0x0001, :current_saturation, UInt8, default: 0_u8, persist: true, scene: true, max: HUE_MAXIMUM, requires: :hue_saturation
+      attribute 0x0002, :remaining_time, UInt16, default: NO_TRANSITION, optional: true
+      attribute 0x0003, :current_x, UInt16, default: 0_u16, persist: true, scene: true, max: CHROMATICITY_MAX, requires: :xy
+      attribute 0x0004, :current_y, UInt16, default: 0_u16, persist: true, scene: true, max: CHROMATICITY_MAX, requires: :xy
+      attribute 0x0007, :color_temperature_mireds, UInt16, default: DEFAULT_COLOR_TEMPERATURE_MIREDS, persist: true, scene: true, requires: :color_temperature
+      attribute 0x0008, :color_mode, Def::ColorMode, default: Def::ColorMode::CurrentHueAndCurrentSaturation, persist: true
+      attribute 0x000F, :options, UInt8, default: 0_u8, writable: true
+      attribute 0x0010, :number_of_primaries, UInt8, nullable: true, fixed: true
+      attribute 0x4000, :enhanced_current_hue, UInt16, default: 0_u16, persist: true, scene: true, requires: :enhanced_hue
+      attribute 0x4001, :enhanced_color_mode, Def::EnhancedColorMode, default: Def::EnhancedColorMode::CurrentHueAndCurrentSaturation, persist: true, scene: true
+      attribute 0x4002, :color_loop_active, Bool, default: false, persist: true, scene: true, requires: :color_loop
+      attribute 0x4003, :color_loop_direction, UInt8, default: COLOR_LOOP_DIRECTION_DECREASE, persist: true, scene: true, requires: :color_loop
+      attribute 0x4004, :color_loop_time, UInt16, default: DEFAULT_COLOR_LOOP_TIME, persist: true, scene: true, requires: :color_loop
+      attribute 0x4005, :color_loop_start_enhanced_hue, UInt16, default: DEFAULT_COLOR_LOOP_START_HUE, requires: :color_loop
+      attribute 0x4006, :color_loop_stored_enhanced_hue, UInt16, default: 0_u16, requires: :color_loop
+      attribute 0x400A, :color_capabilities, UInt16, default: 0_u16
+      attribute 0x400B, :color_temp_physical_min_mireds, UInt16, default: DEFAULT_PHYSICAL_MIN_MIREDS, min: PHYSICAL_MIN_MIREDS_LOWER_BOUND, max: CHROMATICITY_MAX, requires: :color_temperature
+      attribute 0x400C, :color_temp_physical_max_mireds, UInt16, default: DEFAULT_PHYSICAL_MAX_MIREDS, max: CHROMATICITY_MAX, requires: :color_temperature
+      attribute 0x400D, :couple_color_temp_to_level_min_mireds, UInt16, nullable: true, optional: true, requires: :color_temperature
+      attribute 0x4010, :start_up_color_temperature_mireds, UInt16, nullable: true, writable: true, optional: true, min: PHYSICAL_MIN_MIREDS_LOWER_BOUND, max: CHROMATICITY_MAX, requires: :color_temperature
 
-      # Feature map
-      property feature_map : Feature
+      command 0x00, :move_to_hue, request: Def::MoveToHueRequest, requires: :hue_saturation
+      command 0x01, :move_hue, request: Def::MoveHueRequest, requires: :hue_saturation
+      command 0x02, :step_hue, request: Def::StepHueRequest, requires: :hue_saturation
+      command 0x03, :move_to_saturation, request: Def::MoveToSaturationRequest, requires: :hue_saturation
+      command 0x04, :move_saturation, request: Def::MoveSaturationRequest, requires: :hue_saturation
+      command 0x05, :step_saturation, request: Def::StepSaturationRequest, requires: :hue_saturation
+      command 0x06, :move_to_hue_and_saturation, request: Def::MoveToHueAndSaturationRequest, requires: :hue_saturation
+      command 0x07, :move_to_color, request: Def::MoveToColorRequest, requires: :xy
+      command 0x08, :move_color, request: Def::MoveColorRequest, requires: :xy
+      command 0x09, :step_color, request: Def::StepColorRequest, requires: :xy
+      command 0x0A, :move_to_color_temperature, request: Def::MoveToColorTemperatureRequest, requires: :color_temperature
+      command 0x40, :enhanced_move_to_hue, request: Def::EnhancedMoveToHueRequest, requires: :enhanced_hue
+      command 0x41, :enhanced_move_hue, request: Def::EnhancedMoveHueRequest, requires: :enhanced_hue
+      command 0x42, :enhanced_step_hue, request: Def::EnhancedStepHueRequest, requires: :enhanced_hue
+      command 0x43, :enhanced_move_to_hue_and_saturation, request: Def::EnhancedMoveToHueAndSaturationRequest, requires: :enhanced_hue
+      command 0x44, :color_loop_set, request: Def::ColorLoopSetRequest, requires: :color_loop
+      command 0x47, :stop_move_step, request: Def::StopMoveStepRequest, requires: [:hue_saturation, :xy, :color_temperature]
+      command 0x4B, :move_color_temperature, request: Def::MoveColorTemperatureRequest, requires: :color_temperature
+      command 0x4C, :step_color_temperature, request: Def::StepColorTemperatureRequest, requires: :color_temperature
 
-      # Base attributes
-      property color_mode : Definitions::ColorControl::ColorMode
-      property enhanced_color_mode : Definitions::ColorControl::EnhancedColorMode
-      property remaining_time : UInt16
-      property options : UInt8
-
-      # HueSaturation feature attributes
-      property current_hue : UInt8
-      property current_saturation : UInt8
-
-      # XY feature attributes
-      property current_x : UInt16
-      property current_y : UInt16
-
-      # ColorTemperature feature attributes
-      property color_temperature_mireds : UInt16
-      property color_temp_physical_min_mireds : UInt16
-      property color_temp_physical_max_mireds : UInt16
-      property couple_color_temp_to_level_min_mireds : UInt16?
-      property start_up_color_temperature_mireds : UInt16?
-
-      # EnhancedHue feature attributes
-      property enhanced_current_hue : UInt16
-
-      # ColorLoop feature attributes
-      property? color_loop_active : Bool
-      property color_loop_direction : UInt8
-      property color_loop_time : UInt16
-      property color_loop_start_enhanced_hue : UInt16
-      property color_loop_stored_enhanced_hue : UInt16
-
-      # Callbacks
+      # Fired after any colour attribute changes
       @on_color_changed : Proc(Nil)?
 
       def initialize(
         endpoint_id : DataType::EndpointNumber,
-        @feature_map : Feature = Feature::HueSaturation | Feature::XY | Feature::ColorTemperature,
+        @feature_map : Feature = Feature::HueSaturation | Feature::Xy | Feature::ColorTemperature,
         @current_hue : UInt8 = 0_u8,
         @current_saturation : UInt8 = 0_u8,
         @current_x : UInt16 = 0_u16,
         @current_y : UInt16 = 0_u16,
-        @color_temperature_mireds : UInt16 = 250_u16,
-        @color_temp_physical_min_mireds : UInt16 = 147_u16, # ~6800K
-        @color_temp_physical_max_mireds : UInt16 = 500_u16, # ~2000K
-        @color_mode : Definitions::ColorControl::ColorMode = Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation,
+        @color_temperature_mireds : UInt16 = DEFAULT_COLOR_TEMPERATURE_MIREDS,
+        @color_temp_physical_min_mireds : UInt16 = DEFAULT_PHYSICAL_MIN_MIREDS,
+        @color_temp_physical_max_mireds : UInt16 = DEFAULT_PHYSICAL_MAX_MIREDS,
+        @color_mode : Def::ColorMode = Def::ColorMode::CurrentHueAndCurrentSaturation,
         @options : UInt8 = 0_u8,
       )
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
-        @remaining_time = 0_u16
-        @enhanced_current_hue = (@current_hue.to_u16 << 8)
-        @enhanced_color_mode = Definitions::ColorControl::EnhancedColorMode::CurrentHueAndCurrentSaturation
-
-        # ColorLoop attributes
-        @color_loop_active = false
-        @color_loop_direction = 0_u8
-        @color_loop_time = 25_u16
-        @color_loop_start_enhanced_hue = 0x2300_u16
-        @color_loop_stored_enhanced_hue = 0_u16
-
-        # Optional CT attributes
-        @couple_color_temp_to_level_min_mireds = nil
-        @start_up_color_temperature_mireds = nil
+        @enhanced_current_hue = @current_hue.to_u16 << ENHANCED_HUE_SHIFT
+        # ColorCapabilities mirrors the feature map bit for bit
+        @color_capabilities = @feature_map.value.to_u16
       end
 
-      def name : String
-        "ColorControl"
+      # ------------------------------------------------------------------------
+      # Commands (transitions are instant; move commands are accepted as no-ops)
+      # ------------------------------------------------------------------------
+
+      def move_to_hue(request : Def::MoveToHueRequest) : InteractionModel::Status
+        move_to_hue(request.hue)
       end
 
-      def attributes : Array(AttributeMetadata)
-        attrs = [] of AttributeMetadata
-
-        # HueSaturation feature attributes
-        if @feature_map.hue_saturation?
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_CURRENT_HUE),
-            name: "currentHue",
-            type: :uint8,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_CURRENT_SATURATION),
-            name: "currentSaturation",
-            type: :uint8,
-            writable: false
-          )
-        end
-
-        # RemainingTime (optional, present if any color mode)
-        attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(ATTR_REMAINING_TIME),
-          name: "remainingTime",
-          type: :uint16,
-          writable: false,
-          optional: true
-        )
-
-        # XY feature attributes
-        if @feature_map.xy?
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_CURRENT_X),
-            name: "currentX",
-            type: :uint16,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_CURRENT_Y),
-            name: "currentY",
-            type: :uint16,
-            writable: false
-          )
-        end
-
-        # ColorTemperature feature attributes
-        if @feature_map.color_temperature?
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_COLOR_TEMPERATURE_MIREDS),
-            name: "colorTemperatureMireds",
-            type: :uint16,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_COLOR_TEMP_PHYSICAL_MIN_MIREDS),
-            name: "colorTempPhysicalMinMireds",
-            type: :uint16,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_COLOR_TEMP_PHYSICAL_MAX_MIREDS),
-            name: "colorTempPhysicalMaxMireds",
-            type: :uint16,
-            writable: false
-          )
-          # Optional CT attributes
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_COUPLE_COLOR_TEMP_TO_LEVEL_MIN),
-            name: "coupleColorTempToLevelMinMireds",
-            type: :uint16,
-            writable: false,
-            optional: true
-          )
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_START_UP_COLOR_TEMPERATURE),
-            name: "startUpColorTemperatureMireds",
-            type: :uint16,
-            writable: true,
-            optional: true
-          )
-        end
-
-        # ColorMode (mandatory)
-        attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(ATTR_COLOR_MODE),
-          name: "colorMode",
-          type: :uint8,
-          writable: false
-        )
-
-        # Options (mandatory)
-        attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(ATTR_OPTIONS),
-          name: "options",
-          type: :uint8,
-          writable: true
-        )
-
-        # EnhancedHue feature attributes
-        if @feature_map.enhanced_hue?
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_ENHANCED_CURRENT_HUE),
-            name: "enhancedCurrentHue",
-            type: :uint16,
-            writable: false
-          )
-        end
-
-        # EnhancedColorMode (mandatory)
-        attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(ATTR_ENHANCED_COLOR_MODE),
-          name: "enhancedColorMode",
-          type: :uint8,
-          writable: false
-        )
-
-        # ColorLoop feature attributes
-        if @feature_map.color_loop?
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_COLOR_LOOP_ACTIVE),
-            name: "colorLoopActive",
-            type: :bool,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_COLOR_LOOP_DIRECTION),
-            name: "colorLoopDirection",
-            type: :uint8,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_COLOR_LOOP_TIME),
-            name: "colorLoopTime",
-            type: :uint16,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_COLOR_LOOP_START_ENHANCED_HUE),
-            name: "colorLoopStartEnhancedHue",
-            type: :uint16,
-            writable: false
-          )
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_COLOR_LOOP_STORED_ENHANCED_HUE),
-            name: "colorLoopStoredEnhancedHue",
-            type: :uint16,
-            writable: false
-          )
-        end
-
-        # Global attributes
-        attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(GLOBAL_CLUSTER_REVISION),
-          name: "clusterRevision",
-          type: :uint16,
-          writable: false,
-          default: tlv(CLUSTER_REVISION)
-        )
-        attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(GLOBAL_FEATURE_MAP),
-          name: "featureMap",
-          type: :uint32,
-          writable: false,
-          default: tlv(@feature_map.value)
-        )
-
-        attrs
-      end
-
-      def commands : Array(CommandMetadata)
-        cmds = [] of CommandMetadata
-
-        # HueSaturation feature commands
-        if @feature_map.hue_saturation?
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_MOVE_TO_HUE), name: "moveToHue")
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_MOVE_HUE), name: "moveHue")
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_STEP_HUE), name: "stepHue")
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_MOVE_TO_SATURATION), name: "moveToSaturation")
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_MOVE_SATURATION), name: "moveSaturation")
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_STEP_SATURATION), name: "stepSaturation")
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_MOVE_TO_HUE_AND_SATURATION), name: "moveToHueAndSaturation")
-        end
-
-        # XY feature commands
-        if @feature_map.xy?
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_MOVE_TO_COLOR), name: "moveToColor")
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_MOVE_COLOR), name: "moveColor")
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_STEP_COLOR), name: "stepColor")
-        end
-
-        # ColorTemperature feature commands
-        if @feature_map.color_temperature?
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_MOVE_TO_COLOR_TEMPERATURE), name: "moveToColorTemperature")
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_MOVE_COLOR_TEMPERATURE), name: "moveColorTemperature")
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_STEP_COLOR_TEMPERATURE), name: "stepColorTemperature")
-        end
-
-        # EnhancedHue feature commands
-        if @feature_map.enhanced_hue?
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_ENHANCED_MOVE_TO_HUE), name: "enhancedMoveToHue")
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_ENHANCED_MOVE_HUE), name: "enhancedMoveHue")
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_ENHANCED_STEP_HUE), name: "enhancedStepHue")
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_ENHANCED_MOVE_TO_HUE_AND_SATURATION), name: "enhancedMoveToHueAndSaturation")
-        end
-
-        # ColorLoop feature commands
-        if @feature_map.color_loop?
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_COLOR_LOOP_SET), name: "colorLoopSet")
-        end
-
-        # StopMoveStep (requires HS | XY | CT)
-        if @feature_map.hue_saturation? || @feature_map.xy? || @feature_map.color_temperature?
-          cmds << CommandMetadata.new(id: DataType::CommandId.new(CMD_STOP_MOVE_STEP), name: "stopMoveStep")
-        end
-
-        cmds
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_CURRENT_HUE
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.hue_saturation?
-          tlv(@current_hue)
-        when ATTR_CURRENT_SATURATION
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.hue_saturation?
-          tlv(@current_saturation)
-        when ATTR_REMAINING_TIME
-          tlv(@remaining_time)
-        when ATTR_CURRENT_X
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.xy?
-          tlv(@current_x)
-        when ATTR_CURRENT_Y
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.xy?
-          tlv(@current_y)
-        when ATTR_COLOR_TEMPERATURE_MIREDS
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.color_temperature?
-          tlv(@color_temperature_mireds)
-        when ATTR_COLOR_MODE
-          tlv(@color_mode.value)
-        when ATTR_OPTIONS
-          tlv(@options)
-        when ATTR_ENHANCED_CURRENT_HUE
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.enhanced_hue?
-          tlv(@enhanced_current_hue)
-        when ATTR_ENHANCED_COLOR_MODE
-          tlv(@enhanced_color_mode.value)
-        when ATTR_COLOR_LOOP_ACTIVE
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.color_loop?
-          tlv(@color_loop_active)
-        when ATTR_COLOR_LOOP_DIRECTION
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.color_loop?
-          tlv(@color_loop_direction)
-        when ATTR_COLOR_LOOP_TIME
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.color_loop?
-          tlv(@color_loop_time)
-        when ATTR_COLOR_LOOP_START_ENHANCED_HUE
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.color_loop?
-          tlv(@color_loop_start_enhanced_hue)
-        when ATTR_COLOR_LOOP_STORED_ENHANCED_HUE
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.color_loop?
-          tlv(@color_loop_stored_enhanced_hue)
-        when ATTR_COLOR_TEMP_PHYSICAL_MIN_MIREDS
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.color_temperature?
-          tlv(@color_temp_physical_min_mireds)
-        when ATTR_COLOR_TEMP_PHYSICAL_MAX_MIREDS
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.color_temperature?
-          tlv(@color_temp_physical_max_mireds)
-        when ATTR_COUPLE_COLOR_TEMP_TO_LEVEL_MIN
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.color_temperature?
-          if val = @couple_color_temp_to_level_min_mireds
-            tlv(val)
-          else
-            tlv(nil)
-          end
-        when ATTR_START_UP_COLOR_TEMPERATURE
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.color_temperature?
-          if val = @start_up_color_temperature_mireds
-            tlv(val)
-          else
-            tlv(nil)
-          end
-        when GLOBAL_FEATURE_MAP
-          tlv(@feature_map.value)
-        else
-          super
-        end
-      end
-
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        case attribute_id
-        when ATTR_OPTIONS
-          if options = narrow_u8?(value)
-            @options = options
-            increment_version
-            InteractionModel::Status.success
-          else
-            InteractionModel::Status.invalid_data_type
-          end
-        when ATTR_START_UP_COLOR_TEMPERATURE
-          return InteractionModel::Status.unsupported_attribute unless @feature_map.color_temperature?
-          if mireds = decode?(value, UInt16)
-            @start_up_color_temperature_mireds = mireds
-            increment_version
-            InteractionModel::Status.success
-          else
-            InteractionModel::Status.invalid_data_type
-          end
-        else
-          super
-        end
-      end
-
-      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
-        case command_id
-        # HueSaturation commands
-        when CMD_MOVE_TO_HUE
-          return InteractionModel::Status.unsupported_command unless @feature_map.hue_saturation?
-          handle_move_to_hue(fields)
-        when CMD_MOVE_HUE
-          return InteractionModel::Status.unsupported_command unless @feature_map.hue_saturation?
-          InteractionModel::Status.success # Simplified
-        when CMD_STEP_HUE
-          return InteractionModel::Status.unsupported_command unless @feature_map.hue_saturation?
-          handle_step_hue(fields)
-        when CMD_MOVE_TO_SATURATION
-          return InteractionModel::Status.unsupported_command unless @feature_map.hue_saturation?
-          handle_move_to_saturation(fields)
-        when CMD_MOVE_SATURATION
-          return InteractionModel::Status.unsupported_command unless @feature_map.hue_saturation?
-          InteractionModel::Status.success # Simplified
-        when CMD_STEP_SATURATION
-          return InteractionModel::Status.unsupported_command unless @feature_map.hue_saturation?
-          handle_step_saturation(fields)
-        when CMD_MOVE_TO_HUE_AND_SATURATION
-          return InteractionModel::Status.unsupported_command unless @feature_map.hue_saturation?
-          handle_move_to_hue_and_saturation(fields)
-          # XY commands
-        when CMD_MOVE_TO_COLOR
-          return InteractionModel::Status.unsupported_command unless @feature_map.xy?
-          handle_move_to_color(fields)
-        when CMD_MOVE_COLOR
-          return InteractionModel::Status.unsupported_command unless @feature_map.xy?
-          InteractionModel::Status.success # Simplified
-        when CMD_STEP_COLOR
-          return InteractionModel::Status.unsupported_command unless @feature_map.xy?
-          handle_step_color(fields)
-          # ColorTemperature commands
-        when CMD_MOVE_TO_COLOR_TEMPERATURE
-          return InteractionModel::Status.unsupported_command unless @feature_map.color_temperature?
-          handle_move_to_color_temperature(fields)
-        when CMD_MOVE_COLOR_TEMPERATURE
-          return InteractionModel::Status.unsupported_command unless @feature_map.color_temperature?
-          InteractionModel::Status.success # Simplified
-        when CMD_STEP_COLOR_TEMPERATURE
-          return InteractionModel::Status.unsupported_command unless @feature_map.color_temperature?
-          handle_step_color_temperature(fields)
-          # EnhancedHue commands
-        when CMD_ENHANCED_MOVE_TO_HUE
-          return InteractionModel::Status.unsupported_command unless @feature_map.enhanced_hue?
-          handle_enhanced_move_to_hue(fields)
-        when CMD_ENHANCED_MOVE_HUE
-          return InteractionModel::Status.unsupported_command unless @feature_map.enhanced_hue?
-          InteractionModel::Status.success # Simplified
-        when CMD_ENHANCED_STEP_HUE
-          return InteractionModel::Status.unsupported_command unless @feature_map.enhanced_hue?
-          handle_enhanced_step_hue(fields)
-        when CMD_ENHANCED_MOVE_TO_HUE_AND_SATURATION
-          return InteractionModel::Status.unsupported_command unless @feature_map.enhanced_hue?
-          handle_enhanced_move_to_hue_and_saturation(fields)
-          # ColorLoop commands
-        when CMD_COLOR_LOOP_SET
-          return InteractionModel::Status.unsupported_command unless @feature_map.color_loop?
-          handle_color_loop_set(fields)
-          # StopMoveStep
-        when CMD_STOP_MOVE_STEP
-          unless @feature_map.hue_saturation? || @feature_map.xy? || @feature_map.color_temperature?
-            return InteractionModel::Status.unsupported_command
-          end
-          handle_stop_move_step(fields)
-        else
-          super
-        end
-      end
-
-      # Command handlers
-
-      private def handle_move_to_hue(fields : TLV::Any?) : InteractionModel::Status
-        req = decode(fields, Definitions::ColorControl::MoveToHueRequest)
-        target_hue = req.hue
-        move_to_hue(target_hue)
-      end
-
-      private def handle_step_hue(fields : TLV::Any?) : InteractionModel::Status
-        req = decode(fields, Definitions::ColorControl::StepHueRequest)
-        step_mode = req.step_mode
-        step_size = req.step_size
-        case step_mode
-        when Definitions::ColorControl::StepMode::Up
-          new_hue = (@current_hue.to_u16 + step_size) % HUE_MODULUS
-          move_to_hue(new_hue.to_u8)
-        when Definitions::ColorControl::StepMode::Down
-          new_hue = (@current_hue.to_i16 - step_size) % HUE_MODULUS
-          new_hue = new_hue < 0 ? HUE_MODULUS + new_hue : new_hue
-          move_to_hue(new_hue.to_u8)
-        else
-          InteractionModel::Status.invalid_command
-        end
-      end
-
-      private def handle_move_to_saturation(fields : TLV::Any?) : InteractionModel::Status
-        req = decode(fields, Definitions::ColorControl::MoveToSaturationRequest)
-        target_saturation = req.saturation
-        move_to_saturation(target_saturation)
-      end
-
-      private def handle_step_saturation(fields : TLV::Any?) : InteractionModel::Status
-        req = decode(fields, Definitions::ColorControl::StepSaturationRequest)
-        step_mode = req.step_mode
-        step_size = req.step_size
-        case step_mode
-        when Definitions::ColorControl::StepMode::Up
-          new_sat = [@current_saturation.to_u16 + step_size, SATURATION_MAXIMUM].min
-          move_to_saturation(new_sat.to_u8)
-        when Definitions::ColorControl::StepMode::Down
-          new_sat = [@current_saturation.to_i16 - step_size, 0_i16].max
-          move_to_saturation(new_sat.to_u8)
-        else
-          InteractionModel::Status.invalid_command
-        end
-      end
-
-      private def handle_move_to_hue_and_saturation(fields : TLV::Any?) : InteractionModel::Status
-        req = decode(fields, Definitions::ColorControl::MoveToHueAndSaturationRequest)
-        target_hue = req.hue
-        target_saturation = req.saturation
-        @current_hue = target_hue
-        @current_saturation = target_saturation
-        @enhanced_current_hue = (target_hue.to_u16 << ENHANCED_HUE_SHIFT)
-        @color_mode = Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation
-        @enhanced_color_mode = Definitions::ColorControl::EnhancedColorMode::CurrentHueAndCurrentSaturation
-        @remaining_time = 0_u16
-        increment_version
-        @on_color_changed.try &.call
+      def move_hue(request : Def::MoveHueRequest) : InteractionModel::Status
         InteractionModel::Status.success
       end
 
-      private def handle_move_to_color(fields : TLV::Any?) : InteractionModel::Status
-        req = decode(fields, Definitions::ColorControl::MoveToColorRequest)
-        target_x = req.x
-        target_y = req.y
-        move_to_color(target_x, target_y)
-      end
-
-      private def handle_step_color(fields : TLV::Any?) : InteractionModel::Status
-        req = decode(fields, Definitions::ColorControl::StepColorRequest)
-        step_x = req.x
-        step_y = req.y
-        new_x = (@current_x.to_i32 + step_x).clamp(UInt16::MIN.to_i32, UInt16::MAX.to_i32).to_u16
-        new_y = (@current_y.to_i32 + step_y).clamp(UInt16::MIN.to_i32, UInt16::MAX.to_i32).to_u16
-        move_to_color(new_x, new_y)
-      end
-
-      private def handle_move_to_color_temperature(fields : TLV::Any?) : InteractionModel::Status
-        req = decode(fields, Definitions::ColorControl::MoveToColorTemperatureRequest)
-        target_mireds = req.color_temperature_mireds
-        move_to_color_temperature(target_mireds)
-      end
-
-      private def handle_step_color_temperature(fields : TLV::Any?) : InteractionModel::Status
-        req = decode(fields, Definitions::ColorControl::StepColorTemperatureRequest)
-        step_mode = req.step_mode
-        step_size = req.step_size
-        case step_mode
-        when Definitions::ColorControl::StepMode::Up
-          new_mireds = [@color_temperature_mireds.to_u32 + step_size, @color_temp_physical_max_mireds.to_u32].min
-          move_to_color_temperature(new_mireds.to_u16)
-        when Definitions::ColorControl::StepMode::Down
-          new_mireds = [@color_temperature_mireds.to_i32 - step_size, @color_temp_physical_min_mireds.to_i32].max
-          move_to_color_temperature(new_mireds.to_u16)
-        else
-          InteractionModel::Status.invalid_command
+      def step_hue(request : Def::StepHueRequest) : InteractionModel::Status
+        case request.step_mode
+        in .up?
+          move_to_hue(((@current_hue.to_u16 + request.step_size) % HUE_MODULUS).to_u8)
+        in .down?
+          move_to_hue(((@current_hue.to_i16 - request.step_size) % HUE_MODULUS).to_u8)
         end
       end
 
-      private def handle_enhanced_move_to_hue(fields : TLV::Any?) : InteractionModel::Status
-        req = decode(fields, Definitions::ColorControl::EnhancedMoveToHueRequest)
-        target_enhanced_hue = req.enhanced_hue
-        move_to_enhanced_hue(target_enhanced_hue)
+      def move_to_saturation(request : Def::MoveToSaturationRequest) : InteractionModel::Status
+        move_to_saturation(request.saturation)
       end
 
-      private def handle_enhanced_step_hue(fields : TLV::Any?) : InteractionModel::Status
-        req = decode(fields, Definitions::ColorControl::EnhancedStepHueRequest)
-        step_mode = req.step_mode
-        step_size = req.step_size
-        case step_mode
-        when Definitions::ColorControl::StepMode::Up
-          new_hue = (@enhanced_current_hue.to_u32 + step_size) % ENHANCED_HUE_MODULUS
-          move_to_enhanced_hue(new_hue.to_u16)
-        when Definitions::ColorControl::StepMode::Down
-          new_hue = (@enhanced_current_hue.to_i32 - step_size) % ENHANCED_HUE_MODULUS
-          new_hue = new_hue < 0 ? ENHANCED_HUE_MODULUS + new_hue : new_hue
-          move_to_enhanced_hue(new_hue.to_u16)
-        else
-          InteractionModel::Status.invalid_command
+      def move_saturation(request : Def::MoveSaturationRequest) : InteractionModel::Status
+        InteractionModel::Status.success
+      end
+
+      def step_saturation(request : Def::StepSaturationRequest) : InteractionModel::Status
+        case request.step_mode
+        in .up?
+          move_to_saturation(Math.min(@current_saturation.to_u16 + request.step_size, SATURATION_MAXIMUM).to_u8)
+        in .down?
+          move_to_saturation(Math.max(@current_saturation.to_i16 - request.step_size, 0_i16).to_u8)
         end
       end
 
-      private def handle_enhanced_move_to_hue_and_saturation(fields : TLV::Any?) : InteractionModel::Status
-        req = decode(fields, Definitions::ColorControl::EnhancedMoveToHueAndSaturationRequest)
-        target_enhanced_hue = req.enhanced_hue
-        target_saturation = req.saturation
-        @enhanced_current_hue = target_enhanced_hue
-        @current_hue = (target_enhanced_hue >> ENHANCED_HUE_SHIFT).to_u8
-        @current_saturation = target_saturation
-        @color_mode = Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation
-        @enhanced_color_mode = Definitions::ColorControl::EnhancedColorMode::EnhancedCurrentHueAndCurrentSaturation
-        @remaining_time = 0_u16
-        increment_version
-        @on_color_changed.try &.call
+      def move_to_hue_and_saturation(request : Def::MoveToHueAndSaturationRequest) : InteractionModel::Status
+        self.current_hue = request.hue
+        self.current_saturation = request.saturation
+        self.enhanced_current_hue = request.hue.to_u16 << ENHANCED_HUE_SHIFT
+        color_changed(Def::ColorMode::CurrentHueAndCurrentSaturation, Def::EnhancedColorMode::CurrentHueAndCurrentSaturation)
+      end
+
+      def move_to_color(request : Def::MoveToColorRequest) : InteractionModel::Status
+        move_to_color(request.x, request.y)
+      end
+
+      def move_color(request : Def::MoveColorRequest) : InteractionModel::Status
         InteractionModel::Status.success
       end
 
-      private def handle_color_loop_set(fields : TLV::Any?) : InteractionModel::Status
-        # Simplified color loop set
-        @remaining_time = 0_u16
-        increment_version
+      def step_color(request : Def::StepColorRequest) : InteractionModel::Status
+        move_to_color(step_chromaticity(@current_x, request.x), step_chromaticity(@current_y, request.y))
+      end
+
+      def move_to_color_temperature(request : Def::MoveToColorTemperatureRequest) : InteractionModel::Status
+        move_to_color_temperature(request.color_temperature_mireds)
+      end
+
+      def move_color_temperature(request : Def::MoveColorTemperatureRequest) : InteractionModel::Status
         InteractionModel::Status.success
       end
 
-      private def handle_stop_move_step(fields : TLV::Any?) : InteractionModel::Status
-        @remaining_time = 0_u16
+      def step_color_temperature(request : Def::StepColorTemperatureRequest) : InteractionModel::Status
+        case request.step_mode
+        in .up?
+          move_to_color_temperature(Math.min(@color_temperature_mireds.to_u32 + request.step_size, @color_temp_physical_max_mireds.to_u32).to_u16)
+        in .down?
+          move_to_color_temperature(Math.max(@color_temperature_mireds.to_i32 - request.step_size, @color_temp_physical_min_mireds.to_i32).to_u16)
+        end
+      end
+
+      def enhanced_move_to_hue(request : Def::EnhancedMoveToHueRequest) : InteractionModel::Status
+        move_to_enhanced_hue(request.enhanced_hue)
+      end
+
+      def enhanced_move_hue(request : Def::EnhancedMoveHueRequest) : InteractionModel::Status
         InteractionModel::Status.success
       end
 
-      # Internal color change methods
+      def enhanced_step_hue(request : Def::EnhancedStepHueRequest) : InteractionModel::Status
+        case request.step_mode
+        in .up?
+          move_to_enhanced_hue(((@enhanced_current_hue.to_u32 + request.step_size) % ENHANCED_HUE_MODULUS).to_u16)
+        in .down?
+          move_to_enhanced_hue(((@enhanced_current_hue.to_i32 - request.step_size) % ENHANCED_HUE_MODULUS).to_u16)
+        end
+      end
 
-      private def move_to_hue(new_hue : UInt8) : InteractionModel::Status
-        return InteractionModel::Status.success if @current_hue == new_hue
-        @current_hue = new_hue
-        @enhanced_current_hue = (new_hue.to_u16 << 8)
-        @color_mode = Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation
-        @enhanced_color_mode = Definitions::ColorControl::EnhancedColorMode::CurrentHueAndCurrentSaturation
-        @remaining_time = 0_u16
-        increment_version
-        @on_color_changed.try &.call
+      def enhanced_move_to_hue_and_saturation(request : Def::EnhancedMoveToHueAndSaturationRequest) : InteractionModel::Status
+        self.enhanced_current_hue = request.enhanced_hue
+        self.current_hue = (request.enhanced_hue >> ENHANCED_HUE_SHIFT).to_u8
+        self.current_saturation = request.saturation
+        color_changed(Def::ColorMode::CurrentHueAndCurrentSaturation, Def::EnhancedColorMode::EnhancedCurrentHueAndCurrentSaturation)
+      end
+
+      # The loop is not run; the request is accepted
+      def color_loop_set(request : Def::ColorLoopSetRequest) : InteractionModel::Status
+        self.remaining_time = NO_TRANSITION
         InteractionModel::Status.success
       end
 
-      private def move_to_saturation(new_saturation : UInt8) : InteractionModel::Status
-        return InteractionModel::Status.success if @current_saturation == new_saturation
-        @current_saturation = new_saturation
-        @color_mode = Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation
-        @enhanced_color_mode = Definitions::ColorControl::EnhancedColorMode::CurrentHueAndCurrentSaturation
-        @remaining_time = 0_u16
-        increment_version
-        @on_color_changed.try &.call
+      def stop_move_step(request : Def::StopMoveStepRequest) : InteractionModel::Status
+        self.remaining_time = NO_TRANSITION
         InteractionModel::Status.success
       end
 
-      private def move_to_color(new_x : UInt16, new_y : UInt16) : InteractionModel::Status
-        return InteractionModel::Status.success if @current_x == new_x && @current_y == new_y
-        @current_x = new_x
-        @current_y = new_y
-        @color_mode = Definitions::ColorControl::ColorMode::CurrentXAndCurrentY
-        @enhanced_color_mode = Definitions::ColorControl::EnhancedColorMode::CurrentXAndCurrentY
-        @remaining_time = 0_u16
-        increment_version
-        @on_color_changed.try &.call
-        InteractionModel::Status.success
-      end
+      # ------------------------------------------------------------------------
+      # Public Interface
+      # ------------------------------------------------------------------------
 
-      private def move_to_color_temperature(new_mireds : UInt16) : InteractionModel::Status
-        return InteractionModel::Status.success if @color_temperature_mireds == new_mireds
-        clamped_mireds = [@color_temp_physical_min_mireds, [new_mireds, @color_temp_physical_max_mireds].min].max
-        @color_temperature_mireds = clamped_mireds
-        @color_mode = Definitions::ColorControl::ColorMode::ColorTemperatureMireds
-        @enhanced_color_mode = Definitions::ColorControl::EnhancedColorMode::ColorTemperatureMireds
-        @remaining_time = 0_u16
-        increment_version
-        @on_color_changed.try &.call
-        InteractionModel::Status.success
-      end
-
-      private def move_to_enhanced_hue(new_enhanced_hue : UInt16) : InteractionModel::Status
-        return InteractionModel::Status.success if @enhanced_current_hue == new_enhanced_hue
-        @enhanced_current_hue = new_enhanced_hue
-        @current_hue = (new_enhanced_hue >> 8).to_u8
-        @color_mode = Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation
-        @enhanced_color_mode = Definitions::ColorControl::EnhancedColorMode::EnhancedCurrentHueAndCurrentSaturation
-        @remaining_time = 0_u16
-        increment_version
-        @on_color_changed.try &.call
-        InteractionModel::Status.success
-      end
-
-      # Callback setter
-      def on_color_changed(&block : -> Nil)
+      def on_color_changed(&block : -> Nil) : Nil
         @on_color_changed = block
       end
 
-      # Utility methods
       def color_temperature_kelvin : UInt32
-        (1_000_000_u32 / @color_temperature_mireds).to_u32
+        MIREDS_PER_KELVIN // @color_temperature_mireds
       end
 
       def color_temperature_kelvin=(kelvin : UInt32) : InteractionModel::Status
-        mireds = (1_000_000_u32 / kelvin).to_u16
-        move_to_color_temperature(mireds)
+        move_to_color_temperature((MIREDS_PER_KELVIN // kelvin).to_u16)
+      end
+
+      # ------------------------------------------------------------------------
+      # Colour changes
+      # ------------------------------------------------------------------------
+
+      private def move_to_hue(hue : UInt8) : InteractionModel::Status
+        return InteractionModel::Status.success if @current_hue == hue
+
+        self.current_hue = hue
+        self.enhanced_current_hue = hue.to_u16 << ENHANCED_HUE_SHIFT
+        color_changed(Def::ColorMode::CurrentHueAndCurrentSaturation, Def::EnhancedColorMode::CurrentHueAndCurrentSaturation)
+      end
+
+      private def move_to_saturation(saturation : UInt8) : InteractionModel::Status
+        return InteractionModel::Status.success if @current_saturation == saturation
+
+        self.current_saturation = saturation
+        color_changed(Def::ColorMode::CurrentHueAndCurrentSaturation, Def::EnhancedColorMode::CurrentHueAndCurrentSaturation)
+      end
+
+      private def move_to_color(x : UInt16, y : UInt16) : InteractionModel::Status
+        return InteractionModel::Status.success if @current_x == x && @current_y == y
+
+        self.current_x = x
+        self.current_y = y
+        color_changed(Def::ColorMode::CurrentXAndCurrentY, Def::EnhancedColorMode::CurrentXAndCurrentY)
+      end
+
+      private def move_to_color_temperature(mireds : UInt16) : InteractionModel::Status
+        return InteractionModel::Status.success if @color_temperature_mireds == mireds
+
+        self.color_temperature_mireds = mireds.clamp(@color_temp_physical_min_mireds, @color_temp_physical_max_mireds)
+        color_changed(Def::ColorMode::ColorTemperatureMireds, Def::EnhancedColorMode::ColorTemperatureMireds)
+      end
+
+      private def move_to_enhanced_hue(enhanced_hue : UInt16) : InteractionModel::Status
+        return InteractionModel::Status.success if @enhanced_current_hue == enhanced_hue
+
+        self.enhanced_current_hue = enhanced_hue
+        self.current_hue = (enhanced_hue >> ENHANCED_HUE_SHIFT).to_u8
+        color_changed(Def::ColorMode::CurrentHueAndCurrentSaturation, Def::EnhancedColorMode::EnhancedCurrentHueAndCurrentSaturation)
+      end
+
+      # Records the mode the colour was last set in and notifies the device
+      private def color_changed(mode : Def::ColorMode, enhanced_mode : Def::EnhancedColorMode) : InteractionModel::Status
+        self.color_mode = mode
+        self.enhanced_color_mode = enhanced_mode
+        self.remaining_time = NO_TRANSITION
+        @on_color_changed.try &.call
+        InteractionModel::Status.success
+      end
+
+      private def step_chromaticity(current : UInt16, step : Int16) : UInt16
+        (current.to_i32 + step).clamp(UInt16::MIN.to_i32, UInt16::MAX.to_i32).to_u16
       end
     end
   end

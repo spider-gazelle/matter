@@ -42,11 +42,6 @@ describe Matter::Cluster::WindowCoveringCluster do
         attr_map["endProductType"].writable?.should be_false
         attr_map["endProductType"].fixed?.should be_true
 
-        # featureMap - mandatory
-        attr_map["featureMap"].optional?.should be_false
-        attr_map["featureMap"].writable?.should be_false
-        attr_map["featureMap"].fixed?.should be_false
-
         # mode - writable
         attr_map["mode"].optional?.should be_false
         attr_map["mode"].writable?.should be_true

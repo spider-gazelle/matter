@@ -26,7 +26,7 @@ describe "Cluster::Base ClusterRevision" do
   end
 
   {% for pair in [
-                   {Matter::Cluster::ColorControlCluster, 6_u16},
+                   {Matter::Cluster::ColorControlCluster, 7_u16},
                    {Matter::Cluster::DescriptorCluster, 2_u16},
                    {Matter::Cluster::DoorLockCluster, 9_u16},
                    {Matter::Cluster::GroupKeyManagementCluster, 2_u16},
@@ -35,7 +35,7 @@ describe "Cluster::Base ClusterRevision" do
                    {Matter::Cluster::IdentifyCluster, 6_u16},
                    {Matter::Cluster::LevelControlCluster, 6_u16},
                    {Matter::Cluster::OnOffCluster, 6_u16},
-                   {Matter::Cluster::WindowCoveringCluster, 5_u16},
+                   {Matter::Cluster::WindowCoveringCluster, 6_u16},
                  ] %}
     it "reports {{ pair[0] }}::CLUSTER_REVISION ({{ pair[1] }})" do
       cluster = {{ pair[0] }}.new(endpoint(1))
