@@ -14,6 +14,7 @@ require "../interaction_model/paths"
 require "../interaction_model/status_code"
 require "../interaction_model/tlv_messages"
 require "./im_handler"
+require "./mrp_cache"
 require "./persistence"
 require "./session_manager"
 require "tlv"
@@ -40,12 +41,6 @@ module Matter
       DEFAULT_SUBSCRIPTION_GRACE_PERIOD = 30.seconds # Grace period after subscription expiry
       DEFAULT_TRANSPORT_RETRY_WINDOW    = 4.seconds  # Retry window before transport failure cleanup
       DEFAULT_SESSION_CLEANUP_INTERVAL  = 5.seconds  # How often to check for expired sessions
-
-      # Keep a short-lived cache of encrypted responses keyed by the incoming
-      # message counter. This allows us to handle MRP retransmissions from
-      # controllers (notably iOS) without re-invoking cluster logic.
-      MRP_DUPLICATE_RESPONSE_TTL         = 10.seconds
-      MRP_DUPLICATE_RESPONSE_MAX_ENTRIES = 512
 
       # Secure Channel Message Types
       MSG_STANDALONE_ACK       = 0x10_u8
@@ -103,14 +98,6 @@ module Matter
 
       # Subscription support
       property next_subscription_id : UInt32 = 1_u32
-
-      private struct CachedMrpResponse
-        getter udp_packet : Bytes
-        getter created_at : Time::Instant
-
-        def initialize(@udp_packet : Bytes, @created_at : Time::Instant = Time.instant)
-        end
-      end
 
       # Pending subscription responses - keyed by exchange_id
       # After sending ReportData, we wait for StatusResponse before sending SubscribeResponse
@@ -320,8 +307,8 @@ module Matter
         Log.debug { "Persisted #{persisted} CASE session(s)" } if persisted > 0
       end
 
-      # Cached encrypted responses keyed by (session_id, incoming_message_counter)
-      @mrp_response_cache : Hash(Tuple(UInt16, UInt32), CachedMrpResponse) = {} of Tuple(UInt16, UInt32) => CachedMrpResponse
+      # Cached encrypted responses, replayed when a peer retransmits a request.
+      @mrp_cache : MrpCache
 
       # Timed Interaction support (IM TimedRequest message type 0x0A).
       #
@@ -386,7 +373,7 @@ module Matter
         # Note: @case_fabric is now a property with type Fabric?
         @on_commissioned = nil
         @operational_credentials_cluster = nil
-        @mrp_response_cache.clear
+        @mrp_cache = MrpCache.new(@transport)
 
         # Initialize clusters
         @node = Node.new
@@ -408,51 +395,6 @@ module Matter
 
         # Start background cleanup fibers
         spawn_subscription_cleanup_fiber
-      end
-
-      private def prune_mrp_response_cache(now : Time::Instant = Time.instant) : Nil
-        @mrp_response_cache.reject! do |_, entry|
-          now - entry.created_at > MRP_DUPLICATE_RESPONSE_TTL
-        end
-
-        if @mrp_response_cache.size > MRP_DUPLICATE_RESPONSE_MAX_ENTRIES
-          @mrp_response_cache = @mrp_response_cache
-            .to_a
-            .sort_by { |(_, entry)| entry.created_at }
-            .last(MRP_DUPLICATE_RESPONSE_MAX_ENTRIES)
-            .to_h
-        end
-      end
-
-      # Answers a duplicate request with the cached MRP response so the peer's
-      # retransmission still gets its ACK.
-      #
-      # Only counters the receive window classifies as `Duplicate` reach here: a
-      # retransmit older than `Transport::MessageCounter::WINDOW_SIZE` is `Stale`
-      # and dropped rather than resent. Within `MRP_DUPLICATE_RESPONSE_TTL` a
-      # peer cannot advance the counter that far, so that path is unreachable
-      # in practice.
-      private def resend_cached_mrp_response?(session_id : UInt16, incoming_counter : UInt32, peer : Socket::IPAddress) : Bool
-        now = Time.instant
-        if cached = @mrp_response_cache[{session_id, incoming_counter}]?
-          if now - cached.created_at <= MRP_DUPLICATE_RESPONSE_TTL
-            Log.warn { "MRP duplicate detected: session_id=#{session_id}, message_counter=#{incoming_counter} - resending cached response" }
-            @transport.send_raw(cached.udp_packet, peer)
-            return true
-          else
-            @mrp_response_cache.delete({session_id, incoming_counter})
-          end
-        end
-        false
-      end
-
-      private def cache_mrp_response(session_id : UInt16, incoming_counter : UInt32, udp_packet : Bytes) : Nil
-        prune_mrp_response_cache
-        @mrp_response_cache[{session_id, incoming_counter}] = CachedMrpResponse.new(udp_packet)
-      end
-
-      private def clear_mrp_response_cache_for_session(session_id : UInt16) : Nil
-        @mrp_response_cache.reject! { |(sid, _), _| sid == session_id }
       end
 
       # The clusters of the node, keyed by `{endpoint, cluster}`.
@@ -684,7 +626,7 @@ module Matter
             message_counter = msg.packet_header.message_id
             case session.check_peer_message_counter(message_counter)
             when Transport::MessageCounter::CheckResult::Duplicate
-              unless resend_cached_mrp_response?(session_id, message_counter, peer)
+              unless @mrp_cache.resend?(session_id, message_counter, peer)
                 Log.trace { "Dropping duplicate message with no cached response: session_id=#{session_id}, counter=#{message_counter}" }
               end
               return
@@ -1387,7 +1329,7 @@ module Matter
           source_node_id: original_msg.packet_header.destination_node_id || session.local_node_id,
           destination_node_id: original_msg.packet_header.source_node_id)
         if cache_for_mrp && original_msg.packet_header.session_id != 0
-          cache_mrp_response(original_msg.packet_header.session_id, original_msg.packet_header.message_id, udp_packet.dup)
+          @mrp_cache.store(original_msg.packet_header.session_id, original_msg.packet_header.message_id, udp_packet.dup)
         end
         @transport.send_raw(udp_packet, peer)
       end
@@ -2082,7 +2024,7 @@ module Matter
 
       # Remove a session WITHOUT removing its subscriptions (used after migration)
       private def remove_session_only(session_id : UInt16) : Nil
-        clear_mrp_response_cache_for_session(session_id)
+        @mrp_cache.clear_session(session_id)
 
         # Remove the session from pending cleanups if present
         @pending_session_cleanups.reject! { |pending| pending.session_id == session_id }
@@ -2105,7 +2047,7 @@ module Matter
 
       # Remove a session and all its associated subscriptions
       private def remove_session_and_subscriptions(session_id : UInt16) : Nil
-        clear_mrp_response_cache_for_session(session_id)
+        @mrp_cache.clear_session(session_id)
 
         # Remove subscriptions first
         subs_to_remove = @active_subscriptions.select { |_, sub| sub.session.session_id == session_id }
