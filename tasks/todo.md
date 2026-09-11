@@ -112,12 +112,12 @@ Detailed plan: [phase5-plan.md](phase5-plan.md).
 Detailed plan: [phase6-plan.md](phase6-plan.md).
 - [x] Step 1: `Node`/`Endpoint` own the clusters (flat index, device-type validation, descriptor + scene
       wiring moved off `Device::Base`, dead second IM path deleted)
-- [ ] Step 2: decompose `MessageHandler` (`MrpCache`, `SessionRegistry` owning the lock,
+- [x] Step 2: decompose `MessageHandler` (`MrpCache`, `SessionRegistry` owning the lock,
       `SubscriptionManager` with one chunk ladder, `SecureChannel` keyed by exchange, `InteractionRouter`);
       target <= 600 lines
 - [x] Step 3: `commissioning/` module (cycle broken) + Failsafe/Window/Credential services; facade clusters
       become thin DSL fronts
-- [ ] Step 4: CASE deduplicated; event journal, emission, read and subscription path
+- [x] Step 4: CASE deduplicated; event journal, emission, read and subscription path
 - [ ] Step 5: `Matter::Device` DSL + `examples/support/`; all ten examples rewritten
 - [ ] `./test` green at steps 1, 2, 3, 5; iOS smoke test by the user
 
