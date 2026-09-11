@@ -26,7 +26,7 @@ describe "Cluster::Base ClusterRevision" do
   end
 
   {% for pair in [
-                   {Matter::Cluster::ColorControlCluster, 6_u16},
+                   {Matter::Cluster::ColorControlCluster, 7_u16},
                    {Matter::Cluster::DescriptorCluster, 2_u16},
                    {Matter::Cluster::DoorLockCluster, 9_u16},
                    {Matter::Cluster::GroupKeyManagementCluster, 2_u16},
