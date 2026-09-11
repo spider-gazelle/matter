@@ -214,8 +214,9 @@ clusters, the interaction model and the protocol objects. It is a breaking relea
   `Utilities::Cache` and `Utilities::DeepEqual` — all dead.
 - The legacy Scenes cluster (`0x0005`), deprecated since Matter 1.3, and 32 unused cluster
   definitions.
-- The `Constants::DeviceTypes` (16-bit) registry, and the `FabricId`, `VendorId` and `SubjectId`
-  datatype wrappers.
+- The `Constants::DeviceTypes` (16-bit) registry, and the `FabricId`, `VendorId`, `SubjectId` and
+  `FabricIndex` datatype wrappers. A fabric index is a bare `UInt8`; `DataType::NO_FABRIC` names
+  the specification's reserved index 0.
 - `FabricTable#export` / `#import`, five never-wired commissioning callbacks, the dead second
   interaction model path, and the transport's MRP retransmit engine (it had no caller and could
   never have run).
