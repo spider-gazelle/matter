@@ -175,6 +175,9 @@ module Matter
         # and other session data are saved for clean reconnection after restart
         @message_handler.persist_all_sessions
 
+        # Stop the session sweep before the store closes under it.
+        @message_handler.close
+
         @persistence.flush
         @persistence.close
         @transport.close

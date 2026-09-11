@@ -66,6 +66,7 @@ class PersistenceRestartDevice < Matter::Device::Base
 
   # Releases the socket and the store without `shutdown!` (which also flushes).
   def release : Nil
+    message_handler.close
     persistence.close
     transport.close
   end
