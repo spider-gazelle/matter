@@ -81,10 +81,10 @@ describe Matter::Cluster::PressureMeasurementCluster do
       cluster = Matter::Cluster::PressureMeasurementCluster.new(endpoint_id)
       attrs = cluster.attributes
       attrs.size.should eq(4)
-      attrs.map(&.name).should contain("MeasuredValue")
-      attrs.map(&.name).should contain("MinMeasuredValue")
-      attrs.map(&.name).should contain("MaxMeasuredValue")
-      attrs.map(&.name).should contain("Tolerance")
+      attrs.map(&.name).should contain("measuredValue")
+      attrs.map(&.name).should contain("minMeasuredValue")
+      attrs.map(&.name).should contain("maxMeasuredValue")
+      attrs.map(&.name).should contain("tolerance")
     end
 
     it "reads MeasuredValue when set" do
