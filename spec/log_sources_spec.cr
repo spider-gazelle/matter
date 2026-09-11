@@ -15,7 +15,7 @@ describe "log sources" do
 
   # Sources that intentionally extend the path-derived name.
   allowlist = {
-    "matter/session/case/case.cr" => ["matter.session.case.initiator", "matter.session.case.responder"],
+    "matter/session/case/case.cr" => ["matter.session.case", "matter.session.case.initiator", "matter.session.case.responder"],
   }
 
   expected_source = ->(relative_path : String) do
