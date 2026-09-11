@@ -115,7 +115,7 @@ Detailed plan: [phase6-plan.md](phase6-plan.md).
 - [ ] Step 2: decompose `MessageHandler` (`MrpCache`, `SessionRegistry` owning the lock,
       `SubscriptionManager` with one chunk ladder, `SecureChannel` keyed by exchange, `InteractionRouter`);
       target <= 600 lines
-- [ ] Step 3: `commissioning/` module (cycle broken) + Failsafe/Window/Credential services; facade clusters
+- [x] Step 3: `commissioning/` module (cycle broken) + Failsafe/Window/Credential services; facade clusters
       become thin DSL fronts
 - [ ] Step 4: CASE deduplicated; event journal, emission, read and subscription path
 - [ ] Step 5: `Matter::Device` DSL + `examples/support/`; all ten examples rewritten
