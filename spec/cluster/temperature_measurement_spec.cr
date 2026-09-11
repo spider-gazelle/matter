@@ -4,8 +4,7 @@ require "../../src/matter/cluster/temperature_measurement"
 describe Matter::Cluster::TemperatureMeasurement do
   describe "initialization" do
     it "creates temperature measurement cluster with defaults" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::TemperatureMeasurement)
 
       cluster.cluster_id.id.should eq(0x0402_u32)
       cluster.name.should eq("TemperatureMeasurement")
@@ -16,9 +15,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "creates with custom values" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         measured_value: 2550_i16,      # 25.50°C
         min_measured_value: -4000_i16, # -40.00°C
         max_measured_value: 8500_i16,  # 85.00°C
@@ -32,21 +29,15 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "rejects min_measured_value below absolute minimum" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-
       expect_raises(ArgumentError, /min_measured_value must be >= -27315/) do
-        Matter::Cluster::TemperatureMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::TemperatureMeasurement,
           min_measured_value: -30000_i16
         )
       end
     end
 
     it "accepts max_measured_value at absolute maximum" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         max_measured_value: 32767_i16
       )
 
@@ -54,11 +45,8 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "rejects min > max" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-
       expect_raises(ArgumentError, /min_measured_value must be <= max_measured_value/) do
-        Matter::Cluster::TemperatureMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::TemperatureMeasurement,
           min_measured_value: 5000_i16,
           max_measured_value: 1000_i16
         )
@@ -66,11 +54,8 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "rejects measured_value outside range" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-
       expect_raises(ArgumentError, /measured_value must be between min and max/) do
-        Matter::Cluster::TemperatureMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::TemperatureMeasurement,
           measured_value: 10000_i16,
           min_measured_value: 0_i16,
           max_measured_value: 5000_i16
@@ -79,11 +64,8 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "rejects tolerance above maximum" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-
       expect_raises(ArgumentError, /tolerance must be <= 2048/) do
-        Matter::Cluster::TemperatureMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::TemperatureMeasurement,
           tolerance: 3000_u16
         )
       end
@@ -92,8 +74,7 @@ describe Matter::Cluster::TemperatureMeasurement do
 
   describe "attributes" do
     it "has required attributes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(endpoint_id, tolerance: 0_u16)
+      cluster = build(Matter::Cluster::TemperatureMeasurement, tolerance: 0_u16)
 
       attributes = cluster.attributes
       attributes.size.should eq(4)
@@ -118,9 +99,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "reads MeasuredValue attribute when set" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         measured_value: 2000_i16 # 20.00°C
       )
 
@@ -128,16 +107,13 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "reads MeasuredValue as null when not set" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::TemperatureMeasurement)
 
       read(cluster, 0x0000_u32).should be_nil
     end
 
     it "reads MinMeasuredValue attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         min_measured_value: -2000_i16
       )
 
@@ -145,9 +121,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "reads MaxMeasuredValue attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         max_measured_value: 12500_i16
       )
 
@@ -155,9 +129,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "reads Tolerance attribute when set" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         tolerance: 100_u16
       )
 
@@ -165,8 +137,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "returns unsupported for Tolerance when not set" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::TemperatureMeasurement)
 
       read_status(cluster, 0x0003_u32).status.should eq(
         Matter::InteractionModel::StatusCode::UnsupportedAttribute
@@ -176,17 +147,14 @@ describe Matter::Cluster::TemperatureMeasurement do
 
   describe "update_temperature" do
     it "updates temperature value" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::TemperatureMeasurement)
 
       cluster.update_temperature(2550_i16)
       cluster.measured_value.should eq(2550_i16)
     end
 
     it "accepts nil to indicate unknown temperature" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         measured_value: 2000_i16
       )
 
@@ -195,9 +163,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "rejects temperature below minimum" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         min_measured_value: 0_i16,
         max_measured_value: 5000_i16
       )
@@ -208,9 +174,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "rejects temperature above maximum" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         min_measured_value: 0_i16,
         max_measured_value: 5000_i16
       )
@@ -221,9 +185,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "calls callback when temperature changes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         measured_value: 2000_i16
       )
 
@@ -242,9 +204,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "does not call callback when temperature doesn't change" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         measured_value: 2000_i16
       )
 
@@ -260,9 +220,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "increments data version when temperature changes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         measured_value: 2000_i16
       )
 
@@ -274,9 +232,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "notifies attribute change subscribers when temperature changes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         measured_value: 2000_i16
       )
 
@@ -301,9 +257,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "does not notify attribute change subscribers when temperature is unchanged" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         measured_value: 2000_i16
       )
 
@@ -318,9 +272,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "does not increment data version when temperature doesn't change" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::TemperatureMeasurement,
         measured_value: 2000_i16
       )
 
@@ -360,9 +312,7 @@ describe Matter::Cluster::TemperatureMeasurement do
 
   describe "practical scenarios" do
     it "models a room temperature sensor" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      sensor = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::TemperatureMeasurement,
         measured_value: 2200_i16,      # 22.00°C
         min_measured_value: -1000_i16, # -10.00°C
         max_measured_value: 5000_i16,  # 50.00°C
@@ -388,9 +338,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "models an outdoor temperature sensor with wide range" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      sensor = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::TemperatureMeasurement,
         measured_value: 1500_i16,      # 15.00°C
         min_measured_value: -4000_i16, # -40.00°C
         max_measured_value: 6000_i16,  # 60.00°C
@@ -407,9 +355,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "handles sensor failure (unknown temperature)" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      sensor = Matter::Cluster::TemperatureMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::TemperatureMeasurement,
         measured_value: 2200_i16
       )
 
@@ -426,8 +372,7 @@ describe Matter::Cluster::TemperatureMeasurement do
     end
 
     it "works with Fahrenheit using conversion helpers" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      sensor = Matter::Cluster::TemperatureMeasurement.new(endpoint_id)
+      sensor = build(Matter::Cluster::TemperatureMeasurement)
 
       # Set temperature in Fahrenheit
       fahrenheit_value = 72.0 # 72°F
@@ -443,8 +388,7 @@ describe Matter::Cluster::TemperatureMeasurement do
 
   describe "error handling" do
     it "returns error for unsupported attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurement.new(endpoint_id)
+      cluster = build(Matter::Cluster::TemperatureMeasurement)
 
       read_status(cluster, 0x9999_u32).status.should eq(
         Matter::InteractionModel::StatusCode::UnsupportedAttribute

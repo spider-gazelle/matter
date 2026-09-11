@@ -4,8 +4,7 @@ require "../../src/matter/cluster/basic_information"
 describe Matter::Cluster::BasicInformation do
   describe "initialization" do
     it "creates basic information cluster" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformation.new(endpoint_id)
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       cluster.cluster_id.id.should eq(0x0028_u32)
       cluster.name.should eq("BasicInformation")
@@ -13,8 +12,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "initializes with default values" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformation.new(endpoint_id)
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       cluster.data_model_revision.should eq(1_u16)
       cluster.vendor_name.should eq("")
@@ -32,8 +30,7 @@ describe Matter::Cluster::BasicInformation do
 
   describe "required attributes" do
     it "has all required attributes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformation.new(endpoint_id)
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       attributes = cluster.attributes
       attributes.should_not be_empty
@@ -66,8 +63,7 @@ describe Matter::Cluster::BasicInformation do
 
   describe "TLV attribute encoding - read_attribute" do
     it "reads DATA_MODEL_REVISION with TLV encoding" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         data_model_revision: 17_u16
       )
 
@@ -75,8 +71,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "reads VENDOR_NAME with TLV encoding" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         vendor_name: "Test Vendor"
       )
 
@@ -84,8 +79,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "reads VENDOR_ID with TLV encoding" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         vendor_id: 0xFFF1_u16
       )
 
@@ -93,8 +87,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "reads SOFTWARE_VERSION with TLV encoding" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         software_version: 0x01020304_u32
       )
 
@@ -102,8 +95,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "reads LOCAL_CONFIG_DISABLED with TLV encoding" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         local_config_disabled: true
       )
 
@@ -116,8 +108,7 @@ describe Matter::Cluster::BasicInformation do
         subscriptions_per_fabric: 10_u16
       )
 
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         capability_minima: capability
       )
 
@@ -133,8 +124,7 @@ describe Matter::Cluster::BasicInformation do
         primary_color: Matter::Cluster::BasicInformation::Color::Blue
       )
 
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         product_appearance: appearance
       )
 
@@ -150,8 +140,7 @@ describe Matter::Cluster::BasicInformation do
         primary_color: nil
       )
 
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         product_appearance: appearance
       )
 
@@ -162,8 +151,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "returns UnsupportedAttribute for missing PRODUCT_APPEARANCE" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         product_appearance: nil
       )
 
@@ -173,9 +161,7 @@ describe Matter::Cluster::BasicInformation do
 
   describe "raw attribute value decoding - write_attribute" do
     it "writes NODE_LABEL with TLV decoding" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       # Encode new label as TLV
       tlv_value = "My Device"
@@ -190,9 +176,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "rejects NODE_LABEL exceeding max length (32 bytes)" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       long_label = "a" * 33
       tlv_value = long_label
@@ -203,9 +187,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "writes LOCATION with TLV decoding and validates format" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       tlv_value = "US"
 
@@ -216,9 +198,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "normalizes LOCATION to uppercase" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       tlv_value = "gb"
 
@@ -229,9 +209,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "accepts region-agnostic location XX" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       tlv_value = "XX"
 
@@ -242,9 +220,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "rejects LOCATION with invalid length" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       tlv_value = "USA"
 
@@ -254,9 +230,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "rejects LOCATION with non-alpha characters" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       tlv_value = "U1"
 
@@ -266,8 +240,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "writes LOCAL_CONFIG_DISABLED with TLV decoding" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         local_config_disabled: false
       )
 
@@ -280,9 +253,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "rejects write to read-only VENDOR_NAME" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       tlv_value = "New Vendor"
 
@@ -294,8 +265,7 @@ describe Matter::Cluster::BasicInformation do
 
   describe "event emission" do
     it "emits StartUp event with TLV-encoded software version" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         software_version: 0x01000000_u32
       )
 
@@ -308,9 +278,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "emits ShutDown event with empty TLV structure" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       event_data = cluster.emit_shut_down_event
       event_data.should be_a(Bytes)
@@ -321,9 +289,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "emits Leave event with fabric index" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       event_data = cluster.emit_leave_event(1_u8)
       event_data.should be_a(Bytes)
@@ -334,8 +300,7 @@ describe Matter::Cluster::BasicInformation do
     end
 
     it "emits ReachableChanged event and updates reachable attribute" do
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         reachable: true
       )
 
@@ -354,8 +319,7 @@ describe Matter::Cluster::BasicInformation do
 
   describe "error handling" do
     it "returns error for unsupported attribute read" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformation.new(endpoint_id)
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       read_status(cluster, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
@@ -363,9 +327,7 @@ describe Matter::Cluster::BasicInformation do
 
   describe "complete device configuration" do
     it "configures a complete device with all attributes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformation.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         vendor_name: "SmartHome Inc",
         vendor_id: 0xFFF1_u16,
         product_name: "WiFi Smart Bulb",

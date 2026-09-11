@@ -44,7 +44,7 @@ end
 
 describe "typed cluster command dispatch" do
   it "dispatches a FanControl Step request with optional booleans" do
-    fan = Matter::Cluster::FanControl.new(endpoint(1), feature_map: Matter::Cluster::FanControl::Feature::Step,
+    fan = build(Matter::Cluster::FanControl, feature_map: Matter::Cluster::FanControl::Feature::Step,
       percent_setting: 100_u8, percent_current: 100_u8)
     request = FanStepWireRequest.new(direction: Matter::Cluster::FanControl::StepDirection::Increase.value.to_u8, wrap: true, lowest_off: false)
 
@@ -53,7 +53,7 @@ describe "typed cluster command dispatch" do
   end
 
   it "dispatches a signed Thermostat SetpointRaiseLower amount" do
-    thermostat = Matter::Cluster::Thermostat.new(endpoint(1))
+    thermostat = build(Matter::Cluster::Thermostat)
     previous = thermostat.occupied_heating_setpoint
     request = ThermostatSetpointWireRequest.new(mode: Matter::Cluster::Thermostat::SetpointAdjustMode::Heat.value, amount: -10_i8)
 
@@ -62,7 +62,7 @@ describe "typed cluster command dispatch" do
   end
 
   it "a mistyped enum field yields InvalidCommand" do
-    color = Matter::Cluster::ColorControl.new(endpoint(1))
+    color = build(Matter::Cluster::ColorControl)
     # Direction is an enum on the wire; a string is the peer's fault, not an internal failure.
     request = TLV::Any.new({
       MOVE_TO_HUE_TAG_HUE             => TLV::Any.new(10_u8),

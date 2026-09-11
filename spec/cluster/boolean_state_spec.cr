@@ -6,7 +6,7 @@ private alias BooleanState = Matter::Cluster::BooleanState
 describe Matter::Cluster::BooleanState do
   describe "initialization" do
     it "creates with default false state" do
-      cluster = BooleanState.new(endpoint(1))
+      cluster = build(BooleanState)
 
       cluster.cluster_id.id.should eq(0x0045_u32)
       cluster.name.should eq("BooleanState")
@@ -14,14 +14,14 @@ describe Matter::Cluster::BooleanState do
     end
 
     it "creates with true state" do
-      cluster = BooleanState.new(endpoint(1), state_value: true)
+      cluster = build(BooleanState, state_value: true)
       cluster.state_value?.should be_true
     end
   end
 
   describe "attributes" do
     it "exposes StateValue attribute metadata" do
-      cluster = BooleanState.new(endpoint(1))
+      cluster = build(BooleanState)
       attrs = cluster.attributes
 
       attrs.size.should eq(1)
@@ -31,32 +31,32 @@ describe Matter::Cluster::BooleanState do
     end
 
     it "reads state as TLV bool" do
-      cluster = BooleanState.new(endpoint(1), state_value: true)
+      cluster = build(BooleanState, state_value: true)
       read(cluster, BooleanState::ATTR_STATE_VALUE).should be_true
     end
 
     it "returns unsupported for unknown attribute" do
-      cluster = BooleanState.new(endpoint(1))
+      cluster = build(BooleanState)
       read_status(cluster, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 
   describe "update_state" do
     it "updates state and increments data version" do
-      cluster = BooleanState.new(endpoint(1), state_value: false)
+      cluster = build(BooleanState, state_value: false)
 
       version_delta(cluster) { cluster.update_state(true) }.should eq(1)
       cluster.state_value?.should be_true
     end
 
     it "does not change data version when value is unchanged" do
-      cluster = BooleanState.new(endpoint(1), state_value: true)
+      cluster = build(BooleanState, state_value: true)
 
       version_delta(cluster) { cluster.update_state(true) }.should eq(0)
     end
 
     it "invokes on_state_changed when value changes" do
-      cluster = BooleanState.new(endpoint(1), state_value: false)
+      cluster = build(BooleanState, state_value: false)
 
       old_value : Bool? = nil
       new_value : Bool? = nil
@@ -72,7 +72,7 @@ describe Matter::Cluster::BooleanState do
     end
 
     it "notifies attribute subscribers when value changes" do
-      cluster = BooleanState.new(endpoint(1), state_value: false)
+      cluster = build(BooleanState, state_value: false)
 
       changes = capture_changes(cluster) { cluster.update_state(true) }
 

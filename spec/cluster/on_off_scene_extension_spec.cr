@@ -2,8 +2,7 @@ require "../spec_helper"
 
 describe Matter::Cluster::OnOff do
   it "exports and applies ScenesManagement extension field sets" do
-    endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-    cluster = Matter::Cluster::OnOff.new(endpoint, on_off: false)
+    cluster = build(Matter::Cluster::OnOff, on_off: false)
 
     field_set = cluster.store_scene_extension_field_set
     field_set.should_not be_nil

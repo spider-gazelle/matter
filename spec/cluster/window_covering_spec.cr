@@ -6,8 +6,7 @@ require "../../src/matter/cluster/window_covering"
 describe Matter::Cluster::WindowCovering do
   describe "with Lift and PositionAwareLift features" do
     # WindowCovering_LF_PALF = WindowCovering.with("Lift", "PositionAwareLift")
-    cluster = Matter::Cluster::WindowCovering.new(
-      endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+    cluster = build(Matter::Cluster::WindowCovering,
       feature_map: Matter::Cluster::WindowCovering::Feature::Lift |
                    Matter::Cluster::WindowCovering::Feature::PositionAwareLift
     )
@@ -97,8 +96,7 @@ describe Matter::Cluster::WindowCovering do
   end
 
   describe "with only Lift feature" do
-    cluster = Matter::Cluster::WindowCovering.new(
-      endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+    cluster = build(Matter::Cluster::WindowCovering,
       feature_map: Matter::Cluster::WindowCovering::Feature::Lift
     )
 
@@ -119,8 +117,7 @@ describe Matter::Cluster::WindowCovering do
   end
 
   describe "with Tilt and PositionAwareTilt features" do
-    cluster = Matter::Cluster::WindowCovering.new(
-      endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+    cluster = build(Matter::Cluster::WindowCovering,
       feature_map: Matter::Cluster::WindowCovering::Feature::Tilt |
                    Matter::Cluster::WindowCovering::Feature::PositionAwareTilt
     )
@@ -142,8 +139,7 @@ describe Matter::Cluster::WindowCovering do
   end
 
   describe "commands" do
-    cluster = Matter::Cluster::WindowCovering.new(
-      endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
+    cluster = build(Matter::Cluster::WindowCovering,
       feature_map: Matter::Cluster::WindowCovering::Feature::Lift |
                    Matter::Cluster::WindowCovering::Feature::PositionAwareLift
     )
@@ -161,26 +157,26 @@ describe Matter::Cluster::WindowCovering do
 
   describe "percentage commands on the wire" do
     it "sets the lift target from tag zero" do
-      cluster = Matter::Cluster::WindowCovering.new(endpoint(1))
+      cluster = build(Matter::Cluster::WindowCovering)
       request = Matter::Cluster::WindowCovering::GoToLiftPercentageRequest.new(4321_u16)
       expect_success(invoke(cluster, Matter::Cluster::WindowCovering::CMD_GO_TO_LIFT_PERCENTAGE, request))
       read(cluster, Matter::Cluster::WindowCovering::ATTR_TARGET_POSITION_LIFT_PERCENT100THS).should eq(4321_u16)
     end
 
     it "rejects a lift percentage above 100 percent without changing the target" do
-      cluster = Matter::Cluster::WindowCovering.new(endpoint(1))
+      cluster = build(Matter::Cluster::WindowCovering)
       request = Matter::Cluster::WindowCovering::GoToLiftPercentageRequest.new(10001_u16)
       expect_status(invoke(cluster, Matter::Cluster::WindowCovering::CMD_GO_TO_LIFT_PERCENTAGE, request), Matter::InteractionModel::StatusCode::ConstraintError)
       cluster.target_position_lift_percent100ths.should eq(0_u16)
     end
 
     it "rejects missing percentage fields" do
-      cluster = Matter::Cluster::WindowCovering.new(endpoint(1))
+      cluster = build(Matter::Cluster::WindowCovering)
       expect_status(invoke(cluster, Matter::Cluster::WindowCovering::CMD_GO_TO_LIFT_PERCENTAGE), Matter::InteractionModel::StatusCode::InvalidCommand)
     end
 
     it "sets the tilt target from tag zero" do
-      cluster = Matter::Cluster::WindowCovering.new(endpoint(1),
+      cluster = build(Matter::Cluster::WindowCovering,
         feature_map: Matter::Cluster::WindowCovering::Feature::Tilt | Matter::Cluster::WindowCovering::Feature::PositionAwareTilt)
       request = Matter::Cluster::WindowCovering::GoToTiltPercentageRequest.new(6789_u16)
       expect_success(invoke(cluster, Matter::Cluster::WindowCovering::CMD_GO_TO_TILT_PERCENTAGE, request))
@@ -191,7 +187,7 @@ describe Matter::Cluster::WindowCovering do
     end
 
     it "rejects a tilt percentage above 100 percent" do
-      cluster = Matter::Cluster::WindowCovering.new(endpoint(1),
+      cluster = build(Matter::Cluster::WindowCovering,
         feature_map: Matter::Cluster::WindowCovering::Feature::Tilt | Matter::Cluster::WindowCovering::Feature::PositionAwareTilt)
       request = Matter::Cluster::WindowCovering::GoToTiltPercentageRequest.new(10001_u16)
       expect_status(invoke(cluster, Matter::Cluster::WindowCovering::CMD_GO_TO_TILT_PERCENTAGE, request), Matter::InteractionModel::StatusCode::ConstraintError)
@@ -200,9 +196,7 @@ describe Matter::Cluster::WindowCovering do
   end
 
   describe "cluster metadata" do
-    cluster = Matter::Cluster::WindowCovering.new(
-      endpoint_id: Matter::DataType::EndpointNumber.new(1_u16)
-    )
+    cluster = build(Matter::Cluster::WindowCovering)
 
     it "has correct cluster ID" do
       cluster.cluster_id.id.should eq(0x0102_u32)
@@ -221,9 +215,7 @@ describe Matter::Cluster::WindowCovering do
   end
 
   describe "attribute read/write" do
-    cluster = Matter::Cluster::WindowCovering.new(
-      endpoint_id: Matter::DataType::EndpointNumber.new(1_u16)
-    )
+    cluster = build(Matter::Cluster::WindowCovering)
 
     it "reads type attribute" do
       result = read_tlv(cluster, Matter::Cluster::WindowCovering::ATTR_TYPE)

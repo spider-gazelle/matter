@@ -11,11 +11,9 @@ private def unlock_with_timeout_request(timeout : UInt16, pin : String? = nil) :
 end
 
 describe Matter::Cluster::DoorLock do
-  endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-
   describe "initialization" do
     it "creates with expected defaults" do
-      cluster = Matter::Cluster::DoorLock.new(endpoint_id)
+      cluster = build(Matter::Cluster::DoorLock)
 
       cluster.cluster_id.id.should eq(0x0101_u32)
       cluster.name.should eq("DoorLock")
@@ -26,8 +24,7 @@ describe Matter::Cluster::DoorLock do
     end
 
     it "includes unbolt command only when unbolting feature is enabled" do
-      cluster = Matter::Cluster::DoorLock.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::DoorLock,
         feature_map: Matter::Cluster::DoorLock::Feature::PinCredential
       )
 
@@ -37,7 +34,7 @@ describe Matter::Cluster::DoorLock do
 
   describe "lock commands" do
     it "invokes unlock and lock and updates lock state" do
-      cluster = Matter::Cluster::DoorLock.new(endpoint_id)
+      cluster = build(Matter::Cluster::DoorLock)
 
       unlock_result = invoke(cluster, Matter::Cluster::DoorLock::CMD_UNLOCK_DOOR, lock_request)
       unlock_result.should be_a(Matter::InteractionModel::Status)
@@ -51,7 +48,7 @@ describe Matter::Cluster::DoorLock do
     end
 
     it "notifies lockState updates for subscriptions" do
-      cluster = Matter::Cluster::DoorLock.new(endpoint_id)
+      cluster = build(Matter::Cluster::DoorLock)
 
       notified_attrs = [] of UInt32
       cluster.on_attribute_changed = ->(_ep : UInt16, _cl : UInt32, attr : UInt32) {
@@ -64,7 +61,7 @@ describe Matter::Cluster::DoorLock do
     end
 
     it "auto-relocks after unlockWithTimeout" do
-      cluster = Matter::Cluster::DoorLock.new(endpoint_id)
+      cluster = build(Matter::Cluster::DoorLock)
 
       result = invoke(cluster,
         Matter::Cluster::DoorLock::CMD_UNLOCK_WITH_TIMEOUT,
@@ -79,8 +76,7 @@ describe Matter::Cluster::DoorLock do
     end
 
     it "returns UnsupportedCommand for unbolt when feature disabled" do
-      cluster = Matter::Cluster::DoorLock.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::DoorLock,
         feature_map: Matter::Cluster::DoorLock::Feature::PinCredential
       )
 
@@ -94,7 +90,7 @@ describe Matter::Cluster::DoorLock do
 
   describe "door position sensor updates" do
     it "updates counters and notifies changed attributes" do
-      cluster = Matter::Cluster::DoorLock.new(endpoint_id)
+      cluster = build(Matter::Cluster::DoorLock)
 
       notified_attrs = [] of UInt32
       cluster.on_attribute_changed = ->(_ep : UInt16, _cl : UInt32, attr : UInt32) {
@@ -110,7 +106,7 @@ describe Matter::Cluster::DoorLock do
     end
 
     it "increments closed counter when transitioning to closed" do
-      cluster = Matter::Cluster::DoorLock.new(endpoint_id)
+      cluster = build(Matter::Cluster::DoorLock)
 
       cluster.update_door_state(Def::DoorState::DoorOpen)
       cluster.update_door_state(Def::DoorState::DoorClosed)
@@ -122,8 +118,7 @@ describe Matter::Cluster::DoorLock do
 
   describe "pin authorization" do
     it "requires pin when RequirePinForRemoteOperation is enabled" do
-      cluster = Matter::Cluster::DoorLock.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::DoorLock,
         require_pin_for_remote_operation: true
       )
 
@@ -136,8 +131,7 @@ describe Matter::Cluster::DoorLock do
     end
 
     it "accepts default pin for remote operations" do
-      cluster = Matter::Cluster::DoorLock.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::DoorLock,
         require_pin_for_remote_operation: true,
         default_pin_code: "2468"
       )
@@ -148,8 +142,7 @@ describe Matter::Cluster::DoorLock do
     end
 
     it "enters temporary lockout after too many wrong pin attempts" do
-      cluster = Matter::Cluster::DoorLock.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::DoorLock,
         require_pin_for_remote_operation: true,
         default_pin_code: "2468",
         wrong_code_entry_limit: 1_u8,
@@ -174,7 +167,7 @@ describe Matter::Cluster::DoorLock do
 
   describe "user and credential commands" do
     it "supports setUser/getUser flow" do
-      cluster = Matter::Cluster::DoorLock.new(endpoint_id)
+      cluster = build(Matter::Cluster::DoorLock)
 
       set_user = Def::SetUserRequest.new(
         operation_type: Def::DataOperationType::Add,
@@ -204,7 +197,7 @@ describe Matter::Cluster::DoorLock do
     end
 
     it "supports setCredential/getCredentialStatus flow" do
-      cluster = Matter::Cluster::DoorLock.new(endpoint_id)
+      cluster = build(Matter::Cluster::DoorLock)
 
       credential = Def::Credential.new(
         credential_type: Def::CredentialType::Pin,
@@ -237,8 +230,7 @@ describe Matter::Cluster::DoorLock do
     end
 
     it "rejects credentials with out-of-range indexes" do
-      cluster = Matter::Cluster::DoorLock.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::DoorLock,
         number_of_pin_users_supported: 2_u16
       )
 

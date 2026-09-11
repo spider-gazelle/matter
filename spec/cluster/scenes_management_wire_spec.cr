@@ -3,7 +3,7 @@ require "../spec_helper"
 # Scene payloads keep their typed extension attributes through command and storage boundaries.
 describe Matter::Cluster::ScenesManagement do
   it "retains AddScene extension values when viewing, persisting and recalling a scene" do
-    cluster = Matter::Cluster::ScenesManagement.new(endpoint(1))
+    cluster = build(Matter::Cluster::ScenesManagement)
     extension = Matter::Cluster::ExtensionFieldSetTlv.new(
       Matter::Cluster::ColorControl::CLUSTER_ID,
       [Matter::Cluster::AttributeValuePairTlv.new(0_u32, value_unsigned8: 127_u8),
@@ -15,7 +15,7 @@ describe Matter::Cluster::ScenesManagement do
       request, Matter::Cluster::SceneStatusResponse)
     added.status.should eq(Matter::InteractionModel::StatusCode::Success.value)
 
-    restored = Matter::Cluster::ScenesManagement.new(endpoint(1))
+    restored = build(Matter::Cluster::ScenesManagement)
     restored.restore_state(cluster.save_state.as(Matter::Storage::Document))
     view = invoke_response(restored, Matter::Cluster::ScenesManagement::CMD_VIEW_SCENE,
       Matter::Cluster::ViewSceneRequest.new(group_id: 1_u16, scene_id: 2_u8), Matter::Cluster::ViewSceneResponseTlv)
@@ -37,8 +37,8 @@ end
 describe "OnOff scene extension values" do
   [{0_u8, false}, {1_u8, true}, {UInt8::MAX, false}].each do |wire_value, expected|
     it "recalls the unsigned boolean scene value #{wire_value}" do
-      scenes = Matter::Cluster::ScenesManagement.new(endpoint(1))
-      light = Matter::Cluster::OnOff.new(endpoint(1), on_off: !expected)
+      scenes = build(Matter::Cluster::ScenesManagement)
+      light = build(Matter::Cluster::OnOff, on_off: !expected)
       scenes.apply_extension_field_sets = ->(fields : Array(Matter::Cluster::ScenesManagement::ExtensionFieldSet)) {
         fields.each { |field| light.apply_scene_extension_field_set(field) }
         nil

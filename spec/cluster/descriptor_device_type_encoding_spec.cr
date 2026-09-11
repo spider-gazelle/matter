@@ -4,8 +4,7 @@ require "../../src/matter/cluster/descriptor"
 describe "DeviceType encoding for HomeKit compatibility" do
   describe "device_type_list attribute" do
     it "encodes On/Off Light device type correctly" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      descriptor = Matter::Cluster::Descriptor.new(endpoint_id)
+      descriptor = build(Matter::Cluster::Descriptor)
 
       # Add On/Off Light device type (0x0100)
       descriptor.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
@@ -26,8 +25,7 @@ describe "DeviceType encoding for HomeKit compatibility" do
     end
 
     it "encodes Root Node device type correctly" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      descriptor = Matter::Cluster::Descriptor.new(endpoint_id)
+      descriptor = build(Matter::Cluster::Descriptor, 0)
 
       # Add Root Node device type (0x0016)
       descriptor.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
@@ -43,8 +41,7 @@ describe "DeviceType encoding for HomeKit compatibility" do
     end
 
     it "encodes server_list correctly for On/Off Light" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      descriptor = Matter::Cluster::Descriptor.new(endpoint_id)
+      descriptor = build(Matter::Cluster::Descriptor)
 
       # Add mandatory clusters for On/Off Light
       descriptor.server_list << 0x0003_u32 # Identify
@@ -66,9 +63,7 @@ describe "DeviceType encoding for HomeKit compatibility" do
 
   describe "FeatureMap encoding" do
     it "encodes OnOff cluster with LIGHTING feature" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      on_off = Matter::Cluster::OnOff.new(
-        endpoint_id,
+      on_off = build(Matter::Cluster::OnOff,
         on_off: false,
         feature_map: Matter::Cluster::OnOff::Feature::Lighting
       )
@@ -79,9 +74,7 @@ describe "DeviceType encoding for HomeKit compatibility" do
     end
 
     it "encodes OnOff cluster without LIGHTING feature" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      on_off = Matter::Cluster::OnOff.new(
-        endpoint_id,
+      on_off = build(Matter::Cluster::OnOff,
         on_off: false,
         feature_map: Matter::Cluster::OnOff::Feature::None
       )
@@ -93,15 +86,13 @@ describe "DeviceType encoding for HomeKit compatibility" do
 
   describe "ClusterRevision encoding" do
     it "encodes OnOff cluster revision" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      on_off = Matter::Cluster::OnOff.new(endpoint_id)
+      on_off = build(Matter::Cluster::OnOff)
 
       read_tlv(on_off, Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION).as_u16.should eq(Matter::Cluster::OnOff::CLUSTER_REVISION)
     end
 
     it "encodes Descriptor cluster revision" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      descriptor = Matter::Cluster::Descriptor.new(endpoint_id)
+      descriptor = build(Matter::Cluster::Descriptor)
 
       read_tlv(descriptor, Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION).as_u16.should eq(Matter::Cluster::Descriptor::CLUSTER_REVISION)
     end

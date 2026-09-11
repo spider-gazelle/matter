@@ -4,8 +4,7 @@ require "../../src/matter/cluster/group_key_management"
 
 describe Matter::Cluster::GroupKeyManagement do
   it "persists key sets and group tables" do
-    endpoint = Matter::DataType::EndpointNumber.new(0_u16)
-    cluster = Matter::Cluster::GroupKeyManagement.new(endpoint)
+    cluster = build(Matter::Cluster::GroupKeyManagement, 0)
 
     fabric = 1_u8
     key_set_id = 1_u16
@@ -34,7 +33,7 @@ describe Matter::Cluster::GroupKeyManagement do
     persisted["group_key_security_policy"].should eq("TrustFirst")
     document["data_version"].should eq(9_i64)
 
-    cluster2 = Matter::Cluster::GroupKeyManagement.new(endpoint)
+    cluster2 = build(Matter::Cluster::GroupKeyManagement, 0)
     cluster2.restore_state(document)
 
     restored = cluster2.get_key_set(key_set_id, fabric)
@@ -49,8 +48,7 @@ describe Matter::Cluster::GroupKeyManagement do
   end
 
   it "bumps the data version on every mutation" do
-    endpoint = Matter::DataType::EndpointNumber.new(0_u16)
-    cluster = Matter::Cluster::GroupKeyManagement.new(endpoint)
+    cluster = build(Matter::Cluster::GroupKeyManagement, 0)
     fabric = 1_u8
     key_set_id = 1_u16
     versions = [] of UInt32

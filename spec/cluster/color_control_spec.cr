@@ -10,8 +10,7 @@ require "../../src/matter/cluster/color_control"
 describe Matter::Cluster::ColorControl do
   describe "initialization" do
     it "creates cluster with default values" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id)
+      cluster = build(Matter::Cluster::ColorControl)
 
       cluster.cluster_id.id.should eq(0x0300_u32)
       cluster.name.should eq("ColorControl")
@@ -24,9 +23,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "creates cluster with custom values" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::ColorControl,
         current_hue: 100_u8,
         current_saturation: 200_u8,
         color_temperature_mireds: 300_u16
@@ -40,8 +37,7 @@ describe Matter::Cluster::ColorControl do
 
   describe "hue commands" do
     it "executes MoveToHue command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_hue: 0_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_hue: 0_u8)
 
       cluster.current_hue.should eq(0_u8)
 
@@ -55,8 +51,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "executes StepHue Up command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_hue: 100_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_hue: 100_u8)
 
       # StepHue(mode=Up, step_size=20, ...)
       result = invoke(cluster, Matter::Cluster::ColorControl::CMD_STEP_HUE, Matter::Cluster::ColorControl::StepHueRequest.new(step_mode: Matter::Cluster::ColorControl::StepMode::Up, step_size: (20).to_u8, transition_time: (0).to_u8))
@@ -66,8 +61,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "executes StepHue Down command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_hue: 100_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_hue: 100_u8)
 
       # StepHue(mode=Down, step_size=30, ...)
       result = invoke(cluster, Matter::Cluster::ColorControl::CMD_STEP_HUE, Matter::Cluster::ColorControl::StepHueRequest.new(step_mode: Matter::Cluster::ColorControl::StepMode::Down, step_size: (30).to_u8, transition_time: (0).to_u8))
@@ -77,8 +71,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "wraps hue around 255" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_hue: 250_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_hue: 250_u8)
 
       # Step up by 10 should wrap to 5
       invoke(cluster, Matter::Cluster::ColorControl::CMD_STEP_HUE, Matter::Cluster::ColorControl::StepHueRequest.new(step_mode: Matter::Cluster::ColorControl::StepMode::Up, step_size: (10).to_u8, transition_time: (0).to_u8))
@@ -89,8 +82,7 @@ describe Matter::Cluster::ColorControl do
 
   describe "saturation commands" do
     it "executes MoveToSaturation command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_saturation: 0_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_saturation: 0_u8)
 
       # MoveToSaturation(saturation=200, ...)
       result = invoke(cluster, Matter::Cluster::ColorControl::CMD_MOVE_TO_SATURATION, Matter::Cluster::ColorControl::MoveToSaturationRequest.new(saturation: (200).to_u8, transition_time: (0).to_u16))
@@ -100,8 +92,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "executes StepSaturation Up command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_saturation: 100_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_saturation: 100_u8)
 
       invoke(cluster, Matter::Cluster::ColorControl::CMD_STEP_SATURATION, Matter::Cluster::ColorControl::StepSaturationRequest.new(step_mode: Matter::Cluster::ColorControl::StepMode::Up, step_size: (50).to_u8, transition_time: (0).to_u8))
 
@@ -109,8 +100,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "executes StepSaturation Down command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_saturation: 100_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_saturation: 100_u8)
 
       invoke(cluster, Matter::Cluster::ColorControl::CMD_STEP_SATURATION, Matter::Cluster::ColorControl::StepSaturationRequest.new(step_mode: Matter::Cluster::ColorControl::StepMode::Down, step_size: (40).to_u8, transition_time: (0).to_u8))
 
@@ -118,8 +108,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "clamps saturation to max (254)" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_saturation: 240_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_saturation: 240_u8)
 
       invoke(cluster, Matter::Cluster::ColorControl::CMD_STEP_SATURATION, Matter::Cluster::ColorControl::StepSaturationRequest.new(step_mode: Matter::Cluster::ColorControl::StepMode::Up, step_size: (50).to_u8, transition_time: (0).to_u8))
 
@@ -127,8 +116,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "clamps saturation to min (0)" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_saturation: 10_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_saturation: 10_u8)
 
       invoke(cluster, Matter::Cluster::ColorControl::CMD_STEP_SATURATION, Matter::Cluster::ColorControl::StepSaturationRequest.new(step_mode: Matter::Cluster::ColorControl::StepMode::Down, step_size: (50).to_u8, transition_time: (0).to_u8))
 
@@ -138,8 +126,7 @@ describe Matter::Cluster::ColorControl do
 
   describe "hue and saturation combined" do
     it "executes MoveToHueAndSaturation command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id)
+      cluster = build(Matter::Cluster::ColorControl)
 
       # MoveToHueAndSaturation(hue=180, saturation=220, ...)
       result = invoke(cluster, Matter::Cluster::ColorControl::CMD_MOVE_TO_HUE_AND_SATURATION, Matter::Cluster::ColorControl::MoveToHueAndSaturationRequest.new(hue: (180).to_u8, saturation: (220).to_u8, transition_time: (0).to_u16))
@@ -153,8 +140,7 @@ describe Matter::Cluster::ColorControl do
 
   describe "XY color commands" do
     it "executes MoveToColor command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id)
+      cluster = build(Matter::Cluster::ColorControl)
 
       # MoveToColor(x=32768, y=32768, ...)
 
@@ -167,9 +153,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "executes StepColor command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::ColorControl,
         current_x: 30000_u16,
         current_y: 30000_u16
       )
@@ -183,9 +167,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "clamps XY to valid range" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::ColorControl,
         current_x: 65000_u16,
         current_y: 1000_u16
       )
@@ -201,8 +183,7 @@ describe Matter::Cluster::ColorControl do
 
   describe "color temperature commands" do
     it "executes MoveToColorTemperature command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, color_temperature_mireds: 200_u16)
+      cluster = build(Matter::Cluster::ColorControl, color_temperature_mireds: 200_u16)
 
       # MoveToColorTemperature(mireds=300, ...)
 
@@ -214,8 +195,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "executes StepColorTemperature Up command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, color_temperature_mireds: 300_u16)
+      cluster = build(Matter::Cluster::ColorControl, color_temperature_mireds: 300_u16)
 
       # StepColorTemperature(mode=Up, step_size=50, ...)
 
@@ -225,8 +205,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "executes StepColorTemperature Down command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, color_temperature_mireds: 300_u16)
+      cluster = build(Matter::Cluster::ColorControl, color_temperature_mireds: 300_u16)
 
       # StepColorTemperature(mode=Down, step_size=50, ...)
 
@@ -236,9 +215,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "clamps to physical min mireds" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::ColorControl,
         color_temperature_mireds: 150_u16,
         color_temp_physical_min_mireds: 147_u16
       )
@@ -251,9 +228,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "clamps to physical max mireds" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::ColorControl,
         color_temperature_mireds: 450_u16,
         color_temp_physical_max_mireds: 500_u16
       )
@@ -268,9 +243,7 @@ describe Matter::Cluster::ColorControl do
 
   describe "enhanced hue commands" do
     it "executes EnhancedMoveToHue command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::ColorControl,
         feature_map: Matter::Cluster::ColorControl::Feature::HueSaturation |
                      Matter::Cluster::ColorControl::Feature::EnhancedHue
       )
@@ -286,9 +259,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "executes EnhancedStepHue Up command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::ColorControl,
         feature_map: Matter::Cluster::ColorControl::Feature::HueSaturation |
                      Matter::Cluster::ColorControl::Feature::EnhancedHue,
         current_hue: 100_u8
@@ -304,9 +275,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "wraps enhanced hue around 65536" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::ColorControl,
         feature_map: Matter::Cluster::ColorControl::Feature::HueSaturation |
                      Matter::Cluster::ColorControl::Feature::EnhancedHue
       )
@@ -321,9 +290,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "executes EnhancedMoveToHueAndSaturation command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::ColorControl,
         feature_map: Matter::Cluster::ColorControl::Feature::HueSaturation |
                      Matter::Cluster::ColorControl::Feature::EnhancedHue
       )
@@ -341,9 +308,7 @@ describe Matter::Cluster::ColorControl do
 
   describe "color mode tracking" do
     it "sets color mode to HS when changing hue" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::ColorControl,
         color_mode: Matter::Cluster::ColorControl::ColorMode::ColorTemperatureMireds
       )
 
@@ -353,9 +318,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "sets color mode to XY when changing color" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::ColorControl,
         color_mode: Matter::Cluster::ColorControl::ColorMode::CurrentHueAndCurrentSaturation
       )
 
@@ -365,9 +328,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "sets color mode to CT when changing temperature" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::ColorControl,
         color_mode: Matter::Cluster::ColorControl::ColorMode::CurrentXAndCurrentY
       )
 
@@ -379,8 +340,7 @@ describe Matter::Cluster::ColorControl do
 
   describe "callbacks" do
     it "calls callback when color changes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_hue: 50_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_hue: 50_u8)
 
       callback_called = false
       cluster.on_color_changed do
@@ -393,8 +353,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "does not call callback if color doesn't change" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_hue: 100_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_hue: 100_u8)
 
       callback_called = false
       cluster.on_color_changed do
@@ -410,8 +369,7 @@ describe Matter::Cluster::ColorControl do
 
   describe "data versioning" do
     it "increments version when color changes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_hue: 50_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_hue: 50_u8)
 
       initial_version = cluster.data_version
 
@@ -421,8 +379,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "does not increment version if color unchanged" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_hue: 100_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_hue: 100_u8)
 
       initial_version = cluster.data_version
 
@@ -435,16 +392,14 @@ describe Matter::Cluster::ColorControl do
 
   describe "utility methods" do
     it "converts color temperature to Kelvin" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, color_temperature_mireds: 250_u16)
+      cluster = build(Matter::Cluster::ColorControl, color_temperature_mireds: 250_u16)
 
       kelvin = cluster.color_temperature_kelvin
       kelvin.should eq(4000_u32) # 1,000,000 / 250
     end
 
     it "sets color temperature from Kelvin" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id)
+      cluster = build(Matter::Cluster::ColorControl)
 
       cluster.color_temperature_kelvin = 4000_u32
 
@@ -454,8 +409,7 @@ describe Matter::Cluster::ColorControl do
 
   describe "reading attributes" do
     it "reads CurrentHue attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_hue: 127_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_hue: 127_u8)
 
       result = read_tlv(cluster, Matter::Cluster::ColorControl::ATTR_CURRENT_HUE)
       result.should be_a(TLV::Any)
@@ -463,8 +417,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "reads CurrentSaturation attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, current_saturation: 200_u8)
+      cluster = build(Matter::Cluster::ColorControl, current_saturation: 200_u8)
 
       result = read_tlv(cluster, Matter::Cluster::ColorControl::ATTR_CURRENT_SATURATION)
       result.should be_a(TLV::Any)
@@ -472,8 +425,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "reads ColorTemperatureMireds attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id, color_temperature_mireds: 350_u16)
+      cluster = build(Matter::Cluster::ColorControl, color_temperature_mireds: 350_u16)
 
       result = read_tlv(cluster, Matter::Cluster::ColorControl::ATTR_COLOR_TEMPERATURE_MIREDS)
       result.should be_a(TLV::Any)
@@ -481,8 +433,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "reads ColorMode attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id)
+      cluster = build(Matter::Cluster::ColorControl)
 
       result = read_tlv(cluster, Matter::Cluster::ColorControl::ATTR_COLOR_MODE)
       result.should be_a(TLV::Any)
@@ -492,8 +443,7 @@ describe Matter::Cluster::ColorControl do
 
   describe "practical scenarios" do
     it "creates warm white light (2700K)" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      light = Matter::Cluster::ColorControl.new(endpoint_id)
+      light = build(Matter::Cluster::ColorControl)
 
       # 2700K = 370 mireds
       light.color_temperature_kelvin = 2700_u32
@@ -503,8 +453,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "creates cool white light (6500K)" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      light = Matter::Cluster::ColorControl.new(endpoint_id)
+      light = build(Matter::Cluster::ColorControl)
 
       # 6500K = 154 mireds
       light.color_temperature_kelvin = 6500_u32
@@ -514,8 +463,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "creates red color (hue=0, sat=254)" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      light = Matter::Cluster::ColorControl.new(endpoint_id)
+      light = build(Matter::Cluster::ColorControl)
 
       invoke(light, Matter::Cluster::ColorControl::CMD_MOVE_TO_HUE_AND_SATURATION, Matter::Cluster::ColorControl::MoveToHueAndSaturationRequest.new(hue: (0).to_u8, saturation: (254).to_u8, transition_time: (0).to_u16))
 
@@ -525,8 +473,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "creates blue color (hue=170, sat=254)" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      light = Matter::Cluster::ColorControl.new(endpoint_id)
+      light = build(Matter::Cluster::ColorControl)
 
       invoke(light, Matter::Cluster::ColorControl::CMD_MOVE_TO_HUE_AND_SATURATION, Matter::Cluster::ColorControl::MoveToHueAndSaturationRequest.new(hue: (170).to_u8, saturation: (254).to_u8, transition_time: (0).to_u16))
 
@@ -535,8 +482,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "gradually transitions through color wheel" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      light = Matter::Cluster::ColorControl.new(endpoint_id, current_hue: 0_u8)
+      light = build(Matter::Cluster::ColorControl, current_hue: 0_u8)
 
       # Step through hues
       10.times do |_|
@@ -549,8 +495,7 @@ describe Matter::Cluster::ColorControl do
 
   describe "error handling" do
     it "returns error for unsupported command" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id)
+      cluster = build(Matter::Cluster::ColorControl)
 
       result = invoke(cluster, 0x99_u32)
       result.should be_a(Matter::InteractionModel::Status)
@@ -560,8 +505,7 @@ describe Matter::Cluster::ColorControl do
     end
 
     it "returns error for command with insufficient data" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ColorControl.new(endpoint_id)
+      cluster = build(Matter::Cluster::ColorControl)
 
       # MoveToColor needs at least 4 bytes
       result = invoke(cluster, Matter::Cluster::ColorControl::CMD_MOVE_TO_COLOR, TLV::Any.new({0_u8 => TLV::Any.new(1_u16)} of TLV::TagId => TLV::Any))

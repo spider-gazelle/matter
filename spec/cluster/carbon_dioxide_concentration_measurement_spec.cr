@@ -2,12 +2,9 @@ require "../spec_helper"
 require "../../src/matter/cluster/carbon_dioxide_concentration_measurement"
 
 describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
-  endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-
   describe "initialization" do
     it "creates with NumericMeasurement feature" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measurement_medium: Matter::Cluster::CarbonDioxideConcentrationMeasurement::MeasurementMedium::Air,
         measured_value: 400.0_f32,
         min_measured_value: 0.0_f32,
@@ -25,8 +22,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "creates with LevelIndication feature" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measurement_medium: Matter::Cluster::CarbonDioxideConcentrationMeasurement::MeasurementMedium::Air,
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurement::LevelValue::Low
       )
@@ -37,8 +33,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "creates with both NumericMeasurement and LevelIndication features (from matter.js test)" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measurement_medium: Matter::Cluster::CarbonDioxideConcentrationMeasurement::MeasurementMedium::Air,
         measured_value: 4.0_f32,
         min_measured_value: 0.0_f32,
@@ -54,8 +49,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "creates with PeakMeasurement feature" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measurement_medium: Matter::Cluster::CarbonDioxideConcentrationMeasurement::MeasurementMedium::Air,
         measured_value: 400.0_f32,
         min_measured_value: 0.0_f32,
@@ -71,8 +65,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "creates with AverageMeasurement feature" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measurement_medium: Matter::Cluster::CarbonDioxideConcentrationMeasurement::MeasurementMedium::Air,
         measured_value: 400.0_f32,
         min_measured_value: 0.0_f32,
@@ -89,8 +82,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
 
     it "validates NumericMeasurement feature requires all mandatory attributes" do
       expect_raises(ArgumentError, /NumericMeasurement feature requires/) do
-        Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
           measured_value: 400.0_f32 # Missing min, max, and unit
         )
       end
@@ -98,8 +90,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
 
     it "validates PeakMeasurement requires both attributes" do
       expect_raises(ArgumentError, /PeakMeasurement feature requires peak_measured_value_window/) do
-        Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
           measured_value: 400.0_f32,
           min_measured_value: 0.0_f32,
           max_measured_value: 5000.0_f32,
@@ -111,8 +102,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
 
     it "validates AverageMeasurement requires both attributes" do
       expect_raises(ArgumentError, /AverageMeasurement feature requires average_measured_value_window/) do
-        Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
           measured_value: 400.0_f32,
           min_measured_value: 0.0_f32,
           max_measured_value: 5000.0_f32,
@@ -124,8 +114,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
 
     it "validates peak measurement window max value" do
       expect_raises(ArgumentError, /peak_measured_value_window must be <= 604800/) do
-        Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-          endpoint_id,
+        build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
           measured_value: 400.0_f32,
           min_measured_value: 0.0_f32,
           max_measured_value: 5000.0_f32,
@@ -138,17 +127,14 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
 
     it "validates at least one feature must be enabled" do
       expect_raises(ArgumentError, /At least one feature/) do
-        Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-          endpoint_id
-        )
+        build(Matter::Cluster::CarbonDioxideConcentrationMeasurement)
       end
     end
   end
 
   describe "attributes" do
     it "has measurement medium attribute" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurement::LevelValue::Low
       )
 
@@ -157,8 +143,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "has NumericMeasurement attributes when feature enabled" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measured_value: 400.0_f32,
         min_measured_value: 0.0_f32,
         max_measured_value: 5000.0_f32,
@@ -173,8 +158,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "has LevelIndication attributes when feature enabled" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurement::LevelValue::High
       )
 
@@ -183,8 +167,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "does not have NumericMeasurement attributes when feature disabled" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurement::LevelValue::Low
       )
 
@@ -194,8 +177,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "reads measurement medium" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measurement_medium: Matter::Cluster::CarbonDioxideConcentrationMeasurement::MeasurementMedium::Water,
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurement::LevelValue::Low
       )
@@ -204,8 +186,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "reads measured value" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measured_value: 450.0_f32,
         min_measured_value: 0.0_f32,
         max_measured_value: 5000.0_f32,
@@ -216,8 +197,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "reads level value" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurement::LevelValue::Critical
       )
 
@@ -225,8 +205,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "returns unsupported for NumericMeasurement attributes when feature disabled" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurement::LevelValue::Low
       )
 
@@ -234,8 +213,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "returns unsupported for LevelIndication attributes when feature disabled" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measured_value: 400.0_f32,
         min_measured_value: 0.0_f32,
         max_measured_value: 5000.0_f32,
@@ -248,8 +226,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
 
   describe "update methods" do
     it "updates measured value" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measured_value: 400.0_f32,
         min_measured_value: 0.0_f32,
         max_measured_value: 5000.0_f32,
@@ -261,8 +238,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "updates level value" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurement::LevelValue::Low
       )
 
@@ -271,8 +247,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "updates peak measured value" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measured_value: 400.0_f32,
         min_measured_value: 0.0_f32,
         max_measured_value: 5000.0_f32,
@@ -286,8 +261,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "updates average measured value" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measured_value: 400.0_f32,
         min_measured_value: 0.0_f32,
         max_measured_value: 5000.0_f32,
@@ -301,8 +275,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "calls callback when measured value changes" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measured_value: 400.0_f32,
         min_measured_value: 0.0_f32,
         max_measured_value: 5000.0_f32,
@@ -322,8 +295,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "calls callback when level value changes" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurement::LevelValue::Low
       )
 
@@ -340,8 +312,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "increments version when measured value changes" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measured_value: 400.0_f32,
         min_measured_value: 0.0_f32,
         max_measured_value: 5000.0_f32,
@@ -354,8 +325,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "does not increment version when value unchanged" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measured_value: 400.0_f32,
         min_measured_value: 0.0_f32,
         max_measured_value: 5000.0_f32,
@@ -370,8 +340,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
 
   describe "practical scenarios" do
     it "models indoor air quality sensor with numeric measurement" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measurement_medium: Matter::Cluster::CarbonDioxideConcentrationMeasurement::MeasurementMedium::Air,
         measured_value: 450.0_f32,
         min_measured_value: 0.0_f32,
@@ -387,8 +356,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "models simple level indicator sensor" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measurement_medium: Matter::Cluster::CarbonDioxideConcentrationMeasurement::MeasurementMedium::Air,
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurement::LevelValue::Medium
       )
@@ -399,8 +367,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "models sensor with peak tracking" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measurement_medium: Matter::Cluster::CarbonDioxideConcentrationMeasurement::MeasurementMedium::Air,
         measured_value: 400.0_f32,
         min_measured_value: 0.0_f32,
@@ -416,8 +383,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "models sensor with average tracking" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measurement_medium: Matter::Cluster::CarbonDioxideConcentrationMeasurement::MeasurementMedium::Air,
         measured_value: 450.0_f32,
         min_measured_value: 0.0_f32,
@@ -433,8 +399,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "models water quality monitoring sensor" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measurement_medium: Matter::Cluster::CarbonDioxideConcentrationMeasurement::MeasurementMedium::Water,
         measured_value: 25.0_f32,
         min_measured_value: 0.0_f32,
@@ -447,8 +412,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
     end
 
     it "models CO2 level monitoring over time" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         measurement_medium: Matter::Cluster::CarbonDioxideConcentrationMeasurement::MeasurementMedium::Air,
         measured_value: 400.0_f32,
         min_measured_value: 0.0_f32,
@@ -473,8 +437,7 @@ describe Matter::Cluster::CarbonDioxideConcentrationMeasurement do
 
   describe "error handling" do
     it "returns error for unsupported attribute" do
-      sensor = Matter::Cluster::CarbonDioxideConcentrationMeasurement.new(
-        endpoint_id,
+      sensor = build(Matter::Cluster::CarbonDioxideConcentrationMeasurement,
         level_value: Matter::Cluster::CarbonDioxideConcentrationMeasurement::LevelValue::Low
       )
 
