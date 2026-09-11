@@ -1,5 +1,6 @@
 require "./cluster"
 require "./network_commissioning/types"
+require "../commissioning"
 require "../network/backend"
 require "log"
 require "base64"
@@ -32,6 +33,8 @@ module Matter
     # - LastNetworkID (0x06): Network ID of last operation
     # - LastConnectErrorValue (0x07): Error value from last connect
     class NetworkCommissioning < Base
+      include Commissioning::NetworkStateStore
+
       Log = ::Log.for("matter.cluster.network_commissioning")
       cluster 0x0031, revision: 2
 
@@ -935,7 +938,8 @@ module Matter
       # made during a failed commissioning session.
       #
       # @param state Snapshot of network state (key-value pairs)
-      def restore_network_state(state : Hash(String, String)) : Nil
+      def restore_network_state(snapshot : Hash(String, String)) : Nil
+        state = snapshot
         Log.info { "Restoring network state from snapshot" }
 
         # Restore networks list

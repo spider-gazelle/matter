@@ -1,7 +1,7 @@
 require "../spec_helper"
 require "../../src/matter/cluster/administrator_commissioning"
 require "../../src/matter/cluster/general_commissioning"
-require "../../src/matter/failsafe_context"
+require "../../src/matter/commissioning"
 require "../../src/matter/session/context"
 
 # Symmetric key length used by Matter secure sessions.

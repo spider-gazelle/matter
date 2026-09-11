@@ -1,5 +1,5 @@
 require "./cluster"
-require "../failsafe_context"
+require "../commissioning"
 require "log"
 
 module Matter
@@ -12,6 +12,8 @@ module Matter
     #
     # Matter Core Spec §11.9 - General Commissioning Cluster
     class GeneralCommissioning < Base
+      include Commissioning::RollbackTargets
+
       Log = ::Log.for("matter.cluster.general_commissioning")
 
       cluster 0x0030, revision: 2
@@ -212,7 +214,7 @@ module Matter
       # State Management
       # ========================================================================
 
-      @failsafe_context : FailsafeContext?
+      @failsafe_context : Commissioning::FailsafeContext?
       @admin_fabric_index : UInt8?
       @commissioning_window_open : Bool = false
       @terms_conditions_accepted : Bool = false
@@ -387,7 +389,7 @@ module Matter
           end
         else
           # Create new context
-          failsafe_ctx = FailsafeContext.new(
+          failsafe_ctx = Commissioning::FailsafeContext.new(
             associated_fabric_index: session_fabric_index,
             breadcrumb: request.breadcrumb,
             expiry_callback: -> { handle_failsafe_expiry }
@@ -579,7 +581,7 @@ module Matter
         Log.warn { "Failsafe expired - performing rollback" }
 
         if context = @failsafe_context
-          context.rollback(general_commissioning: self)
+          context.rollback(self)
           @failsafe_context = nil
           @admin_fabric_index = nil
         end
@@ -621,7 +623,7 @@ module Matter
       def arm_fail_safe(expiry_seconds : UInt16) : Nil
         # Create failsafe context if needed
         unless @failsafe_context
-          @failsafe_context = FailsafeContext.new(
+          @failsafe_context = Commissioning::FailsafeContext.new(
             associated_fabric_index: nil,
             breadcrumb: @breadcrumb,
             expiry_callback: -> { handle_failsafe_expiry }
@@ -629,7 +631,7 @@ module Matter
         end
 
         # Arm the failsafe with the specified duration
-        @failsafe_context.as(FailsafeContext).arm(expiry_seconds, @max_cumulative_failsafe_seconds)
+        @failsafe_context.as(Commissioning::FailsafeContext).arm(expiry_seconds, @max_cumulative_failsafe_seconds)
       end
 
       # Disarm the failsafe
@@ -674,8 +676,18 @@ module Matter
       end
 
       # Get current failsafe context (for testing/inspection)
-      def failsafe_context : FailsafeContext?
+      def failsafe_context : Commissioning::FailsafeContext?
         @failsafe_context
+      end
+
+      # Network configuration this cluster hands a rollback, when one is attached.
+      # `Cluster::NetworkCommissioning` includes `Commissioning::NetworkStateStore`.
+      property network_state_store : Commissioning::NetworkStateStore?
+
+      # Restore the network configuration captured in `snapshot` (called during
+      # rollback). A device without a network store to restore skips the step.
+      def restore_network_state(snapshot : Hash(String, String)) : Nil
+        @network_state_store.try(&.restore_network_state(snapshot))
       end
 
       # Restore regulatory config from snapshot (called during rollback)
