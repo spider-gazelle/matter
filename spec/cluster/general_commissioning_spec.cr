@@ -114,7 +114,7 @@ module Matter::Cluster
         breadcrumb = attributes.find { |attr| attr.id.id == GeneralCommissioningCluster::ATTR_BREADCRUMB }
         breadcrumb.should_not be_nil
         breadcrumb_attr = breadcrumb.as(AttributeMetadata)
-        breadcrumb_attr.name.should eq("Breadcrumb")
+        breadcrumb_attr.name.should eq("breadcrumb")
         breadcrumb_attr.writable?.should be_true
       end
 
@@ -128,7 +128,7 @@ module Matter::Cluster
 
         arm_failsafe = commands.find { |cmd| cmd.id.id == GeneralCommissioningCluster::CMD_ARM_FAIL_SAFE }
         arm_failsafe.should_not be_nil
-        arm_failsafe.as(CommandMetadata).name.should eq("ArmFailSafe")
+        arm_failsafe.as(CommandMetadata).name.should eq("armFailSafe")
       end
     end
 
