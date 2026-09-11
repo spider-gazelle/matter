@@ -489,7 +489,7 @@ module Matter
       def remove_fabric(fabric_index : UInt8) : NocOutcome
         Log.debug { "RemoveFabric: fabric_index=#{fabric_index}" }
 
-        if fabric_index == DataType::FabricIndex::NO_FABRIC
+        if fabric_index == DataType::NO_FABRIC
           Log.warn { "RemoveFabric: fabric_index 0 (NO_FABRIC) is invalid" }
           return NocOutcome.new(NocStatus::InvalidFabricIndex, fabric_index, "Invalid fabric index (NO_FABRIC)")
         end

@@ -1,5 +1,17 @@
 # Lessons
 
+- 2026-09-12: A custom type used as a TLV field must work in both directions, and the two are not
+  symmetric. The tlv shard's `serialize_value` dispatches on a registered overload, so any
+  `define_id` type encodes; but its union branch (`lib/tlv/src/tlv/serializable.cr:406-503`) matches a
+  closed member set with no `else`, so a *nilable* custom type (`NodeId?`) encodes and then fails to
+  decode. Only `FabricIndex` broke encoding, because it never registered an overload. Test a new field
+  type by round-trip, nilable and non-nilable, not by encode alone. Report upstream to
+  `Crystal-Matter/tlv`.
+- 2026-09-12: `DataType::FabricIndex` wrapped a `UInt8` that is bare on the wire, so it could not be a
+  TLV field and every call site unwrapped it. Deleted; `DataType::NO_FABRIC` remains as the constant for
+  the spec's reserved index 0. A value struct earns its keep only when it carries behaviour the
+  primitive cannot.
+
 - 2026-09-11: The tlv shard should raise `TLV::DeserializationError` for enum/union mismatches; today it
   uses `raise "Cannot deserialize ..."` (a bare `Exception`, not `RuntimeError`) and `deserialize_field`
   only re-wraps `TypeCastError`. Until the shard is fixed, `Cluster::Base#decode` normalises every

@@ -106,27 +106,4 @@ module Matter::DataType
       end
     end
   end
-
-  describe FabricIndex do
-    it "distinguishes omitted from no fabric" do
-      FabricIndex.omit.index.should be_nil
-      FabricIndex.omit.omit?.should be_true
-      FabricIndex.no_fabric.index.should eq(0_u8)
-      FabricIndex.no_fabric.no_fabric?.should be_true
-      FabricIndex.no_fabric.omit?.should be_false
-      FabricIndex.new(1_u8).no_fabric?.should be_false
-    end
-
-    it "compares by index" do
-      FabricIndex.new(1_u8).should eq(FabricIndex.new(1_u8))
-      FabricIndex.omit.should eq(FabricIndex.omit)
-      FabricIndex.omit.should_not eq(FabricIndex.no_fabric)
-    end
-
-    it "round-trips through TLV, omitting when nil" do
-      FabricIndex.omit.to_slice.should be_empty
-      FabricIndex.from_slice(Bytes.empty).should eq(FabricIndex.omit)
-      FabricIndex.from_slice(FabricIndex.new(2_u8).to_slice).should eq(FabricIndex.new(2_u8))
-    end
-  end
 end

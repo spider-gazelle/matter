@@ -229,7 +229,7 @@ module Matter::Commissioning
       it "rejects the reserved fabric index" do
         service = credential_service(RecordingCredentialTarget.new)
 
-        outcome = service.remove_fabric(DataType::FabricIndex::NO_FABRIC)
+        outcome = service.remove_fabric(DataType::NO_FABRIC)
 
         outcome.status.should eq(NocStatus::InvalidFabricIndex)
       end

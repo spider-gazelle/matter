@@ -27,7 +27,7 @@ describe Matter::Cluster::OperationalCredentials do
     it "reports the accessing fabric, none outside a fabric" do
       cluster = build_op_creds_cluster
 
-      cluster.current_fabric_index.should eq(Matter::DataType::FabricIndex::NO_FABRIC)
+      cluster.current_fabric_index.should eq(Matter::DataType::NO_FABRIC)
       read(cluster, Matter::Cluster::OperationalCredentials::ATTR_CURRENT_FABRIC_INDEX, 1_u8).should eq(1_u8)
     end
   end

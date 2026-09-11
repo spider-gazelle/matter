@@ -304,7 +304,7 @@ module Matter
 
       # CurrentFabricIndex attribute (0x05): the accessing fabric, none outside one
       def current_fabric_index(fabric_index : UInt8? = nil) : UInt8
-        fabric_index || DataType::FabricIndex::NO_FABRIC
+        fabric_index || DataType::NO_FABRIC
       end
 
       # Get fabric descriptor by index (for tests)
