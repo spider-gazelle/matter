@@ -16,7 +16,7 @@ require "../interaction_model/tlv_messages"
 require "./im_handler"
 require "./mrp_cache"
 require "./persistence"
-require "./session_manager"
+require "./session_registry"
 require "tlv"
 
 module Matter
@@ -27,7 +27,6 @@ module Matter
     # - Secure Channel protocol (0x0000) - PASE, CASE, etc.
     # - Interaction Model protocol (0x0001) - Read, Write, Invoke, Subscribe
     class MessageHandler
-      include SessionManager
       Log = ::Log.for("matter.protocol.message_handler")
 
       # Protocol IDs
@@ -35,12 +34,6 @@ module Matter
       PROTOCOL_INTERACTION_MODEL  = 0x0001_u16
       PROTOCOL_BDX                = 0x0002_u16
       PROTOCOL_USER_DIRECTED_COMM = 0x0003_u16
-
-      # Session management defaults
-      DEFAULT_MAX_SESSIONS              = 32_u16     # Maximum sessions per device
-      DEFAULT_SUBSCRIPTION_GRACE_PERIOD = 30.seconds # Grace period after subscription expiry
-      DEFAULT_TRANSPORT_RETRY_WINDOW    = 4.seconds  # Retry window before transport failure cleanup
-      DEFAULT_SESSION_CLEANUP_INTERVAL  = 5.seconds  # How often to check for expired sessions
 
       # Secure Channel Message Types
       MSG_STANDALONE_ACK       = 0x10_u8
@@ -56,7 +49,9 @@ module Matter
 
       getter transport : Transport::UDPTransport
       getter pase_responder : Session::Pase::PaseResponder?
-      getter sessions : Hash(UInt16, Session::SecureContext)
+
+      # Sessions, subscriptions and the lock every protocol fiber shares.
+      getter registry : SessionRegistry
 
       # The data model this handler serves: endpoints, their clusters and the
       # flat index the Interaction Model resolves paths against.
@@ -96,9 +91,6 @@ module Matter
       property case_responder_session_id : UInt16?
       property case_fabric : Fabric?
 
-      # Subscription support
-      property next_subscription_id : UInt32 = 1_u32
-
       # Pending subscription responses - keyed by exchange_id
       # After sending ReportData, we wait for StatusResponse before sending SubscribeResponse
       # Supports chunked responses - remaining_chunks stores chunks yet to be sent
@@ -132,181 +124,6 @@ module Matter
 
       @pending_read_responses : Hash(UInt16, PendingReadResponse) = {} of UInt16 => PendingReadResponse
 
-      # Reason for pending session cleanup
-      enum CleanupReason
-        Superseded           # New session from same peer superseded this one
-        SubscriptionExpired  # All subscriptions on session expired
-        TransportFailure     # Transport reported unreachable
-        CaseResumptionFailed # CASE resumption failed
-      end
-
-      # Session pending cleanup (with grace period for subscription migration)
-      # When a new CASE session supersedes an old one, we don't immediately remove the old
-      # session if it has active subscriptions - we give subscribers time to migrate.
-      class PendingSessionCleanup
-        property session_id : UInt16
-        property cleanup_at : Time
-        property reason : CleanupReason
-        property? cancel_on_traffic : Bool
-
-        def initialize(
-          @session_id,
-          grace_period : Time::Span = 30.seconds,
-          @reason : CleanupReason = CleanupReason::Superseded,
-          @cancel_on_traffic : Bool = false,
-        )
-          @cleanup_at = Time.utc + grace_period
-        end
-
-        def ready? : Bool
-          Time.utc >= @cleanup_at
-        end
-      end
-
-      @pending_session_cleanups : Array(PendingSessionCleanup) = [] of PendingSessionCleanup
-
-      # Active subscriptions - keyed by subscription_id
-      # After SubscribeResponse is sent, subscriptions are moved here for ongoing updates
-      class ActiveSubscription
-        property subscription_id : UInt32
-        property min_interval : UInt16
-        property max_interval : UInt16
-        property peer : Socket::IPAddress
-        property session : Session::SecureContext
-        property attribute_paths : Array(InteractionModel::AttributePath)
-        property last_report_time : Time
-        property exchange_id : UInt16
-
-        def initialize(
-          @subscription_id,
-          @min_interval,
-          @max_interval,
-          @peer,
-          @session,
-          @attribute_paths,
-          @exchange_id,
-        )
-          @last_report_time = Time.utc
-        end
-
-        # Check if a path matches any subscribed paths (including wildcards)
-        def matches?(endpoint_id : UInt16, cluster_id : UInt32, attribute_id : UInt32) : Bool
-          @attribute_paths.any? do |path|
-            endpoint_match = path.endpoint.nil? || path.endpoint == endpoint_id
-            cluster_match = path.cluster.nil? || path.cluster == cluster_id
-            attribute_match = path.attribute.nil? || path.attribute == attribute_id
-            endpoint_match && cluster_match && attribute_match
-          end
-        end
-
-        # One subscribed attribute path in its persisted form.
-        struct AttributePathRecord
-          include Storage::Record
-
-          getter endpoint : UInt16?
-          getter cluster : UInt32?
-          getter attribute : UInt32?
-          getter list_index : UInt16?
-
-          def initialize(@endpoint : UInt16?, @cluster : UInt32?, @attribute : UInt32?, @list_index : UInt16?)
-          end
-
-          def self.from_path(path : InteractionModel::AttributePath) : AttributePathRecord
-            new(path.endpoint, path.cluster, path.attribute, path.list_index)
-          end
-
-          def to_path : InteractionModel::AttributePath
-            InteractionModel::AttributePath.new(endpoint: @endpoint, cluster: @cluster, attribute: @attribute, list_index: @list_index)
-          end
-        end
-
-        # The persisted form of a subscription (`subscriptions/<subscription_id>`).
-        # The session is referenced by id and resolved on restore.
-        struct SubscriptionRecord
-          include Storage::Record
-
-          getter subscription_id : UInt32
-          getter min_interval : UInt16
-          getter max_interval : UInt16
-          getter peer_address : String
-          getter peer_port : UInt16
-          getter session_id : UInt16
-          getter exchange_id : UInt16
-          getter last_report_at : Time
-          getter attribute_paths : Array(AttributePathRecord)
-
-          def initialize(
-            @subscription_id : UInt32,
-            @min_interval : UInt16,
-            @max_interval : UInt16,
-            @peer_address : String,
-            @peer_port : UInt16,
-            @session_id : UInt16,
-            @exchange_id : UInt16,
-            @last_report_at : Time,
-            @attribute_paths : Array(AttributePathRecord),
-          )
-          end
-        end
-
-        def to_record : SubscriptionRecord
-          SubscriptionRecord.new(
-            subscription_id: @subscription_id,
-            min_interval: @min_interval,
-            max_interval: @max_interval,
-            peer_address: @peer.address,
-            peer_port: @peer.port.to_u16,
-            session_id: @session.session_id,
-            exchange_id: @exchange_id,
-            last_report_at: @last_report_time,
-            attribute_paths: @attribute_paths.map { |path| AttributePathRecord.from_path(path) }
-          )
-        end
-
-        # Rebuilds a subscription from its record and the resolved *session*.
-        def self.from_record(record : SubscriptionRecord, session : Session::SecureContext) : ActiveSubscription
-          subscription = new(
-            subscription_id: record.subscription_id,
-            min_interval: record.min_interval,
-            max_interval: record.max_interval,
-            peer: Socket::IPAddress.new(record.peer_address, record.peer_port.to_i),
-            session: session,
-            attribute_paths: record.attribute_paths.map(&.to_path),
-            exchange_id: record.exchange_id
-          )
-          subscription.last_report_time = record.last_report_at
-          subscription
-        end
-      end
-
-      @active_subscriptions : Hash(UInt32, ActiveSubscription) = {} of UInt32 => ActiveSubscription
-
-      # Public getter for active subscriptions (for persistence)
-      getter active_subscriptions
-
-      # Persist all active CASE sessions to storage
-      # Call this periodically (e.g., every 30s) or before graceful shutdown
-      # to ensure message counters and other session state are up to date
-      def persist_all_sessions : Nil
-        return unless persistence = @persistence
-
-        persisted = 0
-        @sessions.each_value do |session|
-          next unless session.case_session?
-          begin
-            persistence.session_updated(self, session)
-            persisted += 1
-          rescue ex
-            Log.error(exception: ex) do
-              "Failed to persist session #{session.session_id} " \
-              "(fabric_index=#{session.fabric_index.inspect} peer_node_id=#{session.peer_node_id.try(&.id).inspect} " \
-              "peer_session_id=#{session.peer_session_id})"
-            end
-          end
-        end
-        Log.debug { "Persisted #{persisted} CASE session(s)" } if persisted > 0
-      end
-
       # Cached encrypted responses, replayed when a peer retransmits a request.
       @mrp_cache : MrpCache
 
@@ -323,27 +140,22 @@ module Matter
       # The device should use this to switch from commissioning to operational mDNS advertisement
       property on_commissioned : Proc(Fabric, Nil)?
 
-      # Session established callback - called when a new secure session is established (CASE or PASE)
-      # The device can use this to persist sessions for reconnection after restart
-      property on_session_established : Proc(Session::SecureContext, Nil)?
-
-      # Subscription established callback - called when a new subscription becomes active
-      # The device can use this to persist subscriptions for reconnection after restart
-      property on_subscription_established : Proc(ActiveSubscription, Nil)?
-
-      # Mutex to ensure message processing is serialized
-      # iPhone and other controllers may send multiple messages back-to-back,
-      # and without synchronization, responses could get interleaved or state corrupted
-      @message_mutex : Mutex = Mutex.new
-
-      # Session management configuration
-      property max_sessions : UInt16
-      property subscription_grace_period : Time::Span
-      property transport_retry_window : Time::Span
-
-      # Background cleanup fiber control
-      @session_cleanup_fiber_running : Bool = false
-      @subscription_cleanup_fiber_running : Bool = false
+      # The session and subscription state, and the callbacks the device hooks
+      # into, live in the registry; these delegate so the rest of the library
+      # and the specs address one object.
+      delegate sessions, active_subscriptions, to: @registry
+      delegate next_subscription_id, :next_subscription_id=, to: @registry
+      delegate max_sessions, :max_sessions=, to: @registry
+      delegate subscription_grace_period, :subscription_grace_period=, to: @registry
+      delegate transport_retry_window, :transport_retry_window=, to: @registry
+      delegate on_session_established, :on_session_established=, to: @registry
+      delegate on_session_removed, :on_session_removed=, to: @registry
+      delegate on_subscription_established, :on_subscription_established=, to: @registry
+      delegate on_subscription_removed, :on_subscription_removed=, to: @registry
+      delegate delete_session, persist_all_sessions, to: @registry
+      delegate process_pending_cleanups, process_expired_subscriptions, to: @registry
+      delegate cancel_cleanup_on_traffic, mark_transport_failure, mark_case_resumption_failed, to: @registry
+      delegate renew_subscription, find_matching_subscription, to: @registry
 
       # Exchange ID counter for initiating new exchanges (e.g., subscription updates)
       # Start at a random value to avoid conflicts with controller-initiated exchanges
@@ -358,12 +170,19 @@ module Matter
         @salt : Bytes = Random::Secure.random_bytes(32),
         @vendor_id : UInt16 = 0xFFF1_u16,
         @product_id : UInt16 = 0x8001_u16,
-        @max_sessions : UInt16 = DEFAULT_MAX_SESSIONS,
-        @subscription_grace_period : Time::Span = DEFAULT_SUBSCRIPTION_GRACE_PERIOD,
-        @transport_retry_window : Time::Span = DEFAULT_TRANSPORT_RETRY_WINDOW,
+        max_sessions : UInt16 = SessionRegistry::DEFAULT_MAX_SESSIONS,
+        subscription_grace_period : Time::Span = SessionRegistry::DEFAULT_SUBSCRIPTION_GRACE_PERIOD,
+        transport_retry_window : Time::Span = SessionRegistry::DEFAULT_TRANSPORT_RETRY_WINDOW,
         @persistence : Persistence::Base? = nil,
       )
-        @sessions = {} of UInt16 => Session::SecureContext
+        @mrp_cache = MrpCache.new(@transport)
+        @registry = SessionRegistry.new(
+          mrp_cache: @mrp_cache,
+          persistence: @persistence,
+          max_sessions: max_sessions,
+          subscription_grace_period: subscription_grace_period,
+          transport_retry_window: transport_retry_window
+        )
         @pase_responder = nil
         @case_responder = nil
         @case_initiator_session_id = nil
@@ -373,7 +192,6 @@ module Matter
         # Note: @case_fabric is now a property with type Fabric?
         @on_commissioned = nil
         @operational_credentials_cluster = nil
-        @mrp_cache = MrpCache.new(@transport)
 
         # Initialize clusters
         @node = Node.new
@@ -387,14 +205,19 @@ module Matter
         # Restore persisted protocol state (CASE sessions + subscriptions)
         if persistence = @persistence
           begin
-            persistence.restore(self)
+            persistence.restore(@registry, @fabric_table)
           rescue ex
             Log.error(exception: ex) { "Failed to restore protocol persistence (persistence=#{persistence.class})" }
           end
         end
 
-        # Start background cleanup fibers
-        spawn_subscription_cleanup_fiber
+        @registry.start
+      end
+
+      # Stops the registry background sweep. The transport is closed by its
+      # owner; this releases what the handler itself started.
+      def close : Nil
+        @registry.close
       end
 
       # The clusters of the node, keyed by `{endpoint, cluster}`.
@@ -445,7 +268,7 @@ module Matter
         # attestation signature must be over (attestation_elements || attestation_challenge)
         operational_creds.session_lookup = ->(session_id : UInt64) : Bytes? do
           # Look up session by ID and return its attestation challenge
-          session = @sessions[session_id.to_u16]?
+          session = @registry.sessions[session_id.to_u16]?
           if session
             Log.trace { "session_lookup: session_id=#{session_id} found, returning attestation_challenge" }
             session.attestation_challenge
@@ -534,11 +357,22 @@ module Matter
       # This is important to avoid overwhelming controllers (especially iOS) with rapid-fire updates.
       # Each tuple is (endpoint_id, cluster_id, attribute_id).
       def notify_subscriptions_batched(attributes : Array(Tuple(UInt16, UInt32, UInt32)))
-        Log.debug { "notify_subscriptions_batched: #{attributes.size} attribute(s), active=#{@active_subscriptions.size}" }
-        return if @active_subscriptions.empty? || attributes.empty?
+        return if attributes.empty?
 
-        # For each subscription, collect all matching attribute reports and send as one ReportData
-        @active_subscriptions.each do |sub_id, subscription|
+        # Reports are raised from cluster callbacks on arbitrary fibers; the
+        # registry lock is what keeps the exchange id counter and the session
+        # message counters consistent with inbound message handling.
+        @registry.synchronize do
+          notify_locked(attributes)
+        end
+      end
+
+      # Builds and sends one ReportData per matching subscription.
+      # The caller must hold the registry lock.
+      private def notify_locked(attributes : Array(Tuple(UInt16, UInt32, UInt32)))
+        Log.debug { "notify_subscriptions_batched: #{attributes.size} attribute(s), active=#{@registry.active_subscriptions.size}" }
+
+        @registry.active_subscriptions.each do |sub_id, subscription|
           attribute_reports = [] of InteractionModel::AttributeReportIB
 
           attributes.each do |(endpoint_id, cluster_id, attribute_id)|
@@ -609,7 +443,7 @@ module Matter
         # Serialize all message processing to prevent race conditions
         # iPhone and other controllers may send multiple messages back-to-back,
         # and without synchronization, responses could get interleaved or state corrupted
-        @message_mutex.synchronize do
+        @registry.synchronize do
           session_id = msg.packet_header.session_id
 
           # Decrypt encrypted messages (session_id != 0) BEFORE routing
@@ -617,7 +451,7 @@ module Matter
             Log.trace { "Message is encrypted (session_id=#{session_id}), decrypting" }
 
             # Get secure session context
-            session = @sessions[session_id]?
+            session = @registry.sessions[session_id]?
             unless session
               Log.warn { "Dropping encrypted message: no session found (session_id=#{session_id})" }
               return
@@ -636,7 +470,7 @@ module Matter
             end
 
             msg = decrypt_message(msg, session)
-            cancel_cleanup_on_traffic(session_id)
+            @registry.cancel_cleanup_on_traffic(session_id)
           end
 
           Log.debug { "Received message: protocol=0x#{msg.payload_header.protocol_id.to_s(16)}, type=0x#{msg.payload_header.message_type.to_s(16)}" }
@@ -717,7 +551,7 @@ module Matter
 
         # Get secure session context (needed for sending response)
         session_id = msg.packet_header.session_id
-        session = @sessions[session_id]?
+        session = @registry.sessions[session_id]?
         unless session
           Log.warn { "Dropping IM message: no session found (session_id=#{session_id})" }
           return
@@ -882,24 +716,7 @@ module Matter
                 attribute_paths: pending.attribute_paths,
                 exchange_id: exchange_id
               )
-              @active_subscriptions[pending.subscription_id] = active_sub
-
-              Log.info { "Subscription #{pending.subscription_id} is now active (watching #{pending.attribute_paths.size} path(s))" }
-
-              # Notify device about new subscription for persistence
-              if persistence = @persistence
-                begin
-                  persistence.subscription_established(self, active_sub)
-                rescue ex
-                  Log.error(exception: ex) do
-                    "Failed persisting subscription #{active_sub.subscription_id} " \
-                    "(peer=#{active_sub.peer} exchange=#{active_sub.exchange_id} session_id=#{active_sub.session.session_id} paths=#{active_sub.attribute_paths.size})"
-                  end
-                end
-              end
-              if callback = @on_subscription_established
-                callback.call(active_sub)
-              end
+              @registry.add_subscription(active_sub)
             end
           else
             # Error - subscription failed
@@ -1075,8 +892,7 @@ module Matter
         end
 
         # Generate subscription ID
-        subscription_id = @next_subscription_id
-        @next_subscription_id += 1
+        subscription_id = @registry.allocate_subscription_id
 
         Log.info { "Created subscription #{subscription_id}" }
 
@@ -1531,11 +1347,7 @@ module Matter
           initiator: false # We're the responder
         )
 
-        # Enforce session table size limit before adding new session
-        enforce_session_limit
-
-        # Store session for future encrypted communication
-        @sessions[session_id] = secure_context
+        @registry.establish_session(secure_context)
 
         Log.info { "PASE secure session established (session_id=#{session_id}, peer_session_id=#{peer_session_id})" }
 
@@ -1659,14 +1471,7 @@ module Matter
               attribute_paths: pending.attribute_paths,
               exchange_id: exchange_id
             )
-            @active_subscriptions[pending.subscription_id] = active_sub
-
-            Log.info { "Subscription #{pending.subscription_id} is now active (watching #{pending.attribute_paths.size} path(s))" }
-
-            # Notify device about new subscription for persistence
-            if callback = @on_subscription_established
-              callback.call(active_sub)
-            end
+            @registry.add_subscription(active_sub)
           end
           # Check if this ACK is for a pending read response with remaining chunks
         elsif pending_read = @pending_read_responses[exchange_id]?
@@ -1886,561 +1691,6 @@ module Matter
         end
       end
 
-      # ========================================================================
-      # Session Cleanup - Superseded Session Management
-      # ========================================================================
-      #
-      # When a new CASE session is established from the same peer (same fabric_index
-      # and peer_node_id), the old session is considered "superseded". The old session
-      # should be cleaned up, but with a grace period if it has active subscriptions
-      # to allow subscription migration.
-      #
-      # Matter spec section 4.13.2.5 states that when a new session is established
-      # that supersedes an existing session, the node SHOULD close the old session.
-
-      # Find sessions that are superseded by a new session
-      # A session is superseded if:
-      # - It has the same fabric_index as the new session
-      # - It has the same peer_node_id as the new session
-      # - It has a lower session_id than the new session (new > old)
-      # - It is a CASE session (not PASE)
-      private def find_superseded_sessions(new_session : Session::SecureContext) : Array(Session::SecureContext)
-        return [] of Session::SecureContext unless new_session.case_session?
-        return [] of Session::SecureContext unless new_session.fabric_index
-
-        new_fabric = new_session.fabric_index.as(UInt8)
-        new_peer_node = new_session.peer_node_id
-
-        @sessions.values.select do |session|
-          next false unless session.case_session?                        # Only CASE sessions
-          next false unless session.fabric_index == new_fabric           # Same fabric
-          next false unless session.session_id != new_session.session_id # Not the new session itself
-          next false if new_peer_node.nil? || session.peer_node_id.nil?  # Both must have peer_node_id
-
-                        # Check same peer node
-          same_peer = session.peer_node_id.as(DataType::NodeId).id == new_peer_node.as(DataType::NodeId).id
-
-          # For supersession, typically the new session ID > old session ID
-          # However, session IDs can wrap around, so we compare creation time as tiebreaker
-          older_session = session.creation_time < new_session.creation_time
-
-          same_peer && older_session
-        end
-      end
-
-      # Find the newest session that supersedes the given session
-      # This is the inverse of find_superseded_sessions - given an old session,
-      # find the newest active session for the same fabric/peer that can take over
-      private def find_superseding_session(old_session_id : UInt16) : Session::SecureContext?
-        old_session = @sessions[old_session_id]?
-        return unless old_session
-        return unless old_session.case_session?
-        return unless old_session.fabric_index
-
-        old_fabric = old_session.fabric_index.as(UInt8)
-        old_peer_node = old_session.peer_node_id
-        return if old_peer_node.nil?
-
-        # Find all newer sessions for the same fabric/peer
-        candidates = @sessions.values.select do |session|
-          next false unless session.case_session?
-          next false unless session.fabric_index == old_fabric
-          next false unless session.session_id != old_session_id
-          next false if session.peer_node_id.nil?
-
-          same_peer = session.peer_node_id.as(DataType::NodeId).id == old_peer_node.as(DataType::NodeId).id
-          newer_session = session.creation_time > old_session.creation_time
-
-          same_peer && newer_session
-        end
-
-        # Return the newest candidate (most recently created)
-        candidates.max_by?(&.creation_time)
-      end
-
-      # Check if a session has any active subscriptions
-      private def session_has_subscriptions?(session_id : UInt16) : Bool
-        @active_subscriptions.values.any? { |sub| sub.session.session_id == session_id }
-      end
-
-      # Get all subscriptions for a session
-      private def get_session_subscriptions(session_id : UInt16) : Array(ActiveSubscription)
-        @active_subscriptions.values.select { |sub| sub.session.session_id == session_id }
-      end
-
-      # Clean up superseded sessions after a new CASE session is established
-      #
-      # Sessions with active subscriptions have their subscriptions MIGRATED to the
-      # new session before the old session is removed. This ensures subscription
-      # continuity when controllers re-establish CASE sessions.
-      private def cleanup_superseded_sessions(new_session : Session::SecureContext) : Nil
-        superseded = find_superseded_sessions(new_session)
-        return if superseded.empty?
-
-        Log.info { "Found #{superseded.size} superseded session(s) to clean up" }
-
-        superseded.each do |old_session|
-          session_id = old_session.session_id
-
-          # Migrate subscriptions to new session before removing old session
-          migrate_subscriptions_to_new_session(session_id, new_session)
-
-          # Remove old session (subscriptions already migrated, not deleted)
-          remove_session_only(session_id)
-        end
-      end
-
-      # Migrate subscriptions from an old session to a new session
-      # This preserves subscription continuity when controllers re-establish CASE
-      private def migrate_subscriptions_to_new_session(old_session_id : UInt16, new_session : Session::SecureContext) : Nil
-        subs_to_migrate = @active_subscriptions.select { |_, sub| sub.session.session_id == old_session_id }
-
-        if subs_to_migrate.empty?
-          Log.info { "No subscriptions to migrate from session #{old_session_id}" }
-          return
-        end
-
-        Log.info { "Migrating #{subs_to_migrate.size} subscription(s) from session #{old_session_id} to session #{new_session.session_id}" }
-
-        subs_to_migrate.each do |sub_id, subscription|
-          # Update the subscription's session reference to the new session
-          subscription.session = new_session
-
-          Log.info { "Migrated subscription #{sub_id} to new session #{new_session.session_id}" }
-
-          # Persist the updated subscription
-          if persistence = @persistence
-            begin
-              persistence.subscription_established(self, subscription)
-            rescue ex
-              Log.error(exception: ex) do
-                "Failed persisting migrated subscription #{sub_id} " \
-                "(old_session_id=#{old_session_id} new_session_id=#{new_session.session_id} peer=#{subscription.peer} paths=#{subscription.attribute_paths.size})"
-              end
-            end
-          end
-        end
-      end
-
-      # Remove a session WITHOUT removing its subscriptions (used after migration)
-      private def remove_session_only(session_id : UInt16) : Nil
-        @mrp_cache.clear_session(session_id)
-
-        # Remove the session from pending cleanups if present
-        @pending_session_cleanups.reject! { |pending| pending.session_id == session_id }
-
-        # Remove the session
-        if session = @sessions.delete(session_id)
-          if persistence = @persistence
-            begin
-              persistence.session_removed(self, session_id)
-            rescue ex
-              Log.error(exception: ex) do
-                "Failed removing persisted session #{session_id} " \
-                "(fabric_index=#{session.fabric_index.inspect} peer_node_id=#{session.peer_node_id.try(&.id).inspect})"
-              end
-            end
-          end
-          Log.info { "Removed superseded session #{session_id} (fabric=#{session.fabric_index}, peer=#{session.peer_node_id.try(&.id)})" }
-        end
-      end
-
-      # Remove a session and all its associated subscriptions
-      private def remove_session_and_subscriptions(session_id : UInt16) : Nil
-        @mrp_cache.clear_session(session_id)
-
-        # Remove subscriptions first
-        subs_to_remove = @active_subscriptions.select { |_, sub| sub.session.session_id == session_id }
-        subs_to_remove.each do |sub_id, _|
-          @active_subscriptions.delete(sub_id)
-          if persistence = @persistence
-            begin
-              persistence.subscription_removed(self, sub_id)
-            rescue ex
-              Log.error(exception: ex) do
-                "Failed removing persisted subscription #{sub_id} " \
-                "(session_id=#{session_id})"
-              end
-            end
-          end
-          Log.info { "Removed subscription #{sub_id} (from superseded session #{session_id})" }
-        end
-
-        # Remove the session
-        if session = @sessions.delete(session_id)
-          if persistence = @persistence
-            begin
-              persistence.session_removed(self, session_id)
-            rescue ex
-              Log.error(exception: ex) do
-                "Failed removing persisted session #{session_id} " \
-                "(fabric_index=#{session.fabric_index.inspect} peer_node_id=#{session.peer_node_id.try(&.id).inspect})"
-              end
-            end
-          end
-          Log.info { "Removed superseded session #{session_id} (fabric=#{session.fabric_index}, peer=#{session.peer_node_id.try(&.id)})" }
-        end
-      end
-
-      # Remove a session (and its subscriptions) from application code.
-      #
-      # This updates internal state and triggers persistence hooks, then calls
-      # `on_session_removed` if configured.
-      def delete_session(session_id : UInt16) : Bool
-        existed = @sessions.has_key?(session_id)
-        remove_session_and_subscriptions(session_id)
-        if existed
-          if callback = @on_session_removed
-            callback.call(session_id)
-          end
-        end
-        existed
-      end
-
-      # Remove an active subscription from application code.
-      #
-      # This updates internal state and triggers persistence hooks, then calls
-      # `on_subscription_removed` if configured.
-      def delete_subscription(subscription_id : UInt32) : Bool
-        removed_subscription = @active_subscriptions.delete(subscription_id)
-        removed = !removed_subscription.nil?
-        if sub = removed_subscription
-          if persistence = @persistence
-            begin
-              persistence.subscription_removed(self, subscription_id)
-            rescue ex
-              Log.error(exception: ex) do
-                "Failed removing persisted subscription #{subscription_id} " \
-                "(session_id=#{sub.session.session_id} peer=#{sub.peer} paths=#{sub.attribute_paths.size})"
-              end
-            end
-          end
-          if callback = @on_subscription_removed
-            callback.call(subscription_id)
-          end
-        end
-        removed
-      end
-
-      # Callback fired when a superseded session is cleaned up
-      # Device can use this to remove session from persistent storage
-      property on_session_removed : Proc(UInt16, Nil)?
-
-      # Spawn a fiber to process pending session cleanups
-      # This runs in the background and checks periodically for sessions
-      # whose grace period has expired
-      @cleanup_fiber_running : Bool = false
-
-      private def spawn_cleanup_fiber : Nil
-        return if @cleanup_fiber_running
-        @cleanup_fiber_running = true
-
-        spawn do
-          while !@pending_session_cleanups.empty?
-            # Find cleanups that are ready
-            ready = @pending_session_cleanups.select(&.ready?)
-
-            ready.each do |pending|
-              @pending_session_cleanups.delete(pending)
-              Log.info { "Grace period expired for session #{pending.session_id} - cleaning up" }
-              remove_session_and_subscriptions(pending.session_id)
-
-              # Notify device to update persistent storage
-              if callback = @on_session_removed
-                callback.call(pending.session_id)
-              end
-            end
-
-            # Sleep before checking again
-            sleep(5.seconds) unless @pending_session_cleanups.empty?
-          end
-
-          @cleanup_fiber_running = false
-        end
-      end
-
-      # Manually trigger cleanup of expired pending sessions (useful for testing)
-      def process_pending_cleanups : Int32
-        count = 0
-        ready = @pending_session_cleanups.select(&.ready?)
-
-        ready.each do |pending|
-          @pending_session_cleanups.delete(pending)
-          Log.info { "Processing pending cleanup for session #{pending.session_id} (reason: #{pending.reason})" }
-
-          # Check if there's a newer superseding session that can take over subscriptions
-          if session_has_subscriptions?(pending.session_id)
-            if superseding = find_superseding_session(pending.session_id)
-              Log.info { "Found superseding session #{superseding.session_id} for pending cleanup of #{pending.session_id}" }
-              migrate_subscriptions_to_new_session(pending.session_id, superseding)
-              remove_session_only(pending.session_id)
-            else
-              # No superseding session - subscriptions must be removed with session
-              remove_session_and_subscriptions(pending.session_id)
-            end
-          else
-            # No subscriptions to worry about
-            remove_session_and_subscriptions(pending.session_id)
-          end
-
-          # Notify device
-          if callback = @on_session_removed
-            callback.call(pending.session_id)
-          end
-          count += 1
-        end
-
-        count
-      end
-
-      # ========================================================================
-      # Session Table Size Management
-      # ========================================================================
-
-      # Enforce session table size limit by evicting oldest sessions
-      # Called before adding a new session to ensure we don't exceed max_sessions
-      private def enforce_session_limit : Nil
-        return if @sessions.size < @max_sessions
-
-        # Find oldest sessions to evict (PASE sessions first, then oldest CASE)
-        sessions_to_evict = @sessions.values.sort_by! do |session|
-          # PASE sessions get higher priority for eviction (lower sort value)
-          # Then sort by creation time (oldest first)
-          pase_priority = session.case_session? ? 1 : 0
-          {pase_priority, session.creation_time}
-        end
-
-        # Evict oldest sessions until we're under the limit
-        while @sessions.size >= @max_sessions && !sessions_to_evict.empty?
-          session = sessions_to_evict.shift
-          Log.info { "Evicting oldest session #{session.session_id} to stay under limit of #{@max_sessions}" }
-
-          # Check if there's a newer superseding session that can take over subscriptions
-          if session_has_subscriptions?(session.session_id)
-            if superseding = find_superseding_session(session.session_id)
-              Log.info { "Found superseding session #{superseding.session_id} for eviction of #{session.session_id}" }
-              migrate_subscriptions_to_new_session(session.session_id, superseding)
-              remove_session_only(session.session_id)
-            else
-              remove_session_and_subscriptions(session.session_id)
-            end
-          else
-            remove_session_and_subscriptions(session.session_id)
-          end
-
-          # Notify device
-          if callback = @on_session_removed
-            callback.call(session.session_id)
-          end
-        end
-      end
-
-      # ========================================================================
-      # Subscription Timeout Management
-      # ========================================================================
-
-      # Callback fired when a subscription is removed (expired or renewed)
-      property on_subscription_removed : Proc(UInt32, Nil)?
-
-      # Check if a subscription has expired
-      # Subscription expires when: current_time > last_report_time + max_interval
-      private def subscription_expired?(subscription : ActiveSubscription) : Bool
-        expiry_time = subscription.last_report_time + subscription.max_interval.seconds
-        Time.utc > expiry_time
-      end
-
-      # Process expired subscriptions and schedule session cleanup if needed
-      def process_expired_subscriptions : Int32
-        count = 0
-        expired_subs = @active_subscriptions.values.select { |sub| subscription_expired?(sub) }
-
-        expired_subs.each do |sub|
-          session_id = sub.session.session_id
-          Log.info { "Subscription #{sub.subscription_id} expired (session #{session_id})" }
-
-          # Remove the subscription
-          @active_subscriptions.delete(sub.subscription_id)
-          count += 1
-
-          # Notify device
-          if persistence = @persistence
-            begin
-              persistence.subscription_removed(self, sub.subscription_id)
-            rescue ex
-              Log.error(exception: ex) do
-                "Failed removing persisted subscription #{sub.subscription_id} " \
-                "(session_id=#{session_id} peer=#{sub.peer})"
-              end
-            end
-          end
-          if callback = @on_subscription_removed
-            callback.call(sub.subscription_id)
-          end
-
-          # Check if session should be scheduled for cleanup
-          # If no subscriptions remain and no traffic for grace period, cleanup session
-          unless session_has_subscriptions?(session_id)
-            # Schedule session for cleanup with grace period
-            # Use cancel_on_traffic=true so new traffic cancels the cleanup
-            already_pending = @pending_session_cleanups.any? { |pending| pending.session_id == session_id }
-            unless already_pending
-              Log.info { "Session #{session_id} has no more subscriptions - scheduling cleanup with #{@subscription_grace_period} grace period" }
-              @pending_session_cleanups << PendingSessionCleanup.new(
-                session_id,
-                @subscription_grace_period,
-                CleanupReason::SubscriptionExpired,
-                cancel_on_traffic: true
-              )
-              spawn_cleanup_fiber
-            end
-          end
-        end
-
-        count
-      end
-
-      # Spawn background fiber to periodically check for expired subscriptions
-      # Also persists session state every 30 seconds (6 intervals)
-      private def spawn_subscription_cleanup_fiber : Nil
-        return if @subscription_cleanup_fiber_running
-        @subscription_cleanup_fiber_running = true
-
-        spawn do
-          persist_counter = 0
-          loop do
-            sleep(DEFAULT_SESSION_CLEANUP_INTERVAL)
-            process_expired_subscriptions
-            process_pending_cleanups
-
-            # Persist session state every 6 intervals (30 seconds)
-            persist_counter += 1
-            if persist_counter >= 6
-              persist_all_sessions
-              persist_counter = 0
-            end
-          end
-        rescue ex
-          Log.error(exception: ex) do
-            "Subscription cleanup fiber crashed " \
-            "(active_subscriptions=#{@active_subscriptions.size} sessions=#{@sessions.size} pending_cleanups=#{@pending_session_cleanups.size})"
-          end
-          @subscription_cleanup_fiber_running = false
-        end
-      end
-
-      # Handle subscription renewal - called when a new SubscribeRequest comes in
-      # for the same attribute paths from the same session
-      def renew_subscription(old_subscription_id : UInt32, new_subscription : ActiveSubscription) : Nil
-        if @active_subscriptions.delete(old_subscription_id)
-          Log.info { "Renewed subscription #{old_subscription_id} -> #{new_subscription.subscription_id}" }
-
-          # Notify device about old subscription removal
-          if persistence = @persistence
-            begin
-              persistence.subscription_removed(self, old_subscription_id)
-            rescue ex
-              Log.error(exception: ex) do
-                "Failed removing persisted subscription #{old_subscription_id} " \
-                "(renew_to=#{new_subscription.subscription_id} session_id=#{new_subscription.session.session_id} peer=#{new_subscription.peer})"
-              end
-            end
-          end
-          if callback = @on_subscription_removed
-            callback.call(old_subscription_id)
-          end
-        end
-
-        # Add new subscription
-        @active_subscriptions[new_subscription.subscription_id] = new_subscription
-      end
-
-      # Find existing subscription that matches a new subscription request
-      # (same session, overlapping paths)
-      def find_matching_subscription(session_id : UInt16, paths : Array(InteractionModel::AttributePath)) : ActiveSubscription?
-        @active_subscriptions.values.find do |sub|
-          next false unless sub.session.session_id == session_id
-
-          # Check if paths overlap significantly (same endpoint/cluster combinations)
-          paths.any? do |new_path|
-            sub.attribute_paths.any? do |existing_path|
-              new_path.endpoint == existing_path.endpoint &&
-                new_path.cluster == existing_path.cluster
-            end
-          end
-        end
-      end
-
-      # ========================================================================
-      # Traffic-Based Cleanup Cancellation
-      # ========================================================================
-
-      # Cancel pending cleanup for a session if traffic is detected
-      # Called when we receive a message on a session that has cancel_on_traffic=true
-      def cancel_cleanup_on_traffic(session_id : UInt16) : Bool
-        canceled = false
-        @pending_session_cleanups.reject! do |pending|
-          if pending.session_id == session_id && pending.cancel_on_traffic?
-            Log.info { "Canceling pending cleanup for session #{session_id} - traffic detected" }
-            canceled = true
-            true # Remove from array
-          else
-            false
-          end
-        end
-        canceled
-      end
-
-      # ========================================================================
-      # Transport Failure Cleanup
-      # ========================================================================
-
-      # Mark a session as having transport failure and schedule cleanup
-      # Called when transport reports the peer is unreachable after retries
-      def mark_transport_failure(session_id : UInt16) : Nil
-        return unless @sessions.has_key?(session_id)
-
-        # Check if already pending cleanup
-        already_pending = @pending_session_cleanups.any? { |pending| pending.session_id == session_id }
-        return if already_pending
-
-        Log.warn { "Transport failure for session #{session_id} - scheduling cleanup after #{@transport_retry_window}" }
-
-        @pending_session_cleanups << PendingSessionCleanup.new(
-          session_id,
-          @transport_retry_window,
-          CleanupReason::TransportFailure,
-          cancel_on_traffic: true # Cancel if peer becomes reachable again
-        )
-
-        spawn_cleanup_fiber
-      end
-
-      # ========================================================================
-      # CASE Resumption Failure Cleanup
-      # ========================================================================
-
-      # Mark a session for cleanup due to CASE resumption failure
-      # Called when CASE resumption is attempted but fails
-      def mark_case_resumption_failed(session_id : UInt16) : Nil
-        return unless @sessions.has_key?(session_id)
-
-        # Check if already pending cleanup
-        already_pending = @pending_session_cleanups.any? { |pending| pending.session_id == session_id }
-        return if already_pending
-
-        Log.warn { "CASE resumption failed for session #{session_id} - scheduling cleanup" }
-
-        # Short grace period for resumption failure (peer will re-establish if needed)
-        @pending_session_cleanups << PendingSessionCleanup.new(
-          session_id,
-          5.seconds,
-          CleanupReason::CaseResumptionFailed,
-          cancel_on_traffic: false # Don't cancel - resumption already failed
-        )
-
-        spawn_cleanup_fiber
-      end
-
       # Handle CASE Sigma3 (final step of CASE)
       private def handle_case_sigma3(msg : Codec::MessageCodec::Message, peer : Socket::IPAddress) : Nil
         Log.info { "Handling CASE Sigma3" }
@@ -2534,33 +1784,9 @@ module Matter
             "CASE peer subjects: [#{subjects}] (session_id=#{secure_context.session_id} fabric_index=#{secure_context.fabric_index})"
           end
 
-          # Enforce session table size limit before adding new session
-          enforce_session_limit
-
-          # Store session for future encrypted communication
-          @sessions[session_id] = secure_context
+          @registry.establish_session(secure_context)
 
           Log.info { "CASE secure session established (session_id=#{session_id}, peer_session_id=#{peer_session_id}, fabric_index=#{fabric.fabric_index})" }
-
-          # Clean up any superseded sessions (same fabric, same peer, older)
-          # This is done AFTER storing the new session so the cleanup logic
-          # correctly identifies the new session as the replacement
-          cleanup_superseded_sessions(secure_context)
-
-          # Notify device of new session (for persistence)
-          if persistence = @persistence
-            begin
-              persistence.session_established(self, secure_context)
-            rescue ex
-              Log.error(exception: ex) do
-                "Failed persisting session #{secure_context.session_id} " \
-                "(fabric_index=#{secure_context.fabric_index.inspect} peer_node_id=#{secure_context.peer_node_id.try(&.id).inspect})"
-              end
-            end
-          end
-          if callback = @on_session_established
-            callback.call(secure_context)
-          end
 
           # Send StatusReport to confirm session establishment
           # Like PASE, this is sent unsecured as part of the CASE handshake

@@ -69,7 +69,7 @@ describe "Subscription report exchange regression" do
     )
 
     subscription_exchange_id = 0x1234_u16
-    subscription = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+    subscription = Matter::Protocol::ActiveSubscription.new(
       subscription_id: 1_u32,
       min_interval: 0_u16,
       max_interval: 60_u16,

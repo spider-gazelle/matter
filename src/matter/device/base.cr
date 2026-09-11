@@ -127,7 +127,7 @@ module Matter
 
         @lifecycle = LifecycleManager.new(
           fabric_table: @fabric_table,
-          message_handler: @message_handler,
+          registry: @message_handler.registry,
           operational_credentials: operational_credentials,
           responder: @responder,
           port: @transport.port,

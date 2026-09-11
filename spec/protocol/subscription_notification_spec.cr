@@ -169,7 +169,7 @@ describe "Subscription Notifications" do
     end
   end
 
-  describe Matter::Protocol::MessageHandler::ActiveSubscription do
+  describe Matter::Protocol::ActiveSubscription do
     describe "#matches?" do
       it "matches exact path" do
         session = create_mock_session
@@ -179,7 +179,7 @@ describe "Subscription Notifications" do
           attribute: 0x0000_u32
         )]
 
-        subscription = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription = Matter::Protocol::ActiveSubscription.new(
           subscription_id: 1_u32,
           min_interval: 0_u16,
           max_interval: 60_u16,
@@ -210,7 +210,7 @@ describe "Subscription Notifications" do
           attribute: 0x0000_u32
         )]
 
-        subscription = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription = Matter::Protocol::ActiveSubscription.new(
           subscription_id: 1_u32,
           min_interval: 0_u16,
           max_interval: 60_u16,
@@ -237,7 +237,7 @@ describe "Subscription Notifications" do
           attribute: 0x0000_u32
         )]
 
-        subscription = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription = Matter::Protocol::ActiveSubscription.new(
           subscription_id: 1_u32,
           min_interval: 0_u16,
           max_interval: 60_u16,
@@ -263,7 +263,7 @@ describe "Subscription Notifications" do
           attribute: nil # Wildcard
         )]
 
-        subscription = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription = Matter::Protocol::ActiveSubscription.new(
           subscription_id: 1_u32,
           min_interval: 0_u16,
           max_interval: 60_u16,
@@ -290,7 +290,7 @@ describe "Subscription Notifications" do
           attribute: nil
         )]
 
-        subscription = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription = Matter::Protocol::ActiveSubscription.new(
           subscription_id: 1_u32,
           min_interval: 0_u16,
           max_interval: 60_u16,
@@ -321,7 +321,7 @@ describe "Subscription Notifications" do
           ),
         ]
 
-        subscription = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription = Matter::Protocol::ActiveSubscription.new(
           subscription_id: 1_u32,
           min_interval: 0_u16,
           max_interval: 60_u16,
@@ -345,7 +345,7 @@ describe "Subscription Notifications" do
     describe "#exchange_id" do
       it "stores the exchange_id from creation" do
         session = create_mock_session
-        subscription = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription = Matter::Protocol::ActiveSubscription.new(
           subscription_id: 1_u32,
           min_interval: 0_u16,
           max_interval: 60_u16,
@@ -364,7 +364,7 @@ describe "Subscription Notifications" do
         session = create_mock_session
         before = Time.utc
 
-        subscription = Matter::Protocol::MessageHandler::ActiveSubscription.new(
+        subscription = Matter::Protocol::ActiveSubscription.new(
           subscription_id: 1_u32,
           min_interval: 0_u16,
           max_interval: 60_u16,

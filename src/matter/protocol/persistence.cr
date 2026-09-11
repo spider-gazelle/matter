@@ -3,18 +3,22 @@ require "log"
 require "../debouncer"
 require "../storage/backend"
 require "../session/context"
+require "./subscription"
 
 module Matter
   module Protocol
-    # Persistence hooks for `Protocol::MessageHandler` state (CASE sessions and subscriptions).
+    # Persistence hooks for `Protocol::SessionRegistry` state (CASE sessions and
+    # subscriptions).
     module Persistence
       abstract class Base
-        abstract def restore(handler : MessageHandler) : Nil
-        abstract def session_established(handler : MessageHandler, session : Session::SecureContext) : Nil
-        abstract def session_updated(handler : MessageHandler, session : Session::SecureContext) : Nil
-        abstract def session_removed(handler : MessageHandler, session_id : UInt16) : Nil
-        abstract def subscription_established(handler : MessageHandler, subscription : MessageHandler::ActiveSubscription) : Nil
-        abstract def subscription_removed(handler : MessageHandler, subscription_id : UInt32) : Nil
+        # Loads stored sessions and subscriptions into *registry*. Sessions of
+        # a fabric *fabric_table* no longer holds are dropped.
+        abstract def restore(registry : SessionRegistry, fabric_table : FabricTable) : Nil
+        abstract def session_established(registry : SessionRegistry, session : Session::SecureContext) : Nil
+        abstract def session_updated(registry : SessionRegistry, session : Session::SecureContext) : Nil
+        abstract def session_removed(registry : SessionRegistry, session_id : UInt16) : Nil
+        abstract def subscription_established(registry : SessionRegistry, subscription : ActiveSubscription) : Nil
+        abstract def subscription_removed(registry : SessionRegistry, subscription_id : UInt32) : Nil
       end
 
       # Stores protocol state as documents in a `Storage::Backend`:
@@ -43,12 +47,12 @@ module Matter
         def initialize(@backend : Storage::Backend)
         end
 
-        def restore(handler : MessageHandler) : Nil
-          restore_sessions(handler)
-          restore_subscriptions(handler)
+        def restore(registry : SessionRegistry, fabric_table : FabricTable) : Nil
+          restore_sessions(registry, fabric_table)
+          restore_subscriptions(registry)
         end
 
-        def session_established(handler : MessageHandler, session : Session::SecureContext) : Nil
+        def session_established(registry : SessionRegistry, session : Session::SecureContext) : Nil
           return unless session.case_session?
 
           write_session(session)
@@ -56,7 +60,7 @@ module Matter
           Log.error(exception: ex) { "Failed to persist session #{session.session_id} (fabric_index=#{session.fabric_index.inspect})" }
         end
 
-        def session_updated(handler : MessageHandler, session : Session::SecureContext) : Nil
+        def session_updated(registry : SessionRegistry, session : Session::SecureContext) : Nil
           return unless session.case_session?
 
           if debouncer = @write_debouncer
@@ -69,17 +73,17 @@ module Matter
           Log.error(exception: ex) { "Failed to update persisted session #{session.session_id} (fabric_index=#{session.fabric_index.inspect})" }
         end
 
-        def session_removed(handler : MessageHandler, session_id : UInt16) : Nil
+        def session_removed(registry : SessionRegistry, session_id : UInt16) : Nil
           @dirty_sessions.delete(session_id)
           @backend.delete(SESSIONS, session_id.to_s)
         rescue ex
           Log.error(exception: ex) { "Failed to remove persisted session #{session_id}" }
         end
 
-        def subscription_established(handler : MessageHandler, subscription : MessageHandler::ActiveSubscription) : Nil
+        def subscription_established(registry : SessionRegistry, subscription : ActiveSubscription) : Nil
           @backend.transaction do
             @backend.write(SUBSCRIPTIONS, subscription.subscription_id.to_s, subscription.to_record.to_document)
-            @backend.write(DEVICE, COUNTERS_ID, Storage::Document{NEXT_SUBSCRIPTION_ID_KEY => handler.next_subscription_id.to_i64})
+            @backend.write(DEVICE, COUNTERS_ID, Storage::Document{NEXT_SUBSCRIPTION_ID_KEY => registry.next_subscription_id.to_i64})
           end
         rescue ex
           Log.error(exception: ex) do
@@ -88,7 +92,7 @@ module Matter
           end
         end
 
-        def subscription_removed(handler : MessageHandler, subscription_id : UInt32) : Nil
+        def subscription_removed(registry : SessionRegistry, subscription_id : UInt32) : Nil
           @backend.delete(SUBSCRIPTIONS, subscription_id.to_s)
         rescue ex
           Log.error(exception: ex) { "Failed to remove persisted subscription #{subscription_id}" }
@@ -112,7 +116,7 @@ module Matter
         # Restores CASE sessions whose fabric still exists; every other stored
         # session (unknown fabric, undecodable document) is deleted so a reset
         # or decommission cannot resurrect a broken secure session.
-        private def restore_sessions(handler : MessageHandler) : Nil
+        private def restore_sessions(registry : SessionRegistry, fabric_table : FabricTable) : Nil
           restored = 0
           pruned = 0
 
@@ -120,8 +124,8 @@ module Matter
             session = Session::SecureContext.from_record(Session::SecureContext::SessionRecord.from_document(document))
             fabric_index = session.fabric_index
 
-            if session.case_session? && fabric_index && handler.fabric_table.get_fabric(fabric_index)
-              handler.sessions[session.session_id] = session
+            if session.case_session? && fabric_index && fabric_table.get_fabric(fabric_index)
+              registry.sessions[session.session_id] = session
               restored += 1
             else
               @backend.delete(SESSIONS, id)
@@ -141,20 +145,20 @@ module Matter
 
         # Restores subscriptions whose session was restored and removes the
         # rest. The subscription id counter never moves backwards.
-        private def restore_subscriptions(handler : MessageHandler) : Nil
+        private def restore_subscriptions(registry : SessionRegistry) : Nil
           restored = 0
           max_id = 0_u32
 
           @backend.all(SUBSCRIPTIONS).each do |id, document|
-            record = MessageHandler::ActiveSubscription::SubscriptionRecord.from_document(document)
-            session = handler.sessions[record.session_id]?
+            record = ActiveSubscription::SubscriptionRecord.from_document(document)
+            session = registry.sessions[record.session_id]?
             unless session
               @backend.delete(SUBSCRIPTIONS, id)
               next
             end
 
-            subscription = MessageHandler::ActiveSubscription.from_record(record, session)
-            handler.active_subscriptions[subscription.subscription_id] = subscription
+            subscription = ActiveSubscription.from_record(record, session)
+            registry.active_subscriptions[subscription.subscription_id] = subscription
             max_id = {max_id, subscription.subscription_id}.max
             restored += 1
           rescue ex
@@ -162,14 +166,14 @@ module Matter
             @backend.delete(SUBSCRIPTIONS, id)
           end
 
-          handler.next_subscription_id = {handler.next_subscription_id, max_id + 1_u32}.max if max_id > 0_u32
+          registry.next_subscription_id = {registry.next_subscription_id, max_id + 1_u32}.max if max_id > 0_u32
 
           if stored = @backend.read(DEVICE, COUNTERS_ID).try(&.[NEXT_SUBSCRIPTION_ID_KEY]?)
             next_id = Storage::Record.decode(stored, UInt32, NEXT_SUBSCRIPTION_ID_KEY)
-            handler.next_subscription_id = {handler.next_subscription_id, next_id}.max
+            registry.next_subscription_id = {registry.next_subscription_id, next_id}.max
           end
 
-          Log.info { "Restored #{restored} subscription(s) (next=#{handler.next_subscription_id})" } if restored > 0
+          Log.info { "Restored #{restored} subscription(s) (next=#{registry.next_subscription_id})" } if restored > 0
         rescue ex
           Log.error(exception: ex) { "Failed restoring subscriptions" }
         end
