@@ -18,13 +18,21 @@ module Matter
     # - Strict Validation: Epoch keys must be ordered, security policies enforced
     # - Cryptographic Operations: HKDF-based key derivation for operational keys
     class GroupKeyManagementCluster < Base
-      CLUSTER_ID = 0x003F_u32
+      cluster 0x003F, revision: 2
 
-      # Feature flags for Group Key Management cluster
-      @[Flags]
-      enum Feature : UInt32
-        CacheAndSync = 0x01 # Currently provisional/disabled
-      end
+      feature :cache_and_sync, bit: 0 # Currently provisional/disabled
+
+      DEFAULT_MAX_GROUPS_PER_FABRIC     = 12_u16
+      DEFAULT_MAX_GROUP_KEYS_PER_FABRIC =  3_u16
+
+      # Epoch keys are AES-128 keys (Matter Core §11.2.6.3)
+      EPOCH_KEY_LENGTH = 16
+
+      # Key set 0 holds the Identity Protection Key and can never be removed.
+      IPK_KEY_SET_ID = 0_u16
+
+      # Group 0 is reserved (Matter Core §11.2.6.4)
+      RESERVED_GROUP_ID = 0_u16
 
       # Security policy for group key sets
       # Matter Core Spec §11.2.6.3.1
@@ -44,31 +52,42 @@ module Matter
       # Contains epoch keys and their lifecycle timestamps
       # Matter Core Spec §11.2.6.3
       struct GroupKeySetStruct
+        include TLV::Serializable
+
         # Unique identifier for this key set (0 = IPK, others = operational)
+        @[TLV::Field(tag: 0)]
         property group_key_set_id : UInt16
 
         # Security policy (MUST be TrustFirst in current spec)
+        @[TLV::Field(tag: 1)]
         property group_key_security_policy : GroupKeySecurityPolicyEnum
 
         # Epoch key 0 (most recent, required, 16 bytes)
+        @[TLV::Field(tag: 2)]
         property epoch_key0 : Bytes?
 
         # Epoch start time for key 0 (microseconds since epoch)
+        @[TLV::Field(tag: 3)]
         property epoch_start_time0 : UInt64?
 
         # Epoch key 1 (second newest, optional, 16 bytes)
+        @[TLV::Field(tag: 4)]
         property epoch_key1 : Bytes?
 
         # Epoch start time for key 1
+        @[TLV::Field(tag: 5)]
         property epoch_start_time1 : UInt64?
 
         # Epoch key 2 (third newest, optional, 16 bytes)
+        @[TLV::Field(tag: 6)]
         property epoch_key2 : Bytes?
 
         # Epoch start time for key 2
+        @[TLV::Field(tag: 7)]
         property epoch_start_time2 : UInt64?
 
         # Multicast policy (currently unused, defaults to PerGroupId)
+        @[TLV::Field(tag: 8, optional: true)]
         property group_key_multicast_policy : GroupKeyMulticastPolicyEnum?
 
         def initialize(
@@ -122,8 +141,8 @@ module Matter
 
         private def validate_key_length!(key : Bytes?, name : String) : Nil
           return unless key
-          unless key.size == 16
-            raise ArgumentError.new("#{name} must be exactly 16 bytes, got #{key.size}")
+          unless key.size == EPOCH_KEY_LENGTH
+            raise ArgumentError.new("#{name} must be exactly #{EPOCH_KEY_LENGTH} bytes, got #{key.size}")
           end
         end
 
@@ -176,7 +195,7 @@ module Matter
         end
 
         def validate! : Nil
-          if group_id == 0
+          if group_id == RESERVED_GROUP_ID
             raise ArgumentError.new("Group ID 0 is reserved and invalid")
           end
         end
@@ -213,6 +232,9 @@ module Matter
       # KeySetWrite command request
       # Matter Core Spec §11.2.8.1
       struct KeySetWriteRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property group_key_set : GroupKeySetStruct
 
         def initialize(@group_key_set : GroupKeySetStruct)
@@ -222,6 +244,9 @@ module Matter
       # KeySetRead command request
       # Matter Core Spec §11.2.8.2
       struct KeySetReadRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property group_key_set_id : UInt16
 
         def initialize(@group_key_set_id : UInt16)
@@ -232,6 +257,9 @@ module Matter
       # Returns the key set without actual key material (secure)
       # Matter Core Spec §11.2.8.2
       struct KeySetReadResponse
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property group_key_set : GroupKeySetStruct
 
         def initialize(@group_key_set : GroupKeySetStruct)
@@ -241,6 +269,9 @@ module Matter
       # KeySetRemove command request
       # Matter Core Spec §11.2.8.3
       struct KeySetRemoveRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property group_key_set_id : UInt16
 
         def initialize(@group_key_set_id : UInt16)
@@ -251,127 +282,113 @@ module Matter
       # Returns list of all key set IDs for the accessing fabric
       # Matter Core Spec §11.2.8.4
       struct KeySetReadAllIndicesResponse
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
         property group_key_set_i_ds : Array(UInt16)
 
         def initialize(@group_key_set_i_ds : Array(UInt16) = [] of UInt16)
         end
       end
 
-      # Cluster state
-      property features : Feature
-      property max_groups_per_fabric : UInt16
-      property max_group_keys_per_fabric : UInt16
+      # GroupKeyMap and GroupTable are fabric-scoped: reads are filtered to the
+      # accessing fabric in `read_attribute` and a GroupKeyMap write replaces
+      # only that fabric's entries in `handle_write_attribute`. Persistence is
+      # hand-written below (key sets are stored alongside), so the DSL does
+      # not persist them.
+      attribute 0x0000, :group_key_map, Array(GroupKeyMapStruct), default: [] of GroupKeyMapStruct, writable: true, persist: false, write_access: :manage, fabric_scoped: true
+      attribute 0x0001, :group_table, Array(GroupInfoMapStruct), default: [] of GroupInfoMapStruct, fabric_scoped: true
+      attribute 0x0002, :max_groups_per_fabric, UInt16, default: DEFAULT_MAX_GROUPS_PER_FABRIC, fixed: true
+      attribute 0x0003, :max_group_keys_per_fabric, UInt16, default: DEFAULT_MAX_GROUP_KEYS_PER_FABRIC, fixed: true
+
+      command 0x00, :key_set_write, request: KeySetWriteRequest, access: :administer
+      command 0x01, :key_set_read, request: KeySetReadRequest, response: KeySetReadResponse, response_id: 0x02, access: :administer
+      command 0x03, :key_set_remove, request: KeySetRemoveRequest, access: :administer
+      command 0x04, :key_set_read_all_indices, response: KeySetReadAllIndicesResponse, response_id: 0x05, access: :administer
+
+      # Accessing fabric of the command being invoked (set by `Base#invoke_command`)
+      property fabric_index : UInt8?
 
       # Internal storage (fabric-scoped)
       # Key: fabricIndex, Value: GroupKeySetStruct (with actual keys stored)
       @key_sets : Hash(UInt8, Hash(UInt16, GroupKeySetStruct))
 
-      # Group key map (fabric-scoped)
-      @group_key_map : Array(GroupKeyMapStruct)
-
-      # Group table (fabric-scoped, read-only)
-      @group_table : Array(GroupInfoMapStruct)
-
-      # Initialize the cluster
       def initialize(
         endpoint_id : DataType::EndpointNumber,
-        @features : Feature = Feature::None,
-        @max_groups_per_fabric : UInt16 = 12_u16,
-        @max_group_keys_per_fabric : UInt16 = 3_u16,
+        @feature_map : Feature = Feature::None,
+        @max_groups_per_fabric : UInt16 = DEFAULT_MAX_GROUPS_PER_FABRIC,
+        @max_group_keys_per_fabric : UInt16 = DEFAULT_MAX_GROUP_KEYS_PER_FABRIC,
       )
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
         @key_sets = Hash(UInt8, Hash(UInt16, GroupKeySetStruct)).new
-        @group_key_map = [] of GroupKeyMapStruct
-        @group_table = [] of GroupInfoMapStruct
       end
 
-      def name : String
-        "GroupKeyManagement"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(0x0000_u32),
-            "GroupKeyMap",
-            :list,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(0x0001_u32),
-            "GroupTable",
-            :list,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(0x0002_u32),
-            "MaxGroupsPerFabric",
-            :uint16,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(0x0003_u32),
-            "MaxGroupKeysPerFabric",
-            :uint16,
-            writable: false
-          ),
-        ]
-      end
-
-      def commands : Array(CommandMetadata)
-        [
-          CommandMetadata.new(
-            DataType::CommandId.new(0x00_u32),
-            "KeySetWrite"
-          ),
-          CommandMetadata.new(
-            DataType::CommandId.new(0x01_u32),
-            "KeySetRead"
-          ),
-          CommandMetadata.new(
-            DataType::CommandId.new(0x03_u32),
-            "KeySetRemove"
-          ),
-          CommandMetadata.new(
-            DataType::CommandId.new(0x04_u32),
-            "KeySetReadAllIndices"
-          ),
-        ]
-      end
-
-      # Attribute IDs
-      ATTR_GROUP_KEY_MAP             = 0x0000_u32
-      ATTR_GROUP_TABLE               = 0x0001_u32
-      ATTR_MAX_GROUPS_PER_FABRIC     = 0x0002_u32
-      ATTR_MAX_GROUP_KEYS_PER_FABRIC = 0x0003_u32
-
-      CLUSTER_REVISION = 2_u16
-
+      # The fabric-scoped lists hold only the accessing fabric's entries; a
+      # read outside a fabric sees none.
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
         when ATTR_GROUP_KEY_MAP
-          tlv(group_key_map(fabric_index || 0_u8))
+          tlv(fabric_index ? group_key_map(fabric_index) : [] of GroupKeyMapStruct)
         when ATTR_GROUP_TABLE
-          tlv(group_table(fabric_index || 0_u8))
-        when ATTR_MAX_GROUPS_PER_FABRIC
-          tlv(@max_groups_per_fabric)
-        when ATTR_MAX_GROUP_KEYS_PER_FABRIC
-          tlv(@max_group_keys_per_fabric)
-        when GLOBAL_FEATURE_MAP
-          tlv(@features.value)
-        when GLOBAL_ATTRIBUTE_LIST
-          tlv([
-            ATTR_GROUP_KEY_MAP,
-            ATTR_GROUP_TABLE,
-            ATTR_MAX_GROUPS_PER_FABRIC,
-            ATTR_MAX_GROUP_KEYS_PER_FABRIC,
-            GLOBAL_CLUSTER_REVISION,
-            GLOBAL_FEATURE_MAP,
-            GLOBAL_ATTRIBUTE_LIST,
-          ])
+          tlv(fabric_index ? group_table(fabric_index) : [] of GroupInfoMapStruct)
         else
           super
         end
+      end
+
+      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
+        case attribute_id
+        when ATTR_GROUP_KEY_MAP
+          replace_group_key_map(decode(value, Array(GroupKeyMapStruct)), request_fabric_index)
+        else
+          super
+        end
+      end
+
+      # Replaces the accessing fabric's GroupKeyMap entries (Matter Core §11.2.7.1).
+      private def replace_group_key_map(entries : Array(GroupKeyMapStruct), fabric_index : UInt8?) : InteractionModel::Status
+        return InteractionModel::Status.unsupported_access unless fabric_index
+        if entries.any? { |entry| entry.group_id == RESERVED_GROUP_ID || entry.group_key_set_id == IPK_KEY_SET_ID }
+          return InteractionModel::Status.constraint_error
+        end
+        return InteractionModel::Status.resource_exhausted if entries.size > @max_groups_per_fabric
+
+        entries.map! do |entry|
+          entry.fabric_index = fabric_index
+          entry
+        end
+        @group_key_map.reject! { |entry| entry.fabric_index == fabric_index }
+        @group_key_map.concat(entries)
+        increment_version_and_notify(ATTR_GROUP_KEY_MAP)
+        InteractionModel::Status.success
+      end
+
+      # ------------------------------------------------------------------------
+      # Commands: thin wrappers supplying the accessing fabric to the handlers
+      # ------------------------------------------------------------------------
+
+      def key_set_write(request : KeySetWriteRequest) : InteractionModel::Status
+        handle_key_set_write(request, accessing_fabric_index)
+        InteractionModel::Status.success
+      end
+
+      def key_set_read(request : KeySetReadRequest) : KeySetReadResponse
+        handle_key_set_read(request, accessing_fabric_index) ||
+          raise Matter::ClusterError.new("Key set #{request.group_key_set_id} not found", InteractionModel::StatusCode::NotFound)
+      end
+
+      def key_set_remove(request : KeySetRemoveRequest) : InteractionModel::Status
+        handle_key_set_remove(request, accessing_fabric_index)
+        InteractionModel::Status.success
+      end
+
+      def key_set_read_all_indices : KeySetReadAllIndicesResponse
+        handle_key_set_read_all_indices(accessing_fabric_index)
+      end
+
+      # Key sets are fabric-scoped, so the commands need a fabric-bound session.
+      private def accessing_fabric_index : UInt8
+        @fabric_index || raise Matter::ClusterError.new("Group key commands require a fabric-scoped session", InteractionModel::StatusCode::UnsupportedAccess)
       end
 
       # Get group key map for the specified fabric
@@ -379,19 +396,9 @@ module Matter
         @group_key_map.select { |entry| entry.fabric_index == fabric_index }
       end
 
-      # Get all group key map entries (for testing)
-      def group_key_map : Array(GroupKeyMapStruct)
-        @group_key_map
-      end
-
       # Get group table for the specified fabric
       def group_table(fabric_index : UInt8) : Array(GroupInfoMapStruct)
         @group_table.select { |entry| entry.fabric_index == fabric_index }
-      end
-
-      # Get all group table entries (for testing)
-      def group_table : Array(GroupInfoMapStruct)
-        @group_table
       end
 
       # KeySetWrite command handler
@@ -462,7 +469,7 @@ module Matter
       # - Returns error if key set not found
       def handle_key_set_remove(cmd : KeySetRemoveRequest, fabric_index : UInt8) : Nil
         # IPK Protection: Cannot remove key set 0 (Identity Protection Key)
-        if cmd.group_key_set_id == 0
+        if cmd.group_key_set_id == IPK_KEY_SET_ID
           raise Matter::ClusterError.new("Cannot remove key set 0 (IPK)", InteractionModel::StatusCode::ConstraintError)
         end
 
@@ -483,7 +490,7 @@ module Matter
           entry.fabric_index == fabric_index &&
             entry.group_key_set_id == cmd.group_key_set_id
         end
-        increment_version
+        increment_version_and_notify(ATTR_GROUP_KEY_MAP)
       end
 
       # KeySetReadAllIndices command handler
@@ -511,7 +518,7 @@ module Matter
         fabric_index : UInt8,
       ) : Nil
         # Validate group ID
-        if group_id == 0
+        if group_id == RESERVED_GROUP_ID
           raise Matter::ClusterError.new("Group ID 0 is invalid", InteractionModel::StatusCode::ConstraintError)
         end
 
@@ -541,7 +548,7 @@ module Matter
           # Add new mapping
           @group_key_map << GroupKeyMapStruct.new(group_id, group_key_set_id, fabric_index)
         end
-        increment_version
+        increment_version_and_notify(ATTR_GROUP_KEY_MAP)
       end
 
       # Remove a group key map entry
@@ -549,7 +556,7 @@ module Matter
         @group_key_map.reject! do |entry|
           entry.fabric_index == fabric_index && entry.group_id == group_id
         end
-        increment_version
+        increment_version_and_notify(ATTR_GROUP_KEY_MAP)
       end
 
       # Add a group to the group table
@@ -601,7 +608,7 @@ module Matter
             group_id, [endpoint_id], group_name, fabric_index
           )
         end
-        increment_version
+        increment_version_and_notify(ATTR_GROUP_TABLE)
       end
 
       # Remove an endpoint from a group
@@ -626,7 +633,7 @@ module Matter
             group_id, new_endpoints, existing.group_name, fabric_index
           )
         end
-        increment_version
+        increment_version_and_notify(ATTR_GROUP_TABLE)
       end
 
       # Remove all groups for a fabric (fabric removal)
@@ -634,7 +641,8 @@ module Matter
         @key_sets.delete(fabric_index)
         @group_key_map.reject! { |entry| entry.fabric_index == fabric_index }
         @group_table.reject! { |entry| entry.fabric_index == fabric_index }
-        increment_version
+        increment_version_and_notify(ATTR_GROUP_KEY_MAP)
+        notify_changed(ATTR_GROUP_TABLE)
       end
 
       # Get a key set by ID (for cryptographic operations)
