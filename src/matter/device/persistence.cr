@@ -134,7 +134,10 @@ module Matter
         false
       end
 
-      private def mark_dirty(cluster : Cluster::Base) : Nil
+      # Marks *cluster* as holding unsaved state; the debounced writer picks it
+      # up on its next run. `track` wires this to the cluster's data version,
+      # and `Node#on_version_changed` wires it node-wide.
+      def mark_dirty(cluster : Cluster::Base) : Nil
         @dirty_clusters << cluster
         @debouncer.trigger
       end

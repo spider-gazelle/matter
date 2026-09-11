@@ -6,6 +6,7 @@ require "../../../src/matter/cluster/level_control"
 require "../../../src/matter/cluster/groups"
 require "../../../src/matter/cluster/scenes_management"
 require "../../../src/matter/cluster/user_label"
+require "../../../src/matter/cluster/identify"
 
 # A dimmable light on endpoint 1 with every cluster the legacy fixture has a
 # document for, so booting it on an imported store exercises each restore.
@@ -74,7 +75,9 @@ class LegacyBootDevice < Matter::Device::Base
     @level = Matter::Cluster::LevelControl.new(endpoint)
     @groups = Matter::Cluster::Groups.new(endpoint)
     @scenes = Matter::Cluster::ScenesManagement.new(endpoint)
-    [switch, level, groups, scenes] of Matter::Cluster::Base
+
+    # Identify is mandatory on a Dimmable Light.
+    [switch, level, groups, scenes, Matter::Cluster::Identify.new(endpoint)] of Matter::Cluster::Base
   end
 
   protected def endpoint_device_types : Hash(UInt16, UInt32)

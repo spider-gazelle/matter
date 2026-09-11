@@ -25,6 +25,97 @@ describe Matter::DeviceType do
     end
   end
 
+  describe "definitions" do
+    it "creates root node device type" do
+      device_type = Matter::DeviceType.root_node
+
+      device_type.device_type_id.id.should eq(0x0016_u32)
+      device_type.name.should eq("Root Node")
+      device_type.revision.should eq(1_u16)
+      device_type.required_server_clusters.should_not be_empty
+      device_type.requires_cluster?(0x001D_u32).should be_true # Descriptor
+      device_type.requires_cluster?(0x0028_u32).should be_true # Basic Information
+    end
+
+    it "creates on/off light device type" do
+      device_type = Matter::DeviceType.on_off_light
+
+      device_type.device_type_id.id.should eq(0x0100_u32)
+      device_type.name.should eq("On/Off Light")
+      device_type.revision.should eq(2_u16)
+      device_type.requires_cluster?(0x001D_u32).should be_true          # Descriptor
+      device_type.requires_cluster?(0x0003_u32).should be_true          # Identify
+      device_type.requires_cluster?(0x0004_u32).should be_true          # Groups
+      device_type.requires_cluster?(0x0006_u32).should be_true          # On/Off
+      device_type.supports_optional_cluster?(0x0062_u32).should be_true # Scenes Management
+      device_type.supports_optional_cluster?(0x0008_u32).should be_true # Level Control
+    end
+
+    it "creates dimmable light device type" do
+      device_type = Matter::DeviceType.dimmable_light
+
+      device_type.device_type_id.id.should eq(0x0101_u32)
+      device_type.name.should eq("Dimmable Light")
+      device_type.requires_cluster?(0x0006_u32).should be_true # On/Off
+      device_type.requires_cluster?(0x0008_u32).should be_true # Level Control
+    end
+
+    it "checks cluster requirements" do
+      device_type = Matter::DeviceType.on_off_light
+
+      device_type.requires_cluster?(0x0006_u32).should be_true
+      device_type.requires_cluster?(0x9999_u32).should be_false
+
+      device_type.supports_optional_cluster?(0x0008_u32).should be_true
+      device_type.supports_optional_cluster?(0x9999_u32).should be_false
+
+      device_type.allows_cluster?(0x0006_u32).should be_true  # Required
+      device_type.allows_cluster?(0x0008_u32).should be_true  # Optional
+      device_type.allows_cluster?(0x9999_u32).should be_false # Neither
+    end
+
+    it "creates custom device types" do
+      device_type = Matter::DeviceType.new(
+        Matter::DataType::DeviceTypeId.new(0x1234_u32),
+        "Custom Device",
+        1_u16,
+        required_server_clusters: [0x0006_u32],
+        optional_server_clusters: [0x0008_u32]
+      )
+
+      device_type.device_type_id.id.should eq(0x1234_u32)
+      device_type.name.should eq("Custom Device")
+      device_type.requires_cluster?(0x0006_u32).should be_true
+      device_type.supports_optional_cluster?(0x0008_u32).should be_true
+    end
+  end
+
+  describe ".for" do
+    it "returns the definition of a known device type" do
+      device_type = Matter::DeviceType.for(Matter::DeviceType::ON_OFF_LIGHT)
+
+      device_type.device_type_id.id.should eq(Matter::DeviceType::ON_OFF_LIGHT)
+      device_type.revision.should eq(Matter::DeviceType.on_off_light.revision)
+      device_type.required_server_clusters.should eq(Matter::DeviceType.on_off_light.required_server_clusters)
+    end
+
+    it "names an unknown device type it has no definition for" do
+      device_type = Matter::DeviceType.for(Matter::DeviceType::HUMIDITY_SENSOR)
+
+      device_type.device_type_id.id.should eq(Matter::DeviceType::HUMIDITY_SENSOR)
+      device_type.name.should eq("Humidity Sensor")
+      device_type.revision.should eq(Matter::DeviceType::UNKNOWN_REVISION)
+      device_type.required_server_clusters.should be_empty
+    end
+
+    it "falls back to the id for a device type with no name" do
+      device_type = Matter::DeviceType.for(0xFFFF_FFFF_u32)
+
+      device_type.name.should eq("Device Type 0xffffffff")
+      device_type.required_server_clusters.should be_empty
+    end
+  end
+
   describe ".name" do
     it "returns device type names" do
       Matter::DeviceType.name(Matter::DeviceType::ON_OFF_LIGHT).should eq("On/Off Light")

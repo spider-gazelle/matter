@@ -56,6 +56,14 @@ module Matter
   class TransportError < Error
   end
 
+  # A node was assembled in a way the data model does not allow: a cluster
+  # added to the wrong endpoint, or an endpoint that does not carry every
+  # server cluster its device type makes mandatory. Raised while the device is
+  # being built (at boot, or when a bridge adds an endpoint), never in response
+  # to a message from the wire.
+  class ConfigurationError < Error
+  end
+
   # A cluster handler failure that maps directly onto an Interaction Model
   # status. Raised inside cluster code and converted to a status at the
   # cluster boundary (`Cluster#invoke_command` / `Cluster#write_attribute`).

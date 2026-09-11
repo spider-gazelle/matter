@@ -1,4 +1,5 @@
 require "../fabric_table"
+require "../node"
 require "../transport/udp_transport"
 require "../protocol/message_handler"
 require "./persistence"
@@ -47,6 +48,10 @@ module Matter
 
       getter persistence : Persistence
       getter fabric_table : FabricTable
+
+      # The device's data model: its endpoints and their clusters.
+      getter node : Node
+
       getter transport : Transport::UDPTransport
       getter message_handler : Protocol::MessageHandler
       getter responder : MDNS::Responder
@@ -108,6 +113,11 @@ module Matter
         )
 
         @responder = MDNS::Responder.new(hostname: @hostname, ip_addresses: @ip_addresses)
+
+        # One place where every cluster, however late it joins the node, gets
+        # its state written on change.
+        @node = @message_handler.node
+        @node.on_version_changed = ->(cluster : Cluster::Base) { @persistence.mark_dirty(cluster) }
 
         build_and_wire_clusters
         @message_handler.setup_cluster_notifications
@@ -234,10 +244,6 @@ module Matter
       # Map endpoint -> device type ID for Descriptor population.
       protected def endpoint_device_types : Hash(UInt16, UInt32)
         {1_u16 => primary_device_type_id} of UInt16 => UInt32
-      end
-
-      protected def endpoint_device_type_revision(endpoint_id : UInt16) : UInt16
-        1_u16
       end
 
       # ------------------------------------------------------------------------
@@ -404,124 +410,77 @@ module Matter
           @message_handler.reset_pase_server
         end
 
-        # Wire root clusters (overwrites MessageHandler defaults)
-        @message_handler.clusters[{0_u16, Cluster::BasicInformation::CLUSTER_ID}] = basic_info
-        @message_handler.clusters[{0_u16, Cluster::GeneralCommissioning::CLUSTER_ID}] = general_commissioning
-        @message_handler.clusters[{0_u16, Cluster::AccessControl::CLUSTER_ID}] = access_control
-        @message_handler.clusters[{0_u16, Cluster::OperationalCredentials::CLUSTER_ID}] = operational_credentials
-        @message_handler.clusters[{0_u16, Cluster::AdministratorCommissioning::CLUSTER_ID}] = administrator_commissioning
-        @message_handler.clusters[{0_u16, Cluster::GeneralDiagnostics::CLUSTER_ID}] = general_diagnostics
-        @message_handler.clusters[{0_u16, Cluster::IcdManagement::CLUSTER_ID}] = icd_management
-        @message_handler.clusters[{0_u16, Cluster::NetworkCommissioning::CLUSTER_ID}] = network_commissioning
-        @message_handler.clusters[{0_u16, Cluster::GroupKeyManagement::CLUSTER_ID}] = group_key_management
-        @message_handler.clusters[{0_u16, Cluster::OtaRequestor::CLUSTER_ID}] = ota_requestor
-        @message_handler.clusters[{0_u16, Cluster::DiagnosticLogs::CLUSTER_ID}] = diagnostic_logs
-        if ethernet = ethernet_diagnostics
-          @message_handler.clusters[{0_u16, Cluster::EthernetNetworkDiagnostics::CLUSTER_ID}] = ethernet
+        # The subclass's clusters, split by the endpoint each was built for.
+        declared_types = endpoint_device_types
+        device_endpoints = device_clusters.group_by(&.endpoint_id.number)
+
+        # Root endpoint: replaces the MessageHandler defaults wholesale.
+        root = Endpoint.new(endpoint_0, device_types_for(Node::ROOT_ENDPOINT_ID, declared_types))
+        [
+          basic_info,
+          general_commissioning,
+          access_control,
+          operational_credentials,
+          administrator_commissioning,
+          general_diagnostics,
+          icd_management,
+          network_commissioning,
+          group_key_management,
+          ota_requestor,
+          diagnostic_logs,
+        ].each { |cluster| root.add_cluster(cluster) }
+        root.add_cluster(ethernet_diagnostics.as(Cluster::EthernetNetworkDiagnostics)) if ethernet_diagnostics
+        device_endpoints.delete(Node::ROOT_ENDPOINT_ID).try(&.each { |cluster| root.add_cluster(cluster) })
+        @node.add_endpoint(root)
+
+        device_endpoints.each do |endpoint_id, clusters|
+          endpoint = Endpoint.new(
+            DataType::EndpointNumber.new(endpoint_id),
+            device_types_for(endpoint_id, declared_types)
+          )
+          clusters.each { |cluster| endpoint.add_cluster(cluster) }
+          @node.add_endpoint(endpoint)
         end
 
-        # Wire device clusters (subclass-provided)
-        device_clusters.each do |cluster|
-          endpoint_id = cluster.endpoint_id.number
-          @message_handler.clusters[{endpoint_id, cluster.cluster_id.id}] = cluster
-        end
-
-        inject_and_populate_descriptors
-        wire_scenes_management_extensions
+        refresh_root_parts_list
       end
 
-      private def wire_scenes_management_extensions : Nil
-        scenes_clusters = @message_handler.clusters.values.select(Cluster::ScenesManagement)
-        return if scenes_clusters.empty?
-
-        scenes_clusters.each do |scenes|
-          endpoint_id = scenes.endpoint_id.number
-          existing_get = scenes.get_extension_field_sets
-          existing_apply = scenes.apply_extension_field_sets
-
-          scenes.get_extension_field_sets = -> do
-            sets = [] of Cluster::ScenesManagement::ExtensionFieldSet
-            if cb = existing_get
-              sets.concat(cb.call)
-            end
-
-            sets.concat(
-              @message_handler.clusters.values
-                .select { |cluster| cluster.endpoint_id.number == endpoint_id }
-                .compact_map(&.store_scene_extension_field_set)
-            )
-
-            sets
-          end
-
-          scenes.apply_extension_field_sets = ->(field_sets : Array(Cluster::ScenesManagement::ExtensionFieldSet)) do
-            if cb = existing_apply
-              cb.call(field_sets)
-            end
-
-            field_sets.each do |field_set|
-              if target = @message_handler.clusters[{endpoint_id, field_set.cluster_id}]?
-                target.apply_scene_extension_field_set(field_set)
-              end
-            end
-          end
+      # The device types of *endpoint_id*: every endpoint 0 is a Root Node, on
+      # top of whatever the subclass declared for it.
+      private def device_types_for(endpoint_id : UInt16, declared_types : Hash(UInt16, UInt32)) : Array(DeviceType)
+        device_types = [] of DeviceType
+        device_types << DeviceType.root_node if endpoint_id == Node::ROOT_ENDPOINT_ID
+        if declared = declared_types[endpoint_id]?
+          device_types << DeviceType.for(declared)
         end
+        device_types
+      end
+
+      # The root endpoint's PartsList is the list of every other endpoint.
+      private def refresh_root_parts_list : Nil
+        descriptor = root_descriptor
+        descriptor.parts_list.clear
+        @node.endpoint_ids.each do |endpoint_id|
+          next if endpoint_id == Node::ROOT_ENDPOINT_ID
+          descriptor.add_part(endpoint_id)
+        end
+      end
+
+      private def root_descriptor : Cluster::Descriptor
+        @node.endpoint!(Node::ROOT_ENDPOINT_ID).descriptor
+      end
+
+      private def notify_root_parts_list : Nil
+        @message_handler.notify_subscriptions(
+          Node::ROOT_ENDPOINT_ID,
+          Cluster::Descriptor::CLUSTER_ID,
+          Cluster::Descriptor::ATTR_PARTS_LIST
+        )
       end
 
       # Default to ephemeral test credentials unless the device overrides.
       protected def configure_attestation(operational_credentials : Cluster::OperationalCredentials) : Nil
         operational_credentials.set_attestation_from_manager(vendor_id: vendor_id, product_id: product_id)
-      end
-
-      private def inject_and_populate_descriptors : Nil
-        endpoints = @message_handler.clusters.keys.map(&.[0]).uniq!.sort!
-        endpoints << 0_u16 unless endpoints.includes?(0_u16)
-
-        endpoints.each do |endpoint_id|
-          next if @message_handler.clusters.has_key?({endpoint_id, Cluster::Descriptor::CLUSTER_ID})
-          descriptor = Cluster::Descriptor.new(DataType::EndpointNumber.new(endpoint_id))
-          @message_handler.clusters[{endpoint_id, Cluster::Descriptor::CLUSTER_ID}] = descriptor
-        end
-
-        endpoints.each do |endpoint_id|
-          descriptor = @message_handler.clusters[{endpoint_id, Cluster::Descriptor::CLUSTER_ID}]
-            .as(Cluster::Descriptor)
-
-          # ServerList: all clusters present on endpoint
-          cluster_ids = @message_handler.clusters
-            .select { |k, _| k[0] == endpoint_id }
-            .keys
-            .map(&.[1])
-            .uniq!
-            .sort!
-
-          cluster_ids.each { |id| descriptor.server_list << id unless descriptor.server_list.includes?(id) }
-
-          # DeviceTypeList: Root Node on endpoint 0, otherwise use endpoint_device_types
-          descriptor.device_type_list.clear
-          if endpoint_id == 0_u16
-            descriptor.device_type_list << Cluster::Descriptor::DeviceTypeStruct.new(
-              device_type: DeviceType::ROOT_NODE,
-              revision: 1_u16
-            )
-          end
-
-          if device_type = endpoint_device_types[endpoint_id]?
-            descriptor.device_type_list << Cluster::Descriptor::DeviceTypeStruct.new(
-              device_type: device_type,
-              revision: endpoint_device_type_revision(endpoint_id)
-            )
-          end
-        end
-
-        # PartsList: endpoint 0 references all other endpoints
-        if root_desc = @message_handler.clusters[{0_u16, Cluster::Descriptor::CLUSTER_ID}]?.as?(Cluster::Descriptor)
-          root_desc.parts_list.clear
-          endpoints.each do |endpoint_id|
-            next if endpoint_id == 0_u16
-            root_desc.add_part(endpoint_id)
-          end
-        end
       end
 
       protected def default_ip_addresses : Array(Socket::IPAddress)
@@ -552,144 +511,87 @@ module Matter
       # This is primarily used by bridge devices to add bridged endpoints dynamically.
       #
       # The clusters should already be configured with the correct endpoint_id.
-      # A Descriptor will be automatically injected if not provided.
+      # A Descriptor is injected and populated by the node, and the endpoint is
+      # held to its device type: a missing mandatory cluster raises
+      # `ConfigurationError`.
       #
-      # Set `notify_subscribers` to false when restoring endpoints from storage
-      # to avoid sending spurious subscription updates on startup.
+      # *device_type_revision* defaults to the revision of the device type
+      # definition. Set `notify_subscribers` to false when restoring endpoints
+      # from storage to avoid sending spurious subscription updates on startup.
       #
       # Returns true if the endpoint was added successfully, false if it already exists.
       def add_endpoint(
         endpoint_id : UInt16,
         device_type : UInt32,
         clusters : Array(Cluster::Base),
-        device_type_revision : UInt16 = 1_u16,
+        device_type_revision : UInt16? = nil,
         notify_subscribers : Bool = true,
       ) : Bool
         # Don't allow adding endpoint 0 (root node)
-        return false if endpoint_id == 0_u16
+        return false if endpoint_id == Node::ROOT_ENDPOINT_ID
+        return false if @node.has_endpoint?(endpoint_id)
 
-        # Check if endpoint already exists
-        existing = @message_handler.clusters.keys.any? { |k| k[0] == endpoint_id }
-        return false if existing
-
-        # Register all provided clusters and persist their changes
-        clusters.each do |cluster|
-          if cluster.endpoint_id.number != endpoint_id
-            raise ArgumentError.new("Cluster endpoint_id (#{cluster.endpoint_id.number}) doesn't match endpoint_id (#{endpoint_id})")
-          end
-          @message_handler.clusters[{endpoint_id, cluster.cluster_id.id}] = cluster
-          @persistence.track(cluster)
-        end
-
-        # Inject Descriptor if not provided
-        unless @message_handler.clusters.has_key?({endpoint_id, Cluster::Descriptor::CLUSTER_ID})
-          descriptor = Cluster::Descriptor.new(DataType::EndpointNumber.new(endpoint_id))
-          @message_handler.clusters[{endpoint_id, Cluster::Descriptor::CLUSTER_ID}] = descriptor
-        end
-
-        # Populate the descriptor
-        descriptor = @message_handler.clusters[{endpoint_id, Cluster::Descriptor::CLUSTER_ID}]
-          .as(Cluster::Descriptor)
-
-        # Set device type
-        descriptor.device_type_list.clear
-        descriptor.device_type_list << Cluster::Descriptor::DeviceTypeStruct.new(
-          device_type: device_type,
-          revision: device_type_revision
+        endpoint = Endpoint.new(
+          DataType::EndpointNumber.new(endpoint_id),
+          dynamic_device_type(device_type, device_type_revision)
         )
+        clusters.each { |cluster| endpoint.add_cluster(cluster) }
+        @node.add_endpoint(endpoint)
 
-        # Populate server list
-        cluster_ids = @message_handler.clusters
-          .select { |k, _| k[0] == endpoint_id }
-          .keys
-          .map(&.[1])
-          .uniq!
-          .sort!
-        descriptor.server_list.clear
-        cluster_ids.each { |id| descriptor.server_list << id }
+        # Tell controllers a new endpoint exists - they read its attributes on
+        # their own (same pattern as remove_endpoint).
+        descriptor = root_descriptor
+        return true if descriptor.has_part?(endpoint_id)
 
-        # Track if we need to notify about root PartsList change
-        root_parts_list_changed = false
-
-        # Add to root node's PartsList
-        if root_desc = @message_handler.clusters[{0_u16, Cluster::Descriptor::CLUSTER_ID}]?.as?(Cluster::Descriptor)
-          unless root_desc.has_part?(endpoint_id)
-            root_desc.add_part(endpoint_id)
-            root_parts_list_changed = true
-          end
-        end
-
-        # Setup attribute change notifications for the new clusters
-        @message_handler.setup_cluster_notifications
-
-        # Notify subscribers of PartsList change on root node (endpoint 0).
-        # This tells controllers a new endpoint exists - they will read the
-        # new endpoint's attributes on their own (same pattern as remove_endpoint).
-        if notify_subscribers && root_parts_list_changed
-          @message_handler.notify_subscriptions(
-            0_u16,
-            Cluster::Descriptor::CLUSTER_ID,
-            Cluster::Descriptor::ATTR_PARTS_LIST
-          )
-        end
-
+        descriptor.add_part(endpoint_id)
+        notify_root_parts_list if notify_subscribers
         true
       end
 
-      # Removes an endpoint and all its clusters at runtime.
+      # Removes an endpoint, its clusters and their persisted state at runtime.
       # This is primarily used by bridge devices to remove bridged endpoints dynamically.
       #
       # Returns true if the endpoint was removed, false if it didn't exist.
-      def remove_endpoint(endpoint_id : UInt16) : Bool
+      def remove_endpoint(endpoint_id : UInt16, notify_subscribers : Bool = true) : Bool
         # Don't allow removing endpoint 0 (root node)
-        return false if endpoint_id == 0_u16
+        return false if endpoint_id == Node::ROOT_ENDPOINT_ID
 
-        # Find all clusters on this endpoint
-        cluster_keys = @message_handler.clusters.keys.select { |k| k[0] == endpoint_id }
-        return false if cluster_keys.empty?
+        endpoint = @node.remove_endpoint(endpoint_id)
+        return false unless endpoint
 
-        # Remove all clusters from the registry and their persisted state
-        cluster_keys.each do |key|
-          if cluster = @message_handler.clusters.delete(key)
-            @persistence.forget_cluster(cluster)
-          end
-        end
+        endpoint.clusters.each_value { |cluster| @persistence.forget_cluster(cluster) }
 
-        # Remove from root node's PartsList
-        if root_desc = @message_handler.clusters[{0_u16, Cluster::Descriptor::CLUSTER_ID}]?.as?(Cluster::Descriptor)
-          if root_desc.has_part?(endpoint_id)
-            root_desc.parts_list.reject! { |part| part == endpoint_id }
+        descriptor = root_descriptor
+        return true unless descriptor.has_part?(endpoint_id)
 
-            # Notify subscribers of PartsList change (important for controllers to discover removed devices)
-            @message_handler.notify_subscriptions(
-              0_u16,
-              Cluster::Descriptor::CLUSTER_ID,
-              Cluster::Descriptor::ATTR_PARTS_LIST
-            )
-          end
-        end
-
+        descriptor.parts_list.reject! { |part| part == endpoint_id }
+        notify_root_parts_list if notify_subscribers
         true
       end
 
       # Returns all endpoint IDs currently registered (excluding endpoint 0)
       def endpoint_ids : Array(UInt16)
-        @message_handler.clusters.keys
-          .map(&.[0])
-          .uniq!
-          .reject { |id| id == 0_u16 }
-          .sort!
+        @node.endpoint_ids.reject { |endpoint_id| endpoint_id == Node::ROOT_ENDPOINT_ID }
       end
 
       # Returns the next available endpoint ID for dynamic endpoints
       # Starts from 1 and finds the first unused ID
       def next_endpoint_id : UInt16
-        existing = endpoint_ids
-        id = 1_u16
-        while existing.includes?(id)
-          id += 1
-        end
-        id
+        @node.next_endpoint_id
+      end
+
+      # The definition for *device_type*, at *revision* when the caller pinned one.
+      private def dynamic_device_type(device_type : UInt32, revision : UInt16?) : DeviceType
+        definition = DeviceType.for(device_type)
+        return definition unless revision
+
+        DeviceType.new(
+          definition.device_type_id,
+          definition.name,
+          revision,
+          definition.required_server_clusters,
+          definition.optional_server_clusters
+        )
       end
     end
   end

@@ -1,6 +1,8 @@
 require "../spec_helper"
 require "../../src/matter/device/base"
 require "../../src/matter/cluster/on_off"
+require "../../src/matter/cluster/identify"
+require "../../src/matter/cluster/groups"
 
 # An on/off light on endpoint 1 (as in `examples/matter_switch_device.cr`)
 # whose whole state lives in one `YamlFile`, so two instances booted on the
@@ -47,11 +49,15 @@ class PersistenceRestartDevice < Matter::Device::Base
   end
 
   protected def device_clusters : Array(Matter::Cluster::Base)
-    @switch = Matter::Cluster::OnOff.new(
-      Matter::DataType::EndpointNumber.new(LIGHT_ENDPOINT),
-      feature_map: Matter::Cluster::OnOff::Feature::Lighting
-    )
-    [switch] of Matter::Cluster::Base
+    endpoint = Matter::DataType::EndpointNumber.new(LIGHT_ENDPOINT)
+    @switch = Matter::Cluster::OnOff.new(endpoint, feature_map: Matter::Cluster::OnOff::Feature::Lighting)
+
+    # Identify and Groups are mandatory on an On/Off Light.
+    [
+      switch,
+      Matter::Cluster::Identify.new(endpoint),
+      Matter::Cluster::Groups.new(endpoint),
+    ] of Matter::Cluster::Base
   end
 
   protected def endpoint_device_types : Hash(UInt16, UInt32)
