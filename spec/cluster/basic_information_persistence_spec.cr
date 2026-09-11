@@ -26,6 +26,7 @@ describe Matter::Cluster::BasicInformationCluster do
       "location"              => "AU",
       "local_config_disabled" => true,
       "data_version"          => 42_i64,
+      "features"              => 0_i64,
     })
 
     cluster2 = Matter::Cluster::BasicInformationCluster.new(

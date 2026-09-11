@@ -9,7 +9,7 @@ module Matter
     #
     # Matter Spec: Core 11.10
     class DiagnosticLogsCluster < Base
-      CLUSTER_ID = 0x0032_u32
+      cluster 0x0032, revision: 1
 
       # Intent enum - type of log being requested
       enum Intent : UInt8
@@ -38,13 +38,16 @@ module Matter
         include TLV::Serializable
 
         @[TLV::Field(tag: 0)]
-        property intent : UInt8 = 0_u8
+        property intent : Intent
 
         @[TLV::Field(tag: 1)]
-        property requested_protocol : UInt8 = 0_u8
+        property requested_protocol : TransferProtocol
 
         @[TLV::Field(tag: 2)]
         property transfer_file_designator : String?
+
+        def initialize(@intent : Intent, @requested_protocol : TransferProtocol = TransferProtocol::ResponsePayload, @transfer_file_designator : String? = nil)
+        end
       end
 
       # Response struct for RetrieveLogsResponse
@@ -52,20 +55,21 @@ module Matter
         include TLV::Serializable
 
         @[TLV::Field(tag: 0)]
-        property status : UInt8
+        property status : LogsStatus
 
         @[TLV::Field(tag: 1)]
         property log_content : Bytes
 
-        def initialize(@status : UInt8, @log_content : Bytes)
+        def initialize(@status : LogsStatus, @log_content : Bytes)
         end
       end
 
-      # Command IDs
-      CMD_RETRIEVE_LOGS_REQUEST = 0x00_u32
-
-      # Response IDs
       CMD_RETRIEVE_LOGS_RESPONSE = 0x01_u32
+
+      command 0x00, :retrieve_logs_request, request: RetrieveLogsRequest, response: RetrieveLogsResponse, response_id: CMD_RETRIEVE_LOGS_RESPONSE
+
+      # Number of recent entries returned for end-user support.
+      END_USER_SUPPORT_ENTRIES = 20
 
       # Log buffer - stores recent log entries
       @log_buffer : Array(String)
@@ -79,95 +83,23 @@ module Matter
         @log_buffer = [] of String
       end
 
-      def self.cluster_id : UInt32
-        CLUSTER_ID
-      end
-
-      def name : String
-        "DiagnosticLogs"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        # No mandatory attributes - only global attributes
-        [] of AttributeMetadata
-      end
-
-      def commands : Array(CommandMetadata)
-        [
-          CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_RETRIEVE_LOGS_REQUEST),
-            name: "RetrieveLogsRequest"
-          ),
-        ]
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when GLOBAL_FEATURE_MAP
-          tlv(0_u32) # No features
-        when GLOBAL_ATTRIBUTE_LIST
-          tlv([
-            GLOBAL_GENERATED_COMMAND_LIST,
-            GLOBAL_ACCEPTED_COMMAND_LIST,
-            GLOBAL_ATTRIBUTE_LIST,
-            GLOBAL_FEATURE_MAP,
-            GLOBAL_CLUSTER_REVISION,
-          ])
-        when GLOBAL_ACCEPTED_COMMAND_LIST
-          tlv([CMD_RETRIEVE_LOGS_REQUEST])
-        when GLOBAL_GENERATED_COMMAND_LIST
-          tlv([CMD_RETRIEVE_LOGS_RESPONSE])
-        else
-          super
-        end
-      end
-
-      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
-        case command_id
-        when CMD_RETRIEVE_LOGS_REQUEST
-          handle_retrieve_logs_request(fields)
-        else
-          InteractionModel::Status.unsupported_command
-        end
-      end
-
-      private def handle_retrieve_logs_request(fields : TLV::Any?) : Cluster::CommandResponse
-        # Parse request using TLV::Serializable
-        intent = Intent::EndUserSupport
-
-        begin
-          req = RetrieveLogsRequest.from_tlv(fields || tlv(nil))
-          intent = Intent.from_value(req.intent)
-        rescue ex
-          Log.warn(exception: ex) { "RetrieveLogsRequest: failed to parse request, using defaults (fields=#{fields.inspect})" }
-        end
-
-        # Build response
-        build_retrieve_logs_response(intent)
-      end
-
-      private def build_retrieve_logs_response(intent : Intent) : Cluster::CommandResponse
-        # Build log content
-        log_content = build_log_content(intent)
-
-        status = log_content.empty? ? LogsStatus::NoLogs.value : LogsStatus::Success.value
-        response = RetrieveLogsResponse.new(status, log_content.to_slice)
-
-        Cluster::CommandResponse.new(CMD_RETRIEVE_LOGS_RESPONSE, tlv(response))
+      # Logs are always returned in the response payload; BDX is not offered.
+      def retrieve_logs_request(request : RetrieveLogsRequest) : RetrieveLogsResponse
+        log_content = build_log_content(request.intent)
+        status = log_content.empty? ? LogsStatus::NoLogs : LogsStatus::Success
+        RetrieveLogsResponse.new(status, log_content.to_slice)
       end
 
       private def build_log_content(intent : Intent) : String
         case intent
-        when Intent::EndUserSupport
+        in Intent::EndUserSupport
           # Return recent log entries
-          @log_buffer.last(20).join("\n")
-        when Intent::NetworkDiag
+          @log_buffer.last(END_USER_SUPPORT_ENTRIES).join("\n")
+        in Intent::NetworkDiag
           # Return network-related info
           "Network diagnostics: Device operational"
-        when Intent::CrashLogs
+        in Intent::CrashLogs
           # Return crash logs (none available)
-          ""
-        else
           ""
         end
       end

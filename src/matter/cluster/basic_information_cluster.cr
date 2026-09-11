@@ -10,36 +10,13 @@ module Matter
     #
     # Matter Spec: Core 11.1
     class BasicInformationCluster < Base
-      CLUSTER_ID = 0x0028_u32
+      cluster 0x0028, revision: 5
 
-      # Attribute IDs (using ATTR_ prefix for consistency)
-      ATTR_DATA_MODEL_REVISION     = 0x0000_u32
-      ATTR_VENDOR_NAME             = 0x0001_u32
-      ATTR_VENDOR_ID               = 0x0002_u32
-      ATTR_PRODUCT_NAME            = 0x0003_u32
-      ATTR_PRODUCT_ID              = 0x0004_u32
-      ATTR_NODE_LABEL              = 0x0005_u32
-      ATTR_LOCATION                = 0x0006_u32
-      ATTR_HARDWARE_VERSION        = 0x0007_u32
-      ATTR_HARDWARE_VERSION_STRING = 0x0008_u32
-      ATTR_SOFTWARE_VERSION        = 0x0009_u32
-      ATTR_SOFTWARE_VERSION_STRING = 0x000A_u32
-      ATTR_MANUFACTURING_DATE      = 0x000B_u32
-      ATTR_PART_NUMBER             = 0x000C_u32
-      ATTR_PRODUCT_URL             = 0x000D_u32
-      ATTR_PRODUCT_LABEL           = 0x000E_u32
-      ATTR_SERIAL_NUMBER           = 0x000F_u32
-      ATTR_LOCAL_CONFIG_DISABLED   = 0x0010_u32
-      ATTR_REACHABLE               = 0x0011_u32
-      ATTR_UNIQUE_ID               = 0x0012_u32
-      ATTR_CAPABILITY_MINIMA       = 0x0013_u32
-      ATTR_PRODUCT_APPEARANCE      = 0x0014_u32
-
-      # Events
-      EVENT_START_UP          = 0x00_u32
-      EVENT_SHUT_DOWN         = 0x01_u32
-      EVENT_LEAVE             = 0x02_u32
-      EVENT_REACHABLE_CHANGED = 0x03_u32
+      # NodeLabel is at most 32 bytes; Location is an ISO 3166-1 alpha-2 code
+      # (two ASCII letters, or "XX" for an unknown region).
+      NODE_LABEL_MAX_LENGTH = 32
+      LOCATION_LENGTH       =  2
+      LOCATION_UNKNOWN      = "XX"
 
       # Product Finish enum
       enum ProductFinish : UInt8
@@ -144,30 +121,32 @@ module Matter
         end
       end
 
-      # Attribute storage - Required
-      property data_model_revision : UInt16
-      property vendor_name : String
-      property vendor_id : UInt16
-      property product_name : String
-      property product_id : UInt16
-      property node_label : String
-      property location : String # ISO 3166-1 alpha-2
-      property hardware_version : UInt16
-      property hardware_version_string : String
-      property software_version : UInt32
-      property software_version_string : String
+      attribute 0x0000, :data_model_revision, UInt16, default: 1_u16, fixed: true
+      attribute 0x0001, :vendor_name, String, default: "", fixed: true
+      attribute 0x0002, :vendor_id, UInt16, default: 0_u16, fixed: true
+      attribute 0x0003, :product_name, String, default: "", fixed: true
+      attribute 0x0004, :product_id, UInt16, default: 0_u16, fixed: true
+      attribute 0x0005, :node_label, String, default: "", writable: true, write_access: :manage, max_length: NODE_LABEL_MAX_LENGTH
+      attribute 0x0006, :location, String, default: LOCATION_UNKNOWN, writable: true, write_access: :administer
+      attribute 0x0007, :hardware_version, UInt16, default: 0_u16, fixed: true
+      attribute 0x0008, :hardware_version_string, String, default: "1.0", fixed: true
+      attribute 0x0009, :software_version, UInt32, default: 0_u32, fixed: true
+      attribute 0x000A, :software_version_string, String, default: "1.0.0", fixed: true
+      attribute 0x000B, :manufacturing_date, String, default: "", fixed: true, optional: true
+      attribute 0x000C, :part_number, String, default: "", fixed: true, optional: true
+      attribute 0x000D, :product_url, String, default: "", fixed: true, optional: true
+      attribute 0x000E, :product_label, String, default: "", fixed: true, optional: true
+      attribute 0x000F, :serial_number, String, default: "", fixed: true, optional: true
+      attribute 0x0010, :local_config_disabled, Bool, default: false, writable: true, write_access: :manage, optional: true
+      attribute 0x0011, :reachable, Bool, default: true, optional: true
+      attribute 0x0012, :unique_id, String, default: "", fixed: true
+      attribute 0x0013, :capability_minima, CapabilityMinimaStruct, default: CapabilityMinimaStruct.new, fixed: true
+      attribute 0x0014, :product_appearance, ProductAppearanceStruct, nullable: true, fixed: true, optional: true
 
-      # Attribute storage - Optional
-      property manufacturing_date : String
-      property part_number : String
-      property product_url : String
-      property product_label : String
-      property serial_number : String
-      property? local_config_disabled : Bool
-      property? reachable : Bool
-      property unique_id : String
-      property capability_minima : CapabilityMinimaStruct
-      property product_appearance : ProductAppearanceStruct?
+      event 0x00, :start_up, priority: :critical
+      event 0x01, :shut_down, priority: :critical
+      event 0x02, :leave, priority: :info
+      event 0x03, :reachable_changed, priority: :info
 
       def initialize(endpoint_id : DataType::EndpointNumber,
                      @data_model_revision : UInt16 = 1_u16,
@@ -176,7 +155,7 @@ module Matter
                      @product_name : String = "",
                      @product_id : UInt16 = 0_u16,
                      node_label : String? = nil,
-                     @location : String = "XX",
+                     @location : String = LOCATION_UNKNOWN,
                      @hardware_version : UInt16 = 0_u16,
                      @hardware_version_string : String = "1.0",
                      @software_version : UInt32 = 0_u32,
@@ -201,306 +180,27 @@ module Matter
         @product_label = product_label || @product_name
       end
 
-      def name : String
-        "BasicInformation"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_DATA_MODEL_REVISION),
-            "DataModelRevision",
-            :uint16,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_VENDOR_NAME),
-            "VendorName",
-            :string,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_VENDOR_ID),
-            "VendorID",
-            :uint16,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PRODUCT_NAME),
-            "ProductName",
-            :string,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PRODUCT_ID),
-            "ProductID",
-            :uint16,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_NODE_LABEL),
-            "NodeLabel",
-            :string,
-            writable: true
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_LOCATION),
-            "Location",
-            :string,
-            writable: true
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_HARDWARE_VERSION),
-            "HardwareVersion",
-            :uint16,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_HARDWARE_VERSION_STRING),
-            "HardwareVersionString",
-            :string,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_SOFTWARE_VERSION),
-            "SoftwareVersion",
-            :uint32,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_SOFTWARE_VERSION_STRING),
-            "SoftwareVersionString",
-            :string,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MANUFACTURING_DATE),
-            "ManufacturingDate",
-            :string,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PART_NUMBER),
-            "PartNumber",
-            :string,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PRODUCT_URL),
-            "ProductURL",
-            :string,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PRODUCT_LABEL),
-            "ProductLabel",
-            :string,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_SERIAL_NUMBER),
-            "SerialNumber",
-            :string,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_LOCAL_CONFIG_DISABLED),
-            "LocalConfigDisabled",
-            :bool,
-            writable: true
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_REACHABLE),
-            "Reachable",
-            :bool,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_UNIQUE_ID),
-            "UniqueID",
-            :string,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_CAPABILITY_MINIMA),
-            "CapabilityMinima",
-            :struct,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PRODUCT_APPEARANCE),
-            "ProductAppearance",
-            :struct,
-            writable: false
-          ),
-        ]
-      end
-
-      def commands : Array(CommandMetadata)
-        # No commands defined for Basic Information cluster
-        [] of CommandMetadata
-      end
-
-      def events : Array(EventMetadata)
-        [
-          EventMetadata.new(
-            DataType::EventId.new(EVENT_START_UP),
-            "StartUp",
-            InteractionModel::EventPriority::Critical
-          ),
-          EventMetadata.new(
-            DataType::EventId.new(EVENT_SHUT_DOWN),
-            "ShutDown",
-            InteractionModel::EventPriority::Critical
-          ),
-          EventMetadata.new(
-            DataType::EventId.new(EVENT_LEAVE),
-            "Leave",
-            InteractionModel::EventPriority::Info
-          ),
-          EventMetadata.new(
-            DataType::EventId.new(EVENT_REACHABLE_CHANGED),
-            "ReachableChanged",
-            InteractionModel::EventPriority::Info
-          ),
-        ]
-      end
-
+      # ProductAppearance is optional and not nullable: without a value the
+      # attribute is not present.
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_DATA_MODEL_REVISION
-          tlv(@data_model_revision)
-        when ATTR_VENDOR_NAME
-          tlv(@vendor_name)
-        when ATTR_VENDOR_ID
-          tlv(@vendor_id)
-        when ATTR_PRODUCT_NAME
-          tlv(@product_name)
-        when ATTR_PRODUCT_ID
-          tlv(@product_id)
-        when ATTR_NODE_LABEL
-          tlv(@node_label)
-        when ATTR_LOCATION
-          tlv(@location)
-        when ATTR_HARDWARE_VERSION
-          tlv(@hardware_version)
-        when ATTR_HARDWARE_VERSION_STRING
-          tlv(@hardware_version_string)
-        when ATTR_SOFTWARE_VERSION
-          tlv(@software_version)
-        when ATTR_SOFTWARE_VERSION_STRING
-          tlv(@software_version_string)
-        when ATTR_MANUFACTURING_DATE
-          tlv(@manufacturing_date)
-        when ATTR_PART_NUMBER
-          tlv(@part_number)
-        when ATTR_PRODUCT_URL
-          tlv(@product_url)
-        when ATTR_PRODUCT_LABEL
-          tlv(@product_label)
-        when ATTR_SERIAL_NUMBER
-          tlv(@serial_number)
-        when ATTR_LOCAL_CONFIG_DISABLED
-          tlv(@local_config_disabled)
-        when ATTR_REACHABLE
-          tlv(@reachable)
-        when ATTR_UNIQUE_ID
-          tlv(@unique_id)
-        when ATTR_CAPABILITY_MINIMA
-          tlv(@capability_minima)
-        when ATTR_PRODUCT_APPEARANCE
-          if appearance = @product_appearance
-            tlv(appearance)
-          else
-            # Attribute not present
-            InteractionModel::Status.unsupported_attribute
-          end
-        else
-          super
-        end
+        return InteractionModel::Status.unsupported_attribute if attribute_id == ATTR_PRODUCT_APPEARANCE && @product_appearance.nil?
+        super
       end
 
+      # Location is validated as a country code and stored upper case.
       protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        case attribute_id
-        when ATTR_NODE_LABEL
-          str = decode?(value, String)
-          return InteractionModel::Status.invalid_data_type unless str
+        return super unless attribute_id == ATTR_LOCATION
 
-          # Validate max length (32 chars per Matter spec)
-          if str.bytesize > 32
-            return InteractionModel::Status.constraint_error
-          end
+        code = decode?(value, String)
+        return InteractionModel::Status.invalid_data_type unless code
+        return InteractionModel::Status.constraint_error unless valid_location?(code)
 
-          @node_label = str
-          increment_version_and_notify(ATTR_NODE_LABEL)
-          InteractionModel::Status.success
-        when ATTR_LOCATION
-          str = decode?(value, String)
-          return InteractionModel::Status.invalid_data_type unless str
-
-          # Validate ISO 3166-1 alpha-2 format (must be exactly 2 characters)
-          if str.size != 2
-            return InteractionModel::Status.constraint_error
-          end
-
-          # Validate it contains only ASCII letters or is "XX" (region-agnostic)
-          unless str == "XX" || str.chars.all?(&.ascii_letter?)
-            return InteractionModel::Status.constraint_error
-          end
-
-          @location = str.upcase
-          increment_version_and_notify(ATTR_LOCATION)
-          InteractionModel::Status.success
-        when ATTR_LOCAL_CONFIG_DISABLED
-          bool = decode?(value, Bool)
-          return InteractionModel::Status.invalid_data_type if bool.nil?
-
-          @local_config_disabled = bool
-          increment_version_and_notify(ATTR_LOCAL_CONFIG_DISABLED)
-          InteractionModel::Status.success
-        else
-          super
-        end
+        self.location = code.upcase
+        InteractionModel::Status.success
       end
 
-      # ------------------------------------------------------------------------
-      # Persistence support
-      # ------------------------------------------------------------------------
-
-      private struct PersistedState
-        include Storage::Record
-
-        property node_label : String
-        property location : String
-        property? local_config_disabled : Bool
-        property data_version : UInt32
-
-        def initialize(
-          @node_label : String,
-          @location : String,
-          @local_config_disabled : Bool,
-          @data_version : UInt32,
-        )
-        end
-      end
-
-      def save_state : Storage::Document?
-        PersistedState.new(
-          node_label: @node_label,
-          location: @location,
-          local_config_disabled: @local_config_disabled,
-          data_version: @data_version
-        ).to_document
-      end
-
-      def restore_state(document : Storage::Document) : Nil
-        state = PersistedState.from_document(document)
-        @node_label = state.node_label
-        @location = state.location
-        @local_config_disabled = state.local_config_disabled?
-        @data_version = state.data_version
-      rescue ex
-        Log.warn(exception: ex) { "BasicInformation restore_state failed; starting fresh" }
+      private def valid_location?(code : String) : Bool
+        code.size == LOCATION_LENGTH && (code == LOCATION_UNKNOWN || code.chars.all?(&.ascii_letter?))
       end
 
       # Helper: Trigger StartUp event (call when node boots)
@@ -523,14 +223,11 @@ module Matter
 
       # Helper: Trigger ReachableChanged event (call when reachability changes)
       def emit_reachable_changed_event(reachable_new_value : Bool)
-        @reachable = reachable_new_value
-        increment_version
+        self.reachable = reachable_new_value
 
         # NOTE: Event emission would be handled by the event management system
         ReachableChangedEvent.new(reachable_new_value).to_slice
       end
-
-      # TLV encoding helpers
     end
   end
 end

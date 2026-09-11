@@ -38,7 +38,7 @@ describe Matter::Cluster::PowerSourceCluster do
       cluster.order.should eq(1_u8)
       cluster.description.should eq("aa batteries")
       cluster.bat_charge_level.should eq(Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok)
-      cluster.bat_replacement_needed.should be_false
+      cluster.bat_replacement_needed?.should be_false
       cluster.bat_replaceability.should eq(Matter::Cluster::PowerSourceCluster::BatReplaceability::UserReplaceable)
       cluster.battery_feature_enabled?.should be_true
     end
@@ -122,7 +122,7 @@ describe Matter::Cluster::PowerSourceCluster do
     end
 
     it "validates Wired and Battery are mutually exclusive" do
-      expect_raises(ArgumentError, /Wired and Battery features are mutually exclusive/) do
+      expect_raises(ArgumentError, /Wired and Battery features cannot be combined/) do
         Matter::Cluster::PowerSourceCluster.new(
           endpoint_id,
           feature_map: Matter::Cluster::PowerSourceCluster::Feature::Wired | Matter::Cluster::PowerSourceCluster::Feature::Battery
@@ -397,7 +397,7 @@ describe Matter::Cluster::PowerSourceCluster do
       )
 
       cluster.update_bat_replacement_needed(true)
-      cluster.bat_replacement_needed.should be_true
+      cluster.bat_replacement_needed?.should be_true
     end
 
     it "calls callback when replacement needed changes" do
@@ -523,13 +523,13 @@ describe Matter::Cluster::PowerSourceCluster do
 
       # Mark battery for replacement
       device.update_bat_replacement_needed(true)
-      device.bat_replacement_needed.should be_true
+      device.bat_replacement_needed?.should be_true
       device.bat_replacement_description.should eq("Replace with 2x AA alkaline")
 
       # After replacement (simulated by creating new state)
       device.update_bat_charge_level(Matter::Cluster::PowerSourceCluster::BatChargeLevel::Ok)
       device.update_bat_replacement_needed(false)
-      device.bat_replacement_needed.should be_false
+      device.bat_replacement_needed?.should be_false
     end
 
     it "models device with primary and backup batteries" do

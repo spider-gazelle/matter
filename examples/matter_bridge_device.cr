@@ -85,10 +85,9 @@ module MatterBridge
       )
 
       # Wire reachability callback
-      @bridged_info_cluster.on_reachable_changed = ->(new_state : Bool) {
+      @bridged_info_cluster.on_reachable_changed do |new_state|
         @reachable = new_state
-        nil
-      }
+      end
     end
 
     def clusters : Array(Matter::Cluster::Base)

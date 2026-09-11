@@ -12,15 +12,7 @@ module Matter
     #
     # Matter Spec: Core 9.5
     class DescriptorCluster < Base
-      CLUSTER_ID = 0x001D_u32
-
-      # Attributes
-      ATTR_DEVICE_TYPE_LIST = 0x0000_u32
-      ATTR_SERVER_LIST      = 0x0001_u32
-      ATTR_CLIENT_LIST      = 0x0002_u32
-      ATTR_PARTS_LIST       = 0x0003_u32
-
-      CLUSTER_REVISION = 2_u16
+      cluster 0x001D, revision: 3
 
       # Device Type Structure
       # IMPORTANT: Device type values MUST be encoded with correct widths per Matter spec:
@@ -40,102 +32,18 @@ module Matter
         end
       end
 
-      # Attribute storage
-      property device_type_list : Array(DeviceTypeStruct)
-      property server_list : Array(UInt32)
-      property client_list : Array(UInt32)
-      property parts_list : Array(UInt16)
+      # The lists are built by the device while it composes its endpoints
+      # (`add_server`, `add_part`, ...); they are fixed once commissioned.
+      attribute 0x0000, :device_type_list, Array(DeviceTypeStruct), default: [] of DeviceTypeStruct, fixed: true
+      attribute 0x0001, :server_list, Array(UInt32), default: [] of UInt32, fixed: true
+      attribute 0x0002, :client_list, Array(UInt32), default: [] of UInt32, fixed: true
+      attribute 0x0003, :parts_list, Array(UInt16), default: [] of UInt16, fixed: true
 
       def initialize(endpoint_id : DataType::EndpointNumber)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
-        @device_type_list = [] of DeviceTypeStruct
-        @server_list = [] of UInt32
-        @client_list = [] of UInt32
-        @parts_list = [] of UInt16
-
         # Descriptor cluster is always a server on every endpoint
         @server_list << CLUSTER_ID
-      end
-
-      def name : String
-        "Descriptor"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_DEVICE_TYPE_LIST),
-            "DeviceTypeList",
-            :list,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_SERVER_LIST),
-            "ServerList",
-            :list,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_CLIENT_LIST),
-            "ClientList",
-            :list,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PARTS_LIST),
-            "PartsList",
-            :list,
-            writable: false
-          ),
-        ]
-      end
-
-      def commands : Array(CommandMetadata)
-        # No commands defined for Descriptor cluster
-        [] of CommandMetadata
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_DEVICE_TYPE_LIST
-          tlv(@device_type_list)
-        when ATTR_SERVER_LIST
-          tlv(@server_list)
-        when ATTR_CLIENT_LIST
-          tlv(@client_list)
-        when ATTR_PARTS_LIST
-          tlv(@parts_list)
-        when GLOBAL_FEATURE_MAP
-          tlv(0_u32) # No features for Descriptor cluster
-        when GLOBAL_ATTRIBUTE_LIST
-          build_attribute_list
-        else
-          super
-        end
-      end
-
-      # Encode the list of supported attributes as TLV array
-      private def build_attribute_list : TLV::Any
-        # All supported attribute IDs including global attributes
-        # Order: cluster-specific first, then global attributes
-        tlv([
-          ATTR_DEVICE_TYPE_LIST,
-          ATTR_SERVER_LIST,
-          ATTR_CLIENT_LIST,
-          ATTR_PARTS_LIST,
-          # Global attributes (required on all clusters)
-          GLOBAL_GENERATED_COMMAND_LIST,
-          GLOBAL_ACCEPTED_COMMAND_LIST,
-          GLOBAL_ATTRIBUTE_LIST,
-          GLOBAL_FEATURE_MAP,
-          GLOBAL_CLUSTER_REVISION,
-        ])
-      end
-
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        # All attributes are read-only
-        super
       end
 
       # Helper: Check if a cluster is in the server list
@@ -208,15 +116,6 @@ module Matter
         @parts_list << endpoint_id unless @parts_list.includes?(endpoint_id)
         self
       end
-
-      # Encode device type list as TLV array
-      # DeviceTypeStruct uses fixed_size: true for proper Matter spec encoding
-
-      # Encode cluster list (server or client) as TLV array
-      # Cluster IDs are encoded as UInt32 per Matter spec
-
-      # Encode parts list as TLV array
-      # Endpoint IDs are encoded as UInt16 per Matter spec
     end
   end
 end

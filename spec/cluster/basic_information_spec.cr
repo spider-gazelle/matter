@@ -43,7 +43,7 @@ describe Matter::Cluster::BasicInformationCluster do
       data_model_revision = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformationCluster::ATTR_DATA_MODEL_REVISION }
       data_model_revision.should_not be_nil
       dmr_attr = data_model_revision.as(Matter::Cluster::AttributeMetadata)
-      dmr_attr.name.should eq("DataModelRevision")
+      dmr_attr.name.should eq("dataModelRevision")
       dmr_attr.writable?.should be_false
 
       vendor_name = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME }

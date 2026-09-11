@@ -1,4 +1,5 @@
 require "./cluster"
+require "./basic_information_cluster"
 require "tlv"
 
 module Matter
@@ -11,32 +12,9 @@ module Matter
     #
     # Matter Spec: Core 9.13
     class BridgedDeviceBasicInformationCluster < Base
-      CLUSTER_ID = 0x0039_u32
+      cluster 0x0039, revision: 5
 
-      # Attribute IDs
-      ATTR_VENDOR_NAME             = 0x0001_u32
-      ATTR_VENDOR_ID               = 0x0002_u32
-      ATTR_PRODUCT_NAME            = 0x0003_u32
-      ATTR_PRODUCT_ID              = 0x0004_u32 # Added in revision 4
-      ATTR_NODE_LABEL              = 0x0005_u32
-      ATTR_HARDWARE_VERSION        = 0x0007_u32
-      ATTR_HARDWARE_VERSION_STRING = 0x0008_u32
-      ATTR_SOFTWARE_VERSION        = 0x0009_u32
-      ATTR_SOFTWARE_VERSION_STRING = 0x000A_u32
-      ATTR_MANUFACTURING_DATE      = 0x000B_u32
-      ATTR_PART_NUMBER             = 0x000C_u32
-      ATTR_PRODUCT_URL             = 0x000D_u32
-      ATTR_PRODUCT_LABEL           = 0x000E_u32
-      ATTR_SERIAL_NUMBER           = 0x000F_u32
-      ATTR_REACHABLE               = 0x0011_u32 # Required
-      ATTR_UNIQUE_ID               = 0x0012_u32
-      ATTR_PRODUCT_APPEARANCE      = 0x0014_u32
-
-      # Events
-      EVENT_START_UP          = 0x00_u32
-      EVENT_SHUT_DOWN         = 0x01_u32
-      EVENT_LEAVE             = 0x02_u32
-      EVENT_REACHABLE_CHANGED = 0x03_u32
+      NODE_LABEL_MAX_LENGTH = 32
 
       # Reuse enums and structs from BasicInformationCluster
       alias ProductFinish = BasicInformationCluster::ProductFinish
@@ -81,29 +59,43 @@ module Matter
         end
       end
 
-      # Attribute storage - Required
-      property? reachable : Bool
+      # The optional attributes are present exactly when the bridge supplied
+      # a value (see `attribute_present?`).
+      attribute 0x0001, :vendor_name, String, nullable: true, fixed: true, optional: true
+      attribute 0x0002, :vendor_id, UInt16, nullable: true, fixed: true, optional: true
+      attribute 0x0003, :product_name, String, nullable: true, fixed: true, optional: true
+      attribute 0x0004, :product_id, UInt16, nullable: true, fixed: true, optional: true
+      attribute 0x0005, :node_label, String, default: "", writable: true, write_access: :manage, max_length: NODE_LABEL_MAX_LENGTH
+      attribute 0x0007, :hardware_version, UInt16, nullable: true, fixed: true, optional: true
+      attribute 0x0008, :hardware_version_string, String, nullable: true, fixed: true, optional: true
+      attribute 0x0009, :software_version, UInt32, nullable: true, fixed: true, optional: true
+      attribute 0x000A, :software_version_string, String, nullable: true, fixed: true, optional: true
+      attribute 0x000B, :manufacturing_date, String, nullable: true, fixed: true, optional: true
+      attribute 0x000C, :part_number, String, nullable: true, fixed: true, optional: true
+      attribute 0x000D, :product_url, String, nullable: true, fixed: true, optional: true
+      attribute 0x000E, :product_label, String, nullable: true, fixed: true, optional: true
+      attribute 0x000F, :serial_number, String, nullable: true, fixed: true, optional: true
+      attribute 0x0011, :reachable, Bool, default: true, persist: true, callback: :new_only
+      attribute 0x0012, :unique_id, String, nullable: true, fixed: true, optional: true
+      attribute 0x0014, :product_appearance, ProductAppearanceStruct, nullable: true, fixed: true, optional: true
 
-      # Attribute storage - Optional (all optional for bridged devices)
-      property vendor_name : String?
-      property vendor_id : UInt16?
-      property product_name : String?
-      property product_id : UInt16?
-      property node_label : String?
-      property hardware_version : UInt16?
-      property hardware_version_string : String?
-      property software_version : UInt32?
-      property software_version_string : String?
-      property manufacturing_date : String?
-      property part_number : String?
-      property product_url : String?
-      property product_label : String?
-      property serial_number : String?
-      property unique_id : String?
-      property product_appearance : ProductAppearanceStruct?
+      event 0x00, :start_up, priority: :critical
+      event 0x01, :shut_down, priority: :critical
+      event 0x02, :leave, priority: :info
+      event 0x03, :reachable_changed, priority: :info
 
-      # Callback for reachability changes
-      property on_reachable_changed : Proc(Bool, Nil)?
+      # The DSL gates attributes on features only; this hook runs after the
+      # DSL's own `finished` hook and narrows the generated tables to the
+      # attributes that have a value.
+      macro finished
+        protected def dsl_attribute_supported?(attribute_id : UInt32) : Bool
+          previous_def && attribute_present?(attribute_id)
+        end
+
+        def attributes : Array(AttributeMetadata)
+          ATTRIBUTES.select { |attribute| dsl_attribute_supported?(attribute.id.id) }
+        end
+      end
 
       def initialize(
         endpoint_id : DataType::EndpointNumber,
@@ -112,7 +104,7 @@ module Matter
         @vendor_id : UInt16? = nil,
         @product_name : String? = nil,
         @product_id : UInt16? = nil,
-        @node_label : String? = nil,
+        node_label : String? = nil,
         @hardware_version : UInt16? = nil,
         @hardware_version_string : String? = nil,
         @software_version : UInt32? = nil,
@@ -126,330 +118,39 @@ module Matter
         @product_appearance : ProductAppearanceStruct? = nil,
       )
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
+        @node_label = node_label || ""
       end
 
-      def name : String
-        "BridgedDeviceBasicInformation"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        attrs = [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_REACHABLE),
-            "Reachable",
-            :bool,
-            writable: false
-          ),
-        ]
-
-        # Add optional attributes only if they have values
-        if @vendor_name
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_VENDOR_NAME),
-            "VendorName",
-            :string,
-            writable: false
-          )
+      # An optional attribute is absent while its value is nil.
+      private def attribute_present?(attribute_id : UInt32) : Bool
+        case attribute_id
+        when ATTR_VENDOR_NAME             then !@vendor_name.nil?
+        when ATTR_VENDOR_ID               then !@vendor_id.nil?
+        when ATTR_PRODUCT_NAME            then !@product_name.nil?
+        when ATTR_PRODUCT_ID              then !@product_id.nil?
+        when ATTR_HARDWARE_VERSION        then !@hardware_version.nil?
+        when ATTR_HARDWARE_VERSION_STRING then !@hardware_version_string.nil?
+        when ATTR_SOFTWARE_VERSION        then !@software_version.nil?
+        when ATTR_SOFTWARE_VERSION_STRING then !@software_version_string.nil?
+        when ATTR_MANUFACTURING_DATE      then !@manufacturing_date.nil?
+        when ATTR_PART_NUMBER             then !@part_number.nil?
+        when ATTR_PRODUCT_URL             then !@product_url.nil?
+        when ATTR_PRODUCT_LABEL           then !@product_label.nil?
+        when ATTR_SERIAL_NUMBER           then !@serial_number.nil?
+        when ATTR_UNIQUE_ID               then !@unique_id.nil?
+        when ATTR_PRODUCT_APPEARANCE      then !@product_appearance.nil?
+        else                                   true
         end
-
-        if @vendor_id
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_VENDOR_ID),
-            "VendorID",
-            :uint16,
-            writable: false
-          )
-        end
-
-        if @product_name
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PRODUCT_NAME),
-            "ProductName",
-            :string,
-            writable: false
-          )
-        end
-
-        if @product_id
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PRODUCT_ID),
-            "ProductID",
-            :uint16,
-            writable: false
-          )
-        end
-
-        # NodeLabel is always present and writable
-        attrs << AttributeMetadata.new(
-          DataType::AttributeId.new(ATTR_NODE_LABEL),
-          "NodeLabel",
-          :string,
-          writable: true
-        )
-
-        if @hardware_version
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_HARDWARE_VERSION),
-            "HardwareVersion",
-            :uint16,
-            writable: false
-          )
-        end
-
-        if @hardware_version_string
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_HARDWARE_VERSION_STRING),
-            "HardwareVersionString",
-            :string,
-            writable: false
-          )
-        end
-
-        if @software_version
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_SOFTWARE_VERSION),
-            "SoftwareVersion",
-            :uint32,
-            writable: false
-          )
-        end
-
-        if @software_version_string
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_SOFTWARE_VERSION_STRING),
-            "SoftwareVersionString",
-            :string,
-            writable: false
-          )
-        end
-
-        if @manufacturing_date
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MANUFACTURING_DATE),
-            "ManufacturingDate",
-            :string,
-            writable: false
-          )
-        end
-
-        if @part_number
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PART_NUMBER),
-            "PartNumber",
-            :string,
-            writable: false
-          )
-        end
-
-        if @product_url
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PRODUCT_URL),
-            "ProductURL",
-            :string,
-            writable: false
-          )
-        end
-
-        if @product_label
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PRODUCT_LABEL),
-            "ProductLabel",
-            :string,
-            writable: false
-          )
-        end
-
-        if @serial_number
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_SERIAL_NUMBER),
-            "SerialNumber",
-            :string,
-            writable: false
-          )
-        end
-
-        if @unique_id
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_UNIQUE_ID),
-            "UniqueID",
-            :string,
-            writable: false
-          )
-        end
-
-        if @product_appearance
-          attrs << AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_PRODUCT_APPEARANCE),
-            "ProductAppearance",
-            :struct,
-            writable: false
-          )
-        end
-
-        attrs
-      end
-
-      def commands : Array(CommandMetadata)
-        [] of CommandMetadata
-      end
-
-      def events : Array(EventMetadata)
-        [
-          EventMetadata.new(
-            DataType::EventId.new(EVENT_START_UP),
-            "StartUp",
-            InteractionModel::EventPriority::Critical
-          ),
-          EventMetadata.new(
-            DataType::EventId.new(EVENT_SHUT_DOWN),
-            "ShutDown",
-            InteractionModel::EventPriority::Critical
-          ),
-          EventMetadata.new(
-            DataType::EventId.new(EVENT_LEAVE),
-            "Leave",
-            InteractionModel::EventPriority::Info
-          ),
-          EventMetadata.new(
-            DataType::EventId.new(EVENT_REACHABLE_CHANGED),
-            "ReachableChanged",
-            InteractionModel::EventPriority::Info
-          ),
-        ]
       end
 
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_REACHABLE
-          tlv(@reachable)
-        when ATTR_VENDOR_NAME
-          if value = @vendor_name
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_VENDOR_ID
-          if value = @vendor_id
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_PRODUCT_NAME
-          if value = @product_name
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_PRODUCT_ID
-          if value = @product_id
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_NODE_LABEL
-          tlv(@node_label || "")
-        when ATTR_HARDWARE_VERSION
-          if value = @hardware_version
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_HARDWARE_VERSION_STRING
-          if value = @hardware_version_string
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_SOFTWARE_VERSION
-          if value = @software_version
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_SOFTWARE_VERSION_STRING
-          if value = @software_version_string
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_MANUFACTURING_DATE
-          if value = @manufacturing_date
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_PART_NUMBER
-          if value = @part_number
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_PRODUCT_URL
-          if value = @product_url
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_PRODUCT_LABEL
-          if value = @product_label
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_SERIAL_NUMBER
-          if value = @serial_number
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_UNIQUE_ID
-          if value = @unique_id
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        when ATTR_PRODUCT_APPEARANCE
-          if value = @product_appearance
-            tlv(value)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        else
-          super
-        end
+        return InteractionModel::Status.unsupported_attribute unless attribute_present?(attribute_id)
+        super
       end
 
       protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        case attribute_id
-        when ATTR_NODE_LABEL
-          str = decode?(value, String)
-          return InteractionModel::Status.invalid_data_type unless str
-
-          # Validate max length (32 chars per Matter spec)
-          if str.bytesize > 32
-            return InteractionModel::Status.constraint_error
-          end
-
-          @node_label = str
-          increment_version_and_notify(ATTR_NODE_LABEL)
-          InteractionModel::Status.success
-        else
-          super
-        end
-      end
-
-      # Set reachability and emit event
-      def reachable=(value : Bool) : Nil
-        return if @reachable == value
-
-        @reachable = value
-        increment_version_and_notify(ATTR_REACHABLE)
-
-        # Call the reachability callback if set
-        @on_reachable_changed.try(&.call(value))
-
-        # Generate event data (for future event system)
-        emit_reachable_changed_event(value)
+        return InteractionModel::Status.unsupported_attribute unless attribute_present?(attribute_id)
+        super
       end
 
       # Helper: Trigger StartUp event
@@ -471,44 +172,6 @@ module Matter
       def emit_reachable_changed_event(reachable_new_value : Bool) : Bytes
         ReachableChangedEvent.new(reachable_new_value).to_slice
       end
-
-      # ------------------------------------------------------------------------
-      # Persistence support
-      # ------------------------------------------------------------------------
-
-      private struct PersistedState
-        include Storage::Record
-
-        property node_label : String?
-        property? reachable : Bool
-        property data_version : UInt32
-
-        def initialize(
-          @node_label : String?,
-          @reachable : Bool,
-          @data_version : UInt32,
-        )
-        end
-      end
-
-      def save_state : Storage::Document?
-        PersistedState.new(
-          node_label: @node_label,
-          reachable: @reachable,
-          data_version: @data_version
-        ).to_document
-      end
-
-      def restore_state(document : Storage::Document) : Nil
-        state = PersistedState.from_document(document)
-        @node_label = state.node_label
-        @reachable = state.reachable?
-        @data_version = state.data_version
-      rescue ex
-        Log.warn(exception: ex) { "BridgedDeviceBasicInformation restore_state failed; starting fresh" }
-      end
-
-      # TLV encoding helpers
     end
   end
 end
