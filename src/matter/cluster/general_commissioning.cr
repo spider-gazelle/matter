@@ -218,21 +218,14 @@ module Matter
       # Terms & Conditions state, the per-failsafe reset hook the
       # OperationalCredentials cluster installs and the armed state all belong
       # to the service.
-      delegate terms_conditions_required?, terms_conditions_accepted?,
-        on_failsafe_armed, record_added_fabric,
+      delegate terms_conditions_required?, :terms_conditions_required=,
+        terms_conditions_accepted?, on_failsafe_armed, :on_failsafe_armed=,
+        record_added_fabric,
         to: failsafe
 
       # Whether a failsafe is currently armed
       def failsafe_armed? : Bool
         failsafe.armed?
-      end
-
-      def terms_conditions_required=(required : Bool) : Bool
-        failsafe.terms_conditions_required = required
-      end
-
-      def on_failsafe_armed=(callback : Proc(Nil)?) : Proc(Nil)?
-        failsafe.on_failsafe_armed = callback
       end
 
       # ========================================================================
