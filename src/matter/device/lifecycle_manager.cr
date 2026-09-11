@@ -7,7 +7,7 @@ require "../protocol/session_registry"
 require "../cluster/operational_credentials"
 
 module Matter
-  module Device
+  abstract class Device
     # Wires fabric lifecycle events (commissioning/operational transitions) to:
     # - mDNS advertisements
     # - protocol session/subscription cleanup

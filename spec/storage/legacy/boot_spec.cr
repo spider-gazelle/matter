@@ -1,6 +1,6 @@
 require "../../spec_helper"
 require "../../../src/matter/storage/legacy"
-require "../../../src/matter/device/base"
+require "../../../src/matter/device"
 require "../../../src/matter/cluster/on_off"
 require "../../../src/matter/cluster/level_control"
 require "../../../src/matter/cluster/groups"
@@ -10,7 +10,7 @@ require "../../../src/matter/cluster/identify"
 
 # A dimmable light on endpoint 1 with every cluster the legacy fixture has a
 # document for, so booting it on an imported store exercises each restore.
-class LegacyBootDevice < Matter::Device::Base
+class LegacyBootDevice < Matter::Device
   LIGHT_ENDPOINT = 1_u16
 
   # Bind an ephemeral UDP port so the device never collides with a running one.

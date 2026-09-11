@@ -1,12 +1,12 @@
 require "../spec_helper"
-require "../../src/matter/device/base"
+require "../../src/matter/device"
 require "../../src/matter/cluster/on_off"
 require "../../src/matter/cluster/identify"
 require "../../src/matter/cluster/groups"
 require "../../src/matter/cluster/bridged_device_basic_information"
 
 # Test device for dynamic endpoint tests
-class TestBridgeDevice < Matter::Device::Base
+class TestBridgeDevice < Matter::Device
   def initialize(storage : Matter::Storage::Backend = Matter::Storage::Memory.new)
     super(storage)
   end

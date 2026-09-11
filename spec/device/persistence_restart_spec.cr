@@ -1,5 +1,5 @@
 require "../spec_helper"
-require "../../src/matter/device/base"
+require "../../src/matter/device"
 require "../../src/matter/cluster/on_off"
 require "../../src/matter/cluster/identify"
 require "../../src/matter/cluster/groups"
@@ -7,7 +7,7 @@ require "../../src/matter/cluster/groups"
 # An on/off light on endpoint 1 (as in `examples/matter_switch_device.cr`)
 # whose whole state lives in one `YamlFile`, so two instances booted on the
 # same path model a device process restarting.
-class PersistenceRestartDevice < Matter::Device::Base
+class PersistenceRestartDevice < Matter::Device
   LIGHT_ENDPOINT = 1_u16
 
   # Bind an ephemeral UDP port so instances never collide with each other or a

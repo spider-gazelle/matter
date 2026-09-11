@@ -1,8 +1,8 @@
 require "../spec_helper"
-require "../../src/matter/device/base"
+require "../../src/matter/device"
 
 # Minimal device exposing a fixed discriminator for commissioning-window specs
-class CommissioningWindowTestDevice < Matter::Device::Base
+class CommissioningWindowTestDevice < Matter::Device
   DEVICE_DISCRIMINATOR = 3840_u16
 
   def initialize
@@ -43,11 +43,11 @@ class CommissioningWindowTestDevice < Matter::Device::Base
 end
 
 # The advertising callback the device installs on its AdministratorCommissioning cluster
-private def start_advertising(device : Matter::Device::Base) : Proc(UInt16?, Matter::MDNS::CommissioningMode, Nil)
+private def start_advertising(device : Matter::Device) : Proc(UInt16?, Matter::MDNS::CommissioningMode, Nil)
   device.administrator_commissioning.on_start_commissioning_advertising || raise "advertising callback not installed"
 end
 
-private def advertised_info(device : Matter::Device::Base) : Matter::MDNS::CommissioningInfo
+private def advertised_info(device : Matter::Device) : Matter::MDNS::CommissioningInfo
   device.responder.advertised_commissioning_info || raise "no commissioning advertisement"
 end
 
