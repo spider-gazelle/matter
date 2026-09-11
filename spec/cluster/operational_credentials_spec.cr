@@ -692,10 +692,12 @@ describe Matter::Cluster::OperationalCredentials do
         # Step 1: Generate CSR for update
         update_nonce = Bytes.new(32, 0x99_u8)
         update_csr_request_tlv = create_csr_request_tlv(update_nonce, true) # is_for_update = true
+        # An UpdateNOC CSR is only valid on the CASE session of the fabric it updates
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_CSR_REQUEST,
           update_csr_request_tlv,
           session_id: 54321_u64,
+          is_case_session: true,
           fabric_index: initial_fabric_index
         )
 
@@ -764,12 +766,15 @@ describe Matter::Cluster::OperationalCredentials do
         cluster.request_fabric_index = fabric_index
         cluster.failsafe_armed = true
 
-        # Generate CSR for update
+        # Generate CSR for update, on the CASE session of the fabric it updates
         nonce = Bytes.new(32, 0x42_u8)
         csr_request_tlv = create_csr_request_tlv(nonce, true)
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_CSR_REQUEST,
-          csr_request_tlv
+          csr_request_tlv,
+          session_id: 12345_u64,
+          is_case_session: true,
+          fabric_index: fabric_index
         )
 
         # Try to add trusted root (not allowed for updates)
@@ -786,7 +791,10 @@ describe Matter::Cluster::OperationalCredentials do
         update_noc_tlv = create_update_noc_request_tlv(noc_bytes, nil, fabric_index)
         result = invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_UPDATE_NOC,
-          update_noc_tlv
+          update_noc_tlv,
+          session_id: 12345_u64,
+          is_case_session: true,
+          fabric_index: fabric_index
         )
 
         # Should return InvalidNoc error (root cert cannot be set for updates)
@@ -1789,6 +1797,7 @@ describe Matter::Cluster::OperationalCredentials do
 
     it "rejects removal of non-existent fabric" do
       fabric_table = OpCredsTestHelpers.create_fabric_table
+      fabric_table.add_fabric(OpCredsTestHelpers.create_test_fabric(1_u64, 1_u8))
       cluster = Matter::Cluster::OperationalCredentials.new(fabric_table)
 
       cmd = Matter::Cluster::OperationalCredentials::RemoveFabricCommand.new(
@@ -1797,6 +1806,20 @@ describe Matter::Cluster::OperationalCredentials do
 
       response = cluster.handle_remove_fabric(cmd)
       response.status_code.should eq(Matter::Cluster::OperationalCredentials::NodeOperationalCertStatus::InvalidFabricIndex)
+    end
+
+    it "treats removal as idempotent while the device has no fabrics" do
+      # iOS removes a stale fabric while re-commissioning a device that has
+      # already been factory reset; the commissioner has to be able to move on.
+      fabric_table = OpCredsTestHelpers.create_fabric_table
+      cluster = Matter::Cluster::OperationalCredentials.new(fabric_table)
+
+      cmd = Matter::Cluster::OperationalCredentials::RemoveFabricCommand.new(
+        fabric_index: 99_u8
+      )
+
+      response = cluster.handle_remove_fabric(cmd)
+      response.status_code.should eq(Matter::Cluster::OperationalCredentials::NodeOperationalCertStatus::Ok)
     end
   end
 
