@@ -1,6 +1,6 @@
 require "../spec_helper"
 require "../../src/matter/cluster/cluster"
-require "../../src/matter/cluster/on_off_cluster"
+require "../../src/matter/cluster/on_off"
 require "../../src/matter/interaction_model/paths"
 require "../../src/matter/protocol/message_handler"
 
@@ -35,7 +35,7 @@ describe "Subscription Notifications" do
     describe "#on_attribute_changed callback" do
       it "can set and retrieve the callback" do
         endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOffCluster.new(endpoint)
+        cluster = Matter::Cluster::OnOff.new(endpoint)
 
         callback_called = false
         cluster.on_attribute_changed = ->(_ep : UInt16, _cl : UInt32, _attr : UInt32) {
@@ -47,18 +47,18 @@ describe "Subscription Notifications" do
 
       it "callback is nil by default" do
         endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOffCluster.new(endpoint)
+        cluster = Matter::Cluster::OnOff.new(endpoint)
 
         cluster.on_attribute_changed.should be_nil
       end
     end
   end
 
-  describe Matter::Cluster::OnOffCluster do
+  describe Matter::Cluster::OnOff do
     describe "attribute change notifications" do
       it "notifies when on_off state changes via On command" do
         endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOffCluster.new(endpoint, on_off: false)
+        cluster = Matter::Cluster::OnOff.new(endpoint, on_off: false)
 
         notification_received = false
         notified_endpoint : UInt16 = 0_u16
@@ -72,17 +72,17 @@ describe "Subscription Notifications" do
           notified_attribute = attr
         }
 
-        invoke(cluster, Matter::Cluster::OnOffCluster::CMD_ON)
+        invoke(cluster, Matter::Cluster::OnOff::CMD_ON)
 
         notification_received.should be_true
         notified_endpoint.should eq(1_u16)
-        notified_cluster.should eq(Matter::Cluster::OnOffCluster::CLUSTER_ID)
-        notified_attribute.should eq(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
+        notified_cluster.should eq(Matter::Cluster::OnOff::CLUSTER_ID)
+        notified_attribute.should eq(Matter::Cluster::OnOff::ATTR_ON_OFF)
       end
 
       it "notifies when on_off state changes via Off command" do
         endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOffCluster.new(endpoint, on_off: true)
+        cluster = Matter::Cluster::OnOff.new(endpoint, on_off: true)
 
         notification_received = false
         notified_attribute : UInt32 = 0_u32
@@ -92,15 +92,15 @@ describe "Subscription Notifications" do
           notified_attribute = attr
         }
 
-        invoke(cluster, Matter::Cluster::OnOffCluster::CMD_OFF)
+        invoke(cluster, Matter::Cluster::OnOff::CMD_OFF)
 
         notification_received.should be_true
-        notified_attribute.should eq(Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
+        notified_attribute.should eq(Matter::Cluster::OnOff::ATTR_ON_OFF)
       end
 
       it "notifies when on_off state changes via Toggle command" do
         endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOffCluster.new(endpoint, on_off: false)
+        cluster = Matter::Cluster::OnOff.new(endpoint, on_off: false)
 
         notification_count = 0
 
@@ -109,17 +109,17 @@ describe "Subscription Notifications" do
         }
 
         # Toggle off -> on
-        invoke(cluster, Matter::Cluster::OnOffCluster::CMD_TOGGLE)
+        invoke(cluster, Matter::Cluster::OnOff::CMD_TOGGLE)
         notification_count.should eq(1)
 
         # Toggle on -> off
-        invoke(cluster, Matter::Cluster::OnOffCluster::CMD_TOGGLE)
+        invoke(cluster, Matter::Cluster::OnOff::CMD_TOGGLE)
         notification_count.should eq(2)
       end
 
       it "does not notify when state doesn't change" do
         endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOffCluster.new(endpoint, on_off: false)
+        cluster = Matter::Cluster::OnOff.new(endpoint, on_off: false)
 
         notification_count = 0
 
@@ -128,24 +128,24 @@ describe "Subscription Notifications" do
         }
 
         # Off command when already off - should not notify
-        invoke(cluster, Matter::Cluster::OnOffCluster::CMD_OFF)
+        invoke(cluster, Matter::Cluster::OnOff::CMD_OFF)
         notification_count.should eq(0)
       end
 
       it "increments data_version when notifying" do
         endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOffCluster.new(endpoint, on_off: false)
+        cluster = Matter::Cluster::OnOff.new(endpoint, on_off: false)
 
         initial_version = cluster.data_version
 
-        invoke(cluster, Matter::Cluster::OnOffCluster::CMD_ON)
+        invoke(cluster, Matter::Cluster::OnOff::CMD_ON)
 
         cluster.data_version.should eq(initial_version + 1)
       end
 
       it "calls both on_attribute_changed and on_state_changed callbacks" do
         endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::OnOffCluster.new(endpoint, on_off: false)
+        cluster = Matter::Cluster::OnOff.new(endpoint, on_off: false)
 
         attribute_callback_called = false
         state_callback_called = false
@@ -160,7 +160,7 @@ describe "Subscription Notifications" do
           state_value = new_state
         end
 
-        invoke(cluster, Matter::Cluster::OnOffCluster::CMD_ON)
+        invoke(cluster, Matter::Cluster::OnOff::CMD_ON)
 
         attribute_callback_called.should be_true
         state_callback_called.should be_true
@@ -398,8 +398,8 @@ describe "Subscription Notifications" do
 
         # Add a test cluster
         endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-        on_off = Matter::Cluster::OnOffCluster.new(endpoint)
-        handler.clusters[{1_u16, Matter::Cluster::OnOffCluster::CLUSTER_ID}] = on_off
+        on_off = Matter::Cluster::OnOff.new(endpoint)
+        handler.clusters[{1_u16, Matter::Cluster::OnOff::CLUSTER_ID}] = on_off
 
         # Initially callback should be nil
         on_off.on_attribute_changed.should be_nil

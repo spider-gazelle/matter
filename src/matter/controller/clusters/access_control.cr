@@ -1,15 +1,15 @@
 require "json"
 
-require "../../cluster/access_control_cluster"
+require "../../cluster/access_control"
 
 module Matter
   module Controller
     module Clusters
       module AccessControl
-        alias Entry = Matter::Cluster::AccessControlCluster::AccessControlEntry
-        alias Target = Matter::Cluster::AccessControlCluster::Target
-        alias Privilege = Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege
-        alias AuthMode = Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode
+        alias Entry = Matter::Cluster::AccessControl::AccessControlEntry
+        alias Target = Matter::Cluster::AccessControl::Target
+        alias Privilege = Matter::Cluster::AccessControl::AccessControlEntryPrivilege
+        alias AuthMode = Matter::Cluster::AccessControl::AccessControlEntryAuthMode
 
         struct TargetJson
           include JSON::Serializable

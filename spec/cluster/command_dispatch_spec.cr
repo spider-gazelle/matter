@@ -44,25 +44,25 @@ end
 
 describe "typed cluster command dispatch" do
   it "dispatches a FanControl Step request with optional booleans" do
-    fan = Matter::Cluster::FanControlCluster.new(endpoint(1), feature_map: Matter::Cluster::FanControlCluster::Feature::Step,
+    fan = Matter::Cluster::FanControl.new(endpoint(1), feature_map: Matter::Cluster::FanControl::Feature::Step,
       percent_setting: 100_u8, percent_current: 100_u8)
-    request = FanStepWireRequest.new(direction: Matter::Cluster::FanControlCluster::StepDirection::Increase.value.to_u8, wrap: true, lowest_off: false)
+    request = FanStepWireRequest.new(direction: Matter::Cluster::FanControl::StepDirection::Increase.value.to_u8, wrap: true, lowest_off: false)
 
-    dispatch_cluster_command(fan, Matter::Cluster::FanControlCluster::CMD_STEP, request).should eq(Matter::InteractionModel::StatusCode::Success.value)
+    dispatch_cluster_command(fan, Matter::Cluster::FanControl::CMD_STEP, request).should eq(Matter::InteractionModel::StatusCode::Success.value)
     fan.percent_setting.should eq(1_u8)
   end
 
   it "dispatches a signed Thermostat SetpointRaiseLower amount" do
-    thermostat = Matter::Cluster::ThermostatCluster.new(endpoint(1))
+    thermostat = Matter::Cluster::Thermostat.new(endpoint(1))
     previous = thermostat.occupied_heating_setpoint
-    request = ThermostatSetpointWireRequest.new(mode: Matter::Cluster::ThermostatCluster::SetpointAdjustMode::Heat.value, amount: -10_i8)
+    request = ThermostatSetpointWireRequest.new(mode: Matter::Cluster::Thermostat::SetpointAdjustMode::Heat.value, amount: -10_i8)
 
-    dispatch_cluster_command(thermostat, Matter::Cluster::ThermostatCluster::CMD_SETPOINT_RAISE_LOWER, request).should eq(Matter::InteractionModel::StatusCode::Success.value)
+    dispatch_cluster_command(thermostat, Matter::Cluster::Thermostat::CMD_SETPOINT_RAISE_LOWER, request).should eq(Matter::InteractionModel::StatusCode::Success.value)
     thermostat.occupied_heating_setpoint.should eq(previous - 100)
   end
 
   it "a mistyped enum field yields InvalidCommand" do
-    color = Matter::Cluster::ColorControlCluster.new(endpoint(1))
+    color = Matter::Cluster::ColorControl.new(endpoint(1))
     # Direction is an enum on the wire; a string is the peer's fault, not an internal failure.
     request = TLV::Any.new({
       MOVE_TO_HUE_TAG_HUE             => TLV::Any.new(10_u8),
@@ -70,7 +70,7 @@ describe "typed cluster command dispatch" do
       MOVE_TO_HUE_TAG_TRANSITION_TIME => TLV::Any.new(0_u16),
     } of TLV::TagId => TLV::Any)
 
-    expect_status(invoke(color, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, request), Matter::InteractionModel::StatusCode::InvalidCommand)
+    expect_status(invoke(color, Matter::Cluster::ColorControl::CMD_MOVE_TO_HUE, request), Matter::InteractionModel::StatusCode::InvalidCommand)
     color.current_hue.should eq(0_u8)
   end
 end

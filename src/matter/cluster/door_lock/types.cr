@@ -2,7 +2,7 @@ require "../cluster"
 
 module Matter
   module Cluster
-    class DoorLockCluster < Base
+    class DoorLock < Base
       # The value of the DoorLock lockState attribute
       enum LockState : UInt8
         # Lock state is not fully locked

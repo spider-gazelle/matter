@@ -1,7 +1,7 @@
 require "log"
 
-require "../../cluster/general_commissioning_cluster"
-require "../../cluster/operational_credentials_cluster"
+require "../../cluster/general_commissioning"
+require "../../cluster/operational_credentials"
 require "../../crypto/certificate"
 require "../../crypto/key"
 require "../scanner"
@@ -58,7 +58,7 @@ module Matter
 
           im = ImClient.new(@client, @timeout)
 
-          arm = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
+          arm = Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
             expiry_length_seconds: 60_u16,
             breadcrumb: 0_u64,
             timeout_ms: 0_u32
@@ -67,27 +67,27 @@ module Matter
             session: pase_session,
             peer: peer_addr,
             endpoint_id: 0_u16,
-            cluster_id: Cluster::GeneralCommissioningCluster::CLUSTER_ID,
-            command_id: Cluster::GeneralCommissioningCluster::CMD_ARM_FAIL_SAFE,
+            cluster_id: Cluster::GeneralCommissioning::CLUSTER_ID,
+            command_id: Cluster::GeneralCommissioning::CMD_ARM_FAIL_SAFE,
             fields: arm.to_slice
           )
           assert_invoke_ok!(arm_resp, "ArmFailSafe")
 
-          add_root_req = Cluster::OperationalCredentialsCluster::Tlv::AddTrustedRootCertificateRequest.new(
+          add_root_req = Cluster::OperationalCredentials::Tlv::AddTrustedRootCertificateRequest.new(
             root_certificate: fabric.root_cert.to_slice
           )
           add_root_resp = im.invoke(
             session: pase_session,
             peer: peer_addr,
             endpoint_id: 0_u16,
-            cluster_id: Cluster::OperationalCredentialsCluster::CLUSTER_ID,
-            command_id: Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
+            cluster_id: Cluster::OperationalCredentials::CLUSTER_ID,
+            command_id: Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
             fields: add_root_req.to_slice
           )
           assert_invoke_ok!(add_root_resp, "AddTrustedRootCertificate")
 
           csr_nonce = @crypto.random_bytes(32)
-          csr_req = Cluster::OperationalCredentialsCluster::Tlv::CsrRequest.new(
+          csr_req = Cluster::OperationalCredentials::Tlv::CsrRequest.new(
             csr_nonce: csr_nonce.to_slice,
             is_for_update_noc: nil
           )
@@ -95,18 +95,18 @@ module Matter
             session: pase_session,
             peer: peer_addr,
             endpoint_id: 0_u16,
-            cluster_id: Cluster::OperationalCredentialsCluster::CLUSTER_ID,
-            command_id: Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
+            cluster_id: Cluster::OperationalCredentials::CLUSTER_ID,
+            command_id: Cluster::OperationalCredentials::CMD_CSR_REQUEST,
             fields: csr_req.to_slice
           )
-          csr_fields = first_command_fields(csr_resp_msg, Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST_RESPONSE)
-          csr_resp = Cluster::OperationalCredentialsCluster::Tlv::CsrResponse.from_slice(csr_fields)
-          csr_elements = Cluster::OperationalCredentialsCluster::CSRElements.from_slice(csr_resp.nocsr_elements)
+          csr_fields = first_command_fields(csr_resp_msg, Cluster::OperationalCredentials::CMD_CSR_REQUEST_RESPONSE)
+          csr_resp = Cluster::OperationalCredentials::Tlv::CsrResponse.from_slice(csr_fields)
+          csr_elements = Cluster::OperationalCredentials::CSRElements.from_slice(csr_resp.nocsr_elements)
 
           device_pub_key = CertificateUtil.extract_uncompressed_public_key_from_csr(csr_elements.csr)
           device_noc = create_noc(fabric_id: fabric.fabric_id, node_id: node_id, public_key: device_pub_key)
 
-          add_noc_req = Cluster::OperationalCredentialsCluster::Tlv::AddNocRequest.new(
+          add_noc_req = Cluster::OperationalCredentials::Tlv::AddNocRequest.new(
             noc_value: device_noc.to_slice,
             icac_value: nil,
             ipk_value: fabric.ipk_value.to_slice,
@@ -117,12 +117,12 @@ module Matter
             session: pase_session,
             peer: peer_addr,
             endpoint_id: 0_u16,
-            cluster_id: Cluster::OperationalCredentialsCluster::CLUSTER_ID,
-            command_id: Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
+            cluster_id: Cluster::OperationalCredentials::CLUSTER_ID,
+            command_id: Cluster::OperationalCredentials::CMD_ADD_NOC,
             fields: add_noc_req.to_slice
           )
-          noc_fields = first_command_fields(add_noc_resp_msg, Cluster::OperationalCredentialsCluster::CMD_ADD_NOC_RESPONSE)
-          noc_resp = Cluster::OperationalCredentialsCluster::Tlv::TlvNocResponse.from_slice(noc_fields)
+          noc_fields = first_command_fields(add_noc_resp_msg, Cluster::OperationalCredentials::CMD_ADD_NOC_RESPONSE)
+          noc_resp = Cluster::OperationalCredentials::Tlv::TlvNocResponse.from_slice(noc_fields)
           unless noc_resp.status_code.ok?
             raise Matter::CommissioningError.new("AddNOC failed (status=#{noc_resp.status_code} debug=#{noc_resp.debug_text})")
           end
@@ -134,8 +134,8 @@ module Matter
             session: case_session,
             peer: peer_addr,
             endpoint_id: 0_u16,
-            cluster_id: Cluster::GeneralCommissioningCluster::CLUSTER_ID,
-            command_id: Cluster::GeneralCommissioningCluster::CMD_COMMISSIONING_COMPLETE,
+            cluster_id: Cluster::GeneralCommissioning::CLUSTER_ID,
+            command_id: Cluster::GeneralCommissioning::CMD_COMMISSIONING_COMPLETE,
             fields: Bytes.empty
           )
           assert_invoke_ok!(commissioning_complete_resp, "CommissioningComplete")

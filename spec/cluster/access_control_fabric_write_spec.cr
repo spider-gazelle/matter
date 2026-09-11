@@ -1,6 +1,6 @@
 require "../spec_helper"
 
-private alias FabricWriteAcl = Matter::Cluster::AccessControlCluster
+private alias FabricWriteAcl = Matter::Cluster::AccessControl
 
 private def fabric_write_cluster : FabricWriteAcl
   cluster = FabricWriteAcl.new(endpoint(0))

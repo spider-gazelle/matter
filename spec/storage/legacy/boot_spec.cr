@@ -1,11 +1,11 @@
 require "../../spec_helper"
 require "../../../src/matter/storage/legacy"
 require "../../../src/matter/device/base"
-require "../../../src/matter/cluster/on_off_cluster"
-require "../../../src/matter/cluster/level_control_cluster"
-require "../../../src/matter/cluster/groups_cluster"
-require "../../../src/matter/cluster/scenes_management_cluster"
-require "../../../src/matter/cluster/user_label_cluster"
+require "../../../src/matter/cluster/on_off"
+require "../../../src/matter/cluster/level_control"
+require "../../../src/matter/cluster/groups"
+require "../../../src/matter/cluster/scenes_management"
+require "../../../src/matter/cluster/user_label"
 
 # A dimmable light on endpoint 1 with every cluster the legacy fixture has a
 # document for, so booting it on an imported store exercises each restore.
@@ -15,10 +15,10 @@ class LegacyBootDevice < Matter::Device::Base
   # Bind an ephemeral UDP port so the device never collides with a running one.
   EPHEMERAL_PORT = 0
 
-  @switch : Matter::Cluster::OnOffCluster?
-  @level : Matter::Cluster::LevelControlCluster?
-  @groups : Matter::Cluster::GroupsCluster?
-  @scenes : Matter::Cluster::ScenesManagementCluster?
+  @switch : Matter::Cluster::OnOff?
+  @level : Matter::Cluster::LevelControl?
+  @groups : Matter::Cluster::Groups?
+  @scenes : Matter::Cluster::ScenesManagement?
 
   def initialize(storage : Matter::Storage::Backend)
     super(storage, port: EPHEMERAL_PORT)
@@ -48,32 +48,32 @@ class LegacyBootDevice < Matter::Device::Base
     Matter::DeviceType::DIMMABLE_LIGHT
   end
 
-  def switch : Matter::Cluster::OnOffCluster
-    @switch.as(Matter::Cluster::OnOffCluster)
+  def switch : Matter::Cluster::OnOff
+    @switch.as(Matter::Cluster::OnOff)
   end
 
-  def level : Matter::Cluster::LevelControlCluster
-    @level.as(Matter::Cluster::LevelControlCluster)
+  def level : Matter::Cluster::LevelControl
+    @level.as(Matter::Cluster::LevelControl)
   end
 
-  def groups : Matter::Cluster::GroupsCluster
-    @groups.as(Matter::Cluster::GroupsCluster)
+  def groups : Matter::Cluster::Groups
+    @groups.as(Matter::Cluster::Groups)
   end
 
-  def scenes : Matter::Cluster::ScenesManagementCluster
-    @scenes.as(Matter::Cluster::ScenesManagementCluster)
+  def scenes : Matter::Cluster::ScenesManagement
+    @scenes.as(Matter::Cluster::ScenesManagement)
   end
 
-  def group_key_management : Matter::Cluster::GroupKeyManagementCluster
-    message_handler.clusters[{0_u16, Matter::Cluster::GroupKeyManagementCluster::CLUSTER_ID}].as(Matter::Cluster::GroupKeyManagementCluster)
+  def group_key_management : Matter::Cluster::GroupKeyManagement
+    message_handler.clusters[{0_u16, Matter::Cluster::GroupKeyManagement::CLUSTER_ID}].as(Matter::Cluster::GroupKeyManagement)
   end
 
   protected def device_clusters : Array(Matter::Cluster::Base)
     endpoint = Matter::DataType::EndpointNumber.new(LIGHT_ENDPOINT)
-    @switch = Matter::Cluster::OnOffCluster.new(endpoint, feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting)
-    @level = Matter::Cluster::LevelControlCluster.new(endpoint)
-    @groups = Matter::Cluster::GroupsCluster.new(endpoint)
-    @scenes = Matter::Cluster::ScenesManagementCluster.new(endpoint)
+    @switch = Matter::Cluster::OnOff.new(endpoint, feature_map: Matter::Cluster::OnOff::Feature::Lighting)
+    @level = Matter::Cluster::LevelControl.new(endpoint)
+    @groups = Matter::Cluster::Groups.new(endpoint)
+    @scenes = Matter::Cluster::ScenesManagement.new(endpoint)
     [switch, level, groups, scenes] of Matter::Cluster::Base
   end
 
@@ -108,7 +108,7 @@ module LegacyBootSpec
   ADMIN_SUBJECT    = 112233_u64
   OPERATE_SUBJECTS = [445566_u64, UInt64::MAX]
   OPERATE_FABRIC   = 2_u8
-  ON_OFF_CLUSTER   = Matter::Cluster::OnOffCluster::CLUSTER_ID
+  ON_OFF_CLUSTER   = Matter::Cluster::OnOff::CLUSTER_ID
 
   HOSTNAME      = "0123456789ABCDEF.local"
   SERIAL_NUMBER = "ABCDEF0123456789"
@@ -163,11 +163,11 @@ describe "Booting a device from a legacy import" do
       LegacyBootSpec.import(path)
       store = Matter::Storage::YamlFile.new(path)
       store.open
-      key = Matter::Cluster::Base.persistence_key(0_u16, Matter::Cluster::UserLabelCluster::CLUSTER_ID)
+      key = Matter::Cluster::Base.persistence_key(0_u16, Matter::Cluster::UserLabel::CLUSTER_ID)
       document = store.read(Matter::Storage::Collections::CLUSTERS, key).as(Matter::Storage::Document)
       store.close
 
-      labels = Matter::Cluster::UserLabelCluster.new(endpoint(0))
+      labels = Matter::Cluster::UserLabel.new(endpoint(0))
       labels.restore_state(document)
       labels.label_list.map { |entry| {entry.label, entry.value} }.should eq(LegacyBootSpec::USER_LABELS)
     end
@@ -180,15 +180,15 @@ describe "Booting a device from a legacy import" do
 
       acl = device.access_control.acl
       acl.size.should eq(2)
-      acl[0].privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Administer)
-      acl[0].auth_mode.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE)
+      acl[0].privilege.should eq(Matter::Cluster::AccessControl::AccessControlEntryPrivilege::Administer)
+      acl[0].auth_mode.should eq(Matter::Cluster::AccessControl::AccessControlEntryAuthMode::CASE)
       acl[0].subjects.should eq([LegacyBootSpec::ADMIN_SUBJECT])
       acl[0].targets.should be_nil
       acl[0].fabric_index.should eq(LegacyBootSpec::FABRIC_INDEX)
-      acl[1].privilege.should eq(Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::Operate)
+      acl[1].privilege.should eq(Matter::Cluster::AccessControl::AccessControlEntryPrivilege::Operate)
       acl[1].subjects.should eq(LegacyBootSpec::OPERATE_SUBJECTS)
       acl[1].fabric_index.should eq(LegacyBootSpec::OPERATE_FABRIC)
-      targets = acl[1].targets.as(Array(Matter::Cluster::AccessControlCluster::Target))
+      targets = acl[1].targets.as(Array(Matter::Cluster::AccessControl::Target))
       targets.size.should eq(1)
       targets[0].cluster.should eq(LegacyBootSpec::ON_OFF_CLUSTER)
       targets[0].endpoint.should eq(LegacyBootDevice::LIGHT_ENDPOINT)

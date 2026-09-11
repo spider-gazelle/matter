@@ -3,7 +3,7 @@ module Matter
     # Declarative cluster definitions for `Cluster::Base` subclasses.
     #
     # ```
-    # class Matter::Cluster::OnOffCluster < Matter::Cluster::Base
+    # class Matter::Cluster::OnOff < Matter::Cluster::Base
     #   cluster 0x0006, revision: 6
     #
     #   feature :lighting, bit: 0
@@ -42,8 +42,8 @@ module Matter
     # Declarations:
     #
     # * `cluster id, revision:, name:, persist_state:` — `CLUSTER_ID`,
-    #   `CLUSTER_REVISION` and `name` (the class name without a trailing
-    #   `Cluster` unless `name:` is given). Required before any other
+    #   `CLUSTER_REVISION` and `name` (the class name unless `name:` is
+    #   given). Required before any other
     #   declaration. When the class defines no `initialize` of its own,
     #   `initialize(endpoint_id, feature_map: Feature::None)` is generated.
     #   `persist_state: false` suppresses the generated persistence for a
@@ -158,7 +158,7 @@ module Matter
         CLUSTER_REVISION = {{ (revision.is_a?(NumberLiteral) && revision.kind == :i32) ? "#{revision}_u16".id : "(#{revision}).to_u16".id }}
 
         def name : String
-          {{ name || @type.name.stringify.split("::").last.gsub(/Cluster$/, "") }}
+          {{ name || @type.name.stringify.split("::").last }}
         end
       end
 

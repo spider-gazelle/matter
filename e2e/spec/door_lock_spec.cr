@@ -44,7 +44,7 @@ describe "matter_door_lock example" do
     read_int(device, "doorlock", "auto-relock-time", "AutoRelockTime").should eq 30
   end
 
-  # DoorLockCluster keeps no persisted state, so this only checks that the
+  # DoorLock keeps no persisted state, so this only checks that the
   # fabric survives a restart and the lock can still be operated afterwards.
   it "stays commissioned across a device restart" do
     device.restart!

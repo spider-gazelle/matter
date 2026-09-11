@@ -5,9 +5,9 @@ require "../session/case/definitions"
 require "../session/context"
 require "../session/secure_message"
 require "../transport/udp_transport"
-require "../cluster/basic_information_cluster"
-require "../cluster/general_commissioning_cluster"
-require "../cluster/operational_credentials_cluster"
+require "../cluster/basic_information"
+require "../cluster/general_commissioning"
+require "../cluster/operational_credentials"
 require "../fabric_table"
 require "../interaction_model/paths"
 require "../interaction_model/status_code"
@@ -63,7 +63,7 @@ module Matter
       getter sessions : Hash(UInt16, Session::SecureContext)
       getter clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base)
       getter fabric_table : FabricTable
-      getter operational_credentials_cluster : Cluster::OperationalCredentialsCluster?
+      getter operational_credentials_cluster : Cluster::OperationalCredentials?
       getter persistence : Persistence::Base?
 
       # Device credentials for PASE
@@ -456,13 +456,13 @@ module Matter
         endpoint_0 = DataType::EndpointNumber.new(0_u16)
 
         # Descriptor cluster (0x001D) - REQUIRED on all endpoints per Matter spec
-        descriptor = Cluster::DescriptorCluster.new(endpoint_0)
+        descriptor = Cluster::Descriptor.new(endpoint_0)
         @clusters[{0_u16, 0x001D_u32}] = descriptor
 
         # Basic Information cluster (0x0028) - required on endpoint 0
         # Use the device's vendor_id and product_id to ensure consistency
         # with DAC certificates and Certification Declaration
-        basic_info = Cluster::BasicInformationCluster.new(
+        basic_info = Cluster::BasicInformation.new(
           endpoint_id: endpoint_0,
           vendor_name: "Crystal Matter",
           vendor_id: @vendor_id,
@@ -472,7 +472,7 @@ module Matter
         @clusters[{0_u16, 0x0028_u32}] = basic_info
 
         # General Commissioning cluster (0x0030) - required on endpoint 0
-        general_commissioning = Cluster::GeneralCommissioningCluster.new(endpoint_0)
+        general_commissioning = Cluster::GeneralCommissioning.new(endpoint_0)
         @clusters[{0_u16, 0x0030_u32}] = general_commissioning
 
         # Operational Credentials cluster (0x003E) - required on endpoint 0 for commissioning
@@ -481,7 +481,7 @@ module Matter
         # 2. Calling it here AND in the device causes double DAC keypair generation
         # 3. The device example overwrites these clusters anyway
         # The device application must call set_attestation_from_manager or set_attestation_credentials
-        operational_creds = Cluster::OperationalCredentialsCluster.new(@fabric_table, endpoint_0)
+        operational_creds = Cluster::OperationalCredentials.new(@fabric_table, endpoint_0)
 
         # Set up session_lookup callback so the cluster can get attestation challenge from sessions
         # This is CRITICAL for attestation signature verification - per Matter spec,

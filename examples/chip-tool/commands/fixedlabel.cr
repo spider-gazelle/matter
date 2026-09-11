@@ -19,9 +19,9 @@ module ChipTool
             next 2
           end
 
-          cluster_id = Matter::Cluster::FixedLabelCluster::CLUSTER_ID
+          cluster_id = Matter::Cluster::FixedLabel::CLUSTER_ID
           attribute_id = case attribute
-                         when "label-list" then Matter::Cluster::FixedLabelCluster::ATTR_LABEL_LIST
+                         when "label-list" then Matter::Cluster::FixedLabel::ATTR_LABEL_LIST
                          else
                            STDERR.puts "Unsupported attribute: #{attribute} (supported: label-list)"
                            next 2
@@ -53,8 +53,8 @@ module ChipTool
           node_id = parse_u64(node_id_str) || raise ArgumentError.new("invalid node-id: #{node_id_str}")
           endpoint_id = endpoint_str.to_u16
 
-          cluster_id = Matter::Cluster::FixedLabelCluster::CLUSTER_ID
-          attribute_id = Matter::Cluster::FixedLabelCluster::ATTR_LABEL_LIST
+          cluster_id = Matter::Cluster::FixedLabel::CLUSTER_ID
+          attribute_id = Matter::Cluster::FixedLabel::ATTR_LABEL_LIST
 
           labels = read_label_list(ctx, node_id, endpoint_id, cluster_id, attribute_id)
           if labels.empty?

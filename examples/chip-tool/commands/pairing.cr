@@ -97,13 +97,13 @@ module ChipTool
 
             case option
             when 0
-              request = Matter::Cluster::AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(window_timeout)
+              request = Matter::Cluster::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(window_timeout)
               resp = im.invoke(
                 session: session,
                 peer: peer,
                 endpoint_id: 0_u16,
-                cluster_id: Matter::Cluster::AdministratorCommissioningCluster::CLUSTER_ID,
-                command_id: Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+                cluster_id: Matter::Cluster::AdministratorCommissioning::CLUSTER_ID,
+                command_id: Matter::Cluster::AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
                 fields: request.to_slice
               )
               if status = resp.invoke_responses.first?.try(&.command_status).try(&.status)

@@ -1,6 +1,6 @@
 require "../spec_helper"
 require "../../src/matter/device/persistence"
-require "../../src/matter/cluster/on_off_cluster"
+require "../../src/matter/cluster/on_off"
 
 # Counts file flushes so a spec can pin "one write for many mutations".
 private class CountingYamlFile < Matter::Storage::YamlFile
@@ -26,8 +26,8 @@ ensure
   File.delete?(path) if path
 end
 
-private def on_off_cluster(endpoint : UInt16 = 1_u16) : Matter::Cluster::OnOffCluster
-  Matter::Cluster::OnOffCluster.new(Matter::DataType::EndpointNumber.new(endpoint))
+private def on_off_cluster(endpoint : UInt16 = 1_u16) : Matter::Cluster::OnOff
+  Matter::Cluster::OnOff.new(Matter::DataType::EndpointNumber.new(endpoint))
 end
 
 private def build_fabric(fabric_index : UInt8) : Matter::Fabric
@@ -127,7 +127,7 @@ describe Matter::Device::Persistence do
       persistence.track(cluster)
       cluster.on = true
 
-      persistence.forget_cluster(2_u16, Matter::Cluster::OnOffCluster::CLUSTER_ID)
+      persistence.forget_cluster(2_u16, Matter::Cluster::OnOff::CLUSTER_ID)
       persistence.flush
       storage.ids(CLUSTERS).should be_empty
     end

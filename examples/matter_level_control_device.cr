@@ -17,12 +17,12 @@ module MatterLevelControl
       WindowCovering = 3
     end
 
-    @on_off : Matter::Cluster::OnOffCluster? = nil
-    @level_control : Matter::Cluster::LevelControlCluster? = nil
-    @fixed_label : Matter::Cluster::FixedLabelCluster? = nil
-    @identify : Matter::Cluster::IdentifyCluster? = nil
-    @groups : Matter::Cluster::GroupsCluster? = nil
-    @scenes_management : Matter::Cluster::ScenesManagementCluster? = nil
+    @on_off : Matter::Cluster::OnOff? = nil
+    @level_control : Matter::Cluster::LevelControl? = nil
+    @fixed_label : Matter::Cluster::FixedLabel? = nil
+    @identify : Matter::Cluster::Identify? = nil
+    @groups : Matter::Cluster::Groups? = nil
+    @scenes_management : Matter::Cluster::ScenesManagement? = nil
 
     def initialize
       super(Matter::Storage::YamlFile.new(STORAGE_FILE), ip_addresses: Matter::Network.local_ip_addresses)
@@ -60,18 +60,18 @@ module MatterLevelControl
       device_name
     end
 
-    def product_appearance : Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct?
-      Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.new(
-        Matter::Cluster::BasicInformationCluster::ProductFinish::Satin
+    def product_appearance : Matter::Cluster::BasicInformation::ProductAppearanceStruct?
+      Matter::Cluster::BasicInformation::ProductAppearanceStruct.new(
+        Matter::Cluster::BasicInformation::ProductFinish::Satin
       )
     end
 
-    def on_off : Matter::Cluster::OnOffCluster
-      @on_off.as(Matter::Cluster::OnOffCluster)
+    def on_off : Matter::Cluster::OnOff
+      @on_off.as(Matter::Cluster::OnOff)
     end
 
-    def level_control : Matter::Cluster::LevelControlCluster
-      @level_control.as(Matter::Cluster::LevelControlCluster)
+    def level_control : Matter::Cluster::LevelControl
+      @level_control.as(Matter::Cluster::LevelControl)
     end
 
     protected def endpoint_device_types : Hash(UInt16, UInt32)
@@ -87,23 +87,23 @@ module MatterLevelControl
       color_endpoint = Matter::DataType::EndpointNumber.new(Endpoint::ColorLight.value)
       covering_endpoint = Matter::DataType::EndpointNumber.new(Endpoint::WindowCovering.value)
 
-      @on_off = Matter::Cluster::OnOffCluster.new(
+      @on_off = Matter::Cluster::OnOff.new(
         endpoint,
-        feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting
+        feature_map: Matter::Cluster::OnOff::Feature::Lighting
       )
-      @level_control = Matter::Cluster::LevelControlCluster.new(
+      @level_control = Matter::Cluster::LevelControl.new(
         endpoint,
         current_level: 128_u8,
         min_level: 1_u8,
         max_level: 254_u8,
-        feature_map: Matter::Cluster::LevelControlCluster::Feature::OnOff |
-                     Matter::Cluster::LevelControlCluster::Feature::Lighting
+        feature_map: Matter::Cluster::LevelControl::Feature::OnOff |
+                     Matter::Cluster::LevelControl::Feature::Lighting
       )
       on_off.on_state_changed { |new_state| handle_on_off_change(new_state) }
       level_control.on_level_changed { |old_level, new_level| handle_level_change(old_level, new_level) }
 
       # FixedLabel is optional, but can help controllers show a friendly name for this endpoint.
-      @fixed_label = Matter::Cluster::FixedLabelCluster.new(
+      @fixed_label = Matter::Cluster::FixedLabel.new(
         endpoint,
         [
           Matter::Cluster::LabelStruct.new("name", "Example Level"),
@@ -111,28 +111,28 @@ module MatterLevelControl
         ]
       )
 
-      @identify = Matter::Cluster::IdentifyCluster.new(
+      @identify = Matter::Cluster::Identify.new(
         endpoint,
-        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLight
+        identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLight
       )
-      @groups = Matter::Cluster::GroupsCluster.new(endpoint)
-      @scenes_management = Matter::Cluster::ScenesManagementCluster.new(endpoint)
+      @groups = Matter::Cluster::Groups.new(endpoint)
+      @scenes_management = Matter::Cluster::ScenesManagement.new(endpoint)
 
       [
         on_off,
         level_control,
-        @fixed_label.as(Matter::Cluster::FixedLabelCluster),
-        @identify.as(Matter::Cluster::IdentifyCluster),
-        @groups.as(Matter::Cluster::GroupsCluster),
-        @scenes_management.as(Matter::Cluster::ScenesManagementCluster),
-        Matter::Cluster::OnOffCluster.new(color_endpoint, feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting),
-        Matter::Cluster::LevelControlCluster.new(color_endpoint),
-        Matter::Cluster::ColorControlCluster.new(color_endpoint),
-        Matter::Cluster::GroupsCluster.new(color_endpoint),
-        Matter::Cluster::ScenesManagementCluster.new(color_endpoint),
-        Matter::Cluster::IdentifyCluster.new(color_endpoint, identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLight),
-        Matter::Cluster::WindowCoveringCluster.new(covering_endpoint),
-        Matter::Cluster::IdentifyCluster.new(covering_endpoint),
+        @fixed_label.as(Matter::Cluster::FixedLabel),
+        @identify.as(Matter::Cluster::Identify),
+        @groups.as(Matter::Cluster::Groups),
+        @scenes_management.as(Matter::Cluster::ScenesManagement),
+        Matter::Cluster::OnOff.new(color_endpoint, feature_map: Matter::Cluster::OnOff::Feature::Lighting),
+        Matter::Cluster::LevelControl.new(color_endpoint),
+        Matter::Cluster::ColorControl.new(color_endpoint),
+        Matter::Cluster::Groups.new(color_endpoint),
+        Matter::Cluster::ScenesManagement.new(color_endpoint),
+        Matter::Cluster::Identify.new(color_endpoint, identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLight),
+        Matter::Cluster::WindowCovering.new(covering_endpoint),
+        Matter::Cluster::Identify.new(covering_endpoint),
       ] of Matter::Cluster::Base
     end
 

@@ -5,8 +5,8 @@ module ChipTool
     module AccessControl
       extend self
 
-      alias Entry = Matter::Cluster::AccessControlCluster::AccessControlEntry
-      alias Target = Matter::Cluster::AccessControlCluster::Target
+      alias Entry = Matter::Cluster::AccessControl::AccessControlEntry
+      alias Target = Matter::Cluster::AccessControl::Target
 
       def register : Nil
         Registry.register("accesscontrol", "read", "Read AccessControl cluster attributes") do |_ctx, _args|
@@ -22,9 +22,9 @@ module ChipTool
             next 2
           end
 
-          cluster_id = Matter::Cluster::AccessControlCluster::CLUSTER_ID
+          cluster_id = Matter::Cluster::AccessControl::CLUSTER_ID
           attribute_id = case attribute
-                         when "acl" then Matter::Cluster::AccessControlCluster::ATTR_ACL
+                         when "acl" then Matter::Cluster::AccessControl::ATTR_ACL
                          else
                            STDERR.puts "Unsupported attribute: #{attribute} (supported: acl)"
                            next 2
@@ -96,9 +96,9 @@ module ChipTool
             next 2
           end
 
-          cluster_id = Matter::Cluster::AccessControlCluster::CLUSTER_ID
+          cluster_id = Matter::Cluster::AccessControl::CLUSTER_ID
           attribute_id = case attribute
-                         when "acl" then Matter::Cluster::AccessControlCluster::ATTR_ACL
+                         when "acl" then Matter::Cluster::AccessControl::ATTR_ACL
                          else
                            STDERR.puts "Unsupported attribute: #{attribute} (supported: acl)"
                            next 2

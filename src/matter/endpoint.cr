@@ -126,7 +126,7 @@ module Matter
     end
 
     # Get a typed cluster by class
-    # Usage: endpoint.get_cluster(OnOffCluster)
+    # Usage: endpoint.get_cluster(OnOff)
     def get_cluster(cluster_type : T.class) : T? forall T
       found_cluster = @clusters.values.find { |clust| clust.is_a?(T) }
       found_cluster.as(T) if found_cluster
@@ -218,7 +218,7 @@ module Matter
     end
 
     # Get a typed cluster from an endpoint
-    # Usage: node.get_cluster(1_u16, OnOffCluster)
+    # Usage: node.get_cluster(1_u16, OnOff)
     def get_cluster(endpoint_id : UInt16, cluster_type : T.class) : T? forall T
       endpoint = get_endpoint(endpoint_id)
       return unless endpoint

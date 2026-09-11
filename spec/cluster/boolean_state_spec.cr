@@ -1,9 +1,9 @@
 require "../spec_helper"
-require "../../src/matter/cluster/boolean_state_cluster"
+require "../../src/matter/cluster/boolean_state"
 
-private alias BooleanState = Matter::Cluster::BooleanStateCluster
+private alias BooleanState = Matter::Cluster::BooleanState
 
-describe Matter::Cluster::BooleanStateCluster do
+describe Matter::Cluster::BooleanState do
   describe "initialization" do
     it "creates with default false state" do
       cluster = BooleanState.new(endpoint(1))

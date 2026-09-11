@@ -1,7 +1,7 @@
 require "../im_client"
 require "../../setup_payload"
 require "../../crypto/spake2p"
-require "../../cluster/administrator_commissioning_cluster"
+require "../../cluster/administrator_commissioning"
 
 module Matter
   module Controller
@@ -32,7 +32,7 @@ module Matter
           pbkdf = Crypto::Spake2p::PbkdfParameters.new(iterations.to_i32, salt)
           verifier = Crypto::Spake2p.compute_passcode_verifier(@crypto, pbkdf, pin)
 
-          request = Cluster::AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+          request = Cluster::AdministratorCommissioning::OpenCommissioningWindowRequest.new(
             commissioning_timeout: timeout_seconds,
             pake_passcode_verifier: verifier,
             discriminator: discriminator,
@@ -44,8 +44,8 @@ module Matter
             session: session,
             peer: peer,
             endpoint_id: 0_u16,
-            cluster_id: Cluster::AdministratorCommissioningCluster::CLUSTER_ID,
-            command_id: Cluster::AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
+            cluster_id: Cluster::AdministratorCommissioning::CLUSTER_ID,
+            command_id: Cluster::AdministratorCommissioning::CMD_OPEN_COMMISSIONING_WINDOW,
             fields: request.to_slice
           )
 

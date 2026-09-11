@@ -2,7 +2,7 @@ require "../interaction_model/paths"
 require "../interaction_model/status_code"
 require "../interaction_model/tlv_messages"
 require "../cluster/cluster"
-require "../cluster/access_control_cluster"
+require "../cluster/access_control"
 require "tlv"
 
 module Matter
@@ -11,8 +11,8 @@ module Matter
     module IMHandler
       Log = ::Log.for("matter.protocol.im_handler")
 
-      private def self.access_control_cluster(clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base)) : Cluster::AccessControlCluster?
-        clusters[{0_u16, Cluster::AccessControlCluster::CLUSTER_ID}]?.as?(Cluster::AccessControlCluster)
+      private def self.access_control_cluster(clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base)) : Cluster::AccessControl?
+        clusters[{0_u16, Cluster::AccessControl::CLUSTER_ID}]?.as?(Cluster::AccessControl)
       end
 
       private def self.authorized?(
@@ -34,7 +34,7 @@ module Matter
         # didn't persist ACLs), allow AccessControl reads/writes so the fabric can
         # re-establish its ACL and regain access.
         if acl.get_acl_for_fabric(fabric_index).empty?
-          return true if cluster_id == Cluster::AccessControlCluster::CLUSTER_ID
+          return true if cluster_id == Cluster::AccessControl::CLUSTER_ID
         end
 
         peer_subject_ids.any? do |subject_id|

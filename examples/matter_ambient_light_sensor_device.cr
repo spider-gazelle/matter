@@ -14,9 +14,9 @@ module MatterAmbientLightSensor
     DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
     SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
 
-    @illuminance : Matter::Cluster::IlluminanceMeasurementCluster? = nil
-    @identify : Matter::Cluster::IdentifyCluster? = nil
-    @fixed_label : Matter::Cluster::FixedLabelCluster? = nil
+    @illuminance : Matter::Cluster::IlluminanceMeasurement? = nil
+    @identify : Matter::Cluster::Identify? = nil
+    @fixed_label : Matter::Cluster::FixedLabel? = nil
     @running : Bool = false
 
     def initialize
@@ -55,39 +55,39 @@ module MatterAmbientLightSensor
       device_name
     end
 
-    def illuminance : Matter::Cluster::IlluminanceMeasurementCluster
-      @illuminance.as(Matter::Cluster::IlluminanceMeasurementCluster)
+    def illuminance : Matter::Cluster::IlluminanceMeasurement
+      @illuminance.as(Matter::Cluster::IlluminanceMeasurement)
     end
 
     protected def device_clusters : Array(Matter::Cluster::Base)
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
 
       initial_lux = rand(MIN_LUX..MAX_LUX)
-      @illuminance = Matter::Cluster::IlluminanceMeasurementCluster.new(
+      @illuminance = Matter::Cluster::IlluminanceMeasurement.new(
         endpoint,
-        measured_value: Matter::Cluster::IlluminanceMeasurementCluster.from_lux(initial_lux)
+        measured_value: Matter::Cluster::IlluminanceMeasurement.from_lux(initial_lux)
       )
       illuminance.on_illuminance_changed do |_old_value, new_value|
         if new_value
-          lux = Matter::Cluster::IlluminanceMeasurementCluster.to_lux(new_value)
+          lux = Matter::Cluster::IlluminanceMeasurement.to_lux(new_value)
           puts "Ambient light: #{"%.1f" % lux} lx"
         end
       end
 
-      @identify = Matter::Cluster::IdentifyCluster.new(
+      @identify = Matter::Cluster::Identify.new(
         endpoint,
-        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLED
+        identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLED
       )
 
-      @fixed_label = Matter::Cluster::FixedLabelCluster.new(
+      @fixed_label = Matter::Cluster::FixedLabel.new(
         endpoint,
         [Matter::Cluster::LabelStruct.new("name", "Example Ambient Light Sensor")]
       )
 
       [
         illuminance,
-        @identify.as(Matter::Cluster::IdentifyCluster),
-        @fixed_label.as(Matter::Cluster::FixedLabelCluster),
+        @identify.as(Matter::Cluster::Identify),
+        @fixed_label.as(Matter::Cluster::FixedLabel),
       ] of Matter::Cluster::Base
     end
 
@@ -125,7 +125,7 @@ module MatterAmbientLightSensor
         break unless @running
 
         lux = rand(MIN_LUX..MAX_LUX)
-        measured = Matter::Cluster::IlluminanceMeasurementCluster.from_lux(lux)
+        measured = Matter::Cluster::IlluminanceMeasurement.from_lux(lux)
         illuminance.update_illuminance(measured)
       end
     end

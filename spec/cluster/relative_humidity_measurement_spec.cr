@@ -1,11 +1,11 @@
 require "../spec_helper"
-require "../../src/matter/cluster/relative_humidity_measurement_cluster"
+require "../../src/matter/cluster/relative_humidity_measurement"
 
-describe Matter::Cluster::RelativeHumidityMeasurementCluster do
+describe Matter::Cluster::RelativeHumidityMeasurement do
   describe "initialization" do
     it "creates humidity measurement cluster with defaults" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(endpoint_id)
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(endpoint_id)
 
       cluster.cluster_id.id.should eq(0x0405_u32)
       cluster.name.should eq("RelativeHumidityMeasurement")
@@ -17,7 +17,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "creates with custom values" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         measured_value: 5500_u16,     # 55.00%
         min_measured_value: 1000_u16, # 10.00%
@@ -35,7 +35,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
 
       expect_raises(ArgumentError, /min_measured_value must be <= 9999/) do
-        Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+        Matter::Cluster::RelativeHumidityMeasurement.new(
           endpoint_id,
           min_measured_value: 10000_u16
         )
@@ -45,7 +45,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
     it "accepts max_measured_value at absolute maximum" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
 
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         max_measured_value: 10000_u16
       )
@@ -57,7 +57,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
 
       expect_raises(ArgumentError, /min_measured_value must be <= max_measured_value/) do
-        Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+        Matter::Cluster::RelativeHumidityMeasurement.new(
           endpoint_id,
           min_measured_value: 8000_u16,
           max_measured_value: 5000_u16
@@ -69,7 +69,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
 
       expect_raises(ArgumentError, /measured_value must be between min and max/) do
-        Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+        Matter::Cluster::RelativeHumidityMeasurement.new(
           endpoint_id,
           measured_value: 9500_u16,
           min_measured_value: 1000_u16,
@@ -82,7 +82,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
 
       expect_raises(ArgumentError, /tolerance must be <= 2048/) do
-        Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+        Matter::Cluster::RelativeHumidityMeasurement.new(
           endpoint_id,
           tolerance: 3000_u16
         )
@@ -93,7 +93,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
   describe "attributes" do
     it "has required attributes" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(endpoint_id, tolerance: 0_u16)
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(endpoint_id, tolerance: 0_u16)
 
       attributes = cluster.attributes
       attributes.size.should eq(4)
@@ -119,7 +119,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "reads MeasuredValue attribute when set" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         measured_value: 4500_u16 # 45.00%
       )
@@ -129,14 +129,14 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "reads MeasuredValue as null when not set" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(endpoint_id)
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(endpoint_id)
 
       read(cluster, 0x0000_u32).should be_nil
     end
 
     it "reads MinMeasuredValue attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         min_measured_value: 2000_u16
       )
@@ -146,7 +146,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "reads MaxMeasuredValue attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         max_measured_value: 9500_u16
       )
@@ -156,7 +156,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "reads Tolerance attribute when set" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         tolerance: 150_u16
       )
@@ -166,7 +166,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "returns unsupported for Tolerance when not set" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(endpoint_id)
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(endpoint_id)
 
       read_status(cluster, 0x0003_u32).status.should eq(
         Matter::InteractionModel::StatusCode::UnsupportedAttribute
@@ -177,7 +177,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
   describe "update_humidity" do
     it "updates humidity value" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(endpoint_id)
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(endpoint_id)
 
       cluster.update_humidity(6000_u16)
       cluster.measured_value.should eq(6000_u16)
@@ -185,7 +185,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "accepts nil to indicate unknown humidity" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         measured_value: 5000_u16
       )
@@ -196,7 +196,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "rejects humidity below minimum" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         min_measured_value: 1000_u16,
         max_measured_value: 9000_u16
@@ -209,7 +209,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "rejects humidity above maximum" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         min_measured_value: 1000_u16,
         max_measured_value: 9000_u16
@@ -222,7 +222,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "calls callback when humidity changes" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         measured_value: 5000_u16
       )
@@ -243,7 +243,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "does not call callback when humidity doesn't change" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         measured_value: 5000_u16
       )
@@ -261,7 +261,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "increments data version when humidity changes" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         measured_value: 5000_u16
       )
@@ -275,7 +275,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "notifies attribute subscribers when humidity changes" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         measured_value: 5000_u16
       )
@@ -296,13 +296,13 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
       notified.should be_true
       notified_endpoint.should eq(1_u16)
-      notified_cluster.should eq(Matter::Cluster::RelativeHumidityMeasurementCluster::CLUSTER_ID)
-      notified_attribute.should eq(Matter::Cluster::RelativeHumidityMeasurementCluster::ATTR_MEASURED_VALUE)
+      notified_cluster.should eq(Matter::Cluster::RelativeHumidityMeasurement::CLUSTER_ID)
+      notified_attribute.should eq(Matter::Cluster::RelativeHumidityMeasurement::ATTR_MEASURED_VALUE)
     end
 
     it "does not notify attribute subscribers when humidity is unchanged" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         measured_value: 5000_u16
       )
@@ -319,7 +319,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "does not increment data version when humidity doesn't change" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         measured_value: 5000_u16
       )
@@ -334,26 +334,26 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
   describe "humidity conversion helpers" do
     it "converts from 0.01% to percent" do
-      Matter::Cluster::RelativeHumidityMeasurementCluster.to_percent(5500_u16).should be_close(55.0, 0.01)
-      Matter::Cluster::RelativeHumidityMeasurementCluster.to_percent(0_u16).should be_close(0.0, 0.01)
-      Matter::Cluster::RelativeHumidityMeasurementCluster.to_percent(10000_u16).should be_close(100.0, 0.01)
+      Matter::Cluster::RelativeHumidityMeasurement.to_percent(5500_u16).should be_close(55.0, 0.01)
+      Matter::Cluster::RelativeHumidityMeasurement.to_percent(0_u16).should be_close(0.0, 0.01)
+      Matter::Cluster::RelativeHumidityMeasurement.to_percent(10000_u16).should be_close(100.0, 0.01)
     end
 
     it "converts from percent to 0.01%" do
-      Matter::Cluster::RelativeHumidityMeasurementCluster.from_percent(55.0).should eq(5500_u16)
-      Matter::Cluster::RelativeHumidityMeasurementCluster.from_percent(0.0).should eq(0_u16)
-      Matter::Cluster::RelativeHumidityMeasurementCluster.from_percent(100.0).should eq(10000_u16)
+      Matter::Cluster::RelativeHumidityMeasurement.from_percent(55.0).should eq(5500_u16)
+      Matter::Cluster::RelativeHumidityMeasurement.from_percent(0.0).should eq(0_u16)
+      Matter::Cluster::RelativeHumidityMeasurement.from_percent(100.0).should eq(10000_u16)
     end
 
     it "rejects negative percent values" do
       expect_raises(ArgumentError, /must be between 0 and 100/) do
-        Matter::Cluster::RelativeHumidityMeasurementCluster.from_percent(-5.0)
+        Matter::Cluster::RelativeHumidityMeasurement.from_percent(-5.0)
       end
     end
 
     it "rejects percent values above 100" do
       expect_raises(ArgumentError, /must be between 0 and 100/) do
-        Matter::Cluster::RelativeHumidityMeasurementCluster.from_percent(105.0)
+        Matter::Cluster::RelativeHumidityMeasurement.from_percent(105.0)
       end
     end
   end
@@ -361,7 +361,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
   describe "practical scenarios" do
     it "models an indoor humidity sensor" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      sensor = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      sensor = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         measured_value: 4500_u16,     # 45.00%
         min_measured_value: 1000_u16, # 10.00%
@@ -389,7 +389,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "models a greenhouse humidity sensor with wide range" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      sensor = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      sensor = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         measured_value: 7000_u16,     # 70.00%
         min_measured_value: 2000_u16, # 20.00%
@@ -408,7 +408,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "handles sensor failure (unknown humidity)" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      sensor = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      sensor = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         measured_value: 5000_u16
       )
@@ -427,22 +427,22 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
 
     it "works with conversion helpers" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      sensor = Matter::Cluster::RelativeHumidityMeasurementCluster.new(endpoint_id)
+      sensor = Matter::Cluster::RelativeHumidityMeasurement.new(endpoint_id)
 
       # Set humidity in percent
       percent_value = 62.5
-      encoded_value = Matter::Cluster::RelativeHumidityMeasurementCluster.from_percent(percent_value)
+      encoded_value = Matter::Cluster::RelativeHumidityMeasurement.from_percent(percent_value)
       sensor.update_humidity(encoded_value)
 
       # Read back in percent
       measured = sensor.measured_value.as(UInt16)
-      result_percent = Matter::Cluster::RelativeHumidityMeasurementCluster.to_percent(measured)
+      result_percent = Matter::Cluster::RelativeHumidityMeasurement.to_percent(measured)
       result_percent.should be_close(62.5, 0.01)
     end
 
     it "models a bathroom humidity sensor tracking shower use" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      sensor = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      sensor = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint_id,
         measured_value: 4500_u16, # 45.00% - normal
         min_measured_value: 2000_u16,
@@ -471,7 +471,7 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
   describe "error handling" do
     it "returns error for unsupported attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::RelativeHumidityMeasurementCluster.new(endpoint_id)
+      cluster = Matter::Cluster::RelativeHumidityMeasurement.new(endpoint_id)
 
       read_status(cluster, 0x9999_u32).status.should eq(
         Matter::InteractionModel::StatusCode::UnsupportedAttribute

@@ -1,7 +1,7 @@
 require "../spec_helper"
 require "../../src/matter/protocol/im_handler"
-require "../../src/matter/cluster/general_commissioning_cluster"
-require "../../src/matter/cluster/basic_information_cluster"
+require "../../src/matter/cluster/general_commissioning"
+require "../../src/matter/cluster/basic_information"
 require "../../src/matter/interaction_model/tlv_messages"
 
 # Helper to create a cluster registry with test clusters
@@ -9,14 +9,14 @@ private def create_test_clusters : Hash(Tuple(UInt16, UInt32), Matter::Cluster::
   clusters = {} of Tuple(UInt16, UInt32) => Matter::Cluster::Base
 
   # GeneralCommissioning cluster (0x0030) on endpoint 0
-  general_commissioning = Matter::Cluster::GeneralCommissioningCluster.new(
+  general_commissioning = Matter::Cluster::GeneralCommissioning.new(
     Matter::DataType::EndpointNumber.new(0_u16)
   )
   general_commissioning.data_version = 0xd34496b8_u32
   clusters[{0_u16, 0x0030_u32}] = general_commissioning
 
   # BasicInformation cluster (0x0028) on endpoint 0
-  basic_info = Matter::Cluster::BasicInformationCluster.new(
+  basic_info = Matter::Cluster::BasicInformation.new(
     endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
     vendor_id: 65521_u16,
     product_id: 32768_u16,

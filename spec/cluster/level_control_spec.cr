@@ -1,5 +1,5 @@
 require "../spec_helper"
-require "../../src/matter/cluster/level_control_cluster"
+require "../../src/matter/cluster/level_control"
 
 # Note: Time-based transition tests from matter.js behavioral tests
 # (packages/node/test/behaviors/level-control/LevelControlServerTest.ts)
@@ -7,11 +7,11 @@ require "../../src/matter/cluster/level_control_cluster"
 # Current implementation performs instant level changes.
 # These tests can be added when transition support is implemented.
 
-describe Matter::Cluster::LevelControlCluster do
+describe Matter::Cluster::LevelControl do
   describe "initialization" do
     it "creates level control cluster" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id)
 
       cluster.cluster_id.id.should eq(0x0008_u32)
       cluster.name.should eq("LevelControl")
@@ -22,7 +22,7 @@ describe Matter::Cluster::LevelControlCluster do
 
     it "initializes with custom values" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(
+      cluster = Matter::Cluster::LevelControl.new(
         endpoint_id,
         current_level: 127_u8,
         min_level: 10_u8,
@@ -38,90 +38,90 @@ describe Matter::Cluster::LevelControlCluster do
   describe "attributes" do
     it "has required attributes" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id)
 
       attributes = cluster.attributes
       attributes.should_not be_empty
       attributes.size.should be >= 3
 
-      current_level = attributes.find { |attr| attr.id.id == Matter::Cluster::LevelControlCluster::ATTR_CURRENT_LEVEL }
+      current_level = attributes.find { |attr| attr.id.id == Matter::Cluster::LevelControl::ATTR_CURRENT_LEVEL }
       current_level.should_not be_nil
       current_level_attr = current_level.as(Matter::Cluster::AttributeMetadata)
       current_level_attr.name.should eq("currentLevel")
       current_level_attr.writable?.should be_false
 
-      min_level = attributes.find { |attr| attr.id.id == Matter::Cluster::LevelControlCluster::ATTR_MIN_LEVEL }
+      min_level = attributes.find { |attr| attr.id.id == Matter::Cluster::LevelControl::ATTR_MIN_LEVEL }
       min_level.should_not be_nil
 
-      max_level = attributes.find { |attr| attr.id.id == Matter::Cluster::LevelControlCluster::ATTR_MAX_LEVEL }
+      max_level = attributes.find { |attr| attr.id.id == Matter::Cluster::LevelControl::ATTR_MAX_LEVEL }
       max_level.should_not be_nil
     end
 
     it "reads CurrentLevel attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, current_level: 100_u8)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 100_u8)
 
-      read(cluster, Matter::Cluster::LevelControlCluster::ATTR_CURRENT_LEVEL).should eq(100_u8)
+      read(cluster, Matter::Cluster::LevelControl::ATTR_CURRENT_LEVEL).should eq(100_u8)
     end
 
     it "reads MinLevel attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, min_level: 5_u8)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id, min_level: 5_u8)
 
-      read(cluster, Matter::Cluster::LevelControlCluster::ATTR_MIN_LEVEL).should eq(5_u8)
+      read(cluster, Matter::Cluster::LevelControl::ATTR_MIN_LEVEL).should eq(5_u8)
     end
 
     it "reads MaxLevel attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, max_level: 200_u8)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id, max_level: 200_u8)
 
-      read(cluster, Matter::Cluster::LevelControlCluster::ATTR_MAX_LEVEL).should eq(200_u8)
+      read(cluster, Matter::Cluster::LevelControl::ATTR_MAX_LEVEL).should eq(200_u8)
     end
 
     it "reads RemainingTime attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id)
 
-      read(cluster, Matter::Cluster::LevelControlCluster::ATTR_REMAINING_TIME).should eq(0_u16)
+      read(cluster, Matter::Cluster::LevelControl::ATTR_REMAINING_TIME).should eq(0_u16)
     end
   end
 
   describe "commands" do
     it "has required commands" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id)
 
       commands = cluster.commands
       commands.size.should be >= 4
 
-      move_to_level = commands.find { |cmd| cmd.id.id == Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL }
+      move_to_level = commands.find { |cmd| cmd.id.id == Matter::Cluster::LevelControl::CMD_MOVE_TO_LEVEL }
       move_to_level.should_not be_nil
       move_to_level.as(Matter::Cluster::CommandMetadata).name.should eq("moveToLevel")
 
-      move = commands.find { |cmd| cmd.id.id == Matter::Cluster::LevelControlCluster::CMD_MOVE }
+      move = commands.find { |cmd| cmd.id.id == Matter::Cluster::LevelControl::CMD_MOVE }
       move.should_not be_nil
 
-      step = commands.find { |cmd| cmd.id.id == Matter::Cluster::LevelControlCluster::CMD_STEP }
+      step = commands.find { |cmd| cmd.id.id == Matter::Cluster::LevelControl::CMD_STEP }
       step.should_not be_nil
 
-      stop = commands.find { |cmd| cmd.id.id == Matter::Cluster::LevelControlCluster::CMD_STOP }
+      stop = commands.find { |cmd| cmd.id.id == Matter::Cluster::LevelControl::CMD_STOP }
       stop.should_not be_nil
     end
 
     it "executes MoveToLevel command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, current_level: 0_u8)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 0_u8)
 
       cluster.current_level.should eq(0_u8)
 
-      request = Matter::Cluster::LevelControlCluster::MoveToLevelRequest.new(
+      request = Matter::Cluster::LevelControl::MoveToLevelRequest.new(
         level: 200_u8,
         transition_time: 10_u16,
         mask: 0_u8,
         override: 0_u8
       )
       result = invoke(cluster,
-        Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL,
+        Matter::Cluster::LevelControl::CMD_MOVE_TO_LEVEL,
         request
       )
 
@@ -132,16 +132,16 @@ describe Matter::Cluster::LevelControlCluster do
 
     it "executes Move command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, current_level: 100_u8)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 100_u8)
 
-      request = Matter::Cluster::LevelControlCluster::MoveRequest.new(
-        move_mode: Matter::Cluster::LevelControlCluster::MoveMode::Up,
+      request = Matter::Cluster::LevelControl::MoveRequest.new(
+        move_mode: Matter::Cluster::LevelControl::MoveMode::Up,
         rate: 10_u8,
         mask: 0_u8,
         override: 0_u8
       )
       result = invoke(cluster,
-        Matter::Cluster::LevelControlCluster::CMD_MOVE,
+        Matter::Cluster::LevelControl::CMD_MOVE,
         request
       )
 
@@ -151,17 +151,17 @@ describe Matter::Cluster::LevelControlCluster do
 
     it "executes Step command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, current_level: 100_u8)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 100_u8)
 
-      request = Matter::Cluster::LevelControlCluster::StepRequest.new(
-        step_mode: Matter::Cluster::LevelControlCluster::StepMode::Up,
+      request = Matter::Cluster::LevelControl::StepRequest.new(
+        step_mode: Matter::Cluster::LevelControl::StepMode::Up,
         step_size: 20_u8,
         transition_time: 5_u16,
         mask: 0_u8,
         override: 0_u8
       )
       result = invoke(cluster,
-        Matter::Cluster::LevelControlCluster::CMD_STEP,
+        Matter::Cluster::LevelControl::CMD_STEP,
         request
       )
 
@@ -172,14 +172,14 @@ describe Matter::Cluster::LevelControlCluster do
 
     it "executes Stop command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id)
 
-      request = Matter::Cluster::LevelControlCluster::StopRequest.new(
+      request = Matter::Cluster::LevelControl::StopRequest.new(
         mask: 0_u8,
         override: 0_u8
       )
       result = invoke(cluster,
-        Matter::Cluster::LevelControlCluster::CMD_STOP,
+        Matter::Cluster::LevelControl::CMD_STOP,
         request
       )
 
@@ -190,36 +190,36 @@ describe Matter::Cluster::LevelControlCluster do
 
   describe "MoveMode enum" do
     it "has move modes" do
-      Matter::Cluster::LevelControlCluster::MoveMode::Up.value.should eq(0)
-      Matter::Cluster::LevelControlCluster::MoveMode::Down.value.should eq(1)
+      Matter::Cluster::LevelControl::MoveMode::Up.value.should eq(0)
+      Matter::Cluster::LevelControl::MoveMode::Down.value.should eq(1)
     end
   end
 
   describe "StepMode enum" do
     it "has step modes" do
-      Matter::Cluster::LevelControlCluster::StepMode::Up.value.should eq(0)
-      Matter::Cluster::LevelControlCluster::StepMode::Down.value.should eq(1)
+      Matter::Cluster::LevelControl::StepMode::Up.value.should eq(0)
+      Matter::Cluster::LevelControl::StepMode::Down.value.should eq(1)
     end
   end
 
   describe "level boundaries" do
     it "clamps level to min boundary" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(
+      cluster = Matter::Cluster::LevelControl.new(
         endpoint_id,
         current_level: 100_u8,
         min_level: 50_u8
       )
 
       # Try to move below min
-      request = Matter::Cluster::LevelControlCluster::MoveToLevelRequest.new(
+      request = Matter::Cluster::LevelControl::MoveToLevelRequest.new(
         level: 10_u8,
         transition_time: 0_u16,
         mask: 0_u8,
         override: 0_u8
       )
       invoke(cluster,
-        Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL,
+        Matter::Cluster::LevelControl::CMD_MOVE_TO_LEVEL,
         request
       )
 
@@ -228,21 +228,21 @@ describe Matter::Cluster::LevelControlCluster do
 
     it "clamps level to max boundary" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(
+      cluster = Matter::Cluster::LevelControl.new(
         endpoint_id,
         current_level: 100_u8,
         max_level: 200_u8
       )
 
       # Try to move above max
-      request = Matter::Cluster::LevelControlCluster::MoveToLevelRequest.new(
+      request = Matter::Cluster::LevelControl::MoveToLevelRequest.new(
         level: 250_u8,
         transition_time: 0_u16,
         mask: 0_u8,
         override: 0_u8
       )
       invoke(cluster,
-        Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL,
+        Matter::Cluster::LevelControl::CMD_MOVE_TO_LEVEL,
         request
       )
 
@@ -253,12 +253,12 @@ describe Matter::Cluster::LevelControlCluster do
   describe "step command boundaries" do
     it "steps up within range" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, current_level: 100_u8)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 100_u8)
 
       invoke(cluster,
-        Matter::Cluster::LevelControlCluster::CMD_STEP,
-        Matter::Cluster::LevelControlCluster::StepRequest.new(
-          step_mode: Matter::Cluster::LevelControlCluster::StepMode::Up,
+        Matter::Cluster::LevelControl::CMD_STEP,
+        Matter::Cluster::LevelControl::StepRequest.new(
+          step_mode: Matter::Cluster::LevelControl::StepMode::Up,
           step_size: 50_u8,
           transition_time: 0_u16,
           mask: 0_u8,
@@ -271,12 +271,12 @@ describe Matter::Cluster::LevelControlCluster do
 
     it "steps down within range" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, current_level: 100_u8)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 100_u8)
 
       invoke(cluster,
-        Matter::Cluster::LevelControlCluster::CMD_STEP,
-        Matter::Cluster::LevelControlCluster::StepRequest.new(
-          step_mode: Matter::Cluster::LevelControlCluster::StepMode::Down,
+        Matter::Cluster::LevelControl::CMD_STEP,
+        Matter::Cluster::LevelControl::StepRequest.new(
+          step_mode: Matter::Cluster::LevelControl::StepMode::Down,
           step_size: 30_u8,
           transition_time: 0_u16,
           mask: 0_u8,
@@ -289,16 +289,16 @@ describe Matter::Cluster::LevelControlCluster do
 
     it "clamps step up to max" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(
+      cluster = Matter::Cluster::LevelControl.new(
         endpoint_id,
         current_level: 240_u8,
         max_level: 254_u8
       )
 
       invoke(cluster,
-        Matter::Cluster::LevelControlCluster::CMD_STEP,
-        Matter::Cluster::LevelControlCluster::StepRequest.new(
-          step_mode: Matter::Cluster::LevelControlCluster::StepMode::Up,
+        Matter::Cluster::LevelControl::CMD_STEP,
+        Matter::Cluster::LevelControl::StepRequest.new(
+          step_mode: Matter::Cluster::LevelControl::StepMode::Up,
           step_size: 50_u8,
           transition_time: 0_u16,
           mask: 0_u8,
@@ -311,16 +311,16 @@ describe Matter::Cluster::LevelControlCluster do
 
     it "clamps step down to min" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(
+      cluster = Matter::Cluster::LevelControl.new(
         endpoint_id,
         current_level: 10_u8,
         min_level: 0_u8
       )
 
       invoke(cluster,
-        Matter::Cluster::LevelControlCluster::CMD_STEP,
-        Matter::Cluster::LevelControlCluster::StepRequest.new(
-          step_mode: Matter::Cluster::LevelControlCluster::StepMode::Down,
+        Matter::Cluster::LevelControl::CMD_STEP,
+        Matter::Cluster::LevelControl::StepRequest.new(
+          step_mode: Matter::Cluster::LevelControl::StepMode::Down,
           step_size: 50_u8,
           transition_time: 0_u16,
           mask: 0_u8,
@@ -335,7 +335,7 @@ describe Matter::Cluster::LevelControlCluster do
   describe "callbacks" do
     it "calls level changed callback" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, current_level: 50_u8)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 50_u8)
 
       old_level = 0_u8
       new_level = 0_u8
@@ -346,8 +346,8 @@ describe Matter::Cluster::LevelControlCluster do
       end
 
       invoke(cluster,
-        Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL,
-        Matter::Cluster::LevelControlCluster::MoveToLevelRequest.new(
+        Matter::Cluster::LevelControl::CMD_MOVE_TO_LEVEL,
+        Matter::Cluster::LevelControl::MoveToLevelRequest.new(
           level: 100_u8,
           transition_time: 0_u16,
           mask: 0_u8,
@@ -363,13 +363,13 @@ describe Matter::Cluster::LevelControlCluster do
   describe "data versioning" do
     it "increments version when level changes" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, current_level: 50_u8)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 50_u8)
 
       initial_version = cluster.data_version
 
       invoke(cluster,
-        Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL,
-        Matter::Cluster::LevelControlCluster::MoveToLevelRequest.new(
+        Matter::Cluster::LevelControl::CMD_MOVE_TO_LEVEL,
+        Matter::Cluster::LevelControl::MoveToLevelRequest.new(
           level: 100_u8,
           transition_time: 0_u16,
           mask: 0_u8,
@@ -384,14 +384,14 @@ describe Matter::Cluster::LevelControlCluster do
   describe "persistence" do
     it "saves and restores state" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(
+      cluster = Matter::Cluster::LevelControl.new(
         endpoint_id,
         current_level: 50_u8,
         min_level: 1_u8,
         max_level: 200_u8,
-        feature_map: Matter::Cluster::LevelControlCluster::Feature::OnOff |
-                     Matter::Cluster::LevelControlCluster::Feature::Lighting |
-                     Matter::Cluster::LevelControlCluster::Feature::Frequency
+        feature_map: Matter::Cluster::LevelControl::Feature::OnOff |
+                     Matter::Cluster::LevelControl::Feature::Lighting |
+                     Matter::Cluster::LevelControl::Feature::Frequency
       )
 
       cluster.on_level = 42_u8
@@ -412,14 +412,14 @@ describe Matter::Cluster::LevelControlCluster do
       saved["on_level"].should eq(42_i64)
       saved["data_version"].should eq(12_i64)
 
-      restored = Matter::Cluster::LevelControlCluster.new(
+      restored = Matter::Cluster::LevelControl.new(
         endpoint_id,
         current_level: 1_u8,
         min_level: 1_u8,
         max_level: 254_u8,
-        feature_map: Matter::Cluster::LevelControlCluster::Feature::OnOff |
-                     Matter::Cluster::LevelControlCluster::Feature::Lighting |
-                     Matter::Cluster::LevelControlCluster::Feature::Frequency
+        feature_map: Matter::Cluster::LevelControl::Feature::OnOff |
+                     Matter::Cluster::LevelControl::Feature::Lighting |
+                     Matter::Cluster::LevelControl::Feature::Frequency
       )
       restored.restore_state(saved)
 
@@ -443,30 +443,30 @@ describe Matter::Cluster::LevelControlCluster do
 
   describe "OnLevel writes" do
     it "rejects a level outside MinLevel..MaxLevel with ConstraintError" do
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint(1), min_level: 10_u8, max_level: 200_u8)
+      cluster = Matter::Cluster::LevelControl.new(endpoint(1), min_level: 10_u8, max_level: 200_u8)
 
-      expect_status(write(cluster, Matter::Cluster::LevelControlCluster::ATTR_ON_LEVEL, 201_u8), Matter::InteractionModel::StatusCode::ConstraintError)
-      expect_status(write(cluster, Matter::Cluster::LevelControlCluster::ATTR_ON_LEVEL, 9_u8), Matter::InteractionModel::StatusCode::ConstraintError)
+      expect_status(write(cluster, Matter::Cluster::LevelControl::ATTR_ON_LEVEL, 201_u8), Matter::InteractionModel::StatusCode::ConstraintError)
+      expect_status(write(cluster, Matter::Cluster::LevelControl::ATTR_ON_LEVEL, 9_u8), Matter::InteractionModel::StatusCode::ConstraintError)
       cluster.on_level.should be_nil
 
-      expect_success(write(cluster, Matter::Cluster::LevelControlCluster::ATTR_ON_LEVEL, 200_u8))
+      expect_success(write(cluster, Matter::Cluster::LevelControl::ATTR_ON_LEVEL, 200_u8))
       cluster.on_level.should eq(200_u8)
     end
   end
 
   describe "nullable attribute writes" do
     nullable_attributes = {
-      Matter::Cluster::LevelControlCluster::ATTR_ON_LEVEL               => 42_u8,
-      Matter::Cluster::LevelControlCluster::ATTR_ON_TRANSITION_TIME     => 7_u16,
-      Matter::Cluster::LevelControlCluster::ATTR_OFF_TRANSITION_TIME    => 8_u16,
-      Matter::Cluster::LevelControlCluster::ATTR_DEFAULT_MOVE_RATE      => 10_u8,
-      Matter::Cluster::LevelControlCluster::ATTR_START_UP_CURRENT_LEVEL => 12_u8,
+      Matter::Cluster::LevelControl::ATTR_ON_LEVEL               => 42_u8,
+      Matter::Cluster::LevelControl::ATTR_ON_TRANSITION_TIME     => 7_u16,
+      Matter::Cluster::LevelControl::ATTR_OFF_TRANSITION_TIME    => 8_u16,
+      Matter::Cluster::LevelControl::ATTR_DEFAULT_MOVE_RATE      => 10_u8,
+      Matter::Cluster::LevelControl::ATTR_START_UP_CURRENT_LEVEL => 12_u8,
     }
 
     nullable_attributes.each do |attribute_id, populated|
       it "accepts null for attribute 0x#{attribute_id.to_s(16)}" do
-        cluster = Matter::Cluster::LevelControlCluster.new(endpoint(1),
-          feature_map: Matter::Cluster::LevelControlCluster::Feature::OnOff | Matter::Cluster::LevelControlCluster::Feature::Lighting)
+        cluster = Matter::Cluster::LevelControl.new(endpoint(1),
+          feature_map: Matter::Cluster::LevelControl::Feature::OnOff | Matter::Cluster::LevelControl::Feature::Lighting)
         expect_success(write(cluster, attribute_id, populated))
         read(cluster, attribute_id).should eq(populated)
 
@@ -482,7 +482,7 @@ describe Matter::Cluster::LevelControlCluster do
   describe "error handling" do
     it "returns error for unsupported attribute" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id)
 
       read_status(cluster, 0x9999_u32).status.should eq(
         Matter::InteractionModel::StatusCode::UnsupportedAttribute
@@ -491,7 +491,7 @@ describe Matter::Cluster::LevelControlCluster do
 
     it "returns error for unsupported command" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id)
+      cluster = Matter::Cluster::LevelControl.new(endpoint_id)
 
       result = invoke(cluster, 0x99_u32, Bytes.new(0))
       result.should be_a(Matter::InteractionModel::Status)
@@ -504,11 +504,11 @@ describe Matter::Cluster::LevelControlCluster do
   describe "practical scenarios" do
     it "dims a light from full to half" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      light = Matter::Cluster::LevelControlCluster.new(endpoint_id, current_level: 254_u8)
+      light = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 254_u8)
 
       invoke(light,
-        Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL,
-        Matter::Cluster::LevelControlCluster::MoveToLevelRequest.new(
+        Matter::Cluster::LevelControl::CMD_MOVE_TO_LEVEL,
+        Matter::Cluster::LevelControl::MoveToLevelRequest.new(
           level: 127_u8,
           transition_time: 10_u16,
           mask: 0_u8,
@@ -521,13 +521,13 @@ describe Matter::Cluster::LevelControlCluster do
 
     it "brightens a light gradually" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      light = Matter::Cluster::LevelControlCluster.new(endpoint_id, current_level: 50_u8)
+      light = Matter::Cluster::LevelControl.new(endpoint_id, current_level: 50_u8)
 
       5.times do
         invoke(light,
-          Matter::Cluster::LevelControlCluster::CMD_STEP,
-          Matter::Cluster::LevelControlCluster::StepRequest.new(
-            step_mode: Matter::Cluster::LevelControlCluster::StepMode::Up,
+          Matter::Cluster::LevelControl::CMD_STEP,
+          Matter::Cluster::LevelControl::StepRequest.new(
+            step_mode: Matter::Cluster::LevelControl::StepMode::Up,
             step_size: 10_u8,
             transition_time: 2_u16,
             mask: 0_u8,
@@ -541,15 +541,15 @@ describe Matter::Cluster::LevelControlCluster do
 
     it "fades out to minimum" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      light = Matter::Cluster::LevelControlCluster.new(
+      light = Matter::Cluster::LevelControl.new(
         endpoint_id,
         current_level: 200_u8,
         min_level: 10_u8
       )
 
       invoke(light,
-        Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL,
-        Matter::Cluster::LevelControlCluster::MoveToLevelRequest.new(
+        Matter::Cluster::LevelControl::CMD_MOVE_TO_LEVEL,
+        Matter::Cluster::LevelControl::MoveToLevelRequest.new(
           level: 10_u8,
           transition_time: 20_u16,
           mask: 0_u8,

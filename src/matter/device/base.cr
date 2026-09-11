@@ -8,18 +8,18 @@ require "../mdns/responder"
 require "../mdns/service_type"
 require "../datatype/endpoint_number"
 
-require "../cluster/descriptor_cluster"
-require "../cluster/basic_information_cluster"
-require "../cluster/access_control_cluster"
-require "../cluster/general_commissioning_cluster"
-require "../cluster/operational_credentials_cluster"
-require "../cluster/administrator_commissioning_cluster"
-require "../cluster/general_diagnostics_cluster"
-require "../cluster/network_commissioning_cluster"
-require "../cluster/group_key_management_cluster"
-require "../cluster/ota_requestor_cluster"
-require "../cluster/diagnostic_logs_cluster"
-require "../cluster/ethernet_network_diagnostics_cluster"
+require "../cluster/descriptor"
+require "../cluster/basic_information"
+require "../cluster/access_control"
+require "../cluster/general_commissioning"
+require "../cluster/operational_credentials"
+require "../cluster/administrator_commissioning"
+require "../cluster/general_diagnostics"
+require "../cluster/network_commissioning"
+require "../cluster/group_key_management"
+require "../cluster/ota_requestor"
+require "../cluster/diagnostic_logs"
+require "../cluster/ethernet_network_diagnostics"
 
 module Matter
   module Device
@@ -29,7 +29,7 @@ module Matter
     # - Persistence (fabrics, sessions, cluster state, identity) on a `Storage::Backend`
     # - UDP transport + Protocol MessageHandler
     # - Default Root Node clusters (including OperationalCredentials)
-    # - DescriptorCluster injection and auto-population
+    # - Descriptor injection and auto-population
     # - mDNS responder + lifecycle management (commissioning <-> operational)
     #
     # Subclasses typically implement:
@@ -53,30 +53,30 @@ module Matter
       getter lifecycle : LifecycleManager
 
       @shutdown_channel : Channel(Nil) = Channel(Nil).new
-      @basic_info : Cluster::BasicInformationCluster? = nil
-      @general_commissioning : Cluster::GeneralCommissioningCluster? = nil
-      @access_control : Cluster::AccessControlCluster? = nil
-      @operational_credentials : Cluster::OperationalCredentialsCluster? = nil
-      @administrator_commissioning : Cluster::AdministratorCommissioningCluster? = nil
+      @basic_info : Cluster::BasicInformation? = nil
+      @general_commissioning : Cluster::GeneralCommissioning? = nil
+      @access_control : Cluster::AccessControl? = nil
+      @operational_credentials : Cluster::OperationalCredentials? = nil
+      @administrator_commissioning : Cluster::AdministratorCommissioning? = nil
 
-      def basic_info : Cluster::BasicInformationCluster
-        @basic_info.as(Cluster::BasicInformationCluster)
+      def basic_info : Cluster::BasicInformation
+        @basic_info.as(Cluster::BasicInformation)
       end
 
-      def general_commissioning : Cluster::GeneralCommissioningCluster
-        @general_commissioning.as(Cluster::GeneralCommissioningCluster)
+      def general_commissioning : Cluster::GeneralCommissioning
+        @general_commissioning.as(Cluster::GeneralCommissioning)
       end
 
-      def access_control : Cluster::AccessControlCluster
-        @access_control.as(Cluster::AccessControlCluster)
+      def access_control : Cluster::AccessControl
+        @access_control.as(Cluster::AccessControl)
       end
 
-      def operational_credentials : Cluster::OperationalCredentialsCluster
-        @operational_credentials.as(Cluster::OperationalCredentialsCluster)
+      def operational_credentials : Cluster::OperationalCredentials
+        @operational_credentials.as(Cluster::OperationalCredentials)
       end
 
-      def administrator_commissioning : Cluster::AdministratorCommissioningCluster
-        @administrator_commissioning.as(Cluster::AdministratorCommissioningCluster)
+      def administrator_commissioning : Cluster::AdministratorCommissioning
+        @administrator_commissioning.as(Cluster::AdministratorCommissioning)
       end
 
       def port : Int32
@@ -221,7 +221,7 @@ module Matter
         nil
       end
 
-      def product_appearance : Cluster::BasicInformationCluster::ProductAppearanceStruct?
+      def product_appearance : Cluster::BasicInformation::ProductAppearanceStruct?
         nil
       end
 
@@ -231,7 +231,7 @@ module Matter
       # Return the device-specific clusters (typically for endpoint(s) > 0).
       protected abstract def device_clusters : Array(Cluster::Base)
 
-      # Map endpoint -> device type ID for DescriptorCluster population.
+      # Map endpoint -> device type ID for Descriptor population.
       protected def endpoint_device_types : Hash(UInt16, UInt32)
         {1_u16 => primary_device_type_id} of UInt16 => UInt32
       end
@@ -243,12 +243,12 @@ module Matter
       # ------------------------------------------------------------------------
       # Networking / diagnostics defaults
       # ------------------------------------------------------------------------
-      protected def commissioning_network_type : Cluster::NetworkCommissioningCluster::NetworkType
-        Cluster::NetworkCommissioningCluster::NetworkType::Ethernet
+      protected def commissioning_network_type : Cluster::NetworkCommissioning::NetworkType
+        Cluster::NetworkCommissioning::NetworkType::Ethernet
       end
 
-      protected def commissioning_network_feature_map : Cluster::NetworkCommissioningCluster::Feature
-        Cluster::NetworkCommissioningCluster::Feature::EthernetNetworkInterface
+      protected def commissioning_network_feature_map : Cluster::NetworkCommissioning::Feature
+        Cluster::NetworkCommissioning::Feature::EthernetNetworkInterface
       end
 
       protected def include_ethernet_diagnostics? : Bool
@@ -321,7 +321,7 @@ module Matter
         endpoint_0 = DataType::EndpointNumber.new(0_u16)
 
         # Root Node clusters
-        basic_info = Cluster::BasicInformationCluster.new(
+        basic_info = Cluster::BasicInformation.new(
           endpoint_0,
           data_model_revision: 1_u16,
           vendor_name: vendor_name,
@@ -338,11 +338,11 @@ module Matter
         )
         @basic_info = basic_info
 
-        general_commissioning = Cluster::GeneralCommissioningCluster.new(endpoint_0)
-        access_control = Cluster::AccessControlCluster.new(endpoint_0)
+        general_commissioning = Cluster::GeneralCommissioning.new(endpoint_0)
+        access_control = Cluster::AccessControl.new(endpoint_0)
         @general_commissioning = general_commissioning
         @access_control = access_control
-        operational_credentials = Cluster::OperationalCredentialsCluster.new(
+        operational_credentials = Cluster::OperationalCredentials.new(
           @fabric_table,
           endpoint_0,
           access_control_cluster: access_control,
@@ -361,20 +361,20 @@ module Matter
           sessions[session_id.to_u16]?.try(&.attestation_challenge)
         end
 
-        administrator_commissioning = Cluster::AdministratorCommissioningCluster.new(endpoint_0)
+        administrator_commissioning = Cluster::AdministratorCommissioning.new(endpoint_0)
         @administrator_commissioning = administrator_commissioning
 
-        general_diagnostics = Cluster::GeneralDiagnosticsCluster.new(endpoint_0)
-        icd_management = Cluster::IcdManagementCluster.new(endpoint_0)
-        network_commissioning = Cluster::NetworkCommissioningCluster.new(
+        general_diagnostics = Cluster::GeneralDiagnostics.new(endpoint_0)
+        icd_management = Cluster::IcdManagement.new(endpoint_0)
+        network_commissioning = Cluster::NetworkCommissioning.new(
           endpoint_0,
           network_type: commissioning_network_type,
           feature_map: commissioning_network_feature_map
         )
-        group_key_management = Cluster::GroupKeyManagementCluster.new(endpoint_0)
-        ota_requestor = Cluster::OtaRequestorCluster.new(endpoint_0)
-        diagnostic_logs = Cluster::DiagnosticLogsCluster.new(endpoint_0)
-        ethernet_diagnostics = include_ethernet_diagnostics? ? Cluster::EthernetNetworkDiagnosticsCluster.new(endpoint_0) : nil
+        group_key_management = Cluster::GroupKeyManagement.new(endpoint_0)
+        ota_requestor = Cluster::OtaRequestor.new(endpoint_0)
+        diagnostic_logs = Cluster::DiagnosticLogs.new(endpoint_0)
+        ethernet_diagnostics = include_ethernet_diagnostics? ? Cluster::EthernetNetworkDiagnostics.new(endpoint_0) : nil
 
         # Wire commissioning-window mDNS advertisement via the Responder.
         # This enables multi-admin flows (chip-tool/iOS) that require _matterc advertising
@@ -405,19 +405,19 @@ module Matter
         end
 
         # Wire root clusters (overwrites MessageHandler defaults)
-        @message_handler.clusters[{0_u16, Cluster::BasicInformationCluster::CLUSTER_ID}] = basic_info
-        @message_handler.clusters[{0_u16, Cluster::GeneralCommissioningCluster::CLUSTER_ID}] = general_commissioning
-        @message_handler.clusters[{0_u16, Cluster::AccessControlCluster::CLUSTER_ID}] = access_control
-        @message_handler.clusters[{0_u16, Cluster::OperationalCredentialsCluster::CLUSTER_ID}] = operational_credentials
-        @message_handler.clusters[{0_u16, Cluster::AdministratorCommissioningCluster::CLUSTER_ID}] = administrator_commissioning
-        @message_handler.clusters[{0_u16, Cluster::GeneralDiagnosticsCluster::CLUSTER_ID}] = general_diagnostics
-        @message_handler.clusters[{0_u16, Cluster::IcdManagementCluster::CLUSTER_ID}] = icd_management
-        @message_handler.clusters[{0_u16, Cluster::NetworkCommissioningCluster::CLUSTER_ID}] = network_commissioning
-        @message_handler.clusters[{0_u16, Cluster::GroupKeyManagementCluster::CLUSTER_ID}] = group_key_management
-        @message_handler.clusters[{0_u16, Cluster::OtaRequestorCluster::CLUSTER_ID}] = ota_requestor
-        @message_handler.clusters[{0_u16, Cluster::DiagnosticLogsCluster::CLUSTER_ID}] = diagnostic_logs
+        @message_handler.clusters[{0_u16, Cluster::BasicInformation::CLUSTER_ID}] = basic_info
+        @message_handler.clusters[{0_u16, Cluster::GeneralCommissioning::CLUSTER_ID}] = general_commissioning
+        @message_handler.clusters[{0_u16, Cluster::AccessControl::CLUSTER_ID}] = access_control
+        @message_handler.clusters[{0_u16, Cluster::OperationalCredentials::CLUSTER_ID}] = operational_credentials
+        @message_handler.clusters[{0_u16, Cluster::AdministratorCommissioning::CLUSTER_ID}] = administrator_commissioning
+        @message_handler.clusters[{0_u16, Cluster::GeneralDiagnostics::CLUSTER_ID}] = general_diagnostics
+        @message_handler.clusters[{0_u16, Cluster::IcdManagement::CLUSTER_ID}] = icd_management
+        @message_handler.clusters[{0_u16, Cluster::NetworkCommissioning::CLUSTER_ID}] = network_commissioning
+        @message_handler.clusters[{0_u16, Cluster::GroupKeyManagement::CLUSTER_ID}] = group_key_management
+        @message_handler.clusters[{0_u16, Cluster::OtaRequestor::CLUSTER_ID}] = ota_requestor
+        @message_handler.clusters[{0_u16, Cluster::DiagnosticLogs::CLUSTER_ID}] = diagnostic_logs
         if ethernet = ethernet_diagnostics
-          @message_handler.clusters[{0_u16, Cluster::EthernetNetworkDiagnosticsCluster::CLUSTER_ID}] = ethernet
+          @message_handler.clusters[{0_u16, Cluster::EthernetNetworkDiagnostics::CLUSTER_ID}] = ethernet
         end
 
         # Wire device clusters (subclass-provided)
@@ -431,7 +431,7 @@ module Matter
       end
 
       private def wire_scenes_management_extensions : Nil
-        scenes_clusters = @message_handler.clusters.values.select(Cluster::ScenesManagementCluster)
+        scenes_clusters = @message_handler.clusters.values.select(Cluster::ScenesManagement)
         return if scenes_clusters.empty?
 
         scenes_clusters.each do |scenes|
@@ -440,7 +440,7 @@ module Matter
           existing_apply = scenes.apply_extension_field_sets
 
           scenes.get_extension_field_sets = -> do
-            sets = [] of Cluster::ScenesManagementCluster::ExtensionFieldSet
+            sets = [] of Cluster::ScenesManagement::ExtensionFieldSet
             if cb = existing_get
               sets.concat(cb.call)
             end
@@ -454,7 +454,7 @@ module Matter
             sets
           end
 
-          scenes.apply_extension_field_sets = ->(field_sets : Array(Cluster::ScenesManagementCluster::ExtensionFieldSet)) do
+          scenes.apply_extension_field_sets = ->(field_sets : Array(Cluster::ScenesManagement::ExtensionFieldSet)) do
             if cb = existing_apply
               cb.call(field_sets)
             end
@@ -469,7 +469,7 @@ module Matter
       end
 
       # Default to ephemeral test credentials unless the device overrides.
-      protected def configure_attestation(operational_credentials : Cluster::OperationalCredentialsCluster) : Nil
+      protected def configure_attestation(operational_credentials : Cluster::OperationalCredentials) : Nil
         operational_credentials.set_attestation_from_manager(vendor_id: vendor_id, product_id: product_id)
       end
 
@@ -478,14 +478,14 @@ module Matter
         endpoints << 0_u16 unless endpoints.includes?(0_u16)
 
         endpoints.each do |endpoint_id|
-          next if @message_handler.clusters.has_key?({endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID})
-          descriptor = Cluster::DescriptorCluster.new(DataType::EndpointNumber.new(endpoint_id))
-          @message_handler.clusters[{endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID}] = descriptor
+          next if @message_handler.clusters.has_key?({endpoint_id, Cluster::Descriptor::CLUSTER_ID})
+          descriptor = Cluster::Descriptor.new(DataType::EndpointNumber.new(endpoint_id))
+          @message_handler.clusters[{endpoint_id, Cluster::Descriptor::CLUSTER_ID}] = descriptor
         end
 
         endpoints.each do |endpoint_id|
-          descriptor = @message_handler.clusters[{endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID}]
-            .as(Cluster::DescriptorCluster)
+          descriptor = @message_handler.clusters[{endpoint_id, Cluster::Descriptor::CLUSTER_ID}]
+            .as(Cluster::Descriptor)
 
           # ServerList: all clusters present on endpoint
           cluster_ids = @message_handler.clusters
@@ -500,14 +500,14 @@ module Matter
           # DeviceTypeList: Root Node on endpoint 0, otherwise use endpoint_device_types
           descriptor.device_type_list.clear
           if endpoint_id == 0_u16
-            descriptor.device_type_list << Cluster::DescriptorCluster::DeviceTypeStruct.new(
+            descriptor.device_type_list << Cluster::Descriptor::DeviceTypeStruct.new(
               device_type: DeviceType::ROOT_NODE,
               revision: 1_u16
             )
           end
 
           if device_type = endpoint_device_types[endpoint_id]?
-            descriptor.device_type_list << Cluster::DescriptorCluster::DeviceTypeStruct.new(
+            descriptor.device_type_list << Cluster::Descriptor::DeviceTypeStruct.new(
               device_type: device_type,
               revision: endpoint_device_type_revision(endpoint_id)
             )
@@ -515,7 +515,7 @@ module Matter
         end
 
         # PartsList: endpoint 0 references all other endpoints
-        if root_desc = @message_handler.clusters[{0_u16, Cluster::DescriptorCluster::CLUSTER_ID}]?.as?(Cluster::DescriptorCluster)
+        if root_desc = @message_handler.clusters[{0_u16, Cluster::Descriptor::CLUSTER_ID}]?.as?(Cluster::Descriptor)
           root_desc.parts_list.clear
           endpoints.each do |endpoint_id|
             next if endpoint_id == 0_u16
@@ -552,7 +552,7 @@ module Matter
       # This is primarily used by bridge devices to add bridged endpoints dynamically.
       #
       # The clusters should already be configured with the correct endpoint_id.
-      # A DescriptorCluster will be automatically injected if not provided.
+      # A Descriptor will be automatically injected if not provided.
       #
       # Set `notify_subscribers` to false when restoring endpoints from storage
       # to avoid sending spurious subscription updates on startup.
@@ -581,19 +581,19 @@ module Matter
           @persistence.track(cluster)
         end
 
-        # Inject DescriptorCluster if not provided
-        unless @message_handler.clusters.has_key?({endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID})
-          descriptor = Cluster::DescriptorCluster.new(DataType::EndpointNumber.new(endpoint_id))
-          @message_handler.clusters[{endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID}] = descriptor
+        # Inject Descriptor if not provided
+        unless @message_handler.clusters.has_key?({endpoint_id, Cluster::Descriptor::CLUSTER_ID})
+          descriptor = Cluster::Descriptor.new(DataType::EndpointNumber.new(endpoint_id))
+          @message_handler.clusters[{endpoint_id, Cluster::Descriptor::CLUSTER_ID}] = descriptor
         end
 
         # Populate the descriptor
-        descriptor = @message_handler.clusters[{endpoint_id, Cluster::DescriptorCluster::CLUSTER_ID}]
-          .as(Cluster::DescriptorCluster)
+        descriptor = @message_handler.clusters[{endpoint_id, Cluster::Descriptor::CLUSTER_ID}]
+          .as(Cluster::Descriptor)
 
         # Set device type
         descriptor.device_type_list.clear
-        descriptor.device_type_list << Cluster::DescriptorCluster::DeviceTypeStruct.new(
+        descriptor.device_type_list << Cluster::Descriptor::DeviceTypeStruct.new(
           device_type: device_type,
           revision: device_type_revision
         )
@@ -612,7 +612,7 @@ module Matter
         root_parts_list_changed = false
 
         # Add to root node's PartsList
-        if root_desc = @message_handler.clusters[{0_u16, Cluster::DescriptorCluster::CLUSTER_ID}]?.as?(Cluster::DescriptorCluster)
+        if root_desc = @message_handler.clusters[{0_u16, Cluster::Descriptor::CLUSTER_ID}]?.as?(Cluster::Descriptor)
           unless root_desc.has_part?(endpoint_id)
             root_desc.add_part(endpoint_id)
             root_parts_list_changed = true
@@ -628,8 +628,8 @@ module Matter
         if notify_subscribers && root_parts_list_changed
           @message_handler.notify_subscriptions(
             0_u16,
-            Cluster::DescriptorCluster::CLUSTER_ID,
-            Cluster::DescriptorCluster::ATTR_PARTS_LIST
+            Cluster::Descriptor::CLUSTER_ID,
+            Cluster::Descriptor::ATTR_PARTS_LIST
           )
         end
 
@@ -656,15 +656,15 @@ module Matter
         end
 
         # Remove from root node's PartsList
-        if root_desc = @message_handler.clusters[{0_u16, Cluster::DescriptorCluster::CLUSTER_ID}]?.as?(Cluster::DescriptorCluster)
+        if root_desc = @message_handler.clusters[{0_u16, Cluster::Descriptor::CLUSTER_ID}]?.as?(Cluster::Descriptor)
           if root_desc.has_part?(endpoint_id)
             root_desc.parts_list.reject! { |part| part == endpoint_id }
 
             # Notify subscribers of PartsList change (important for controllers to discover removed devices)
             @message_handler.notify_subscriptions(
               0_u16,
-              Cluster::DescriptorCluster::CLUSTER_ID,
-              Cluster::DescriptorCluster::ATTR_PARTS_LIST
+              Cluster::Descriptor::CLUSTER_ID,
+              Cluster::Descriptor::ATTR_PARTS_LIST
             )
           end
         end

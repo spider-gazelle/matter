@@ -1,6 +1,6 @@
 require "../spec_helper"
 
-require "../../src/matter/cluster/on_off_cluster"
+require "../../src/matter/cluster/on_off"
 require "../../src/matter/codec/message_codec"
 require "../../src/matter/crypto/crypto"
 require "../../src/matter/datatype/node_id"
@@ -52,8 +52,8 @@ describe "Subscription report exchange regression" do
     )
 
     endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-    on_off = Matter::Cluster::OnOffCluster.new(endpoint, on_off: false)
-    handler.clusters[{1_u16, Matter::Cluster::OnOffCluster::CLUSTER_ID}] = on_off
+    on_off = Matter::Cluster::OnOff.new(endpoint, on_off: false)
+    handler.clusters[{1_u16, Matter::Cluster::OnOff::CLUSTER_ID}] = on_off
 
     session = Matter::Session::SecureContext.new(
       session_id: 1_u16,
@@ -78,8 +78,8 @@ describe "Subscription report exchange regression" do
       attribute_paths: [
         Matter::InteractionModel::AttributePath.new(
           endpoint: 1_u16,
-          cluster: Matter::Cluster::OnOffCluster::CLUSTER_ID,
-          attribute: Matter::Cluster::OnOffCluster::ATTR_ON_OFF
+          cluster: Matter::Cluster::OnOff::CLUSTER_ID,
+          attribute: Matter::Cluster::OnOff::ATTR_ON_OFF
         ),
       ],
       exchange_id: subscription_exchange_id
@@ -90,7 +90,7 @@ describe "Subscription report exchange regression" do
     handler.__set_next_exchange_id_for_spec(update_exchange_id)
 
     # Trigger a subscription update send.
-    handler.notify_subscriptions(1_u16, Matter::Cluster::OnOffCluster::CLUSTER_ID, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
+    handler.notify_subscriptions(1_u16, Matter::Cluster::OnOff::CLUSTER_ID, Matter::Cluster::OnOff::ATTR_ON_OFF)
 
     transport.sent_packets.size.should be >= 1
     packet_bytes, _peer = transport.sent_packets.last

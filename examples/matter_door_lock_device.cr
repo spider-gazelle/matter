@@ -20,9 +20,9 @@ module MatterDoorLock
     DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
     SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
 
-    @door_lock : Matter::Cluster::DoorLockCluster? = nil
-    @identify : Matter::Cluster::IdentifyCluster? = nil
-    @fixed_label : Matter::Cluster::FixedLabelCluster? = nil
+    @door_lock : Matter::Cluster::DoorLock? = nil
+    @identify : Matter::Cluster::Identify? = nil
+    @fixed_label : Matter::Cluster::FixedLabel? = nil
     @running : Bool = false
 
     def initialize
@@ -61,14 +61,14 @@ module MatterDoorLock
       device_name
     end
 
-    def door_lock : Matter::Cluster::DoorLockCluster
-      @door_lock.as(Matter::Cluster::DoorLockCluster)
+    def door_lock : Matter::Cluster::DoorLock
+      @door_lock.as(Matter::Cluster::DoorLock)
     end
 
     protected def device_clusters : Array(Matter::Cluster::Base)
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
 
-      @door_lock = Matter::Cluster::DoorLockCluster.new(
+      @door_lock = Matter::Cluster::DoorLock.new(
         endpoint,
         auto_relock_time: 15_u32,
         require_pin_for_remote_operation: true,
@@ -83,20 +83,20 @@ module MatterDoorLock
         puts "Door state changed: #{format_door_state(new_state)}"
       end
 
-      @identify = Matter::Cluster::IdentifyCluster.new(
+      @identify = Matter::Cluster::Identify.new(
         endpoint,
-        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLED
+        identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLED
       )
 
-      @fixed_label = Matter::Cluster::FixedLabelCluster.new(
+      @fixed_label = Matter::Cluster::FixedLabel.new(
         endpoint,
         [Matter::Cluster::LabelStruct.new("name", "Example Door Lock")]
       )
 
       [
         door_lock,
-        @identify.as(Matter::Cluster::IdentifyCluster),
-        @fixed_label.as(Matter::Cluster::FixedLabelCluster),
+        @identify.as(Matter::Cluster::Identify),
+        @fixed_label.as(Matter::Cluster::FixedLabel),
       ] of Matter::Cluster::Base
     end
 
@@ -153,9 +153,9 @@ module MatterDoorLock
 
         opened = !opened
         if opened
-          door_lock.update_door_state(Matter::Cluster::DoorLockCluster::DoorState::DoorOpen)
+          door_lock.update_door_state(Matter::Cluster::DoorLock::DoorState::DoorOpen)
         else
-          door_lock.update_door_state(Matter::Cluster::DoorLockCluster::DoorState::DoorClosed)
+          door_lock.update_door_state(Matter::Cluster::DoorLock::DoorState::DoorClosed)
         end
       end
     end
@@ -195,9 +195,9 @@ module MatterDoorLock
       when "unbolt"
         show_status(door_lock.unbolt(pin: pin))
       when "open"
-        door_lock.update_door_state(Matter::Cluster::DoorLockCluster::DoorState::DoorOpen)
+        door_lock.update_door_state(Matter::Cluster::DoorLock::DoorState::DoorOpen)
       when "close"
-        door_lock.update_door_state(Matter::Cluster::DoorLockCluster::DoorState::DoorClosed)
+        door_lock.update_door_state(Matter::Cluster::DoorLock::DoorState::DoorClosed)
       when "status"
         print_status
       when "reset"
@@ -242,11 +242,11 @@ module MatterDoorLock
       exit(0)
     end
 
-    private def format_lock_state(state : Matter::Cluster::DoorLockCluster::LockState?) : String
+    private def format_lock_state(state : Matter::Cluster::DoorLock::LockState?) : String
       state ? state.to_s : "null"
     end
 
-    private def format_door_state(state : Matter::Cluster::DoorLockCluster::DoorState?) : String
+    private def format_door_state(state : Matter::Cluster::DoorLock::DoorState?) : String
       state ? state.to_s : "null"
     end
 

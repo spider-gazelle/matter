@@ -1,8 +1,8 @@
 require "log"
 require "./failsafe_timer"
 require "./commissioning_window"
-require "./cluster/network_commissioning_cluster"
-require "./cluster/general_commissioning_cluster"
+require "./cluster/network_commissioning"
+require "./cluster/general_commissioning"
 
 module Matter
   # FailsafeContext manages commissioning state and coordinates rollback on failure
@@ -238,9 +238,9 @@ module Matter
     # @param commissioning_window For closing windows
     # @param general_commissioning GeneralCommissioning cluster for regulatory config reset
     def rollback(
-      network_commissioning : Cluster::NetworkCommissioningCluster? = nil,
+      network_commissioning : Cluster::NetworkCommissioning? = nil,
       commissioning_window : CommissioningWindow? = nil,
-      general_commissioning : Cluster::GeneralCommissioningCluster? = nil,
+      general_commissioning : Cluster::GeneralCommissioning? = nil,
     ) : Nil
       Log.warn { "Performing failsafe rollback" }
 

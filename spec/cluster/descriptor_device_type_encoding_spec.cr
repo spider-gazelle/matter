@@ -1,14 +1,14 @@
 require "../spec_helper"
-require "../../src/matter/cluster/descriptor_cluster"
+require "../../src/matter/cluster/descriptor"
 
 describe "DeviceType encoding for HomeKit compatibility" do
   describe "device_type_list attribute" do
     it "encodes On/Off Light device type correctly" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      descriptor = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      descriptor = Matter::Cluster::Descriptor.new(endpoint_id)
 
       # Add On/Off Light device type (0x0100)
-      descriptor.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      descriptor.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: Matter::DeviceType::ON_OFF_LIGHT,
         revision: 2_u16
       )
@@ -27,10 +27,10 @@ describe "DeviceType encoding for HomeKit compatibility" do
 
     it "encodes Root Node device type correctly" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      descriptor = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      descriptor = Matter::Cluster::Descriptor.new(endpoint_id)
 
       # Add Root Node device type (0x0016)
-      descriptor.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      descriptor.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: Matter::DeviceType::ROOT_NODE,
         revision: 1_u16
       )
@@ -44,7 +44,7 @@ describe "DeviceType encoding for HomeKit compatibility" do
 
     it "encodes server_list correctly for On/Off Light" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      descriptor = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      descriptor = Matter::Cluster::Descriptor.new(endpoint_id)
 
       # Add mandatory clusters for On/Off Light
       descriptor.server_list << 0x0003_u32 # Identify
@@ -67,10 +67,10 @@ describe "DeviceType encoding for HomeKit compatibility" do
   describe "FeatureMap encoding" do
     it "encodes OnOff cluster with LIGHTING feature" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      on_off = Matter::Cluster::OnOffCluster.new(
+      on_off = Matter::Cluster::OnOff.new(
         endpoint_id,
         on_off: false,
-        feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting
+        feature_map: Matter::Cluster::OnOff::Feature::Lighting
       )
 
       # FeatureMap attribute ID is 0xFFFC (65532)
@@ -80,10 +80,10 @@ describe "DeviceType encoding for HomeKit compatibility" do
 
     it "encodes OnOff cluster without LIGHTING feature" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      on_off = Matter::Cluster::OnOffCluster.new(
+      on_off = Matter::Cluster::OnOff.new(
         endpoint_id,
         on_off: false,
-        feature_map: Matter::Cluster::OnOffCluster::Feature::None
+        feature_map: Matter::Cluster::OnOff::Feature::None
       )
 
       # Compact TLV: 04 (anonymous uint8) + no bits set
@@ -94,16 +94,16 @@ describe "DeviceType encoding for HomeKit compatibility" do
   describe "ClusterRevision encoding" do
     it "encodes OnOff cluster revision" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint_id)
+      on_off = Matter::Cluster::OnOff.new(endpoint_id)
 
-      read_tlv(on_off, Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION).as_u16.should eq(Matter::Cluster::OnOffCluster::CLUSTER_REVISION)
+      read_tlv(on_off, Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION).as_u16.should eq(Matter::Cluster::OnOff::CLUSTER_REVISION)
     end
 
     it "encodes Descriptor cluster revision" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      descriptor = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      descriptor = Matter::Cluster::Descriptor.new(endpoint_id)
 
-      read_tlv(descriptor, Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION).as_u16.should eq(Matter::Cluster::DescriptorCluster::CLUSTER_REVISION)
+      read_tlv(descriptor, Matter::Cluster::Base::GLOBAL_CLUSTER_REVISION).as_u16.should eq(Matter::Cluster::Descriptor::CLUSTER_REVISION)
     end
   end
 end

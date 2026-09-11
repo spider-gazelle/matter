@@ -9,8 +9,8 @@ describe "IM write request encoding" do
 
     path = Matter::InteractionModel::AttributePath.new(
       endpoint: 0_u16,
-      cluster: Matter::Cluster::AccessControlCluster::CLUSTER_ID,
-      attribute: Matter::Cluster::AccessControlCluster::ATTR_ACL
+      cluster: Matter::Cluster::AccessControl::CLUSTER_ID,
+      attribute: Matter::Cluster::AccessControl::ATTR_ACL
     )
 
     attr = Matter::InteractionModel::AttributeDataIB.new(path: path, data: TLV::Any.from_slice(tlv))
@@ -29,8 +29,8 @@ describe "IM write request encoding" do
     write_requests = req.write_requests || [] of Matter::InteractionModel::AttributeDataIB
     write_requests.size.should eq 1
 
-    cluster = Matter::Cluster::AccessControlCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
-    status = write(cluster, Matter::Cluster::AccessControlCluster::ATTR_ACL, write_requests[0].data)
+    cluster = Matter::Cluster::AccessControl.new(Matter::DataType::EndpointNumber.new(0_u16))
+    status = write(cluster, Matter::Cluster::AccessControl::ATTR_ACL, write_requests[0].data)
     status.status.should eq Matter::InteractionModel::StatusCode::Success
   end
 end

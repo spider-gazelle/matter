@@ -12,9 +12,9 @@ module MatterContactSensor
     DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
     SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
 
-    @contact : Matter::Cluster::BooleanStateCluster? = nil
-    @identify : Matter::Cluster::IdentifyCluster? = nil
-    @fixed_label : Matter::Cluster::FixedLabelCluster? = nil
+    @contact : Matter::Cluster::BooleanState? = nil
+    @identify : Matter::Cluster::Identify? = nil
+    @fixed_label : Matter::Cluster::FixedLabel? = nil
     @running : Bool = false
 
     def initialize
@@ -53,32 +53,32 @@ module MatterContactSensor
       device_name
     end
 
-    def contact : Matter::Cluster::BooleanStateCluster
-      @contact.as(Matter::Cluster::BooleanStateCluster)
+    def contact : Matter::Cluster::BooleanState
+      @contact.as(Matter::Cluster::BooleanState)
     end
 
     protected def device_clusters : Array(Matter::Cluster::Base)
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
 
-      @contact = Matter::Cluster::BooleanStateCluster.new(endpoint, state_value: false)
+      @contact = Matter::Cluster::BooleanState.new(endpoint, state_value: false)
       contact.on_state_changed do |_old_value, new_value|
         puts "Contact: #{new_value ? "OPEN" : "CLOSED"}"
       end
 
-      @identify = Matter::Cluster::IdentifyCluster.new(
+      @identify = Matter::Cluster::Identify.new(
         endpoint,
-        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLED
+        identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLED
       )
 
-      @fixed_label = Matter::Cluster::FixedLabelCluster.new(
+      @fixed_label = Matter::Cluster::FixedLabel.new(
         endpoint,
         [Matter::Cluster::LabelStruct.new("name", "Example Contact Sensor")]
       )
 
       [
         contact,
-        @identify.as(Matter::Cluster::IdentifyCluster),
-        @fixed_label.as(Matter::Cluster::FixedLabelCluster),
+        @identify.as(Matter::Cluster::Identify),
+        @fixed_label.as(Matter::Cluster::FixedLabel),
       ] of Matter::Cluster::Base
     end
 

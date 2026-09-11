@@ -1,8 +1,8 @@
 require "goban"
 require "../src/matter"
-require "../src/matter/cluster/bridged_device_basic_information_cluster"
-require "../src/matter/cluster/on_off_cluster"
-require "../src/matter/cluster/identify_cluster"
+require "../src/matter/cluster/bridged_device_basic_information"
+require "../src/matter/cluster/on_off"
+require "../src/matter/cluster/identify"
 
 # Matter Bridge Device Example
 #
@@ -54,19 +54,19 @@ module MatterBridge
     getter unique_id : String
     property? reachable : Bool = true
 
-    @on_off_cluster : Matter::Cluster::OnOffCluster
-    @bridged_info_cluster : Matter::Cluster::BridgedDeviceBasicInformationCluster
-    @identify_cluster : Matter::Cluster::IdentifyCluster
+    @on_off_cluster : Matter::Cluster::OnOff
+    @bridged_info_cluster : Matter::Cluster::BridgedDeviceBasicInformation
+    @identify_cluster : Matter::Cluster::Identify
 
     def initialize(@endpoint_id : UInt16, @name : String, @unique_id : String)
       endpoint = Matter::DataType::EndpointNumber.new(@endpoint_id)
 
-      @on_off_cluster = Matter::Cluster::OnOffCluster.new(
+      @on_off_cluster = Matter::Cluster::OnOff.new(
         endpoint,
-        feature_map: Matter::Cluster::OnOffCluster::Feature::None
+        feature_map: Matter::Cluster::OnOff::Feature::None
       )
 
-      @bridged_info_cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(
+      @bridged_info_cluster = Matter::Cluster::BridgedDeviceBasicInformation.new(
         endpoint,
         reachable: @reachable,
         vendor_name: "Bridged Vendor",
@@ -79,9 +79,9 @@ module MatterBridge
         software_version_string: "1.0.0"
       )
 
-      @identify_cluster = Matter::Cluster::IdentifyCluster.new(
+      @identify_cluster = Matter::Cluster::Identify.new(
         endpoint,
-        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLight
+        identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLight
       )
 
       # Wire reachability callback
@@ -98,11 +98,11 @@ module MatterBridge
       ]
     end
 
-    def on_off_cluster : Matter::Cluster::OnOffCluster
+    def on_off_cluster : Matter::Cluster::OnOff
       @on_off_cluster
     end
 
-    def bridged_info_cluster : Matter::Cluster::BridgedDeviceBasicInformationCluster
+    def bridged_info_cluster : Matter::Cluster::BridgedDeviceBasicInformation
       @bridged_info_cluster
     end
 
@@ -253,9 +253,9 @@ module MatterBridge
       device_name
     end
 
-    def product_appearance : Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct?
-      Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.new(
-        Matter::Cluster::BasicInformationCluster::ProductFinish::Matte
+    def product_appearance : Matter::Cluster::BasicInformation::ProductAppearanceStruct?
+      Matter::Cluster::BasicInformation::ProductAppearanceStruct.new(
+        Matter::Cluster::BasicInformation::ProductFinish::Matte
       )
     end
 

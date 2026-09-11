@@ -202,7 +202,7 @@ module Matter
 
       # Read an attribute value
       # The fabric_index parameter is optional and used for fabric-scoped attributes
-      # like CurrentFabricIndex in OperationalCredentialsCluster
+      # like CurrentFabricIndex in OperationalCredentials
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         # Handle global attributes that all clusters must support
         # These MUST be handled before checking cluster-specific attributes
@@ -490,17 +490,17 @@ module Matter
       # Scenes Management hooks
       # ------------------------------------------------------------------------
       #
-      # ScenesManagementCluster (0x0062) stores "extension field sets" that capture
+      # ScenesManagement (0x0062) stores "extension field sets" that capture
       # cluster-specific state for scene recall. Clusters can override these hooks
       # to participate; default implementations are no-ops.
       #
-      # The Device base class wires ScenesManagementCluster callbacks by calling
+      # The Device base class wires ScenesManagement callbacks by calling
       # these methods on clusters present on the same endpoint.
-      def store_scene_extension_field_set : ScenesManagementCluster::ExtensionFieldSet?
+      def store_scene_extension_field_set : ScenesManagement::ExtensionFieldSet?
         nil
       end
 
-      def apply_scene_extension_field_set(field_set : ScenesManagementCluster::ExtensionFieldSet) : Bool
+      def apply_scene_extension_field_set(field_set : ScenesManagement::ExtensionFieldSet) : Bool
         false
       end
     end

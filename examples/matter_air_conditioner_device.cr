@@ -1,9 +1,9 @@
 require "goban"
 require "../src/matter"
-require "../src/matter/cluster/thermostat_cluster"
-require "../src/matter/cluster/fan_control_cluster"
-require "../src/matter/cluster/temperature_measurement_cluster"
-require "../src/matter/cluster/on_off_cluster"
+require "../src/matter/cluster/thermostat"
+require "../src/matter/cluster/fan_control"
+require "../src/matter/cluster/temperature_measurement"
+require "../src/matter/cluster/on_off"
 
 # Matter Air Conditioner Device Example
 #
@@ -45,18 +45,18 @@ module MatterAirConditioner
     HEATING_COOLING_FAN_PERCENT = 40_u8
 
     # Endpoint 1: Thermostat clusters
-    @thermostat : Matter::Cluster::ThermostatCluster? = nil
-    @temperature : Matter::Cluster::TemperatureMeasurementCluster? = nil
-    @identify1 : Matter::Cluster::IdentifyCluster? = nil
-    @fixed_label : Matter::Cluster::FixedLabelCluster? = nil
-    @groups1 : Matter::Cluster::GroupsCluster? = nil
-    @scenes_management : Matter::Cluster::ScenesManagementCluster? = nil
+    @thermostat : Matter::Cluster::Thermostat? = nil
+    @temperature : Matter::Cluster::TemperatureMeasurement? = nil
+    @identify1 : Matter::Cluster::Identify? = nil
+    @fixed_label : Matter::Cluster::FixedLabel? = nil
+    @groups1 : Matter::Cluster::Groups? = nil
+    @scenes_management : Matter::Cluster::ScenesManagement? = nil
 
     # Endpoint 2: Fan clusters
-    @fan_control : Matter::Cluster::FanControlCluster? = nil
-    @fan_on_off : Matter::Cluster::OnOffCluster? = nil
-    @identify2 : Matter::Cluster::IdentifyCluster? = nil
-    @groups2 : Matter::Cluster::GroupsCluster? = nil
+    @fan_control : Matter::Cluster::FanControl? = nil
+    @fan_on_off : Matter::Cluster::OnOff? = nil
+    @identify2 : Matter::Cluster::Identify? = nil
+    @groups2 : Matter::Cluster::Groups? = nil
 
     @running : Bool = false
 
@@ -96,26 +96,26 @@ module MatterAirConditioner
       device_name
     end
 
-    def product_appearance : Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct?
-      Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.new(
-        Matter::Cluster::BasicInformationCluster::ProductFinish::Satin
+    def product_appearance : Matter::Cluster::BasicInformation::ProductAppearanceStruct?
+      Matter::Cluster::BasicInformation::ProductAppearanceStruct.new(
+        Matter::Cluster::BasicInformation::ProductFinish::Satin
       )
     end
 
-    def thermostat : Matter::Cluster::ThermostatCluster
-      @thermostat.as(Matter::Cluster::ThermostatCluster)
+    def thermostat : Matter::Cluster::Thermostat
+      @thermostat.as(Matter::Cluster::Thermostat)
     end
 
-    def fan_control : Matter::Cluster::FanControlCluster
-      @fan_control.as(Matter::Cluster::FanControlCluster)
+    def fan_control : Matter::Cluster::FanControl
+      @fan_control.as(Matter::Cluster::FanControl)
     end
 
-    def fan_on_off : Matter::Cluster::OnOffCluster
-      @fan_on_off.as(Matter::Cluster::OnOffCluster)
+    def fan_on_off : Matter::Cluster::OnOff
+      @fan_on_off.as(Matter::Cluster::OnOff)
     end
 
-    def temperature : Matter::Cluster::TemperatureMeasurementCluster
-      @temperature.as(Matter::Cluster::TemperatureMeasurementCluster)
+    def temperature : Matter::Cluster::TemperatureMeasurement
+      @temperature.as(Matter::Cluster::TemperatureMeasurement)
     end
 
     protected def endpoint_device_types : Hash(UInt16, UInt32)
@@ -134,31 +134,31 @@ module MatterAirConditioner
       # ========================================================================
 
       # Thermostat cluster — cooling + heating, defaults to Off
-      @thermostat = Matter::Cluster::ThermostatCluster.new(
+      @thermostat = Matter::Cluster::Thermostat.new(
         endpoint1,
-        feature_map: Matter::Cluster::ThermostatCluster::Feature::Cooling | Matter::Cluster::ThermostatCluster::Feature::Heating,
+        feature_map: Matter::Cluster::Thermostat::Feature::Cooling | Matter::Cluster::Thermostat::Feature::Heating,
         occupied_cooling_setpoint: 2400_i16, # 24°C
         occupied_heating_setpoint: 2000_i16, # 20°C
-        system_mode: Matter::Cluster::ThermostatCluster::SystemMode::Off
+        system_mode: Matter::Cluster::Thermostat::SystemMode::Off
       )
       thermostat.on_system_mode_changed do |old_mode, new_mode|
         puts ""
         puts "Mode changed: #{old_mode} -> #{new_mode}"
         # Sync fan: turn off fan when thermostat is off, ensure fan is on otherwise
-        if new_mode == Matter::Cluster::ThermostatCluster::SystemMode::Off
+        if new_mode == Matter::Cluster::Thermostat::SystemMode::Off
           # Turn off fan via OnOff cluster
           fan_on_off.on_off = false
-        elsif new_mode == Matter::Cluster::ThermostatCluster::SystemMode::FanOnly
+        elsif new_mode == Matter::Cluster::Thermostat::SystemMode::FanOnly
           # Fan-only mode: ensure fan is running (default to Medium if off)
           fan_on_off.on_off = true
-          if fan_control.fan_mode == Matter::Cluster::FanControlCluster::FanMode::Off
-            fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, TLV::Any.new(FAN_ONLY_PERCENT))
+          if fan_control.fan_mode == Matter::Cluster::FanControl::FanMode::Off
+            fan_control.write_attribute(Matter::Cluster::FanControl::ATTR_PERCENT_SETTING, TLV::Any.new(FAN_ONLY_PERCENT))
           end
         else
           # Cooling/Heating: ensure fan is running
           fan_on_off.on_off = true
-          if fan_control.fan_mode == Matter::Cluster::FanControlCluster::FanMode::Off
-            fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, TLV::Any.new(HEATING_COOLING_FAN_PERCENT))
+          if fan_control.fan_mode == Matter::Cluster::FanControl::FanMode::Off
+            fan_control.write_attribute(Matter::Cluster::FanControl::ATTR_PERCENT_SETTING, TLV::Any.new(HEATING_COOLING_FAN_PERCENT))
           end
         end
         print_state_line
@@ -166,15 +166,15 @@ module MatterAirConditioner
       end
       thermostat.on_setpoint_changed do |type, old_val, new_val|
         puts ""
-        old_c = Matter::Cluster::TemperatureMeasurementCluster.to_celsius(old_val)
-        new_c = Matter::Cluster::TemperatureMeasurementCluster.to_celsius(new_val)
+        old_c = Matter::Cluster::TemperatureMeasurement.to_celsius(old_val)
+        new_c = Matter::Cluster::TemperatureMeasurement.to_celsius(new_val)
         puts "#{type} setpoint changed: #{"%.1f" % old_c}°C -> #{"%.1f" % new_c}°C"
         print "> "
       end
 
       # Temperature sensor — ambient temperature
       initial_temp = random_temperature_centi
-      @temperature = Matter::Cluster::TemperatureMeasurementCluster.new(
+      @temperature = Matter::Cluster::TemperatureMeasurement.new(
         endpoint1,
         measured_value: initial_temp,
         min_measured_value: MIN_TEMP_CENTI,
@@ -192,27 +192,27 @@ module MatterAirConditioner
         end
       end
 
-      @identify1 = Matter::Cluster::IdentifyCluster.new(
+      @identify1 = Matter::Cluster::Identify.new(
         endpoint1,
-        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLight
+        identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLight
       )
-      @fixed_label = Matter::Cluster::FixedLabelCluster.new(
+      @fixed_label = Matter::Cluster::FixedLabel.new(
         endpoint1,
         [Matter::Cluster::LabelStruct.new("name", "Air Conditioner")]
       )
-      @groups1 = Matter::Cluster::GroupsCluster.new(endpoint1)
-      @scenes_management = Matter::Cluster::ScenesManagementCluster.new(endpoint1)
+      @groups1 = Matter::Cluster::Groups.new(endpoint1)
+      @scenes_management = Matter::Cluster::ScenesManagement.new(endpoint1)
 
       # ========================================================================
       # Endpoint 2: Fan device type
       # ========================================================================
 
       # Fan control — 5 discrete speed steps (Quiet/Low/Medium/High/Max)
-      @fan_control = Matter::Cluster::FanControlCluster.new(
+      @fan_control = Matter::Cluster::FanControl.new(
         endpoint2,
-        feature_map: Matter::Cluster::FanControlCluster::Feature::Step,
-        fan_mode: Matter::Cluster::FanControlCluster::FanMode::Off,
-        fan_mode_sequence: Matter::Cluster::FanControlCluster::FanModeSequence::OffLowMedHigh,
+        feature_map: Matter::Cluster::FanControl::Feature::Step,
+        fan_mode: Matter::Cluster::FanControl::FanMode::Off,
+        fan_mode_sequence: Matter::Cluster::FanControl::FanModeSequence::OffLowMedHigh,
         speed_max: 5_u8,
         step_percent: 20_u8
       )
@@ -225,37 +225,37 @@ module MatterAirConditioner
       end
 
       # OnOff cluster for fan power control
-      @fan_on_off = Matter::Cluster::OnOffCluster.new(endpoint2, on_off: false)
+      @fan_on_off = Matter::Cluster::OnOff.new(endpoint2, on_off: false)
       fan_on_off.on_state_changed do |is_on|
         puts ""
         puts "Fan power: #{is_on ? "ON" : "OFF"}"
         # When fan is turned off via OnOff, also set fan mode to Off
-        if !is_on && fan_control.fan_mode != Matter::Cluster::FanControlCluster::FanMode::Off
-          fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, TLV::Any.new(Matter::Cluster::FanControlCluster::FanMode::Off.value))
+        if !is_on && fan_control.fan_mode != Matter::Cluster::FanControl::FanMode::Off
+          fan_control.write_attribute(Matter::Cluster::FanControl::ATTR_FAN_MODE, TLV::Any.new(Matter::Cluster::FanControl::FanMode::Off.value))
         end
         print "> "
       end
 
-      @identify2 = Matter::Cluster::IdentifyCluster.new(
+      @identify2 = Matter::Cluster::Identify.new(
         endpoint2,
-        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLight
+        identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLight
       )
-      @groups2 = Matter::Cluster::GroupsCluster.new(endpoint2)
+      @groups2 = Matter::Cluster::Groups.new(endpoint2)
 
       # Return all clusters for both endpoints
       [
         # Endpoint 1: Thermostat
         thermostat,
         temperature,
-        @identify1.as(Matter::Cluster::IdentifyCluster),
-        @fixed_label.as(Matter::Cluster::FixedLabelCluster),
-        @groups1.as(Matter::Cluster::GroupsCluster),
-        @scenes_management.as(Matter::Cluster::ScenesManagementCluster),
+        @identify1.as(Matter::Cluster::Identify),
+        @fixed_label.as(Matter::Cluster::FixedLabel),
+        @groups1.as(Matter::Cluster::Groups),
+        @scenes_management.as(Matter::Cluster::ScenesManagement),
         # Endpoint 2: Fan
         fan_control,
         fan_on_off,
-        @identify2.as(Matter::Cluster::IdentifyCluster),
-        @groups2.as(Matter::Cluster::GroupsCluster),
+        @identify2.as(Matter::Cluster::Identify),
+        @groups2.as(Matter::Cluster::Groups),
       ] of Matter::Cluster::Base
     end
 
@@ -336,7 +336,7 @@ module MatterAirConditioner
     end
 
     private def format_temperature(centi_celsius : Int16) : String
-      celsius = Matter::Cluster::TemperatureMeasurementCluster.to_celsius(centi_celsius)
+      celsius = Matter::Cluster::TemperatureMeasurement.to_celsius(centi_celsius)
       "%.1f" % celsius
     end
 
@@ -464,11 +464,11 @@ module MatterAirConditioner
       end
 
       mode = case parts[1].downcase
-             when "off"  then Matter::Cluster::ThermostatCluster::SystemMode::Off
-             when "cool" then Matter::Cluster::ThermostatCluster::SystemMode::Cool
-             when "heat" then Matter::Cluster::ThermostatCluster::SystemMode::Heat
-             when "fan"  then Matter::Cluster::ThermostatCluster::SystemMode::FanOnly
-             when "dry"  then Matter::Cluster::ThermostatCluster::SystemMode::Dry
+             when "off"  then Matter::Cluster::Thermostat::SystemMode::Off
+             when "cool" then Matter::Cluster::Thermostat::SystemMode::Cool
+             when "heat" then Matter::Cluster::Thermostat::SystemMode::Heat
+             when "fan"  then Matter::Cluster::Thermostat::SystemMode::FanOnly
+             when "dry"  then Matter::Cluster::Thermostat::SystemMode::Dry
              else
                puts "Unknown mode: #{parts[1]}. Use: off, cool, heat, fan, dry"
                return
@@ -489,7 +489,7 @@ module MatterAirConditioner
         return
       end
 
-      setpoint = Matter::Cluster::TemperatureMeasurementCluster.from_celsius(temp)
+      setpoint = Matter::Cluster::TemperatureMeasurement.from_celsius(temp)
       thermostat.cooling_setpoint = setpoint
     end
 
@@ -505,7 +505,7 @@ module MatterAirConditioner
         return
       end
 
-      setpoint = Matter::Cluster::TemperatureMeasurementCluster.from_celsius(temp)
+      setpoint = Matter::Cluster::TemperatureMeasurement.from_celsius(temp)
       thermostat.heating_setpoint = setpoint
     end
 
@@ -551,7 +551,7 @@ module MatterAirConditioner
       if percent > 0
         fan_on_off.on_off = true
       end
-      fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, TLV::Any.new(percent))
+      fan_control.write_attribute(Matter::Cluster::FanControl::ATTR_PERCENT_SETTING, TLV::Any.new(percent))
     end
 
     private def show_status : Nil

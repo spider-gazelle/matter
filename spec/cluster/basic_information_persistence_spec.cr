@@ -1,11 +1,11 @@
 require "../spec_helper"
 
-require "../../src/matter/cluster/basic_information_cluster"
+require "../../src/matter/cluster/basic_information"
 
-describe Matter::Cluster::BasicInformationCluster do
+describe Matter::Cluster::BasicInformation do
   it "persists writable attributes (node_label/location/local_config_disabled)" do
     ep0 = Matter::DataType::EndpointNumber.new(0_u16)
-    cluster = Matter::Cluster::BasicInformationCluster.new(
+    cluster = Matter::Cluster::BasicInformation.new(
       endpoint_id: ep0,
       vendor_name: "Vendor",
       vendor_id: 0xFFF1_u16,
@@ -29,7 +29,7 @@ describe Matter::Cluster::BasicInformationCluster do
       "features"              => 0_i64,
     })
 
-    cluster2 = Matter::Cluster::BasicInformationCluster.new(
+    cluster2 = Matter::Cluster::BasicInformation.new(
       endpoint_id: ep0,
       vendor_name: "Vendor",
       vendor_id: 0xFFF1_u16,

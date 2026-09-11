@@ -58,7 +58,7 @@ describe Matter::Device::LifecycleManager do
     )
 
     advertiser = Matter::FakeResponder.new
-    opcreds = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table)
+    opcreds = Matter::Cluster::OperationalCredentials.new(fabric_table)
 
     Matter::Device::LifecycleManager.new(
       fabric_table: fabric_table,

@@ -2,7 +2,7 @@ require "../cluster"
 
 module Matter
   module Cluster
-    class OperationalCredentialsCluster < Base
+    class OperationalCredentials < Base
       # Wire-format (TLV) types of the commands and attributes. The hand-written
       # types of the same names above are the cluster's domain API.
       module Tlv

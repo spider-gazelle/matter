@@ -44,8 +44,8 @@ module ChipTool
                 session: session,
                 peer: peer,
                 endpoint_id: endpoint_id,
-                cluster_id: Matter::Cluster::OnOffCluster::CLUSTER_ID,
-                attribute_id: Matter::Cluster::OnOffCluster::ATTR_ON_OFF
+                cluster_id: Matter::Cluster::OnOff::CLUSTER_ID,
+                attribute_id: Matter::Cluster::OnOff::ATTR_ON_OFF
               )
 
               value = extract_report_bool(report)
@@ -57,11 +57,11 @@ module ChipTool
                 session: session,
                 peer: peer,
                 endpoint_id: endpoint_id,
-                cluster_id: Matter::Cluster::OnOffCluster::CLUSTER_ID,
+                cluster_id: Matter::Cluster::OnOff::CLUSTER_ID,
                 attribute_id: Matter::Cluster::Base::GLOBAL_ATTRIBUTE_LIST
               )
 
-              list = extract_report_u32_list(report, Matter::Cluster::OnOffCluster::CLUSTER_ID, Matter::Cluster::Base::GLOBAL_ATTRIBUTE_LIST) || raise Matter::ProtocolError.new("ReportData missing AttributeList")
+              list = extract_report_u32_list(report, Matter::Cluster::OnOff::CLUSTER_ID, Matter::Cluster::Base::GLOBAL_ATTRIBUTE_LIST) || raise Matter::ProtocolError.new("ReportData missing AttributeList")
               puts "AttributeList: #{list.size} entries"
               list.each_with_index do |id, idx|
                 puts "  [#{idx}]: #{id}"
@@ -79,15 +79,15 @@ module ChipTool
         end
 
         Registry.register("onoff", "on", "Send On command") do |_ctx, _args|
-          run_command(_ctx, _args, Matter::Cluster::OnOffCluster::CMD_ON, "On")
+          run_command(_ctx, _args, Matter::Cluster::OnOff::CMD_ON, "On")
         end
 
         Registry.register("onoff", "off", "Send Off command") do |_ctx, _args|
-          run_command(_ctx, _args, Matter::Cluster::OnOffCluster::CMD_OFF, "Off")
+          run_command(_ctx, _args, Matter::Cluster::OnOff::CMD_OFF, "Off")
         end
 
         Registry.register("onoff", "toggle", "Send Toggle command") do |_ctx, _args|
-          run_command(_ctx, _args, Matter::Cluster::OnOffCluster::CMD_TOGGLE, "Toggle")
+          run_command(_ctx, _args, Matter::Cluster::OnOff::CMD_TOGGLE, "Toggle")
         end
       end
 
@@ -123,7 +123,7 @@ module ChipTool
             session: session,
             peer: peer,
             endpoint_id: endpoint_id,
-            cluster_id: Matter::Cluster::OnOffCluster::CLUSTER_ID,
+            cluster_id: Matter::Cluster::OnOff::CLUSTER_ID,
             command_id: command_id,
             fields: Bytes.empty
           )
@@ -184,8 +184,8 @@ module ChipTool
           data = attr_report.attribute_data
           next unless data
           path = data.path
-          next unless path.cluster == Matter::Cluster::OnOffCluster::CLUSTER_ID
-          next unless path.attribute == Matter::Cluster::OnOffCluster::ATTR_ON_OFF
+          next unless path.cluster == Matter::Cluster::OnOff::CLUSTER_ID
+          next unless path.attribute == Matter::Cluster::OnOff::ATTR_ON_OFF
           case value = data.data.value
           when Bool
             return value

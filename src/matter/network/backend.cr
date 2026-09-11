@@ -22,19 +22,19 @@ module Matter
     # Implementations of this class provide the actual platform-specific code
     # for scanning, connecting, and managing WiFi and Thread networks.
     #
-    # The NetworkCommissioningCluster delegates to this backend for all
+    # The NetworkCommissioning delegates to this backend for all
     # actual network operations.
     abstract class Backend
       # Scan for available WiFi networks
       #
       # @param ssid Optional SSID string for directed scan (nil for broadcast scan)
       # @return Array of discovered WiFi networks
-      abstract def scan_wifi(ssid : String?) : Array(Cluster::NetworkCommissioningCluster::WiFiInterfaceScanResult)
+      abstract def scan_wifi(ssid : String?) : Array(Cluster::NetworkCommissioning::WiFiInterfaceScanResult)
 
       # Scan for available Thread networks
       #
       # @return Array of discovered Thread networks
-      abstract def scan_thread : Array(Cluster::NetworkCommissioningCluster::ThreadInterfaceScanResult)
+      abstract def scan_thread : Array(Cluster::NetworkCommissioning::ThreadInterfaceScanResult)
 
       # Add or update a WiFi network configuration
       #

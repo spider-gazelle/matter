@@ -1,7 +1,7 @@
 require "../spec_helper"
 
-require "../../src/matter/cluster/access_control_cluster"
-require "../../src/matter/cluster/descriptor_cluster"
+require "../../src/matter/cluster/access_control"
+require "../../src/matter/cluster/descriptor"
 require "../../src/matter/datatype/case_authenticated_tag"
 require "../../src/matter/datatype/node_id"
 require "../../src/matter/protocol/im_handler"
@@ -10,20 +10,20 @@ describe "IMHandler ACL CAT subjects" do
   it "authorizes reads when peer presents matching CAT subject" do
     endpoint_0 = Matter::DataType::EndpointNumber.new(0_u16)
 
-    acl_cluster = Matter::Cluster::AccessControlCluster.new(endpoint_0)
-    descriptor = Matter::Cluster::DescriptorCluster.new(endpoint_0)
+    acl_cluster = Matter::Cluster::AccessControl.new(endpoint_0)
+    descriptor = Matter::Cluster::Descriptor.new(endpoint_0)
 
     clusters = {} of Tuple(UInt16, UInt32) => Matter::Cluster::Base
-    clusters[{0_u16, Matter::Cluster::AccessControlCluster::CLUSTER_ID}] = acl_cluster
-    clusters[{0_u16, Matter::Cluster::DescriptorCluster::CLUSTER_ID}] = descriptor
+    clusters[{0_u16, Matter::Cluster::AccessControl::CLUSTER_ID}] = acl_cluster
+    clusters[{0_u16, Matter::Cluster::Descriptor::CLUSTER_ID}] = descriptor
 
     # iOS commonly installs ACL entries with CAT subjects (NodeId-encoded).
     cat = Matter::DataType::CaseAuthenticatedTag.new(0x321d0001_u32)
     cat_node_id = Matter::DataType::NodeId.from_case_authenticated_tag(cat).id
 
-    acl_cluster.acl << Matter::Cluster::AccessControlCluster::AccessControlEntry.new(
-      privilege: Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::View,
-      auth_mode: Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE,
+    acl_cluster.acl << Matter::Cluster::AccessControl::AccessControlEntry.new(
+      privilege: Matter::Cluster::AccessControl::AccessControlEntryPrivilege::View,
+      auth_mode: Matter::Cluster::AccessControl::AccessControlEntryAuthMode::CASE,
       subjects: [cat_node_id],
       targets: nil,
       fabric_index: 1_u8
@@ -31,8 +31,8 @@ describe "IMHandler ACL CAT subjects" do
 
     path = Matter::InteractionModel::AttributePath.new(
       endpoint: 0_u16,
-      cluster: Matter::Cluster::DescriptorCluster::CLUSTER_ID,
-      attribute: Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST
+      cluster: Matter::Cluster::Descriptor::CLUSTER_ID,
+      attribute: Matter::Cluster::Descriptor::ATTR_DEVICE_TYPE_LIST
     )
 
     denied = Matter::Protocol::IMHandler.read_attributes(

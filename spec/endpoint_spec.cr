@@ -1,12 +1,12 @@
 require "./spec_helper"
 require "../src/matter/device_type"
 require "../src/matter/endpoint"
-require "../src/matter/cluster/descriptor_cluster"
-require "../src/matter/cluster/on_off_cluster"
-require "../src/matter/cluster/level_control_cluster"
-require "../src/matter/cluster/identify_cluster"
-require "../src/matter/cluster/groups_cluster"
-require "../src/matter/cluster/scenes_management_cluster"
+require "../src/matter/cluster/descriptor"
+require "../src/matter/cluster/on_off"
+require "../src/matter/cluster/level_control"
+require "../src/matter/cluster/identify"
+require "../src/matter/cluster/groups"
+require "../src/matter/cluster/scenes_management"
 
 describe Matter::DeviceType do
   describe "device type definitions" do
@@ -134,8 +134,8 @@ describe Matter::Endpoint do
       device_type = Matter::DeviceType.on_off_light
       endpoint = Matter::Endpoint.new(endpoint_id, device_type)
 
-      descriptor = Matter::Cluster::DescriptorCluster.new(endpoint_id)
-      descriptor.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(0x0100_u32, 2_u16)
+      descriptor = Matter::Cluster::Descriptor.new(endpoint_id)
+      descriptor.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(0x0100_u32, 2_u16)
       descriptor.server_list << 0x0006_u32
 
       endpoint.add_cluster(descriptor)
@@ -151,7 +151,7 @@ describe Matter::Endpoint do
 
       # Create cluster for different endpoint
       wrong_endpoint_id = Matter::DataType::EndpointNumber.new(2_u16)
-      cluster = Matter::Cluster::OnOffCluster.new(wrong_endpoint_id)
+      cluster = Matter::Cluster::OnOff.new(wrong_endpoint_id)
 
       expect_raises(ArgumentError, /does not match/) do
         endpoint.add_cluster(cluster)
@@ -163,7 +163,7 @@ describe Matter::Endpoint do
       device_type = Matter::DeviceType.on_off_light
       endpoint = Matter::Endpoint.new(endpoint_id, device_type)
 
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint_id)
+      on_off = Matter::Cluster::OnOff.new(endpoint_id)
       endpoint.add_cluster(on_off)
 
       retrieved = endpoint.get_cluster(0x0006_u32)
@@ -194,8 +194,8 @@ describe Matter::Endpoint do
       device_type = Matter::DeviceType.on_off_light
       endpoint = Matter::Endpoint.new(endpoint_id, device_type)
 
-      endpoint.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint_id))
-      endpoint.add_cluster(Matter::Cluster::IdentifyCluster.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::OnOff.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::Identify.new(endpoint_id))
 
       ids = endpoint.cluster_ids
       ids.size.should eq(2)
@@ -211,17 +211,17 @@ describe Matter::Endpoint do
       endpoint = Matter::Endpoint.new(endpoint_id, device_type)
 
       # Add all required clusters
-      descriptor = Matter::Cluster::DescriptorCluster.new(endpoint_id)
-      descriptor.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(0x0100_u32, 2_u16)
+      descriptor = Matter::Cluster::Descriptor.new(endpoint_id)
+      descriptor.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(0x0100_u32, 2_u16)
       descriptor.server_list << 0x0003_u32
       descriptor.server_list << 0x0004_u32
       descriptor.server_list << 0x0062_u32
       descriptor.server_list << 0x0006_u32
       endpoint.add_cluster(descriptor)
-      endpoint.add_cluster(Matter::Cluster::IdentifyCluster.new(endpoint_id))
-      endpoint.add_cluster(Matter::Cluster::GroupsCluster.new(endpoint_id))
-      endpoint.add_cluster(Matter::Cluster::ScenesManagementCluster.new(endpoint_id))
-      endpoint.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::Identify.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::Groups.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::ScenesManagement.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::OnOff.new(endpoint_id))
 
       endpoint.valid?.should be_true
       endpoint.validate.should be_empty
@@ -231,10 +231,10 @@ describe Matter::Endpoint do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       endpoint = Matter::Endpoint.new(endpoint_id, Matter::DeviceType.on_off_light)
 
-      endpoint.add_cluster(Matter::Cluster::DescriptorCluster.new(endpoint_id))
-      endpoint.add_cluster(Matter::Cluster::IdentifyCluster.new(endpoint_id))
-      endpoint.add_cluster(Matter::Cluster::GroupsCluster.new(endpoint_id))
-      endpoint.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::Descriptor.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::Identify.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::Groups.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::OnOff.new(endpoint_id))
 
       endpoint.validate.should be_empty
       endpoint.valid?.should be_true
@@ -246,7 +246,7 @@ describe Matter::Endpoint do
       endpoint = Matter::Endpoint.new(endpoint_id, device_type)
 
       # Only add some clusters
-      endpoint.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::OnOff.new(endpoint_id))
 
       endpoint.valid?.should be_false
       errors = endpoint.validate
@@ -263,19 +263,19 @@ describe Matter::Endpoint do
       endpoint = Matter::Endpoint.new(endpoint_id, device_type)
 
       # Add all required clusters
-      descriptor = Matter::Cluster::DescriptorCluster.new(endpoint_id)
-      descriptor.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(0x0101_u32, 2_u16)
+      descriptor = Matter::Cluster::Descriptor.new(endpoint_id)
+      descriptor.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(0x0101_u32, 2_u16)
       descriptor.server_list << 0x0003_u32
       descriptor.server_list << 0x0004_u32
       descriptor.server_list << 0x0062_u32
       descriptor.server_list << 0x0006_u32
       descriptor.server_list << 0x0008_u32
       endpoint.add_cluster(descriptor)
-      endpoint.add_cluster(Matter::Cluster::IdentifyCluster.new(endpoint_id))
-      endpoint.add_cluster(Matter::Cluster::GroupsCluster.new(endpoint_id))
-      endpoint.add_cluster(Matter::Cluster::ScenesManagementCluster.new(endpoint_id))
-      endpoint.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint_id))
-      endpoint.add_cluster(Matter::Cluster::LevelControlCluster.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::Identify.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::Groups.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::ScenesManagement.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::OnOff.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::LevelControl.new(endpoint_id))
 
       endpoint.valid?.should be_true
     end
@@ -287,10 +287,10 @@ describe Matter::Endpoint do
       device_type = Matter::DeviceType.on_off_light
       endpoint = Matter::Endpoint.new(endpoint_id, device_type)
 
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: true)
+      on_off = Matter::Cluster::OnOff.new(endpoint_id, on_off: true)
       endpoint.add_cluster(on_off)
 
-      result = endpoint.read_attribute(0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
+      result = endpoint.read_attribute(0x0006_u32, Matter::Cluster::OnOff::ATTR_ON_OFF)
       result.should be_a(TLV::Any)
       result.as(TLV::Any).value.should be_true
     end
@@ -312,13 +312,13 @@ describe Matter::Endpoint do
       device_type = Matter::DeviceType.on_off_light
       endpoint = Matter::Endpoint.new(endpoint_id, device_type)
 
-      identify = Matter::Cluster::IdentifyCluster.new(endpoint_id)
+      identify = Matter::Cluster::Identify.new(endpoint_id)
       endpoint.add_cluster(identify)
 
       # Typed UInt16 value, as delivered by the IM layer
       value = TLV::Any.new(10_u16)
 
-      status = endpoint.write_attribute(0x0003_u32, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME, value)
+      status = endpoint.write_attribute(0x0003_u32, Matter::Cluster::Identify::ATTR_IDENTIFY_TIME, value)
       status.should be_a(Matter::InteractionModel::Status)
       status.as(Matter::InteractionModel::Status).success?.should be_true
 
@@ -330,10 +330,10 @@ describe Matter::Endpoint do
       device_type = Matter::DeviceType.on_off_light
       endpoint = Matter::Endpoint.new(endpoint_id, device_type)
 
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: false)
+      on_off = Matter::Cluster::OnOff.new(endpoint_id, on_off: false)
       endpoint.add_cluster(on_off)
 
-      result = endpoint.invoke_command(0x0006_u32, Matter::Cluster::OnOffCluster::CMD_ON)
+      result = endpoint.invoke_command(0x0006_u32, Matter::Cluster::OnOff::CMD_ON)
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).success?.should be_true
 
@@ -347,7 +347,7 @@ describe Matter::Endpoint do
       device_type = Matter::DeviceType.on_off_light
       endpoint = Matter::Endpoint.new(endpoint_id, device_type)
 
-      endpoint.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint_id))
+      endpoint.add_cluster(Matter::Cluster::OnOff.new(endpoint_id))
 
       desc = endpoint.description
       desc.should contain("Endpoint 1")
@@ -442,13 +442,13 @@ describe Matter::MatterNode do
       # Endpoint 1: On/Off Light
       endpoint1_id = Matter::DataType::EndpointNumber.new(1_u16)
       endpoint1 = Matter::Endpoint.new(endpoint1_id, Matter::DeviceType.on_off_light)
-      endpoint1.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint1_id))
+      endpoint1.add_cluster(Matter::Cluster::OnOff.new(endpoint1_id))
 
       # Endpoint 2: Dimmable Light
       endpoint2_id = Matter::DataType::EndpointNumber.new(2_u16)
       endpoint2 = Matter::Endpoint.new(endpoint2_id, Matter::DeviceType.dimmable_light)
-      endpoint2.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint2_id))
-      endpoint2.add_cluster(Matter::Cluster::LevelControlCluster.new(endpoint2_id))
+      endpoint2.add_cluster(Matter::Cluster::OnOff.new(endpoint2_id))
+      endpoint2.add_cluster(Matter::Cluster::LevelControl.new(endpoint2_id))
 
       node.add_endpoint(endpoint0)
       node.add_endpoint(endpoint1)
@@ -463,23 +463,23 @@ describe Matter::MatterNode do
       # Create two on/off lights on different endpoints
       endpoint1_id = Matter::DataType::EndpointNumber.new(1_u16)
       endpoint1 = Matter::Endpoint.new(endpoint1_id, Matter::DeviceType.on_off_light)
-      endpoint1.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint1_id, on_off: false))
+      endpoint1.add_cluster(Matter::Cluster::OnOff.new(endpoint1_id, on_off: false))
 
       endpoint2_id = Matter::DataType::EndpointNumber.new(2_u16)
       endpoint2 = Matter::Endpoint.new(endpoint2_id, Matter::DeviceType.on_off_light)
-      endpoint2.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint2_id, on_off: false))
+      endpoint2.add_cluster(Matter::Cluster::OnOff.new(endpoint2_id, on_off: false))
 
       node.add_endpoint(endpoint1)
       node.add_endpoint(endpoint2)
 
       # Turn on light on endpoint 1
-      node.invoke_command(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::CMD_ON)
+      node.invoke_command(1_u16, 0x0006_u32, Matter::Cluster::OnOff::CMD_ON)
 
       # Check endpoint 1 is on, endpoint 2 is still off
-      result1 = node.read_attribute(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
+      result1 = node.read_attribute(1_u16, 0x0006_u32, Matter::Cluster::OnOff::ATTR_ON_OFF)
       result1.as(TLV::Any).value.should be_true
 
-      result2 = node.read_attribute(2_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
+      result2 = node.read_attribute(2_u16, 0x0006_u32, Matter::Cluster::OnOff::ATTR_ON_OFF)
       result2.as(TLV::Any).value.should be_false
     end
   end
@@ -490,11 +490,11 @@ describe Matter::MatterNode do
 
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       endpoint = Matter::Endpoint.new(endpoint_id, Matter::DeviceType.on_off_light)
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: true)
+      on_off = Matter::Cluster::OnOff.new(endpoint_id, on_off: true)
       endpoint.add_cluster(on_off)
       node.add_endpoint(endpoint)
 
-      result = node.read_attribute(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::ATTR_ON_OFF)
+      result = node.read_attribute(1_u16, 0x0006_u32, Matter::Cluster::OnOff::ATTR_ON_OFF)
       result.should be_a(TLV::Any)
       result.as(TLV::Any).value.should be_true
     end
@@ -514,14 +514,14 @@ describe Matter::MatterNode do
 
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       endpoint = Matter::Endpoint.new(endpoint_id, Matter::DeviceType.on_off_light)
-      identify = Matter::Cluster::IdentifyCluster.new(endpoint_id)
+      identify = Matter::Cluster::Identify.new(endpoint_id)
       endpoint.add_cluster(identify)
       node.add_endpoint(endpoint)
 
       # Typed UInt16 value, as delivered by the IM layer
       value = TLV::Any.new(15_u16)
 
-      status = node.write_attribute(1_u16, 0x0003_u32, Matter::Cluster::IdentifyCluster::ATTR_IDENTIFY_TIME, value)
+      status = node.write_attribute(1_u16, 0x0003_u32, Matter::Cluster::Identify::ATTR_IDENTIFY_TIME, value)
       status.success?.should be_true
 
       identify.identify_time.should eq(15_u16)
@@ -532,11 +532,11 @@ describe Matter::MatterNode do
 
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       endpoint = Matter::Endpoint.new(endpoint_id, Matter::DeviceType.on_off_light)
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint_id, on_off: false)
+      on_off = Matter::Cluster::OnOff.new(endpoint_id, on_off: false)
       endpoint.add_cluster(on_off)
       node.add_endpoint(endpoint)
 
-      result = node.invoke_command(1_u16, 0x0006_u32, Matter::Cluster::OnOffCluster::CMD_TOGGLE)
+      result = node.invoke_command(1_u16, 0x0006_u32, Matter::Cluster::OnOff::CMD_TOGGLE)
       result.as(Matter::InteractionModel::Status).success?.should be_true
 
       on_off.on_off?.should be_true
@@ -550,17 +550,17 @@ describe Matter::MatterNode do
       # Endpoint 1: Complete on/off light
       endpoint1_id = Matter::DataType::EndpointNumber.new(1_u16)
       endpoint1 = Matter::Endpoint.new(endpoint1_id, Matter::DeviceType.on_off_light)
-      descriptor1 = Matter::Cluster::DescriptorCluster.new(endpoint1_id)
-      descriptor1.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(0x0100_u32, 2_u16)
+      descriptor1 = Matter::Cluster::Descriptor.new(endpoint1_id)
+      descriptor1.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(0x0100_u32, 2_u16)
       descriptor1.server_list << 0x0003_u32
       descriptor1.server_list << 0x0004_u32
       descriptor1.server_list << 0x0062_u32
       descriptor1.server_list << 0x0006_u32
       endpoint1.add_cluster(descriptor1)
-      endpoint1.add_cluster(Matter::Cluster::IdentifyCluster.new(endpoint1_id))
-      endpoint1.add_cluster(Matter::Cluster::GroupsCluster.new(endpoint1_id))
-      endpoint1.add_cluster(Matter::Cluster::ScenesManagementCluster.new(endpoint1_id))
-      endpoint1.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint1_id))
+      endpoint1.add_cluster(Matter::Cluster::Identify.new(endpoint1_id))
+      endpoint1.add_cluster(Matter::Cluster::Groups.new(endpoint1_id))
+      endpoint1.add_cluster(Matter::Cluster::ScenesManagement.new(endpoint1_id))
+      endpoint1.add_cluster(Matter::Cluster::OnOff.new(endpoint1_id))
 
       node.add_endpoint(endpoint1)
 
@@ -574,7 +574,7 @@ describe Matter::MatterNode do
       # Endpoint 1: Incomplete on/off light (missing clusters)
       endpoint1_id = Matter::DataType::EndpointNumber.new(1_u16)
       endpoint1 = Matter::Endpoint.new(endpoint1_id, Matter::DeviceType.on_off_light)
-      endpoint1.add_cluster(Matter::Cluster::OnOffCluster.new(endpoint1_id))
+      endpoint1.add_cluster(Matter::Cluster::OnOff.new(endpoint1_id))
 
       node.add_endpoint(endpoint1)
 

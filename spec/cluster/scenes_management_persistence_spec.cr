@@ -1,29 +1,29 @@
 require "../spec_helper"
-require "../../src/matter/cluster/scenes_management_cluster"
+require "../../src/matter/cluster/scenes_management"
 require "../../src/matter/device/persistence"
 
 # Helper to add scenes directly to the cluster's internal storage
 private def add_scene_direct(
-  cluster : Matter::Cluster::ScenesManagementCluster,
+  cluster : Matter::Cluster::ScenesManagement,
   fabric_index : UInt8,
   group_id : UInt16,
   scene_id : UInt8,
   scene_name : String = "",
   transition_time : UInt32 = 0_u32,
-  extension_field_sets : Array(Matter::Cluster::ScenesManagementCluster::ExtensionFieldSet) = [] of Matter::Cluster::ScenesManagementCluster::ExtensionFieldSet,
+  extension_field_sets : Array(Matter::Cluster::ScenesManagement::ExtensionFieldSet) = [] of Matter::Cluster::ScenesManagement::ExtensionFieldSet,
 )
-  cluster.scenes[{fabric_index, group_id, scene_id}] = Matter::Cluster::ScenesManagementCluster::SceneData.new(
+  cluster.scenes[{fabric_index, group_id, scene_id}] = Matter::Cluster::ScenesManagement::SceneData.new(
     transition_time: transition_time,
     scene_name: scene_name,
     extension_field_sets: extension_field_sets
   )
 end
 
-describe Matter::Cluster::ScenesManagementCluster do
+describe Matter::Cluster::ScenesManagement do
   describe "#save_state" do
     it "returns a document with one entry per scene" do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ScenesManagementCluster.new(endpoint)
+      cluster = Matter::Cluster::ScenesManagement.new(endpoint)
 
       add_scene_direct(cluster, fabric_index: 1_u8, group_id: 1_u16, scene_id: 1_u8, scene_name: "Morning")
       add_scene_direct(cluster, fabric_index: 1_u8, group_id: 1_u16, scene_id: 2_u8, scene_name: "Evening")
@@ -47,8 +47,8 @@ describe Matter::Cluster::ScenesManagementCluster do
 
     it "stores extension field set attribute values as bytes" do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ScenesManagementCluster.new(endpoint)
-      field_set = Matter::Cluster::ScenesManagementCluster::ExtensionFieldSet.new(6_u32, [{0_u32, TLV::Any.new(1_u8)}])
+      cluster = Matter::Cluster::ScenesManagement.new(endpoint)
+      field_set = Matter::Cluster::ScenesManagement::ExtensionFieldSet.new(6_u32, [{0_u32, TLV::Any.new(1_u8)}])
       add_scene_direct(cluster, fabric_index: 1_u8, group_id: 1_u16, scene_id: 1_u8, extension_field_sets: [field_set])
 
       document = cluster.save_state.as(Matter::Storage::Document)
@@ -65,16 +65,16 @@ describe Matter::Cluster::ScenesManagementCluster do
   describe "#restore_state" do
     it "restores scenes, field sets and fabric scene info" do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster1 = Matter::Cluster::ScenesManagementCluster.new(endpoint)
-      field_set = Matter::Cluster::ScenesManagementCluster::ExtensionFieldSet.new(6_u32, [{0_u32, TLV::Any.new(1_u8)}])
+      cluster1 = Matter::Cluster::ScenesManagement.new(endpoint)
+      field_set = Matter::Cluster::ScenesManagement::ExtensionFieldSet.new(6_u32, [{0_u32, TLV::Any.new(1_u8)}])
       add_scene_direct(cluster1, fabric_index: 1_u8, group_id: 1_u16, scene_id: 1_u8, scene_name: "Test Scene", extension_field_sets: [field_set])
       add_scene_direct(cluster1, fabric_index: 1_u8, group_id: 1_u16, scene_id: 2_u8, scene_name: "Another Scene")
-      cluster1.scene_info_by_fabric[1_u8] = Matter::Cluster::ScenesManagementCluster::SceneInfo.new(scene_count: 2_u8, fabric_index: 1_u8)
+      cluster1.scene_info_by_fabric[1_u8] = Matter::Cluster::ScenesManagement::SceneInfo.new(scene_count: 2_u8, fabric_index: 1_u8)
       cluster1.data_version = 10_u32
 
       document = cluster1.save_state.as(Matter::Storage::Document)
 
-      cluster2 = Matter::Cluster::ScenesManagementCluster.new(endpoint)
+      cluster2 = Matter::Cluster::ScenesManagement.new(endpoint)
       cluster2.scene_count.should eq(0)
       cluster2.restore_state(document)
 
@@ -92,7 +92,7 @@ describe Matter::Cluster::ScenesManagementCluster do
 
     it "starts fresh when the document is malformed" do
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ScenesManagementCluster.new(endpoint)
+      cluster = Matter::Cluster::ScenesManagement.new(endpoint)
 
       cluster.restore_state(Matter::Storage::Document{"scenes" => "bogus"})
       cluster.scene_count.should eq(0)
@@ -104,8 +104,8 @@ describe Matter::Cluster::ScenesManagementCluster do
 
   describe "#persistence_key" do
     it "is the endpoint and cluster id joined by the separator" do
-      cluster1 = Matter::Cluster::ScenesManagementCluster.new(Matter::DataType::EndpointNumber.new(1_u16))
-      cluster2 = Matter::Cluster::ScenesManagementCluster.new(Matter::DataType::EndpointNumber.new(2_u16))
+      cluster1 = Matter::Cluster::ScenesManagement.new(Matter::DataType::EndpointNumber.new(1_u16))
+      cluster2 = Matter::Cluster::ScenesManagement.new(Matter::DataType::EndpointNumber.new(2_u16))
 
       cluster1.persistence_key.should eq("1-98") # 0x0062 = 98
       cluster2.persistence_key.should eq("2-98")
@@ -119,13 +119,13 @@ describe Matter::Cluster::ScenesManagementCluster do
       persistence = Matter::Device::Persistence.new(storage)
 
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::ScenesManagementCluster.new(endpoint)
+      cluster = Matter::Cluster::ScenesManagement.new(endpoint)
       add_scene_direct(cluster, fabric_index: 1_u8, group_id: 1_u16, scene_id: 1_u8, scene_name: "Saved Scene")
 
       persistence.save_cluster(cluster).should be_true
       storage.ids(Matter::Storage::Collections::CLUSTERS).should eq([cluster.persistence_key])
 
-      new_cluster = Matter::Cluster::ScenesManagementCluster.new(endpoint)
+      new_cluster = Matter::Cluster::ScenesManagement.new(endpoint)
       persistence.restore_clusters([new_cluster] of Matter::Cluster::Base).should eq(1)
 
       new_cluster.scene_count.should eq(1)
@@ -135,14 +135,14 @@ describe Matter::Cluster::ScenesManagementCluster do
     it "returns false when a cluster has no state to save" do
       persistence = Matter::Device::Persistence.new(Matter::Storage::Memory.new)
 
-      # IdentifyCluster doesn't implement save_state (returns nil)
-      identify = Matter::Cluster::IdentifyCluster.new(Matter::DataType::EndpointNumber.new(1_u16))
+      # Identify doesn't implement save_state (returns nil)
+      identify = Matter::Cluster::Identify.new(Matter::DataType::EndpointNumber.new(1_u16))
       persistence.save_cluster(identify).should be_false
     end
 
     it "restores nothing when no state is stored" do
       persistence = Matter::Device::Persistence.new(Matter::Storage::Memory.new)
-      cluster = Matter::Cluster::ScenesManagementCluster.new(Matter::DataType::EndpointNumber.new(1_u16))
+      cluster = Matter::Cluster::ScenesManagement.new(Matter::DataType::EndpointNumber.new(1_u16))
       persistence.restore_clusters([cluster] of Matter::Cluster::Base).should eq(0)
     end
   end

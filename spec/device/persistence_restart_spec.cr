@@ -1,6 +1,6 @@
 require "../spec_helper"
 require "../../src/matter/device/base"
-require "../../src/matter/cluster/on_off_cluster"
+require "../../src/matter/cluster/on_off"
 
 # An on/off light on endpoint 1 (as in `examples/matter_switch_device.cr`)
 # whose whole state lives in one `YamlFile`, so two instances booted on the
@@ -12,7 +12,7 @@ class PersistenceRestartDevice < Matter::Device::Base
   # running device.
   EPHEMERAL_PORT = 0
 
-  @switch : Matter::Cluster::OnOffCluster?
+  @switch : Matter::Cluster::OnOff?
 
   def initialize(path : String)
     super(Matter::Storage::YamlFile.new(path), port: EPHEMERAL_PORT)
@@ -42,14 +42,14 @@ class PersistenceRestartDevice < Matter::Device::Base
     Matter::DeviceType::ON_OFF_LIGHT
   end
 
-  def switch : Matter::Cluster::OnOffCluster
-    @switch.as(Matter::Cluster::OnOffCluster)
+  def switch : Matter::Cluster::OnOff
+    @switch.as(Matter::Cluster::OnOff)
   end
 
   protected def device_clusters : Array(Matter::Cluster::Base)
-    @switch = Matter::Cluster::OnOffCluster.new(
+    @switch = Matter::Cluster::OnOff.new(
       Matter::DataType::EndpointNumber.new(LIGHT_ENDPOINT),
-      feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting
+      feature_map: Matter::Cluster::OnOff::Feature::Lighting
     )
     [switch] of Matter::Cluster::Base
   end
@@ -103,7 +103,7 @@ module PersistenceRestartSpec
   def self.commission_and_mutate(device : PersistenceRestartDevice, fabric : Matter::Fabric) : Nil
     device.fabric_table.add_fabric(fabric).should be_true
     device.switch.on = true
-    expect_success(write(device.basic_info, Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL, NODE_LABEL))
+    expect_success(write(device.basic_info, Matter::Cluster::BasicInformation::ATTR_NODE_LABEL, NODE_LABEL))
   end
 
   # What a second boot on the same store must see.
@@ -145,9 +145,9 @@ describe "Device restart persistence" do
 
       # A real crash never reaches `close`, so prove the file already holds the
       # state before releasing device A's handles.
-      on_off = PersistenceRestartSpec.stored_cluster(path, PersistenceRestartDevice::LIGHT_ENDPOINT, Matter::Cluster::OnOffCluster::CLUSTER_ID)
+      on_off = PersistenceRestartSpec.stored_cluster(path, PersistenceRestartDevice::LIGHT_ENDPOINT, Matter::Cluster::OnOff::CLUSTER_ID)
       on_off["on_off"].should be_true
-      basic = PersistenceRestartSpec.stored_cluster(path, 0_u16, Matter::Cluster::BasicInformationCluster::CLUSTER_ID)
+      basic = PersistenceRestartSpec.stored_cluster(path, 0_u16, Matter::Cluster::BasicInformation::CLUSTER_ID)
       basic["node_label"].should eq(PersistenceRestartSpec::NODE_LABEL)
       device_a.release
 

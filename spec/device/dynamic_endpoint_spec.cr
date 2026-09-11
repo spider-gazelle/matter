@@ -1,7 +1,7 @@
 require "../spec_helper"
 require "../../src/matter/device/base"
-require "../../src/matter/cluster/on_off_cluster"
-require "../../src/matter/cluster/bridged_device_basic_information_cluster"
+require "../../src/matter/cluster/on_off"
+require "../../src/matter/cluster/bridged_device_basic_information"
 
 # Test device for dynamic endpoint tests
 class TestBridgeDevice < Matter::Device::Base
@@ -51,8 +51,8 @@ describe "Dynamic Endpoint Management" do
       endpoint_id = 1_u16
       endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
 
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint)
-      bridged_info = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(
+      on_off = Matter::Cluster::OnOff.new(endpoint)
+      bridged_info = Matter::Cluster::BridgedDeviceBasicInformation.new(
         endpoint,
         reachable: true,
         product_name: "Test Light"
@@ -67,22 +67,22 @@ describe "Dynamic Endpoint Management" do
       result.should be_true
 
       # Verify clusters are registered
-      device.message_handler.clusters.has_key?({endpoint_id, Matter::Cluster::OnOffCluster::CLUSTER_ID}).should be_true
-      device.message_handler.clusters.has_key?({endpoint_id, Matter::Cluster::BridgedDeviceBasicInformationCluster::CLUSTER_ID}).should be_true
+      device.message_handler.clusters.has_key?({endpoint_id, Matter::Cluster::OnOff::CLUSTER_ID}).should be_true
+      device.message_handler.clusters.has_key?({endpoint_id, Matter::Cluster::BridgedDeviceBasicInformation::CLUSTER_ID}).should be_true
 
       # Verify descriptor was auto-injected
-      device.message_handler.clusters.has_key?({endpoint_id, Matter::Cluster::DescriptorCluster::CLUSTER_ID}).should be_true
+      device.message_handler.clusters.has_key?({endpoint_id, Matter::Cluster::Descriptor::CLUSTER_ID}).should be_true
 
       # Verify descriptor has correct device type
-      descriptor = device.message_handler.clusters[{endpoint_id, Matter::Cluster::DescriptorCluster::CLUSTER_ID}]
-        .as(Matter::Cluster::DescriptorCluster)
+      descriptor = device.message_handler.clusters[{endpoint_id, Matter::Cluster::Descriptor::CLUSTER_ID}]
+        .as(Matter::Cluster::Descriptor)
       descriptor.device_type_list.size.should eq(1)
       descriptor.device_type_list[0].device_type.should eq(Matter::DeviceType::ON_OFF_LIGHT)
 
       # Verify descriptor has server list populated
-      descriptor.server_list.should contain(Matter::Cluster::OnOffCluster::CLUSTER_ID)
-      descriptor.server_list.should contain(Matter::Cluster::BridgedDeviceBasicInformationCluster::CLUSTER_ID)
-      descriptor.server_list.should contain(Matter::Cluster::DescriptorCluster::CLUSTER_ID)
+      descriptor.server_list.should contain(Matter::Cluster::OnOff::CLUSTER_ID)
+      descriptor.server_list.should contain(Matter::Cluster::BridgedDeviceBasicInformation::CLUSTER_ID)
+      descriptor.server_list.should contain(Matter::Cluster::Descriptor::CLUSTER_ID)
     end
 
     it "adds endpoint to root node parts list" do
@@ -90,7 +90,7 @@ describe "Dynamic Endpoint Management" do
 
       endpoint_id = 1_u16
       endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+      on_off = Matter::Cluster::OnOff.new(endpoint)
 
       device.add_endpoint(
         endpoint_id: endpoint_id,
@@ -99,8 +99,8 @@ describe "Dynamic Endpoint Management" do
       )
 
       # Verify root node's parts list contains the new endpoint
-      root_descriptor = device.message_handler.clusters[{0_u16, Matter::Cluster::DescriptorCluster::CLUSTER_ID}]
-        .as(Matter::Cluster::DescriptorCluster)
+      root_descriptor = device.message_handler.clusters[{0_u16, Matter::Cluster::Descriptor::CLUSTER_ID}]
+        .as(Matter::Cluster::Descriptor)
       root_descriptor.parts_list.should contain(endpoint_id)
     end
 
@@ -109,7 +109,7 @@ describe "Dynamic Endpoint Management" do
 
       endpoint_id = 1_u16
       endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
-      on_off1 = Matter::Cluster::OnOffCluster.new(endpoint)
+      on_off1 = Matter::Cluster::OnOff.new(endpoint)
 
       # First add should succeed
       result1 = device.add_endpoint(
@@ -120,7 +120,7 @@ describe "Dynamic Endpoint Management" do
       result1.should be_true
 
       # Second add should fail
-      on_off2 = Matter::Cluster::OnOffCluster.new(endpoint)
+      on_off2 = Matter::Cluster::OnOff.new(endpoint)
       result2 = device.add_endpoint(
         endpoint_id: endpoint_id,
         device_type: Matter::DeviceType::ON_OFF_LIGHT,
@@ -133,7 +133,7 @@ describe "Dynamic Endpoint Management" do
       device = TestBridgeDevice.new
 
       endpoint = Matter::DataType::EndpointNumber.new(0_u16)
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+      on_off = Matter::Cluster::OnOff.new(endpoint)
 
       result = device.add_endpoint(
         endpoint_id: 0_u16,
@@ -148,7 +148,7 @@ describe "Dynamic Endpoint Management" do
       device = TestBridgeDevice.new
 
       endpoint = Matter::DataType::EndpointNumber.new(2_u16)
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+      on_off = Matter::Cluster::OnOff.new(endpoint)
 
       expect_raises(ArgumentError, /endpoint_id/) do
         device.add_endpoint(
@@ -166,8 +166,8 @@ describe "Dynamic Endpoint Management" do
 
       endpoint_id = 1_u16
       endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint)
-      bridged_info = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint)
+      on_off = Matter::Cluster::OnOff.new(endpoint)
+      bridged_info = Matter::Cluster::BridgedDeviceBasicInformation.new(endpoint)
 
       device.add_endpoint(
         endpoint_id: endpoint_id,
@@ -176,16 +176,16 @@ describe "Dynamic Endpoint Management" do
       )
 
       # Verify clusters exist
-      device.message_handler.clusters.has_key?({endpoint_id, Matter::Cluster::OnOffCluster::CLUSTER_ID}).should be_true
+      device.message_handler.clusters.has_key?({endpoint_id, Matter::Cluster::OnOff::CLUSTER_ID}).should be_true
 
       # Remove endpoint
       result = device.remove_endpoint(endpoint_id)
       result.should be_true
 
       # Verify clusters are gone
-      device.message_handler.clusters.has_key?({endpoint_id, Matter::Cluster::OnOffCluster::CLUSTER_ID}).should be_false
-      device.message_handler.clusters.has_key?({endpoint_id, Matter::Cluster::BridgedDeviceBasicInformationCluster::CLUSTER_ID}).should be_false
-      device.message_handler.clusters.has_key?({endpoint_id, Matter::Cluster::DescriptorCluster::CLUSTER_ID}).should be_false
+      device.message_handler.clusters.has_key?({endpoint_id, Matter::Cluster::OnOff::CLUSTER_ID}).should be_false
+      device.message_handler.clusters.has_key?({endpoint_id, Matter::Cluster::BridgedDeviceBasicInformation::CLUSTER_ID}).should be_false
+      device.message_handler.clusters.has_key?({endpoint_id, Matter::Cluster::Descriptor::CLUSTER_ID}).should be_false
     end
 
     it "removes endpoint from root node parts list" do
@@ -193,7 +193,7 @@ describe "Dynamic Endpoint Management" do
 
       endpoint_id = 1_u16
       endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+      on_off = Matter::Cluster::OnOff.new(endpoint)
 
       device.add_endpoint(
         endpoint_id: endpoint_id,
@@ -202,8 +202,8 @@ describe "Dynamic Endpoint Management" do
       )
 
       # Verify in parts list
-      root_descriptor = device.message_handler.clusters[{0_u16, Matter::Cluster::DescriptorCluster::CLUSTER_ID}]
-        .as(Matter::Cluster::DescriptorCluster)
+      root_descriptor = device.message_handler.clusters[{0_u16, Matter::Cluster::Descriptor::CLUSTER_ID}]
+        .as(Matter::Cluster::Descriptor)
       root_descriptor.parts_list.should contain(endpoint_id)
 
       # Remove endpoint
@@ -237,7 +237,7 @@ describe "Dynamic Endpoint Management" do
       (1..3).each do |i|
         endpoint_id = i.to_u16
         endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
-        on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+        on_off = Matter::Cluster::OnOff.new(endpoint)
         device.add_endpoint(
           endpoint_id: endpoint_id,
           device_type: Matter::DeviceType::ON_OFF_LIGHT,
@@ -258,7 +258,7 @@ describe "Dynamic Endpoint Management" do
 
       [5_u16, 2_u16, 8_u16, 1_u16].each do |endpoint_id|
         endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
-        on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+        on_off = Matter::Cluster::OnOff.new(endpoint)
         device.add_endpoint(
           endpoint_id: endpoint_id,
           device_type: Matter::DeviceType::ON_OFF_LIGHT,
@@ -283,7 +283,7 @@ describe "Dynamic Endpoint Management" do
       (1..3).each do |i|
         endpoint_id = i.to_u16
         endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
-        on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+        on_off = Matter::Cluster::OnOff.new(endpoint)
         device.add_endpoint(
           endpoint_id: endpoint_id,
           device_type: Matter::DeviceType::ON_OFF_LIGHT,
@@ -300,7 +300,7 @@ describe "Dynamic Endpoint Management" do
       # Add endpoints 1, 3 (skip 2)
       [1_u16, 3_u16].each do |endpoint_id|
         endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
-        on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+        on_off = Matter::Cluster::OnOff.new(endpoint)
         device.add_endpoint(
           endpoint_id: endpoint_id,
           device_type: Matter::DeviceType::ON_OFF_LIGHT,
@@ -320,7 +320,7 @@ describe "Dynamic Endpoint Management" do
       5.times do |i|
         endpoint_id = (i + 1).to_u16
         endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
-        on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+        on_off = Matter::Cluster::OnOff.new(endpoint)
         device.add_endpoint(
           endpoint_id: endpoint_id,
           device_type: Matter::DeviceType::ON_OFF_LIGHT,
@@ -342,7 +342,7 @@ describe "Dynamic Endpoint Management" do
       device.next_endpoint_id.should eq(2_u16)
 
       endpoint = Matter::DataType::EndpointNumber.new(2_u16)
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+      on_off = Matter::Cluster::OnOff.new(endpoint)
       device.add_endpoint(
         endpoint_id: 2_u16,
         device_type: Matter::DeviceType::ON_OFF_LIGHT,
@@ -363,7 +363,7 @@ describe "Dynamic Endpoint Management" do
 
       endpoint_id = 1_u16
       endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+      on_off = Matter::Cluster::OnOff.new(endpoint)
 
       # This should trigger notify_subscriptions for PartsList
       # (verified by debug log: "notify_subscriptions: endpoint=0, cluster=0x1d, attr=0x3")
@@ -376,8 +376,8 @@ describe "Dynamic Endpoint Management" do
       result.should be_true
 
       # Verify PartsList was updated (prerequisite for notification)
-      root_descriptor = device.message_handler.clusters[{0_u16, Matter::Cluster::DescriptorCluster::CLUSTER_ID}]
-        .as(Matter::Cluster::DescriptorCluster)
+      root_descriptor = device.message_handler.clusters[{0_u16, Matter::Cluster::Descriptor::CLUSTER_ID}]
+        .as(Matter::Cluster::Descriptor)
       root_descriptor.parts_list.should contain(endpoint_id)
     end
 
@@ -386,7 +386,7 @@ describe "Dynamic Endpoint Management" do
 
       endpoint_id = 1_u16
       endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+      on_off = Matter::Cluster::OnOff.new(endpoint)
 
       device.add_endpoint(
         endpoint_id: endpoint_id,
@@ -399,8 +399,8 @@ describe "Dynamic Endpoint Management" do
       result.should be_true
 
       # Verify PartsList was updated (prerequisite for notification)
-      root_descriptor = device.message_handler.clusters[{0_u16, Matter::Cluster::DescriptorCluster::CLUSTER_ID}]
-        .as(Matter::Cluster::DescriptorCluster)
+      root_descriptor = device.message_handler.clusters[{0_u16, Matter::Cluster::Descriptor::CLUSTER_ID}]
+        .as(Matter::Cluster::Descriptor)
       root_descriptor.parts_list.should_not contain(endpoint_id)
     end
 
@@ -410,7 +410,7 @@ describe "Dynamic Endpoint Management" do
       # Add multiple endpoints
       [1_u16, 2_u16, 3_u16].each do |endpoint_id|
         endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
-        on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+        on_off = Matter::Cluster::OnOff.new(endpoint)
         device.add_endpoint(
           endpoint_id: endpoint_id,
           device_type: Matter::DeviceType::ON_OFF_LIGHT,
@@ -420,11 +420,11 @@ describe "Dynamic Endpoint Management" do
 
       # Read the PartsList attribute via the cluster interface
       # (this is what a subscriber would receive in a ReportData)
-      root_descriptor = device.message_handler.clusters[{0_u16, Matter::Cluster::DescriptorCluster::CLUSTER_ID}]
-        .as(Matter::Cluster::DescriptorCluster)
+      root_descriptor = device.message_handler.clusters[{0_u16, Matter::Cluster::Descriptor::CLUSTER_ID}]
+        .as(Matter::Cluster::Descriptor)
 
       # Parse the TLV response - endpoint IDs may be encoded as UInt8 or UInt16
-      parts = read_tlv(root_descriptor, Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST).as_list.map do |part|
+      parts = read_tlv(root_descriptor, Matter::Cluster::Descriptor::ATTR_PARTS_LIST).as_list.map do |part|
         case v = part.value
         when UInt8  then v.to_u16
         when UInt16 then v
@@ -443,7 +443,7 @@ describe "Dynamic Endpoint Management" do
       # Add endpoints
       [1_u16, 2_u16].each do |endpoint_id|
         endpoint = Matter::DataType::EndpointNumber.new(endpoint_id)
-        on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+        on_off = Matter::Cluster::OnOff.new(endpoint)
         device.add_endpoint(
           endpoint_id: endpoint_id,
           device_type: Matter::DeviceType::ON_OFF_LIGHT,
@@ -455,10 +455,10 @@ describe "Dynamic Endpoint Management" do
       device.remove_endpoint(1_u16)
 
       # Read PartsList - should only have endpoint 2
-      root_descriptor = device.message_handler.clusters[{0_u16, Matter::Cluster::DescriptorCluster::CLUSTER_ID}]
-        .as(Matter::Cluster::DescriptorCluster)
+      root_descriptor = device.message_handler.clusters[{0_u16, Matter::Cluster::Descriptor::CLUSTER_ID}]
+        .as(Matter::Cluster::Descriptor)
 
-      parts = read_tlv(root_descriptor, Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST).as_list.map do |part|
+      parts = read_tlv(root_descriptor, Matter::Cluster::Descriptor::ATTR_PARTS_LIST).as_list.map do |part|
         case v = part.value
         when UInt8  then v.to_u16
         when UInt16 then v

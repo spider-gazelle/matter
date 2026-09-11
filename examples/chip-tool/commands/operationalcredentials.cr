@@ -5,7 +5,7 @@ module ChipTool
     module OperationalCredentials
       extend self
 
-      alias FabricDescriptor = Matter::Cluster::OperationalCredentialsCluster::Tlv::FabricDescriptor
+      alias FabricDescriptor = Matter::Cluster::OperationalCredentials::Tlv::FabricDescriptor
 
       def register : Nil
         Registry.register("operationalcredentials", "read", "Read OperationalCredentials cluster attributes") do |_ctx, _args|
@@ -21,9 +21,9 @@ module ChipTool
             next 2
           end
 
-          cluster_id = Matter::Cluster::OperationalCredentialsCluster::CLUSTER_ID
+          cluster_id = Matter::Cluster::OperationalCredentials::CLUSTER_ID
           attribute_id = case attribute
-                         when "fabrics" then Matter::Cluster::OperationalCredentialsCluster::ATTR_FABRICS
+                         when "fabrics" then Matter::Cluster::OperationalCredentials::ATTR_FABRICS
                          else
                            STDERR.puts "Unsupported attribute: #{attribute} (supported: fabrics)"
                            next 2

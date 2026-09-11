@@ -5,7 +5,7 @@ require "../mdns/responder_interface"
 require "../mdns/service_type"
 require "../protocol/message_handler"
 require "../protocol/session_manager"
-require "../cluster/operational_credentials_cluster"
+require "../cluster/operational_credentials"
 
 module Matter
   module Device
@@ -41,7 +41,7 @@ module Matter
       def initialize(
         @fabric_table : FabricTable,
         @message_handler : Protocol::SessionManager,
-        @operational_credentials : Cluster::OperationalCredentialsCluster,
+        @operational_credentials : Cluster::OperationalCredentials,
         @responder : MDNS::ResponderInterface,
         @commissioning_info : Proc(MDNS::CommissioningInfo),
         @port : Int32 = 5540,

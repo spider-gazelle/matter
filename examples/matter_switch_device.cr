@@ -18,11 +18,11 @@ module MatterSwitch
     DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
     SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
 
-    @switch : Matter::Cluster::OnOffCluster? = nil
-    @fixed_label : Matter::Cluster::FixedLabelCluster? = nil
-    @identify : Matter::Cluster::IdentifyCluster? = nil
-    @groups : Matter::Cluster::GroupsCluster? = nil
-    @scenes_management : Matter::Cluster::ScenesManagementCluster? = nil
+    @switch : Matter::Cluster::OnOff? = nil
+    @fixed_label : Matter::Cluster::FixedLabel? = nil
+    @identify : Matter::Cluster::Identify? = nil
+    @groups : Matter::Cluster::Groups? = nil
+    @scenes_management : Matter::Cluster::ScenesManagement? = nil
 
     def initialize
       super(Matter::Storage::YamlFile.new(STORAGE_FILE), ip_addresses: Matter::Network.local_ip_addresses)
@@ -60,45 +60,45 @@ module MatterSwitch
       device_name
     end
 
-    def product_appearance : Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct?
-      Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.new(
-        Matter::Cluster::BasicInformationCluster::ProductFinish::Satin
+    def product_appearance : Matter::Cluster::BasicInformation::ProductAppearanceStruct?
+      Matter::Cluster::BasicInformation::ProductAppearanceStruct.new(
+        Matter::Cluster::BasicInformation::ProductFinish::Satin
       )
     end
 
-    def switch : Matter::Cluster::OnOffCluster
-      @switch.as(Matter::Cluster::OnOffCluster)
+    def switch : Matter::Cluster::OnOff
+      @switch.as(Matter::Cluster::OnOff)
     end
 
     protected def device_clusters : Array(Matter::Cluster::Base)
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
 
-      @switch = Matter::Cluster::OnOffCluster.new(
+      @switch = Matter::Cluster::OnOff.new(
         endpoint,
-        feature_map: Matter::Cluster::OnOffCluster::Feature::Lighting
+        feature_map: Matter::Cluster::OnOff::Feature::Lighting
       )
       switch.on_state_changed { |new_state| handle_state_change(new_state) }
 
       # FixedLabel is optional, but can help controllers show a friendly name for this endpoint.
-      @fixed_label = Matter::Cluster::FixedLabelCluster.new(
+      @fixed_label = Matter::Cluster::FixedLabel.new(
         endpoint,
         [Matter::Cluster::LabelStruct.new("name", "Example Switch")]
       )
 
-      @identify = Matter::Cluster::IdentifyCluster.new(
+      @identify = Matter::Cluster::Identify.new(
         endpoint,
-        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLight
+        identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLight
       )
 
-      @groups = Matter::Cluster::GroupsCluster.new(endpoint)
-      @scenes_management = Matter::Cluster::ScenesManagementCluster.new(endpoint)
+      @groups = Matter::Cluster::Groups.new(endpoint)
+      @scenes_management = Matter::Cluster::ScenesManagement.new(endpoint)
 
       [
         switch,
-        @fixed_label.as(Matter::Cluster::FixedLabelCluster),
-        @identify.as(Matter::Cluster::IdentifyCluster),
-        @groups.as(Matter::Cluster::GroupsCluster),
-        @scenes_management.as(Matter::Cluster::ScenesManagementCluster),
+        @fixed_label.as(Matter::Cluster::FixedLabel),
+        @identify.as(Matter::Cluster::Identify),
+        @groups.as(Matter::Cluster::Groups),
+        @scenes_management.as(Matter::Cluster::ScenesManagement),
       ] of Matter::Cluster::Base
     end
 

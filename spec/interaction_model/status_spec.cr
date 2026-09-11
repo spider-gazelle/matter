@@ -50,9 +50,9 @@ module Matter::InteractionModel
       end
 
       it "accepts a cluster status enum" do
-        status = Status.cluster_failure(Cluster::OperationalCredentialsCluster::NodeOperationalCertStatus::MissingCsr)
+        status = Status.cluster_failure(Cluster::OperationalCredentials::NodeOperationalCertStatus::MissingCsr)
         status.status.should eq(StatusCode::Failure)
-        status.cluster_status.should eq(Cluster::OperationalCredentialsCluster::NodeOperationalCertStatus::MissingCsr.value.to_u8)
+        status.cluster_status.should eq(Cluster::OperationalCredentials::NodeOperationalCertStatus::MissingCsr.value.to_u8)
       end
     end
 

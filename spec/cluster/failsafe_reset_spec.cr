@@ -1,6 +1,6 @@
 require "../spec_helper"
-require "../../src/matter/cluster/operational_credentials_cluster"
-require "../../src/matter/cluster/general_commissioning_cluster"
+require "../../src/matter/cluster/operational_credentials"
+require "../../src/matter/cluster/general_commissioning"
 
 # Tests for failsafe reset behavior when starting a new commissioning session
 # This specifically tests the fix for "Cannot generate CSR after AddNOC/UpdateNOC"
@@ -11,7 +11,7 @@ describe "Failsafe Reset Behavior" do
     it "resets failsafe context state" do
       storage = Matter::Storage::Memory.new
       fabric_table = Matter::FabricTable.new(storage)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table)
+      cluster = Matter::Cluster::OperationalCredentials.new(fabric_table)
 
       # Set up attestation credentials (required for CSR)
       dac = Bytes.new(100, 1_u8)
@@ -21,7 +21,7 @@ describe "Failsafe Reset Behavior" do
 
       # First CSR request should succeed
       nonce = Bytes.new(32, 0_u8)
-      cmd = Matter::Cluster::OperationalCredentialsCluster::CSRRequestCommand.new(
+      cmd = Matter::Cluster::OperationalCredentials::CSRRequestCommand.new(
         csr_nonce: nonce
       )
 
@@ -53,7 +53,7 @@ describe "Failsafe Reset Behavior" do
     it "clears pending NOC key" do
       storage = Matter::Storage::Memory.new
       fabric_table = Matter::FabricTable.new(storage)
-      cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table)
+      cluster = Matter::Cluster::OperationalCredentials.new(fabric_table)
 
       # Set up attestation credentials
       dac = Bytes.new(100, 1_u8)
@@ -63,7 +63,7 @@ describe "Failsafe Reset Behavior" do
 
       # Generate a CSR (creates pending_noc_key)
       nonce = Bytes.new(32, 0_u8)
-      cmd = Matter::Cluster::OperationalCredentialsCluster::CSRRequestCommand.new(
+      cmd = Matter::Cluster::OperationalCredentials::CSRRequestCommand.new(
         csr_nonce: nonce
       )
       cluster.handle_csr_request(
@@ -91,14 +91,14 @@ describe "Failsafe Reset Behavior" do
     it "calls callback when new failsafe is armed" do
       callback_called = false
 
-      gc = Matter::Cluster::GeneralCommissioningCluster.new
+      gc = Matter::Cluster::GeneralCommissioning.new
       gc.on_failsafe_armed = -> {
         callback_called = true
       }
 
       # Arm failsafe
       response = gc.arm_failsafe(
-        Matter::Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
+        Matter::Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 1_u64
         ),
@@ -106,21 +106,21 @@ describe "Failsafe Reset Behavior" do
         is_pase_session: true
       )
 
-      response.error_code.should eq(Matter::Cluster::GeneralCommissioningCluster::CommissioningError::OK)
+      response.error_code.should eq(Matter::Cluster::GeneralCommissioning::CommissioningError::OK)
       callback_called.should be_true
     end
 
     it "does not call callback when re-arming existing failsafe" do
       callback_count = 0
 
-      gc = Matter::Cluster::GeneralCommissioningCluster.new
+      gc = Matter::Cluster::GeneralCommissioning.new
       gc.on_failsafe_armed = -> {
         callback_count += 1
       }
 
       # Arm failsafe first time (creates NEW failsafe)
       gc.arm_failsafe(
-        Matter::Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
+        Matter::Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 1_u64
         ),
@@ -132,7 +132,7 @@ describe "Failsafe Reset Behavior" do
 
       # Re-arm existing failsafe (same session) - should NOT call callback
       gc.arm_failsafe(
-        Matter::Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
+        Matter::Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 2_u64
         ),
@@ -147,14 +147,14 @@ describe "Failsafe Reset Behavior" do
     it "calls callback when arming after failsafe was disarmed" do
       callback_count = 0
 
-      gc = Matter::Cluster::GeneralCommissioningCluster.new
+      gc = Matter::Cluster::GeneralCommissioning.new
       gc.on_failsafe_armed = -> {
         callback_count += 1
       }
 
       # Arm failsafe first time
       gc.arm_failsafe(
-        Matter::Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
+        Matter::Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 1_u64
         ),
@@ -166,7 +166,7 @@ describe "Failsafe Reset Behavior" do
 
       # Disarm failsafe
       gc.arm_failsafe(
-        Matter::Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
+        Matter::Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
           expiry_length_seconds: 0_u16,
           breadcrumb: 1_u64
         ),
@@ -178,7 +178,7 @@ describe "Failsafe Reset Behavior" do
 
       # Arm again (this is a NEW failsafe after disarm)
       gc.arm_failsafe(
-        Matter::Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
+        Matter::Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 2_u64
         ),
@@ -193,14 +193,14 @@ describe "Failsafe Reset Behavior" do
     it "does not call callback when disarming failsafe" do
       callback_count = 0
 
-      gc = Matter::Cluster::GeneralCommissioningCluster.new
+      gc = Matter::Cluster::GeneralCommissioning.new
       gc.on_failsafe_armed = -> {
         callback_count += 1
       }
 
       # Arm failsafe
       gc.arm_failsafe(
-        Matter::Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
+        Matter::Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 1_u64
         ),
@@ -212,7 +212,7 @@ describe "Failsafe Reset Behavior" do
 
       # Disarm failsafe (expiry_length = 0)
       gc.arm_failsafe(
-        Matter::Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
+        Matter::Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
           expiry_length_seconds: 0_u16,
           breadcrumb: 1_u64
         ),
@@ -229,7 +229,7 @@ describe "Failsafe Reset Behavior" do
     it "allows CSR after on_failsafe_armed even if NOC was previously added" do
       storage = Matter::Storage::Memory.new
       fabric_table = Matter::FabricTable.new(storage)
-      op_creds = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table)
+      op_creds = Matter::Cluster::OperationalCredentials.new(fabric_table)
 
       # Set up attestation credentials
       dac = Bytes.new(100, 1_u8)
@@ -237,7 +237,7 @@ describe "Failsafe Reset Behavior" do
       key = Matter::Crypto::Key.generate_key_pair
       op_creds.set_attestation_credentials(dac, pai, key)
 
-      gc = Matter::Cluster::GeneralCommissioningCluster.new
+      gc = Matter::Cluster::GeneralCommissioning.new
 
       # Wire up the callback (as done in matter_switch_device.cr)
       gc.on_failsafe_armed = -> {
@@ -248,7 +248,7 @@ describe "Failsafe Reset Behavior" do
 
       # Arm failsafe
       gc.arm_failsafe(
-        Matter::Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
+        Matter::Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 1_u64
         ),
@@ -258,7 +258,7 @@ describe "Failsafe Reset Behavior" do
 
       # CSR request
       nonce = Bytes.new(32, 0_u8)
-      csr_cmd = Matter::Cluster::OperationalCredentialsCluster::CSRRequestCommand.new(
+      csr_cmd = Matter::Cluster::OperationalCredentials::CSRRequestCommand.new(
         csr_nonce: nonce
       )
       response = op_creds.handle_csr_request(
@@ -277,7 +277,7 @@ describe "Failsafe Reset Behavior" do
 
       # This is the key test: iPhone arms a new failsafe after initial commissioning
       gc.arm_failsafe(
-        Matter::Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
+        Matter::Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 2_u64
         ),
@@ -299,7 +299,7 @@ describe "Failsafe Reset Behavior" do
     it "blocks CSR if NOC added in same session (not reset)" do
       storage = Matter::Storage::Memory.new
       fabric_table = Matter::FabricTable.new(storage)
-      op_creds = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table)
+      op_creds = Matter::Cluster::OperationalCredentials.new(fabric_table)
 
       # Set up attestation credentials
       dac = Bytes.new(100, 1_u8)
@@ -307,7 +307,7 @@ describe "Failsafe Reset Behavior" do
       key = Matter::Crypto::Key.generate_key_pair
       op_creds.set_attestation_credentials(dac, pai, key)
 
-      gc = Matter::Cluster::GeneralCommissioningCluster.new
+      gc = Matter::Cluster::GeneralCommissioning.new
 
       # Wire up the callback
       gc.on_failsafe_armed = -> {
@@ -316,7 +316,7 @@ describe "Failsafe Reset Behavior" do
 
       # Arm failsafe
       gc.arm_failsafe(
-        Matter::Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
+        Matter::Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
           expiry_length_seconds: 60_u16,
           breadcrumb: 1_u64
         ),
@@ -326,7 +326,7 @@ describe "Failsafe Reset Behavior" do
 
       # First CSR
       nonce = Bytes.new(32, 0_u8)
-      csr_cmd = Matter::Cluster::OperationalCredentialsCluster::CSRRequestCommand.new(
+      csr_cmd = Matter::Cluster::OperationalCredentials::CSRRequestCommand.new(
         csr_nonce: nonce
       )
       response1 = op_creds.handle_csr_request(

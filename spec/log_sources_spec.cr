@@ -4,7 +4,6 @@ require "./spec_helper"
 # line can be traced straight back to the file that emitted it:
 #
 #   src/matter/<dir>/<file>.cr          -> matter.<dir>.<file>
-#   src/matter/<dir>/<file>_cluster.cr  -> matter.<dir>.<file>
 #   src/matter/<dir>/<dir>.cr           -> matter.<dir>   (namespace file)
 #   src/matter/<dir>.cr                 -> matter.<dir>   (namespace aggregator)
 #
@@ -12,7 +11,6 @@ require "./spec_helper"
 describe "log sources" do
   source_root = File.expand_path("../src", __DIR__)
   source_pattern = /::Log\.for\("(?<source>[^"]+)"\)/
-  cluster_suffix = "_cluster"
   extension = ".cr"
 
   # Sources that intentionally extend the path-derived name.
@@ -22,7 +20,6 @@ describe "log sources" do
 
   expected_source = ->(relative_path : String) do
     segments = relative_path.rchop(extension).split('/')
-    segments[-1] = segments[-1].rchop(cluster_suffix)
     segments.pop if segments.size > 1 && segments[-1] == segments[-2]
     segments.join('.')
   end

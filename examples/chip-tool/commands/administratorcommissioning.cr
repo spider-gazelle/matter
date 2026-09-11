@@ -40,8 +40,8 @@ module ChipTool
               session: session,
               peer: peer,
               endpoint_id: endpoint_id,
-              cluster_id: Matter::Cluster::AdministratorCommissioningCluster::CLUSTER_ID,
-              command_id: Matter::Cluster::AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING,
+              cluster_id: Matter::Cluster::AdministratorCommissioning::CLUSTER_ID,
+              command_id: Matter::Cluster::AdministratorCommissioning::CMD_REVOKE_COMMISSIONING,
               fields: Bytes.empty
             )
 

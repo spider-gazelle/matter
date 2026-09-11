@@ -19,9 +19,9 @@ module ChipTool
             next 2
           end
 
-          cluster_id = Matter::Cluster::BasicInformationCluster::CLUSTER_ID
+          cluster_id = Matter::Cluster::BasicInformation::CLUSTER_ID
           attribute_id = case attribute
-                         when "vendor-name" then Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME
+                         when "vendor-name" then Matter::Cluster::BasicInformation::ATTR_VENDOR_NAME
                          else
                            STDERR.puts "Unsupported attribute: #{attribute} (supported: vendor-name)"
                            next 2

@@ -12,9 +12,9 @@ module MatterMotionSensor
     DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
     SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
 
-    @occupancy : Matter::Cluster::OccupancySensingCluster? = nil
-    @identify : Matter::Cluster::IdentifyCluster? = nil
-    @fixed_label : Matter::Cluster::FixedLabelCluster? = nil
+    @occupancy : Matter::Cluster::OccupancySensing? = nil
+    @identify : Matter::Cluster::Identify? = nil
+    @fixed_label : Matter::Cluster::FixedLabel? = nil
     @running : Bool = false
 
     def initialize
@@ -53,38 +53,38 @@ module MatterMotionSensor
       device_name
     end
 
-    def occupancy : Matter::Cluster::OccupancySensingCluster
-      @occupancy.as(Matter::Cluster::OccupancySensingCluster)
+    def occupancy : Matter::Cluster::OccupancySensing
+      @occupancy.as(Matter::Cluster::OccupancySensing)
     end
 
     protected def device_clusters : Array(Matter::Cluster::Base)
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
 
-      @occupancy = Matter::Cluster::OccupancySensingCluster.new(
+      @occupancy = Matter::Cluster::OccupancySensing.new(
         endpoint,
-        feature_map: Matter::Cluster::OccupancySensingCluster::Feature::PassiveInfrared,
+        feature_map: Matter::Cluster::OccupancySensing::Feature::PassiveInfrared,
         occupancy: 0_u8,
-        occupancy_sensor_type: Matter::Cluster::OccupancySensingCluster::OccupancySensorType::PIR,
+        occupancy_sensor_type: Matter::Cluster::OccupancySensing::OccupancySensorType::PIR,
         occupancy_sensor_type_bitmap: 0x01_u8
       )
       occupancy.on_occupancy_changed do |_old_value, new_value|
         puts "Motion: #{new_value == 1_u8 ? "occupied" : "clear"}"
       end
 
-      @identify = Matter::Cluster::IdentifyCluster.new(
+      @identify = Matter::Cluster::Identify.new(
         endpoint,
-        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLED
+        identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLED
       )
 
-      @fixed_label = Matter::Cluster::FixedLabelCluster.new(
+      @fixed_label = Matter::Cluster::FixedLabel.new(
         endpoint,
         [Matter::Cluster::LabelStruct.new("name", "Example Motion Sensor")]
       )
 
       [
         occupancy,
-        @identify.as(Matter::Cluster::IdentifyCluster),
-        @fixed_label.as(Matter::Cluster::FixedLabelCluster),
+        @identify.as(Matter::Cluster::Identify),
+        @fixed_label.as(Matter::Cluster::FixedLabel),
       ] of Matter::Cluster::Base
     end
 

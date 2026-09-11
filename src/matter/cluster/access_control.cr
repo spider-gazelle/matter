@@ -1,0 +1,353 @@
+require "./cluster"
+require "tlv"
+require "log"
+require "../datatype/node_id"
+require "../datatype/case_authenticated_tag"
+
+module Matter
+  module Cluster
+    # Access Control Cluster (0x001F)
+    #
+    # Provides fine-grained access control for Matter devices using
+    # Access Control Lists (ACLs).
+    #
+    # Matter Spec: Core 9.10
+    class AccessControl < Base
+      Log = ::Log.for("matter.cluster.access_control")
+
+      cluster 0x001F, revision: 2, persist_state: false
+
+      feature :extension, bit: 0 # EXTS - Extension attribute and its change event
+
+      # Minimum table limits the specification requires (Matter Core §9.10.5)
+      DEFAULT_SUBJECTS_PER_ENTRY = 4_u16
+      DEFAULT_TARGETS_PER_ENTRY  = 3_u16
+      DEFAULT_ENTRIES_PER_FABRIC = 4_u16
+
+      # Access Control Entry Privilege Levels
+      enum AccessControlEntryPrivilege : UInt8
+        View       = 1 # Can read attributes
+        ProxyView  = 2 # Can read and observe
+        Operate    = 3 # Can read and invoke commands
+        Manage     = 4 # Can read, write, and invoke commands
+        Administer = 5 # Full control including ACL management
+      end
+
+      # Access Control Entry Auth Mode
+      enum AccessControlEntryAuthMode : UInt8
+        PASE  = 1 # PASE authentication (commissioning)
+        CASE  = 2 # CASE authentication (operational)
+        Group = 3 # Group authentication
+      end
+
+      struct Target
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0, optional: true)]
+        property cluster : UInt32?
+
+        @[TLV::Field(tag: 1, optional: true)]
+        property endpoint : UInt16?
+
+        @[TLV::Field(tag: 2, optional: true)]
+        property device_type : UInt32?
+
+        def initialize(@cluster : UInt32? = nil, @endpoint : UInt16? = nil, @device_type : UInt32? = nil)
+        end
+      end
+
+      # Access Control Entry
+      struct AccessControlEntry
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 1)]
+        property privilege : AccessControlEntryPrivilege
+
+        @[TLV::Field(tag: 2)]
+        property auth_mode : AccessControlEntryAuthMode
+
+        @[TLV::Field(tag: 3)]
+        property subjects : Array(UInt64) # Node IDs or group IDs
+
+        @[TLV::Field(tag: 4, optional: true)]
+        property targets : Array(Target)? # nil means all targets
+
+        # fabric_index is optional during deserialization (client doesn't send it),
+        # but required when stored (server fills it in)
+        @[TLV::Field(tag: 254, optional: true)]
+        property fabric_index : UInt8?
+
+        def initialize(@privilege : AccessControlEntryPrivilege,
+                       @auth_mode : AccessControlEntryAuthMode,
+                       @subjects : Array(UInt64),
+                       @targets : Array(Target)?,
+                       @fabric_index : UInt8? = nil)
+        end
+      end
+
+      # Extension Entry (for future use)
+      struct ExtensionEntry
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 1)]
+        property data : Bytes
+
+        @[TLV::Field(tag: 254)]
+        property fabric_index : UInt8
+
+        def initialize(@data : Bytes, @fabric_index : UInt8)
+        end
+      end
+
+      # ACL and Extension are fabric-scoped lists: reads are filtered to the
+      # accessing fabric and writes replace only that fabric's entries (see
+      # `acl`, `acl=`, `extension` and `extension=`). They are persisted by
+      # the hand-written records further down.
+      attribute 0x0000, :acl, Array(AccessControlEntry), computed: true, writable: true, read_access: :administer, write_access: :administer, fabric_scoped: true
+      attribute 0x0001, :extension, Array(ExtensionEntry), computed: true, writable: true, read_access: :administer, write_access: :administer, fabric_scoped: true, requires: :extension
+      attribute 0x0002, :subjects_per_access_control_entry, UInt16, default: DEFAULT_SUBJECTS_PER_ENTRY, fixed: true
+      attribute 0x0003, :targets_per_access_control_entry, UInt16, default: DEFAULT_TARGETS_PER_ENTRY, fixed: true
+      attribute 0x0004, :access_control_entries_per_fabric, UInt16, default: DEFAULT_ENTRIES_PER_FABRIC, fixed: true
+
+      event 0x00, :access_control_entry_changed, priority: :info
+      event 0x01, :access_control_extension_changed, priority: :info, requires: :extension
+
+      @acl = [] of AccessControlEntry
+      @extension = [] of ExtensionEntry
+
+      def initialize(endpoint_id : DataType::EndpointNumber, @feature_map : Feature = Feature::Extension)
+        super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
+      end
+
+      # The fabric-scoped lists are filtered to the accessing fabric; a read
+      # outside a fabric (PASE) sees every entry.
+      def acl(fabric_index : UInt8? = nil) : Array(AccessControlEntry)
+        fabric_index ? get_acl_for_fabric(fabric_index) : @acl
+      end
+
+      def extension(fabric_index : UInt8? = nil) : Array(ExtensionEntry)
+        fabric_index ? @extension.select { |entry| entry.fabric_index == fabric_index } : @extension
+      end
+
+      struct PersistedTarget
+        include Storage::Record
+
+        getter cluster : UInt32?
+        getter endpoint : UInt16?
+        getter device_type : UInt32?
+
+        def initialize(@cluster : UInt32?, @endpoint : UInt16?, @device_type : UInt32?)
+        end
+      end
+
+      struct PersistedAclEntry
+        include Storage::Record
+
+        getter privilege : AccessControlEntryPrivilege
+        getter auth_mode : AccessControlEntryAuthMode
+        getter subjects : Array(UInt64)
+        getter targets : Array(PersistedTarget)?
+        getter fabric_index : UInt8?
+
+        def initialize(
+          @privilege : AccessControlEntryPrivilege,
+          @auth_mode : AccessControlEntryAuthMode,
+          @subjects : Array(UInt64),
+          @targets : Array(PersistedTarget)?,
+          @fabric_index : UInt8?,
+        )
+        end
+      end
+
+      struct PersistedExtensionEntry
+        include Storage::Record
+
+        getter data : Bytes
+        getter fabric_index : UInt8
+
+        def initialize(@data : Bytes, @fabric_index : UInt8)
+        end
+      end
+
+      struct PersistedState
+        include Storage::Record
+
+        getter data_version : UInt32
+        getter acl : Array(PersistedAclEntry)
+        getter extension : Array(PersistedExtensionEntry)
+
+        def initialize(
+          @data_version : UInt32,
+          @acl : Array(PersistedAclEntry),
+          @extension : Array(PersistedExtensionEntry),
+        )
+        end
+      end
+
+      def save_state : Storage::Document?
+        PersistedState.new(
+          data_version: @data_version,
+          acl: @acl.map do |entry|
+            PersistedAclEntry.new(
+              privilege: entry.privilege,
+              auth_mode: entry.auth_mode,
+              subjects: entry.subjects,
+              targets: entry.targets.try do |targets|
+                targets.map { |target| PersistedTarget.new(target.cluster, target.endpoint, target.device_type) }
+              end,
+              fabric_index: entry.fabric_index
+            )
+          end,
+          extension: @extension.map { |entry| PersistedExtensionEntry.new(entry.data, entry.fabric_index) }
+        ).to_document
+      end
+
+      def restore_state(document : Storage::Document) : Nil
+        state = PersistedState.from_document(document)
+        @data_version = state.data_version
+
+        @acl = state.acl.compact_map do |entry|
+          idx = entry.fabric_index
+          unless idx
+            Log.warn { "restore_state: skipping ACL entry without fabric_index" }
+            next
+          end
+
+          targets = entry.targets.try do |tgts|
+            tgts.map { |target| Target.new(cluster: target.cluster, endpoint: target.endpoint, device_type: target.device_type) }
+          end
+
+          AccessControlEntry.new(
+            privilege: entry.privilege,
+            auth_mode: entry.auth_mode,
+            subjects: entry.subjects,
+            targets: targets,
+            fabric_index: idx
+          )
+        end
+
+        @extension = state.extension.map { |entry| ExtensionEntry.new(entry.data, entry.fabric_index) }
+      rescue ex
+        Log.error(exception: ex) { "AccessControl restore_state failed; starting fresh" }
+      end
+
+      # Check if a subject has the required privilege
+      # Supports CaseAuthenticatedTag (CAT) subject matching per Matter spec
+      def check_access(subject : UInt64, fabric_index : UInt8, privilege : AccessControlEntryPrivilege,
+                       cluster : UInt32? = nil, endpoint : UInt16? = nil, device_type : UInt32? = nil,
+                       auth_mode : AccessControlEntryAuthMode = AccessControlEntryAuthMode::CASE) : Bool
+        # Find matching ACL entries for this fabric
+        matching_entries = @acl.select do |entry|
+          entry.fabric_index == fabric_index &&
+            entry.auth_mode == auth_mode &&
+            (entry.subjects.empty? || entry.subjects.any? { |acl_subject| subject_matches?(acl_subject, subject) })
+        end
+
+        # Check if any entry grants sufficient privilege
+        matching_entries.any? do |entry|
+          # Check privilege level (higher privilege includes lower)
+          has_privilege = entry.privilege >= privilege
+
+          # Check target matching
+          has_target_access = if targets = entry.targets
+                                # Per spec, an empty targets list is a wildcard (all targets).
+                                targets.empty? || targets.any? do |target|
+                                  (!target.cluster || target.cluster == cluster) &&
+                                    (!target.endpoint || target.endpoint == endpoint) &&
+                                    (!target.device_type || target.device_type == device_type)
+                                end
+                              else
+                                true # nil targets means all targets
+                              end
+
+          has_privilege && has_target_access
+        end
+      end
+
+      # Convenience wrapper for the generated cluster metadata privilege enum.
+      def check_access(subject : UInt64, fabric_index : UInt8, privilege : InteractionModel::EntryPrivilege,
+                       cluster : UInt32? = nil, endpoint : UInt16? = nil, device_type : UInt32? = nil,
+                       auth_mode : InteractionModel::EntryAuthMode = InteractionModel::EntryAuthMode::Case) : Bool
+        check_access(
+          subject: subject,
+          fabric_index: fabric_index,
+          privilege: AccessControlEntryPrivilege.from_value(privilege.value),
+          cluster: cluster,
+          endpoint: endpoint,
+          device_type: device_type,
+          auth_mode: AccessControlEntryAuthMode.from_value(auth_mode.value)
+        )
+      end
+
+      # Check if a subject (from incoming request) matches an ACL subject
+      # Supports CaseAuthenticatedTag (CAT) matching:
+      # - For CAT subjects: identity must match, incoming version >= ACL version
+      # - For regular NodeIds: exact match required
+      private def subject_matches?(acl_subject : UInt64, incoming_subject : UInt64) : Bool
+        acl_node = DataType::NodeId.new(acl_subject)
+        incoming_node = DataType::NodeId.new(incoming_subject)
+
+        # If both are CAT-encoded, use CAT matching rules
+        if acl_node.case_authenticated_tag? && incoming_node.case_authenticated_tag?
+          begin
+            acl_cat = acl_node.extract_as_case_authenticated_tag
+            incoming_cat = incoming_node.extract_as_case_authenticated_tag
+
+            # CAT matching: identity must match, incoming version >= ACL version
+            acl_cat.identity_value == incoming_cat.identity_value &&
+              incoming_cat.version >= acl_cat.version
+          rescue ex
+            Log.trace(exception: ex) { "CAT extraction failed; falling back to exact subject match" }
+            acl_subject == incoming_subject
+          end
+        else
+          # Regular NodeId: exact match required
+          acl_subject == incoming_subject
+        end
+      end
+
+      # Helper: Get ACL entries for a specific fabric
+      def get_acl_for_fabric(fabric_index : UInt8) : Array(AccessControlEntry)
+        @acl.select { |entry| entry.fabric_index == fabric_index }
+      end
+
+      # Helper: Remove all ACL entries for a fabric
+      def remove_fabric_acl(fabric_index : UInt8) : Nil
+        @acl.reject! { |entry| entry.fabric_index == fabric_index }
+        increment_version_and_notify(ATTR_ACL)
+      end
+
+      # Replaces the accessing fabric's ACL entries (all entries outside a fabric).
+      def acl=(entries : Array(AccessControlEntry)) : Nil
+        fabric_index = request_fabric_index
+        entries.map! do |entry|
+          entry.fabric_index ||= fabric_index
+          entry
+        end
+        if fabric_index
+          @acl.reject! { |entry| entry.fabric_index == fabric_index }
+          @acl.concat(entries)
+        else
+          @acl = entries
+        end
+        increment_version_and_notify(ATTR_ACL)
+      end
+
+      # Replaces the accessing fabric's Extension entries (all entries outside a fabric).
+      def extension=(entries : Array(ExtensionEntry)) : Nil
+        fabric_index = request_fabric_index
+        if fabric_index
+          entries.map! do |entry|
+            entry.fabric_index = fabric_index
+            entry
+          end
+          @extension.reject! { |entry| entry.fabric_index == fabric_index }
+          @extension.concat(entries)
+        else
+          @extension = entries
+        end
+        increment_version_and_notify(ATTR_EXTENSION)
+      end
+    end
+  end
+end

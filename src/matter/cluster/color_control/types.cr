@@ -2,7 +2,7 @@ require "../cluster"
 
 module Matter
   module Cluster
-    class ColorControlCluster < Base
+    class ColorControl < Base
       # The value of the ColorControl driftCompensation attribute
       enum DriftCompensation : UInt8
         None                                  = 0

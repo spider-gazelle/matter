@@ -1,5 +1,5 @@
 require "../spec_helper"
-require "../../src/matter/cluster/administrator_commissioning_cluster"
+require "../../src/matter/cluster/administrator_commissioning"
 
 # Helper to create TLV-encoded OpenCommissioningWindowRequest
 def create_open_commissioning_window_tlv(
@@ -9,7 +9,7 @@ def create_open_commissioning_window_tlv(
   iterations : UInt32,
   salt : Bytes,
 ) : TLV::Any
-  Matter::Cluster::AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+  Matter::Cluster::AdministratorCommissioning::OpenCommissioningWindowRequest.new(
     commissioning_timeout: timeout,
     pake_passcode_verifier: verifier,
     discriminator: discriminator,
@@ -20,21 +20,21 @@ end
 
 # Helper to create TLV-encoded OpenBasicCommissioningWindowRequest
 def create_open_basic_commissioning_window_tlv(timeout : UInt16) : TLV::Any
-  Matter::Cluster::AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+  Matter::Cluster::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
     commissioning_timeout: timeout
   ).to_tlv(nil)
 end
 
 module Matter::Cluster
-  describe AdministratorCommissioningCluster do
+  describe AdministratorCommissioning do
     describe "initialization" do
       it "creates administrator commissioning cluster" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         cluster.cluster_id.id.should eq(0x003C_u32)
         cluster.name.should eq("AdministratorCommissioning")
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::WindowNotOpen)
         cluster.admin_fabric_index.should be_nil
         cluster.admin_vendor_id.should be_nil
       end
@@ -43,31 +43,31 @@ module Matter::Cluster
     describe "attributes" do
       it "reads WindowStatus attribute" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
-        read(cluster, AdministratorCommissioningCluster::ATTR_WINDOW_STATUS).should eq(0_u8) # WindowNotOpen
+        read(cluster, AdministratorCommissioning::ATTR_WINDOW_STATUS).should eq(0_u8) # WindowNotOpen
       end
 
       it "reads AdminFabricIndex attribute when nil" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
-        read(cluster, AdministratorCommissioningCluster::ATTR_ADMIN_FABRIC_INDEX).should be_nil
+        read(cluster, AdministratorCommissioning::ATTR_ADMIN_FABRIC_INDEX).should be_nil
       end
 
       it "reads AdminVendorId attribute when nil" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
-        read(cluster, AdministratorCommissioningCluster::ATTR_ADMIN_VENDOR_ID).should be_nil
+        read(cluster, AdministratorCommissioning::ATTR_ADMIN_VENDOR_ID).should be_nil
       end
 
       it "returns status for unsupported attribute write" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         status = write(cluster,
-          AdministratorCommissioningCluster::ATTR_WINDOW_STATUS,
+          AdministratorCommissioning::ATTR_WINDOW_STATUS,
           1_u8
         )
 
@@ -78,13 +78,13 @@ module Matter::Cluster
     describe "metadata" do
       it "provides attribute metadata" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         attributes = cluster.attributes
         attributes.should_not be_empty
         attributes.size.should be >= 3
 
-        window_status = attributes.find { |attr| attr.id.id == AdministratorCommissioningCluster::ATTR_WINDOW_STATUS }
+        window_status = attributes.find { |attr| attr.id.id == AdministratorCommissioning::ATTR_WINDOW_STATUS }
         window_status.should_not be_nil
         window_status_attr = window_status.as(AttributeMetadata)
         window_status_attr.name.should eq("windowStatus")
@@ -93,13 +93,13 @@ module Matter::Cluster
 
       it "provides command metadata" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         commands = cluster.commands
         commands.should_not be_empty
         commands.size.should be >= 3
 
-        open_window = commands.find { |cmd| cmd.id.id == AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW }
+        open_window = commands.find { |cmd| cmd.id.id == AdministratorCommissioning::CMD_OPEN_COMMISSIONING_WINDOW }
         open_window.should_not be_nil
         open_window.as(CommandMetadata).name.should eq("openCommissioningWindow")
       end
@@ -107,42 +107,42 @@ module Matter::Cluster
 
     describe "CommissioningWindowStatus" do
       it "defines window status codes" do
-        AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen.value.should eq(0_u8)
-        AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen.value.should eq(1_u8)
-        AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen.value.should eq(2_u8)
+        AdministratorCommissioning::CommissioningWindowStatus::WindowNotOpen.value.should eq(0_u8)
+        AdministratorCommissioning::CommissioningWindowStatus::EnhancedWindowOpen.value.should eq(1_u8)
+        AdministratorCommissioning::CommissioningWindowStatus::BasicWindowOpen.value.should eq(2_u8)
       end
     end
 
     describe "StatusCode" do
       it "defines status codes" do
-        AdministratorCommissioningCluster::StatusCode::Busy.value.should eq(2_u8)
-        AdministratorCommissioningCluster::StatusCode::PAKEParameterError.value.should eq(3_u8)
-        AdministratorCommissioningCluster::StatusCode::WindowNotOpen.value.should eq(4_u8)
+        AdministratorCommissioning::StatusCode::Busy.value.should eq(2_u8)
+        AdministratorCommissioning::StatusCode::PAKEParameterError.value.should eq(3_u8)
+        AdministratorCommissioning::StatusCode::WindowNotOpen.value.should eq(4_u8)
       end
     end
 
     describe "commands" do
       it "handles OpenCommissioningWindow command" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
-        result = invoke(cluster, AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW, Bytes.new(0))
+        result = invoke(cluster, AdministratorCommissioning::CMD_OPEN_COMMISSIONING_WINDOW, Bytes.new(0))
         result.should be_a(Matter::InteractionModel::Status | CommandResponse)
       end
 
       it "handles OpenBasicCommissioningWindow command" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
-        result = invoke(cluster, AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW, Bytes.new(0))
+        result = invoke(cluster, AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW, Bytes.new(0))
         result.should be_a(Matter::InteractionModel::Status | CommandResponse)
       end
 
       it "handles RevokeCommissioning command" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
-        result = invoke(cluster, AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING, Bytes.new(0))
+        result = invoke(cluster, AdministratorCommissioning::CMD_REVOKE_COMMISSIONING, Bytes.new(0))
         result.should be_a(Matter::InteractionModel::Status | CommandResponse)
       end
     end
@@ -150,13 +150,13 @@ module Matter::Cluster
     describe "commissioning advertising callback" do
       it "asks for the device discriminator when a basic window opens" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
         requests = [] of {UInt16?, Matter::MDNS::CommissioningMode}
         cluster.on_start_commissioning_advertising = ->(discriminator : UInt16?, mode : Matter::MDNS::CommissioningMode) do
           requests << {discriminator, mode}
         end
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(commissioning_timeout: 900_u16)
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(commissioning_timeout: 900_u16)
         cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
 
         requests.should eq([{nil, Matter::MDNS::CommissioningMode::Basic}])
@@ -165,13 +165,13 @@ module Matter::Cluster
 
       it "asks for the requested discriminator when an enhanced window opens" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
         requests = [] of {UInt16?, Matter::MDNS::CommissioningMode}
         cluster.on_start_commissioning_advertising = ->(discriminator : UInt16?, mode : Matter::MDNS::CommissioningMode) do
           requests << {discriminator, mode}
         end
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: Bytes.new(97, 0xAB_u8),
           discriminator: 1234_u16,
@@ -186,11 +186,11 @@ module Matter::Cluster
 
       it "stops advertising when the window is revoked" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
         stops = 0
         cluster.on_stop_commissioning_advertising = -> { stops += 1 }
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(commissioning_timeout: 900_u16)
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(commissioning_timeout: 900_u16)
         cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
         cluster.revoke_commissioning!
 
@@ -202,7 +202,7 @@ module Matter::Cluster
       describe "OpenCommissioningWindow" do
         it "parses valid TLV-encoded command and opens window" do
           endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-          cluster = AdministratorCommissioningCluster.new(endpoint_id)
+          cluster = AdministratorCommissioning.new(endpoint_id)
 
           # Create TLV-encoded OpenCommissioningWindowRequest
           tlv_data = create_open_commissioning_window_tlv(
@@ -214,23 +214,23 @@ module Matter::Cluster
           )
 
           result = invoke(cluster,
-            AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
+            AdministratorCommissioning::CMD_OPEN_COMMISSIONING_WINDOW,
             tlv_data
           )
 
           result.should be_a(Matter::InteractionModel::Status | CommandResponse)
-          cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen)
+          cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::EnhancedWindowOpen)
         end
 
         it "handles malformed TLV data" do
           endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-          cluster = AdministratorCommissioningCluster.new(endpoint_id)
+          cluster = AdministratorCommissioning.new(endpoint_id)
 
           # Invalid TLV data
           bad_tlv = TLV::Any.new(Bytes[0xFF, 0xFF, 0xFF])
 
           result = invoke(cluster,
-            AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
+            AdministratorCommissioning::CMD_OPEN_COMMISSIONING_WINDOW,
             bad_tlv
           )
 
@@ -240,7 +240,7 @@ module Matter::Cluster
 
         it "returns busy status when window already open" do
           endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-          cluster = AdministratorCommissioningCluster.new(endpoint_id)
+          cluster = AdministratorCommissioning.new(endpoint_id)
 
           # Create TLV-encoded OpenCommissioningWindowRequest
           tlv_data = create_open_commissioning_window_tlv(
@@ -253,14 +253,14 @@ module Matter::Cluster
 
           # First open succeeds
           invoke(cluster,
-            AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
+            AdministratorCommissioning::CMD_OPEN_COMMISSIONING_WINDOW,
             tlv_data
           )
-          cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen)
+          cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::EnhancedWindowOpen)
 
           # Second open should fail with Busy
           result2 = invoke(cluster,
-            AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
+            AdministratorCommissioning::CMD_OPEN_COMMISSIONING_WINDOW,
             tlv_data
           )
 
@@ -272,29 +272,29 @@ module Matter::Cluster
       describe "OpenBasicCommissioningWindow" do
         it "parses valid TLV-encoded command and opens window" do
           endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-          cluster = AdministratorCommissioningCluster.new(endpoint_id)
+          cluster = AdministratorCommissioning.new(endpoint_id)
 
           # Create TLV-encoded OpenBasicCommissioningWindowRequest
           tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
           result = invoke(cluster,
-            AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+            AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
             tlv_data
           )
 
           result.should be_a(Matter::InteractionModel::Status | CommandResponse)
-          cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
+          cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::BasicWindowOpen)
         end
 
         it "handles malformed TLV data" do
           endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-          cluster = AdministratorCommissioningCluster.new(endpoint_id)
+          cluster = AdministratorCommissioning.new(endpoint_id)
 
           # Invalid TLV data
           bad_tlv = TLV::Any.new(Bytes[0xFF, 0xFF, 0xFF])
 
           result = invoke(cluster,
-            AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+            AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
             bad_tlv
           )
 
@@ -304,21 +304,21 @@ module Matter::Cluster
 
         it "returns busy status when window already open" do
           endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-          cluster = AdministratorCommissioningCluster.new(endpoint_id)
+          cluster = AdministratorCommissioning.new(endpoint_id)
 
           # Create TLV-encoded OpenBasicCommissioningWindowRequest
           tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
           # First open succeeds
           invoke(cluster,
-            AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+            AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
             tlv_data
           )
-          cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
+          cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::BasicWindowOpen)
 
           # Second open should fail with Busy
           result = invoke(cluster,
-            AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+            AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
             tlv_data
           )
 
@@ -330,33 +330,33 @@ module Matter::Cluster
       describe "RevokeCommissioning" do
         it "successfully revokes an open window" do
           endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-          cluster = AdministratorCommissioningCluster.new(endpoint_id)
+          cluster = AdministratorCommissioning.new(endpoint_id)
 
           # First open a basic window
           tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
           invoke(cluster,
-            AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+            AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
             tlv_data
           )
-          cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
+          cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::BasicWindowOpen)
 
           # Then revoke it
           result = invoke(cluster,
-            AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING,
+            AdministratorCommissioning::CMD_REVOKE_COMMISSIONING,
             Bytes.new(0)
           )
 
           result.should be_a(Matter::InteractionModel::Status | CommandResponse)
-          cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
+          cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::WindowNotOpen)
         end
 
         it "returns WindowNotOpen when no window is open" do
           endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-          cluster = AdministratorCommissioningCluster.new(endpoint_id)
+          cluster = AdministratorCommissioning.new(endpoint_id)
 
           # No callback set, window closed by default
           result = invoke(cluster,
-            AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING,
+            AdministratorCommissioning::CMD_REVOKE_COMMISSIONING,
             Bytes.new(0)
           )
 
@@ -366,21 +366,21 @@ module Matter::Cluster
 
         it "closes window when no callback set and window is open" do
           endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-          cluster = AdministratorCommissioningCluster.new(endpoint_id)
+          cluster = AdministratorCommissioning.new(endpoint_id)
 
           # Open a window first
           cluster.open_basic_window(300_u16, 1_u8, 0xFFF1_u16)
-          cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
+          cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::BasicWindowOpen)
 
           # Revoke with no callback - should close directly
           result = invoke(cluster,
-            AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING,
+            AdministratorCommissioning::CMD_REVOKE_COMMISSIONING,
             Bytes.new(0)
           )
 
           result.should be_a(Matter::InteractionModel::Status | CommandResponse)
           result.as(Matter::InteractionModel::Status).status.value.should eq(0_u8) # Success
-          cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
+          cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::WindowNotOpen)
         end
       end
     end
@@ -388,18 +388,18 @@ module Matter::Cluster
     describe "window management" do
       it "tracks window status" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::WindowNotOpen)
         cluster.window_timeout.should be_nil
       end
 
       it "opens enhanced commissioning window" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         cluster.open_enhanced_window(300_u16, 1_u8, 0xFFF1_u16)
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::EnhancedWindowOpen)
         cluster.admin_fabric_index.should eq(1_u8)
         cluster.admin_vendor_id.should eq(0xFFF1_u16)
         cluster.window_timeout.should_not be_nil
@@ -407,23 +407,23 @@ module Matter::Cluster
 
       it "opens basic commissioning window" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         cluster.open_basic_window(180_u16, 1_u8, 0xFFF1_u16)
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::BasicWindowOpen)
         cluster.admin_fabric_index.should eq(1_u8)
         cluster.admin_vendor_id.should eq(0xFFF1_u16)
       end
 
       it "closes commissioning window" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         cluster.open_basic_window(180_u16, 1_u8, 0xFFF1_u16)
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::BasicWindowOpen)
 
         cluster.close_window
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::WindowNotOpen)
         cluster.admin_fabric_index.should be_nil
         cluster.admin_vendor_id.should be_nil
         cluster.window_timeout.should be_nil
@@ -431,7 +431,7 @@ module Matter::Cluster
 
       it "checks if window is expired" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         cluster.open_basic_window(0_u16, 1_u8, 0xFFF1_u16) # Expires immediately
         cluster.window_expired?.should be_true
@@ -439,7 +439,7 @@ module Matter::Cluster
 
       it "checks if window is not expired" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         cluster.open_basic_window(300_u16, 1_u8, 0xFFF1_u16)
         cluster.window_expired?.should be_false
@@ -449,7 +449,7 @@ module Matter::Cluster
     describe "window state checks" do
       it "checks if window is open" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         cluster.window_open?.should be_false
 
@@ -459,7 +459,7 @@ module Matter::Cluster
 
       it "checks window type" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         cluster.open_enhanced_window(300_u16, 1_u8, 0xFFF1_u16)
         cluster.window_status.enhanced_window_open?.should be_true
@@ -475,7 +475,7 @@ module Matter::Cluster
     describe "admin tracking" do
       it "tracks admin fabric index" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         cluster.admin_fabric_index.should be_nil
 
@@ -485,7 +485,7 @@ module Matter::Cluster
 
       it "tracks admin vendor ID" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         cluster.admin_vendor_id.should be_nil
 
@@ -497,7 +497,7 @@ module Matter::Cluster
     describe "PAKE parameters" do
       it "stores PAKE verifier for enhanced commissioning" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         verifier = Bytes.new(97, 0xAB_u8)
         cluster.pake_verifier = verifier
@@ -506,7 +506,7 @@ module Matter::Cluster
 
       it "stores discriminator" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         cluster.discriminator = 3840_u16
         cluster.discriminator.should eq(3840_u16)
@@ -514,7 +514,7 @@ module Matter::Cluster
 
       it "stores iterations" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         cluster.iterations = 1000_u32
         cluster.iterations.should eq(1000_u32)
@@ -522,7 +522,7 @@ module Matter::Cluster
 
       it "stores salt" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         salt = Bytes.new(32, 0xCD_u8)
         cluster.salt = salt
@@ -533,7 +533,7 @@ module Matter::Cluster
     describe "session context" do
       it "initializes session context as nil" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         cluster.session_fabric_index.should be_nil
         cluster.session_vendor_id.should be_nil
@@ -541,7 +541,7 @@ module Matter::Cluster
 
       it "uses session context in OpenCommissioningWindow" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         # Set session context
         cluster.session_fabric_index = 3_u8
@@ -557,7 +557,7 @@ module Matter::Cluster
         )
 
         result = invoke(cluster,
-          AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
+          AdministratorCommissioning::CMD_OPEN_COMMISSIONING_WINDOW,
           tlv_data
         )
 
@@ -565,12 +565,12 @@ module Matter::Cluster
         # Verify session context was applied to admin attributes
         cluster.admin_fabric_index.should eq(3_u8)
         cluster.admin_vendor_id.should eq(0xABCD_u16)
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::EnhancedWindowOpen)
       end
 
       it "uses nil values when session context not set in OpenCommissioningWindow" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         # Don't set session context - should use nil (no session info available)
 
@@ -584,7 +584,7 @@ module Matter::Cluster
         )
 
         result = invoke(cluster,
-          AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW,
+          AdministratorCommissioning::CMD_OPEN_COMMISSIONING_WINDOW,
           tlv_data
         )
 
@@ -592,12 +592,12 @@ module Matter::Cluster
         # Verify nil values when no session context
         cluster.admin_fabric_index.should be_nil
         cluster.admin_vendor_id.should be_nil
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::EnhancedWindowOpen)
       end
 
       it "uses session context in OpenBasicCommissioningWindow" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         # Set session context
         cluster.session_fabric_index = 5_u8
@@ -607,7 +607,7 @@ module Matter::Cluster
         tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
         result = invoke(cluster,
-          AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+          AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
           tlv_data
         )
 
@@ -615,12 +615,12 @@ module Matter::Cluster
         # Verify session context was applied to admin attributes
         cluster.admin_fabric_index.should eq(5_u8)
         cluster.admin_vendor_id.should eq(0x1234_u16)
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::BasicWindowOpen)
       end
 
       it "uses nil values when session context not set in OpenBasicCommissioningWindow" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         # Don't set session context - should use nil (no session info available)
 
@@ -628,7 +628,7 @@ module Matter::Cluster
         tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
         result = invoke(cluster,
-          AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+          AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
           tlv_data
         )
 
@@ -636,12 +636,12 @@ module Matter::Cluster
         # Verify nil values when no session context
         cluster.admin_fabric_index.should be_nil
         cluster.admin_vendor_id.should be_nil
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::BasicWindowOpen)
       end
 
       it "allows session context to be updated between commands" do
         endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = AdministratorCommissioningCluster.new(endpoint_id)
+        cluster = AdministratorCommissioning.new(endpoint_id)
 
         # First command with fabric 1
         cluster.session_fabric_index = 1_u8
@@ -650,14 +650,14 @@ module Matter::Cluster
         tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
 
         invoke(cluster,
-          AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+          AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
           tlv_data
         )
 
         # Verify first command used fabric 1
         cluster.admin_fabric_index.should eq(1_u8)
         cluster.admin_vendor_id.should eq(0x1111_u16)
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::BasicWindowOpen)
 
         # Close window to allow second open
         cluster.close_window
@@ -667,47 +667,47 @@ module Matter::Cluster
         cluster.session_vendor_id = 0x2222_u16
 
         invoke(cluster,
-          AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+          AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
           tlv_data
         )
 
         # Verify second command used fabric 2
         cluster.admin_fabric_index.should eq(2_u8)
         cluster.admin_vendor_id.should eq(0x2222_u16)
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::BasicWindowOpen)
       end
     end
 
     describe "initialization and attributes" do
       it "initializes with default values" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::WindowNotOpen)
         cluster.admin_fabric_index.should be_nil
         cluster.admin_vendor_id.should be_nil
         cluster.window_open?.should be_false
       end
 
       it "exposes cluster ID" do
-        AdministratorCommissioningCluster::CLUSTER_ID.should eq(0x003C_u32)
+        AdministratorCommissioning::CLUSTER_ID.should eq(0x003C_u32)
       end
 
       it "defines window status enum values" do
-        AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen.value.should eq(0_u8)
-        AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen.value.should eq(1_u8)
-        AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen.value.should eq(2_u8)
+        AdministratorCommissioning::CommissioningWindowStatus::WindowNotOpen.value.should eq(0_u8)
+        AdministratorCommissioning::CommissioningWindowStatus::EnhancedWindowOpen.value.should eq(1_u8)
+        AdministratorCommissioning::CommissioningWindowStatus::BasicWindowOpen.value.should eq(2_u8)
       end
     end
 
     describe "OpenCommissioningWindow command (Enhanced)" do
       it "opens enhanced commissioning window with valid parameters" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         # Valid 97-byte verifier (32 bytes w0 + 65 bytes L)
         verifier = Bytes.new(97, 0_u8)
         salt = Bytes.new(32, 1_u8)
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -717,20 +717,20 @@ module Matter::Cluster
 
         cluster.open_commissioning_window(request, 1_u8, 0x1234_u16)
 
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::EnhancedWindowOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::EnhancedWindowOpen)
         cluster.admin_fabric_index.should eq(1_u8)
         cluster.admin_vendor_id.should eq(0x1234_u16)
         cluster.window_open?.should be_true
       end
 
       it "rejects invalid verifier length" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         # Invalid: 96 bytes (should be 97)
         verifier = Bytes.new(96, 0_u8)
         salt = Bytes.new(32, 1_u8)
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -738,7 +738,7 @@ module Matter::Cluster
           salt: salt
         )
 
-        expect_raises(AdministratorCommissioningCluster::PAKEParameterError, /verifier length is invalid/) do
+        expect_raises(AdministratorCommissioning::PAKEParameterError, /verifier length is invalid/) do
           cluster.open_commissioning_window(request, 1_u8, 0x1234_u16)
         end
 
@@ -746,12 +746,12 @@ module Matter::Cluster
       end
 
       it "rejects iterations below minimum" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         verifier = Bytes.new(97, 0_u8)
         salt = Bytes.new(32, 1_u8)
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -759,18 +759,18 @@ module Matter::Cluster
           salt: salt
         )
 
-        expect_raises(AdministratorCommissioningCluster::PAKEParameterError, /iterations invalid/) do
+        expect_raises(AdministratorCommissioning::PAKEParameterError, /iterations invalid/) do
           cluster.open_commissioning_window(request, 1_u8, 0x1234_u16)
         end
       end
 
       it "rejects iterations above maximum" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         verifier = Bytes.new(97, 0_u8)
         salt = Bytes.new(32, 1_u8)
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -778,18 +778,18 @@ module Matter::Cluster
           salt: salt
         )
 
-        expect_raises(AdministratorCommissioningCluster::PAKEParameterError, /iterations invalid/) do
+        expect_raises(AdministratorCommissioning::PAKEParameterError, /iterations invalid/) do
           cluster.open_commissioning_window(request, 1_u8, 0x1234_u16)
         end
       end
 
       it "rejects salt below minimum length" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         verifier = Bytes.new(97, 0_u8)
         salt = Bytes.new(15, 1_u8) # Below 16 bytes
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -797,18 +797,18 @@ module Matter::Cluster
           salt: salt
         )
 
-        expect_raises(AdministratorCommissioningCluster::PAKEParameterError, /salt has invalid length/) do
+        expect_raises(AdministratorCommissioning::PAKEParameterError, /salt has invalid length/) do
           cluster.open_commissioning_window(request, 1_u8, 0x1234_u16)
         end
       end
 
       it "rejects salt above maximum length" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         verifier = Bytes.new(97, 0_u8)
         salt = Bytes.new(33, 1_u8) # Above 32 bytes
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -816,18 +816,18 @@ module Matter::Cluster
           salt: salt
         )
 
-        expect_raises(AdministratorCommissioningCluster::PAKEParameterError, /salt has invalid length/) do
+        expect_raises(AdministratorCommissioning::PAKEParameterError, /salt has invalid length/) do
           cluster.open_commissioning_window(request, 1_u8, 0x1234_u16)
         end
       end
 
       it "rejects timeout below minimum" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         verifier = Bytes.new(97, 0_u8)
         salt = Bytes.new(32, 1_u8)
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 179_u16, # Below 180 seconds (3 minutes)
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -841,12 +841,12 @@ module Matter::Cluster
       end
 
       it "rejects timeout above maximum" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         verifier = Bytes.new(97, 0_u8)
         salt = Bytes.new(32, 1_u8)
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 901_u16, # Above 900 seconds (15 minutes)
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -860,12 +860,12 @@ module Matter::Cluster
       end
 
       it "rejects opening window when one already open" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         verifier = Bytes.new(97, 0_u8)
         salt = Bytes.new(32, 1_u8)
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -877,7 +877,7 @@ module Matter::Cluster
         cluster.open_commissioning_window(request, 1_u8, 0x1234_u16)
 
         # Try to open second window
-        expect_raises(AdministratorCommissioningCluster::BusyError, /already opened/) do
+        expect_raises(AdministratorCommissioning::BusyError, /already opened/) do
           cluster.open_commissioning_window(request, 2_u8, 0x5678_u16)
         end
 
@@ -888,24 +888,24 @@ module Matter::Cluster
 
     describe "OpenBasicCommissioningWindow command" do
       it "opens basic commissioning window with valid timeout" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 600_u16
         )
 
         cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
 
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::BasicWindowOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::BasicWindowOpen)
         cluster.admin_fabric_index.should eq(1_u8)
         cluster.admin_vendor_id.should eq(0x1234_u16)
         cluster.window_open?.should be_true
       end
 
       it "rejects timeout below minimum" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 100_u16
         )
 
@@ -915,9 +915,9 @@ module Matter::Cluster
       end
 
       it "rejects timeout above maximum" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 1000_u16
         )
 
@@ -927,9 +927,9 @@ module Matter::Cluster
       end
 
       it "rejects opening window when one already open" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 600_u16
         )
 
@@ -937,7 +937,7 @@ module Matter::Cluster
         cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
 
         # Try to open second window
-        expect_raises(AdministratorCommissioningCluster::BusyError, /already opened/) do
+        expect_raises(AdministratorCommissioning::BusyError, /already opened/) do
           cluster.open_basic_commissioning_window(request, 2_u8, 0x5678_u16)
         end
       end
@@ -945,12 +945,12 @@ module Matter::Cluster
 
     describe "RevokeCommissioning command" do
       it "revokes open enhanced commissioning window" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         # Open enhanced window
         verifier = Bytes.new(97, 0_u8)
         salt = Bytes.new(32, 1_u8)
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -963,17 +963,17 @@ module Matter::Cluster
         # Revoke window
         cluster.revoke_commissioning!
 
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::WindowNotOpen)
         cluster.admin_fabric_index.should be_nil
         cluster.admin_vendor_id.should be_nil
         cluster.window_open?.should be_false
       end
 
       it "revokes open basic commissioning window" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         # Open basic window
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 600_u16
         )
         cluster.open_basic_commissioning_window(request, 1_u8, 0x1234_u16)
@@ -982,14 +982,14 @@ module Matter::Cluster
         # Revoke window
         cluster.revoke_commissioning!
 
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::WindowNotOpen)
         cluster.window_open?.should be_false
       end
 
       it "raises error when no window open" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
-        expect_raises(AdministratorCommissioningCluster::WindowNotOpenError, /No commissioning window/) do
+        expect_raises(AdministratorCommissioning::WindowNotOpenError, /No commissioning window/) do
           cluster.revoke_commissioning!
         end
       end
@@ -997,11 +997,11 @@ module Matter::Cluster
 
     describe "window timeout behavior" do
       it "automatically closes window after timeout" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
         # Configure lower bounds for fast testing
         cluster.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 1_u16 # 1 second for fast test
         )
 
@@ -1012,17 +1012,17 @@ module Matter::Cluster
         sleep 1.5.seconds
         Fiber.yield # Ensure all fibers have run
 
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::WindowNotOpen)
         cluster.window_open?.should be_false
         cluster.admin_fabric_index.should be_nil
       end
 
       it "cancels timeout timer when window manually revoked" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
         # Configure lower bounds for fast testing
         cluster.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 5_u16
         )
 
@@ -1043,12 +1043,12 @@ module Matter::Cluster
 
     describe "PAKE parameter validation edge cases" do
       it "accepts valid verifier at exactly 97 bytes" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         verifier = Bytes.new(97, 0xAB_u8)
         salt = Bytes.new(32, 1_u8)
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -1061,12 +1061,12 @@ module Matter::Cluster
       end
 
       it "accepts iterations at minimum boundary (1000)" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         verifier = Bytes.new(97, 0_u8)
         salt = Bytes.new(32, 1_u8)
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -1079,12 +1079,12 @@ module Matter::Cluster
       end
 
       it "accepts iterations at maximum boundary (100,000)" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         verifier = Bytes.new(97, 0_u8)
         salt = Bytes.new(32, 1_u8)
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -1097,12 +1097,12 @@ module Matter::Cluster
       end
 
       it "accepts salt at minimum boundary (16 bytes)" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         verifier = Bytes.new(97, 0_u8)
         salt = Bytes.new(16, 1_u8)
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -1115,12 +1115,12 @@ module Matter::Cluster
       end
 
       it "accepts salt at maximum boundary (32 bytes)" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         verifier = Bytes.new(97, 0_u8)
         salt = Bytes.new(32, 1_u8)
 
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -1135,9 +1135,9 @@ module Matter::Cluster
 
     describe "timeout boundary validation" do
       it "accepts timeout at minimum boundary (180 seconds)" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 180_u16
         )
 
@@ -1146,9 +1146,9 @@ module Matter::Cluster
       end
 
       it "accepts timeout at maximum boundary (900 seconds)" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16
         )
 
@@ -1159,9 +1159,9 @@ module Matter::Cluster
 
     describe "cleanup" do
       it "closes window on explicit close call" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 600_u16
         )
 
@@ -1175,16 +1175,16 @@ module Matter::Cluster
 
     describe "time tracking" do
       it "returns nil time_remaining when window not open" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         cluster.time_remaining.should be_nil
       end
 
       it "tracks time remaining during open window" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
         cluster.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 5_u16
         )
 
@@ -1202,10 +1202,10 @@ module Matter::Cluster
       end
 
       it "returns zero when window has expired" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
         cluster.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 1_u16
         )
 
@@ -1220,10 +1220,10 @@ module Matter::Cluster
       end
 
       it "updates time remaining as time passes" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
         cluster.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 5_u16
         )
 
@@ -1249,7 +1249,7 @@ module Matter::Cluster
 
     describe "integration callbacks" do
       it "invokes on_configure_pase_server callback for enhanced commissioning" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
         callback_invoked = false
         received_verifier = Bytes.new(0)
         received_iterations = 0_u32
@@ -1265,7 +1265,7 @@ module Matter::Cluster
 
         verifier = Bytes.new(97, 0xAA_u8)
         salt = Bytes.new(32, 0xBB_u8)
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -1284,7 +1284,7 @@ module Matter::Cluster
       end
 
       it "invokes on_configure_pase_pin callback for basic commissioning" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
         callback_invoked = false
         received_pin = 0_u32
         received_iterations = 0_u32
@@ -1296,7 +1296,7 @@ module Matter::Cluster
           nil
         }
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 600_u16
         )
 
@@ -1310,7 +1310,7 @@ module Matter::Cluster
       end
 
       it "invokes on_stop_pase_server callback when window closes" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
         callback_invoked = false
 
         cluster.on_stop_pase_server = -> {
@@ -1318,7 +1318,7 @@ module Matter::Cluster
           nil
         }
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 600_u16
         )
 
@@ -1331,7 +1331,7 @@ module Matter::Cluster
       end
 
       it "invokes on_close_failsafe callback when window closes" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
         callback_invoked = false
 
         cluster.on_close_failsafe = -> {
@@ -1339,7 +1339,7 @@ module Matter::Cluster
           nil
         }
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 600_u16
         )
 
@@ -1352,13 +1352,13 @@ module Matter::Cluster
       end
 
       it "works without callbacks configured" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
 
         # Don't configure any callbacks
 
         verifier = Bytes.new(97, 0_u8)
         salt = Bytes.new(32, 1_u8)
-        request = AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenCommissioningWindowRequest.new(
           commissioning_timeout: 900_u16,
           pake_passcode_verifier: verifier,
           discriminator: 1234_u16,
@@ -1375,7 +1375,7 @@ module Matter::Cluster
       end
 
       it "invokes callbacks on timeout expiry" do
-        cluster = AdministratorCommissioningCluster.new
+        cluster = AdministratorCommissioning.new
         cluster.configure_timeout_bounds(minimum: 1_u16, maximum: 10_u16)
 
         pase_stopped = false
@@ -1391,7 +1391,7 @@ module Matter::Cluster
           nil
         }
 
-        request = AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
+        request = AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
           commissioning_timeout: 1_u16
         )
 
@@ -1410,49 +1410,49 @@ module Matter::Cluster
     end
     describe "wire status mapping" do
       it "answers ConstraintError when the commissioning timeout is out of bounds" do
-        cluster = AdministratorCommissioningCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
-        too_short = AdministratorCommissioningCluster::MINIMUM_COMMISSIONING_TIMEOUT - 1
+        cluster = AdministratorCommissioning.new(Matter::DataType::EndpointNumber.new(0_u16))
+        too_short = AdministratorCommissioning::MINIMUM_COMMISSIONING_TIMEOUT - 1
 
         result = invoke(cluster,
-          AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+          AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
           create_open_basic_commissioning_window_tlv(too_short)
         )
 
         result.should eq(Matter::InteractionModel::Status.constraint_error)
-        cluster.window_status.should eq(AdministratorCommissioningCluster::CommissioningWindowStatus::WindowNotOpen)
+        cluster.window_status.should eq(AdministratorCommissioning::CommissioningWindowStatus::WindowNotOpen)
       end
 
       it "answers Failure with the PAKEParameterError cluster status for a bad verifier" do
-        cluster = AdministratorCommissioningCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = AdministratorCommissioning.new(Matter::DataType::EndpointNumber.new(0_u16))
         tlv_data = create_open_commissioning_window_tlv(
           timeout: 900_u16,
-          verifier: Bytes.new(AdministratorCommissioningCluster::PAKE_PASSCODE_VERIFIER_LENGTH - 1, 0xAB_u8),
+          verifier: Bytes.new(AdministratorCommissioning::PAKE_PASSCODE_VERIFIER_LENGTH - 1, 0xAB_u8),
           discriminator: 3840_u16,
           iterations: 10000_u32,
           salt: Bytes.new(32, 0xCD_u8)
         )
 
-        result = invoke(cluster, AdministratorCommissioningCluster::CMD_OPEN_COMMISSIONING_WINDOW, tlv_data)
+        result = invoke(cluster, AdministratorCommissioning::CMD_OPEN_COMMISSIONING_WINDOW, tlv_data)
 
-        result.should eq(Matter::InteractionModel::Status.cluster_failure(AdministratorCommissioningCluster::StatusCode::PAKEParameterError))
+        result.should eq(Matter::InteractionModel::Status.cluster_failure(AdministratorCommissioning::StatusCode::PAKEParameterError))
       end
 
       it "answers Busy when a window is already open" do
-        cluster = AdministratorCommissioningCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = AdministratorCommissioning.new(Matter::DataType::EndpointNumber.new(0_u16))
         tlv_data = create_open_basic_commissioning_window_tlv(600_u16)
-        invoke(cluster, AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW, tlv_data)
+        invoke(cluster, AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW, tlv_data)
 
-        result = invoke(cluster, AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW, tlv_data)
+        result = invoke(cluster, AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW, tlv_data)
 
         result.should eq(Matter::InteractionModel::Status.busy)
       end
 
       it "answers Failure with the WindowNotOpen cluster status when revoking a closed window" do
-        cluster = AdministratorCommissioningCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = AdministratorCommissioning.new(Matter::DataType::EndpointNumber.new(0_u16))
 
-        result = invoke(cluster, AdministratorCommissioningCluster::CMD_REVOKE_COMMISSIONING, Bytes.new(0))
+        result = invoke(cluster, AdministratorCommissioning::CMD_REVOKE_COMMISSIONING, Bytes.new(0))
 
-        result.should eq(Matter::InteractionModel::Status.cluster_failure(AdministratorCommissioningCluster::StatusCode::WindowNotOpen))
+        result.should eq(Matter::InteractionModel::Status.cluster_failure(AdministratorCommissioning::StatusCode::WindowNotOpen))
       end
     end
   end

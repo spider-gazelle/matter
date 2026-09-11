@@ -24,9 +24,9 @@ module MatterTemperatureSensor
     DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
     SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
 
-    @temperature : Matter::Cluster::TemperatureMeasurementCluster? = nil
-    @identify : Matter::Cluster::IdentifyCluster? = nil
-    @fixed_label : Matter::Cluster::FixedLabelCluster? = nil
+    @temperature : Matter::Cluster::TemperatureMeasurement? = nil
+    @identify : Matter::Cluster::Identify? = nil
+    @fixed_label : Matter::Cluster::FixedLabel? = nil
     @running : Bool = false
 
     def initialize
@@ -65,21 +65,21 @@ module MatterTemperatureSensor
       device_name
     end
 
-    def product_appearance : Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct?
-      Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.new(
-        Matter::Cluster::BasicInformationCluster::ProductFinish::Satin
+    def product_appearance : Matter::Cluster::BasicInformation::ProductAppearanceStruct?
+      Matter::Cluster::BasicInformation::ProductAppearanceStruct.new(
+        Matter::Cluster::BasicInformation::ProductFinish::Satin
       )
     end
 
-    def temperature : Matter::Cluster::TemperatureMeasurementCluster
-      @temperature.as(Matter::Cluster::TemperatureMeasurementCluster)
+    def temperature : Matter::Cluster::TemperatureMeasurement
+      @temperature.as(Matter::Cluster::TemperatureMeasurement)
     end
 
     protected def device_clusters : Array(Matter::Cluster::Base)
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
 
       initial_temp = random_temperature_centi
-      @temperature = Matter::Cluster::TemperatureMeasurementCluster.new(
+      @temperature = Matter::Cluster::TemperatureMeasurement.new(
         endpoint,
         measured_value: initial_temp,
         min_measured_value: MIN_TEMP_CENTI,
@@ -95,20 +95,20 @@ module MatterTemperatureSensor
         end
       end
 
-      @identify = Matter::Cluster::IdentifyCluster.new(
+      @identify = Matter::Cluster::Identify.new(
         endpoint,
-        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLight
+        identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLight
       )
 
-      @fixed_label = Matter::Cluster::FixedLabelCluster.new(
+      @fixed_label = Matter::Cluster::FixedLabel.new(
         endpoint,
         [Matter::Cluster::LabelStruct.new("name", "Example Temperature Sensor")]
       )
 
       [
         temperature,
-        @identify.as(Matter::Cluster::IdentifyCluster),
-        @fixed_label.as(Matter::Cluster::FixedLabelCluster),
+        @identify.as(Matter::Cluster::Identify),
+        @fixed_label.as(Matter::Cluster::FixedLabel),
       ] of Matter::Cluster::Base
     end
 
@@ -191,7 +191,7 @@ module MatterTemperatureSensor
     end
 
     private def format_temperature(centi_celsius : Int16) : String
-      celsius = Matter::Cluster::TemperatureMeasurementCluster.to_celsius(centi_celsius)
+      celsius = Matter::Cluster::TemperatureMeasurement.to_celsius(centi_celsius)
       "%.2f" % celsius
     end
 

@@ -1,15 +1,15 @@
 require "../spec_helper"
 
-require "../../src/matter/cluster/groups_cluster"
+require "../../src/matter/cluster/groups"
 
-describe Matter::Cluster::GroupsCluster do
+describe Matter::Cluster::Groups do
   it "persists group table" do
     endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-    cluster = Matter::Cluster::GroupsCluster.new(endpoint)
+    cluster = Matter::Cluster::Groups.new(endpoint)
 
     # Add group 0x0001 named "Test"
-    invoke(cluster, Matter::Cluster::GroupsCluster::CMD_ADD_GROUP,
-      Matter::Cluster::GroupsCluster::AddGroupRequest.new(Matter::DataType::GroupId.new(1_u16), "Test"))
+    invoke(cluster, Matter::Cluster::Groups::CMD_ADD_GROUP,
+      Matter::Cluster::Groups::AddGroupRequest.new(Matter::DataType::GroupId.new(1_u16), "Test"))
 
     cluster.group_count.should eq(1)
     cluster.member_of?(1_u16).should be_true
@@ -19,7 +19,7 @@ describe Matter::Cluster::GroupsCluster do
     document["groups"].should eq(Matter::Storage::Document{"1" => "Test"})
     document["data_version"].should eq(7_i64)
 
-    cluster2 = Matter::Cluster::GroupsCluster.new(endpoint)
+    cluster2 = Matter::Cluster::Groups.new(endpoint)
     cluster2.restore_state(document)
 
     cluster2.group_count.should eq(1)

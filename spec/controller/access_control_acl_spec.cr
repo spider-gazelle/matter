@@ -2,7 +2,7 @@ require "../spec_helper"
 require "../../src/matter/controller"
 
 describe Matter::Controller::Clusters::AccessControl do
-  it "parses ACL JSON and encodes TLV accepted by AccessControlCluster" do
+  it "parses ACL JSON and encodes TLV accepted by AccessControl" do
     # Use a subject > Int64::MAX to ensure the parser doesn't rely on `JSON.parse` (which uses Int64).
     json = %([{"fabricIndex":2,"privilege":1,"authMode":2,"subjects":[16234001066904631842],"targets":[{"endpoint":1,"cluster":6,"deviceType":null}]}])
 
@@ -12,18 +12,18 @@ describe Matter::Controller::Clusters::AccessControl do
 
     tlv = Matter::Controller::Clusters::AccessControl.encode_acl_tlv(entries)
 
-    cluster = Matter::Cluster::AccessControlCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
-    status = write(cluster, Matter::Cluster::AccessControlCluster::ATTR_ACL, TLV::Any.from_slice(tlv))
+    cluster = Matter::Cluster::AccessControl.new(Matter::DataType::EndpointNumber.new(0_u16))
+    status = write(cluster, Matter::Cluster::AccessControl::ATTR_ACL, TLV::Any.from_slice(tlv))
     status.status.should eq Matter::InteractionModel::StatusCode::Success
 
     cluster.acl.size.should eq 1
     entry = cluster.acl[0]
-    entry.privilege.should eq Matter::Cluster::AccessControlCluster::AccessControlEntryPrivilege::View
-    entry.auth_mode.should eq Matter::Cluster::AccessControlCluster::AccessControlEntryAuthMode::CASE
+    entry.privilege.should eq Matter::Cluster::AccessControl::AccessControlEntryPrivilege::View
+    entry.auth_mode.should eq Matter::Cluster::AccessControl::AccessControlEntryAuthMode::CASE
     entry.subjects.should eq [16234001066904631842_u64]
-    entry.targets.as(Array(Matter::Cluster::AccessControlCluster::Target)).size.should eq 1
-    entry.targets.as(Array(Matter::Cluster::AccessControlCluster::Target))[0].endpoint.should eq 1_u16
-    entry.targets.as(Array(Matter::Cluster::AccessControlCluster::Target))[0].cluster.should eq 6_u32
-    entry.targets.as(Array(Matter::Cluster::AccessControlCluster::Target))[0].device_type.should be_nil
+    entry.targets.as(Array(Matter::Cluster::AccessControl::Target)).size.should eq 1
+    entry.targets.as(Array(Matter::Cluster::AccessControl::Target))[0].endpoint.should eq 1_u16
+    entry.targets.as(Array(Matter::Cluster::AccessControl::Target))[0].cluster.should eq 6_u32
+    entry.targets.as(Array(Matter::Cluster::AccessControl::Target))[0].device_type.should be_nil
   end
 end

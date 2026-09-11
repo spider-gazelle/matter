@@ -19,9 +19,9 @@ module ChipTool
             next 2
           end
 
-          cluster_id = Matter::Cluster::DescriptorCluster::CLUSTER_ID
+          cluster_id = Matter::Cluster::Descriptor::CLUSTER_ID
           attribute_id = case attribute
-                         when "parts-list" then Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST
+                         when "parts-list" then Matter::Cluster::Descriptor::ATTR_PARTS_LIST
                          else
                            STDERR.puts "Unsupported attribute: #{attribute} (supported: parts-list)"
                            next 2

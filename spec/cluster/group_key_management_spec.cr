@@ -1,5 +1,5 @@
 require "../spec_helper"
-require "../../src/matter/cluster/group_key_management_cluster"
+require "../../src/matter/cluster/group_key_management"
 
 module Matter::Cluster
   # Helper to create a valid epoch key (16 bytes)
@@ -16,31 +16,31 @@ module Matter::Cluster
     time1 : UInt64? = nil,
     key2 : Bytes? = nil,
     time2 : UInt64? = nil,
-  ) : GroupKeyManagementCluster::GroupKeySetStruct
-    GroupKeyManagementCluster::GroupKeySetStruct.new(
+  ) : GroupKeyManagement::GroupKeySetStruct
+    GroupKeyManagement::GroupKeySetStruct.new(
       group_key_set_id: id,
-      group_key_security_policy: GroupKeyManagementCluster::GroupKeySecurityPolicyEnum::TrustFirst,
+      group_key_security_policy: GroupKeyManagement::GroupKeySecurityPolicyEnum::TrustFirst,
       epoch_key0: key0,
       epoch_start_time0: time0,
       epoch_key1: key1,
       epoch_start_time1: time1,
       epoch_key2: key2,
       epoch_start_time2: time2,
-      group_key_multicast_policy: GroupKeyManagementCluster::GroupKeyMulticastPolicyEnum::PerGroupId
+      group_key_multicast_policy: GroupKeyManagement::GroupKeyMulticastPolicyEnum::PerGroupId
     )
   end
 
-  describe GroupKeyManagementCluster do
+  describe GroupKeyManagement do
     describe "initialization" do
       it "creates cluster with default settings" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         cluster.max_groups_per_fabric.should eq(12)
         cluster.max_group_keys_per_fabric.should eq(3)
-        cluster.feature_map.should eq(GroupKeyManagementCluster::Feature::None)
+        cluster.feature_map.should eq(GroupKeyManagement::Feature::None)
       end
 
       it "creates cluster with custom settings" do
-        cluster = GroupKeyManagementCluster.new(
+        cluster = GroupKeyManagement.new(
           Matter::DataType::EndpointNumber.new(0_u16),
           max_groups_per_fabric: 20_u16,
           max_group_keys_per_fabric: 5_u16
@@ -50,18 +50,18 @@ module Matter::Cluster
       end
 
       it "starts with empty key sets" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         response = cluster.handle_key_set_read_all_indices(fabric_index: 1)
         response.group_key_set_i_ds.should be_empty
       end
 
       it "starts with empty group key map" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         cluster.group_key_map(fabric_index: 1).should be_empty
       end
 
       it "starts with empty group table" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         cluster.group_table(fabric_index: 1).should be_empty
       end
     end
@@ -83,9 +83,9 @@ module Matter::Cluster
       end
 
       it "rejects epoch key with wrong length" do
-        key_set = GroupKeyManagementCluster::GroupKeySetStruct.new(
+        key_set = GroupKeyManagement::GroupKeySetStruct.new(
           group_key_set_id: 1_u16,
-          group_key_security_policy: GroupKeyManagementCluster::GroupKeySecurityPolicyEnum::TrustFirst,
+          group_key_security_policy: GroupKeyManagement::GroupKeySecurityPolicyEnum::TrustFirst,
           epoch_key0: Bytes.new(15), # Wrong length
           epoch_start_time0: 1000_u64
         )
@@ -95,9 +95,9 @@ module Matter::Cluster
       end
 
       it "rejects key without matching start time" do
-        key_set = GroupKeyManagementCluster::GroupKeySetStruct.new(
+        key_set = GroupKeyManagement::GroupKeySetStruct.new(
           group_key_set_id: 1_u16,
-          group_key_security_policy: GroupKeyManagementCluster::GroupKeySecurityPolicyEnum::TrustFirst,
+          group_key_security_policy: GroupKeyManagement::GroupKeySecurityPolicyEnum::TrustFirst,
           epoch_key0: Cluster.test_key,
           epoch_start_time0: nil # Missing time
         )
@@ -107,9 +107,9 @@ module Matter::Cluster
       end
 
       it "rejects start time without matching key" do
-        key_set = GroupKeyManagementCluster::GroupKeySetStruct.new(
+        key_set = GroupKeyManagement::GroupKeySetStruct.new(
           group_key_set_id: 1_u16,
-          group_key_security_policy: GroupKeyManagementCluster::GroupKeySecurityPolicyEnum::TrustFirst,
+          group_key_security_policy: GroupKeyManagement::GroupKeySecurityPolicyEnum::TrustFirst,
           epoch_key0: nil,
           epoch_start_time0: 1000_u64 # Has time but no key
         )
@@ -119,9 +119,9 @@ module Matter::Cluster
       end
 
       it "rejects epoch start time of 0" do
-        key_set = GroupKeyManagementCluster::GroupKeySetStruct.new(
+        key_set = GroupKeyManagement::GroupKeySetStruct.new(
           group_key_set_id: 1_u16,
-          group_key_security_policy: GroupKeyManagementCluster::GroupKeySecurityPolicyEnum::TrustFirst,
+          group_key_security_policy: GroupKeyManagement::GroupKeySecurityPolicyEnum::TrustFirst,
           epoch_key0: Cluster.test_key,
           epoch_start_time0: 0_u64
         )
@@ -154,9 +154,9 @@ module Matter::Cluster
       end
 
       it "rejects CacheAndSync security policy" do
-        key_set = GroupKeyManagementCluster::GroupKeySetStruct.new(
+        key_set = GroupKeyManagement::GroupKeySetStruct.new(
           group_key_set_id: 1_u16,
-          group_key_security_policy: GroupKeyManagementCluster::GroupKeySecurityPolicyEnum::CacheAndSync,
+          group_key_security_policy: GroupKeyManagement::GroupKeySecurityPolicyEnum::CacheAndSync,
           epoch_key0: Cluster.test_key,
           epoch_start_time0: 1000_u64
         )
@@ -166,12 +166,12 @@ module Matter::Cluster
       end
 
       it "rejects AllNodes multicast policy" do
-        key_set = GroupKeyManagementCluster::GroupKeySetStruct.new(
+        key_set = GroupKeyManagement::GroupKeySetStruct.new(
           group_key_set_id: 1_u16,
-          group_key_security_policy: GroupKeyManagementCluster::GroupKeySecurityPolicyEnum::TrustFirst,
+          group_key_security_policy: GroupKeyManagement::GroupKeySecurityPolicyEnum::TrustFirst,
           epoch_key0: Cluster.test_key,
           epoch_start_time0: 1000_u64,
-          group_key_multicast_policy: GroupKeyManagementCluster::GroupKeyMulticastPolicyEnum::AllNodes
+          group_key_multicast_policy: GroupKeyManagement::GroupKeyMulticastPolicyEnum::AllNodes
         )
         expect_raises(ArgumentError, /Only PerGroupId multicast policy/) do
           key_set.validate!
@@ -181,9 +181,9 @@ module Matter::Cluster
 
     describe "KeySetWrite command" do
       it "creates a new key set" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         key_set = Cluster.create_key_set(id: 1_u16)
-        cmd = GroupKeyManagementCluster::KeySetWriteRequest.new(key_set)
+        cmd = GroupKeyManagement::KeySetWriteRequest.new(key_set)
 
         cluster.handle_key_set_write(cmd, fabric_index: 1)
 
@@ -192,20 +192,20 @@ module Matter::Cluster
       end
 
       it "updates an existing key set" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         # Create initial key set
         key_set1 = Cluster.create_key_set(id: 1_u16, key0: Cluster.test_key(0x01), time0: 1000_u64)
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(key_set1),
+          GroupKeyManagement::KeySetWriteRequest.new(key_set1),
           fabric_index
         )
 
         # Update with new key
         key_set2 = Cluster.create_key_set(id: 1_u16, key0: Cluster.test_key(0x02), time0: 2000_u64)
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(key_set2),
+          GroupKeyManagement::KeySetWriteRequest.new(key_set2),
           fabric_index
         )
 
@@ -215,30 +215,30 @@ module Matter::Cluster
 
         # Read should return updated key set (times visible, keys redacted)
         read_response = cluster.handle_key_set_read(
-          GroupKeyManagementCluster::KeySetReadRequest.new(1_u16),
+          GroupKeyManagement::KeySetReadRequest.new(1_u16),
           fabric_index
         )
-        read_response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.epoch_start_time0.should eq(2000_u64)
+        read_response.as(GroupKeyManagement::KeySetReadResponse).group_key_set.epoch_start_time0.should eq(2000_u64)
       end
 
       it "enforces max_group_keys_per_fabric limit" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16), max_group_keys_per_fabric: 2_u16)
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16), max_group_keys_per_fabric: 2_u16)
         fabric_index = 1_u8
 
         # Create two key sets (should succeed)
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 2_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 2_u16)),
           fabric_index
         )
 
         # Third key set should fail
         error = expect_raises(Matter::ClusterError, /Cannot exceed max_group_keys_per_fabric/) do
           cluster.handle_key_set_write(
-            GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 3_u16)),
+            GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 3_u16)),
             fabric_index
           )
         end
@@ -246,22 +246,22 @@ module Matter::Cluster
       end
 
       it "allows updating without counting against limit" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16), max_group_keys_per_fabric: 2_u16)
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16), max_group_keys_per_fabric: 2_u16)
         fabric_index = 1_u8
 
         # Create two key sets
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 2_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 2_u16)),
           fabric_index
         )
 
         # Update one of them (should succeed)
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(
+          GroupKeyManagement::KeySetWriteRequest.new(
             Cluster.create_key_set(id: 1_u16, key0: Cluster.test_key(0xFF), time0: 5000_u64)
           ),
           fabric_index
@@ -269,26 +269,26 @@ module Matter::Cluster
       end
 
       it "rejects invalid key set structure" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
-        invalid_key_set = GroupKeyManagementCluster::GroupKeySetStruct.new(
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
+        invalid_key_set = GroupKeyManagement::GroupKeySetStruct.new(
           group_key_set_id: 1_u16,
-          group_key_security_policy: GroupKeyManagementCluster::GroupKeySecurityPolicyEnum::TrustFirst,
+          group_key_security_policy: GroupKeyManagement::GroupKeySecurityPolicyEnum::TrustFirst,
           epoch_key0: Bytes.new(10), # Wrong size
           epoch_start_time0: 1000_u64
         )
 
         expect_raises(ArgumentError, /must be exactly 16 bytes/) do
           cluster.handle_key_set_write(
-            GroupKeyManagementCluster::KeySetWriteRequest.new(invalid_key_set),
+            GroupKeyManagement::KeySetWriteRequest.new(invalid_key_set),
             fabric_index: 1
           )
         end
       end
 
       it "creates IPK key set (ID 0)" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         ipk_key_set = Cluster.create_key_set(id: 0_u16)
-        cmd = GroupKeyManagementCluster::KeySetWriteRequest.new(ipk_key_set)
+        cmd = GroupKeyManagement::KeySetWriteRequest.new(ipk_key_set)
 
         cluster.handle_key_set_write(cmd, fabric_index: 1)
 
@@ -299,35 +299,35 @@ module Matter::Cluster
 
     describe "KeySetRead command" do
       it "reads existing key set" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
         key_set = Cluster.create_key_set(id: 1_u16, key0: Cluster.test_key(0xAA), time0: 1234_u64)
 
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(key_set),
+          GroupKeyManagement::KeySetWriteRequest.new(key_set),
           fabric_index
         )
 
         response = cluster.handle_key_set_read(
-          GroupKeyManagementCluster::KeySetReadRequest.new(1_u16),
+          GroupKeyManagement::KeySetReadRequest.new(1_u16),
           fabric_index
         )
         response.should_not be_nil
-        response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.group_key_set_id.should eq(1_u16)
-        response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.epoch_start_time0.should eq(1234_u64)
+        response.as(GroupKeyManagement::KeySetReadResponse).group_key_set.group_key_set_id.should eq(1_u16)
+        response.as(GroupKeyManagement::KeySetReadResponse).group_key_set.epoch_start_time0.should eq(1234_u64)
       end
 
       it "returns nil for non-existent key set" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         response = cluster.handle_key_set_read(
-          GroupKeyManagementCluster::KeySetReadRequest.new(99_u16),
+          GroupKeyManagement::KeySetReadRequest.new(99_u16),
           fabric_index: 1
         )
         response.should be_nil
       end
 
       it "sanitizes key material in response" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
         key_set = Cluster.create_key_set(
           id: 1_u16,
@@ -336,38 +336,38 @@ module Matter::Cluster
         )
 
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(key_set),
+          GroupKeyManagement::KeySetWriteRequest.new(key_set),
           fabric_index
         )
 
         response = cluster.handle_key_set_read(
-          GroupKeyManagementCluster::KeySetReadRequest.new(1_u16),
+          GroupKeyManagement::KeySetReadRequest.new(1_u16),
           fabric_index
         )
         response.should_not be_nil
 
         # Key material should be nil (sanitized)
-        response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.epoch_key0.should be_nil
-        response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.epoch_key1.should be_nil
-        response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.epoch_key2.should be_nil
+        response.as(GroupKeyManagement::KeySetReadResponse).group_key_set.epoch_key0.should be_nil
+        response.as(GroupKeyManagement::KeySetReadResponse).group_key_set.epoch_key1.should be_nil
+        response.as(GroupKeyManagement::KeySetReadResponse).group_key_set.epoch_key2.should be_nil
 
         # But start times should be present
-        response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.epoch_start_time0.should eq(1000_u64)
-        response.as(GroupKeyManagementCluster::KeySetReadResponse).group_key_set.epoch_start_time1.should eq(2000_u64)
+        response.as(GroupKeyManagement::KeySetReadResponse).group_key_set.epoch_start_time0.should eq(1000_u64)
+        response.as(GroupKeyManagement::KeySetReadResponse).group_key_set.epoch_start_time1.should eq(2000_u64)
       end
 
       it "isolates fabrics" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
 
         # Create key set in fabric 1
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index: 1
         )
 
         # Should not be visible from fabric 2
         response = cluster.handle_key_set_read(
-          GroupKeyManagementCluster::KeySetReadRequest.new(1_u16),
+          GroupKeyManagement::KeySetReadRequest.new(1_u16),
           fabric_index: 2
         )
         response.should be_nil
@@ -376,18 +376,18 @@ module Matter::Cluster
 
     describe "KeySetRemove command" do
       it "removes existing key set" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         # Create key set
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
 
         # Remove it
         cluster.handle_key_set_remove(
-          GroupKeyManagementCluster::KeySetRemoveRequest.new(1_u16),
+          GroupKeyManagement::KeySetRemoveRequest.new(1_u16),
           fabric_index
         )
 
@@ -397,19 +397,19 @@ module Matter::Cluster
       end
 
       it "protects IPK (key set 0) from removal" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         # Create IPK
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 0_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 0_u16)),
           fabric_index
         )
 
         # Attempt to remove it (should fail)
         error = expect_raises(Matter::ClusterError, /Cannot remove key set 0/) do
           cluster.handle_key_set_remove(
-            GroupKeyManagementCluster::KeySetRemoveRequest.new(0_u16),
+            GroupKeyManagement::KeySetRemoveRequest.new(0_u16),
             fabric_index
           )
         end
@@ -421,11 +421,11 @@ module Matter::Cluster
       end
 
       it "raises error for non-existent key set" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
 
         error = expect_raises(Matter::ClusterError, /Key set 99 not found/) do
           cluster.handle_key_set_remove(
-            GroupKeyManagementCluster::KeySetRemoveRequest.new(99_u16),
+            GroupKeyManagement::KeySetRemoveRequest.new(99_u16),
             fabric_index: 1
           )
         end
@@ -433,12 +433,12 @@ module Matter::Cluster
       end
 
       it "cascades to group key map entries" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         # Create key set
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
 
@@ -449,7 +449,7 @@ module Matter::Cluster
 
         # Remove key set
         cluster.handle_key_set_remove(
-          GroupKeyManagementCluster::KeySetRemoveRequest.new(1_u16),
+          GroupKeyManagement::KeySetRemoveRequest.new(1_u16),
           fabric_index
         )
 
@@ -458,15 +458,15 @@ module Matter::Cluster
       end
 
       it "only removes mappings for the specific fabric" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
 
         # Create key sets in two fabrics
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index: 1
         )
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index: 2
         )
 
@@ -476,7 +476,7 @@ module Matter::Cluster
 
         # Remove key set from fabric 1
         cluster.handle_key_set_remove(
-          GroupKeyManagementCluster::KeySetRemoveRequest.new(1_u16),
+          GroupKeyManagement::KeySetRemoveRequest.new(1_u16),
           fabric_index: 1
         )
 
@@ -490,19 +490,19 @@ module Matter::Cluster
 
     describe "KeySetReadAllIndices command" do
       it "returns empty array when no key sets exist" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         response = cluster.handle_key_set_read_all_indices(fabric_index: 1)
         response.group_key_set_i_ds.should be_empty
       end
 
       it "returns all key set IDs for fabric" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16), max_group_keys_per_fabric: 10_u16)
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16), max_group_keys_per_fabric: 10_u16)
         fabric_index = 1_u8
 
         # Create multiple key sets
         [0_u16, 1_u16, 5_u16, 10_u16].each do |id|
           cluster.handle_key_set_write(
-            GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: id)),
+            GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: id)),
             fabric_index
           )
         end
@@ -512,13 +512,13 @@ module Matter::Cluster
       end
 
       it "returns sorted key set IDs" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16), max_group_keys_per_fabric: 10_u16)
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16), max_group_keys_per_fabric: 10_u16)
         fabric_index = 1_u8
 
         # Create key sets in non-sequential order
         [10_u16, 1_u16, 5_u16, 0_u16].each do |id|
           cluster.handle_key_set_write(
-            GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: id)),
+            GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: id)),
             fabric_index
           )
         end
@@ -528,15 +528,15 @@ module Matter::Cluster
       end
 
       it "isolates fabrics" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
 
         # Create key sets in different fabrics
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index: 1
         )
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 2_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 2_u16)),
           fabric_index: 2
         )
 
@@ -551,12 +551,12 @@ module Matter::Cluster
 
     describe "group key map operations" do
       it "adds group key map entry" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         # Create key set
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
 
@@ -570,16 +570,16 @@ module Matter::Cluster
       end
 
       it "updates existing group key map entry" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         # Create two key sets
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 2_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 2_u16)),
           fabric_index
         )
 
@@ -595,11 +595,11 @@ module Matter::Cluster
       end
 
       it "rejects group ID 0" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
 
@@ -610,7 +610,7 @@ module Matter::Cluster
       end
 
       it "rejects non-existent key set" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
 
         error = expect_raises(Matter::ClusterError, /Key set 99 does not exist/) do
           cluster.add_group_key_map(100_u16, 99_u16, fabric_index: 1)
@@ -619,12 +619,12 @@ module Matter::Cluster
       end
 
       it "enforces max_groups_per_fabric limit" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16), max_groups_per_fabric: 2_u16)
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16), max_groups_per_fabric: 2_u16)
         fabric_index = 1_u8
 
         # Create key set
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
 
@@ -640,11 +640,11 @@ module Matter::Cluster
       end
 
       it "removes group key map entry" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
         cluster.add_group_key_map(100_u16, 1_u16, fabric_index)
@@ -655,15 +655,15 @@ module Matter::Cluster
       end
 
       it "isolates fabrics" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
 
         # Create key sets in different fabrics
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index: 1
         )
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index: 2
         )
 
@@ -679,12 +679,12 @@ module Matter::Cluster
 
     describe "group table operations" do
       it "adds group to table" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         # Setup: key set + mapping
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
         cluster.add_group_key_map(100_u16, 1_u16, fabric_index)
@@ -700,12 +700,12 @@ module Matter::Cluster
       end
 
       it "adds endpoint to existing group" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         # Setup
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
         cluster.add_group_key_map(100_u16, 1_u16, fabric_index)
@@ -722,7 +722,7 @@ module Matter::Cluster
       end
 
       it "rejects group without key map entry" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         error = expect_raises(Matter::ClusterError, /has no key map entry/) do
@@ -732,12 +732,12 @@ module Matter::Cluster
       end
 
       it "enforces max_groups_per_fabric limit" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16), max_groups_per_fabric: 2_u16)
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16), max_groups_per_fabric: 2_u16)
         fabric_index = 1_u8
 
         # Setup key set
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
 
@@ -755,12 +755,12 @@ module Matter::Cluster
       end
 
       it "removes endpoint from group" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         # Setup
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
         cluster.add_group_key_map(100_u16, 1_u16, fabric_index)
@@ -776,12 +776,12 @@ module Matter::Cluster
       end
 
       it "removes group when last endpoint removed" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         # Setup
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
         cluster.add_group_key_map(100_u16, 1_u16, fabric_index)
@@ -794,12 +794,12 @@ module Matter::Cluster
       end
 
       it "isolates fabrics" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
 
         # Setup two fabrics
         [1_u8, 2_u8].each do |fabric_index|
           cluster.handle_key_set_write(
-            GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+            GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
             fabric_index
           )
           cluster.add_group_key_map(100_u16, 1_u16, fabric_index)
@@ -819,12 +819,12 @@ module Matter::Cluster
 
     describe "fabric management" do
       it "removes all data for fabric" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         # Create comprehensive data
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
         cluster.add_group_key_map(100_u16, 1_u16, fabric_index)
@@ -840,12 +840,12 @@ module Matter::Cluster
       end
 
       it "only removes data for specified fabric" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
 
         # Create data in two fabrics
         [1_u8, 2_u8].each do |fabric_index|
           cluster.handle_key_set_write(
-            GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+            GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
             fabric_index
           )
           cluster.add_group_key_map(100_u16, 1_u16, fabric_index)
@@ -867,12 +867,12 @@ module Matter::Cluster
 
     describe "helper methods" do
       it "checks group existence" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
 
         # Setup
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
+          GroupKeyManagement::KeySetWriteRequest.new(Cluster.create_key_set(id: 1_u16)),
           fabric_index
         )
         cluster.add_group_key_map(100_u16, 1_u16, fabric_index)
@@ -883,24 +883,24 @@ module Matter::Cluster
       end
 
       it "retrieves key set with actual key material" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         fabric_index = 1_u8
         key_bytes = Cluster.test_key(0xAA)
         key_set = Cluster.create_key_set(id: 1_u16, key0: key_bytes, time0: 1000_u64)
 
         cluster.handle_key_set_write(
-          GroupKeyManagementCluster::KeySetWriteRequest.new(key_set),
+          GroupKeyManagement::KeySetWriteRequest.new(key_set),
           fabric_index
         )
 
         # get_key_set should return actual keys (for crypto operations)
         retrieved = cluster.get_key_set(1_u16, fabric_index)
         retrieved.should_not be_nil
-        retrieved.as(GroupKeyManagementCluster::GroupKeySetStruct).epoch_key0.should eq(key_bytes)
+        retrieved.as(GroupKeyManagement::GroupKeySetStruct).epoch_key0.should eq(key_bytes)
       end
 
       it "returns nil for non-existent key set" do
-        cluster = GroupKeyManagementCluster.new(Matter::DataType::EndpointNumber.new(0_u16))
+        cluster = GroupKeyManagement.new(Matter::DataType::EndpointNumber.new(0_u16))
         retrieved = cluster.get_key_set(99_u16, fabric_index: 1)
         retrieved.should be_nil
       end

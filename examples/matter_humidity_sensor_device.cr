@@ -14,9 +14,9 @@ module MatterHumiditySensor
     DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
     SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
 
-    @humidity : Matter::Cluster::RelativeHumidityMeasurementCluster? = nil
-    @identify : Matter::Cluster::IdentifyCluster? = nil
-    @fixed_label : Matter::Cluster::FixedLabelCluster? = nil
+    @humidity : Matter::Cluster::RelativeHumidityMeasurement? = nil
+    @identify : Matter::Cluster::Identify? = nil
+    @fixed_label : Matter::Cluster::FixedLabel? = nil
     @running : Bool = false
 
     def initialize
@@ -55,14 +55,14 @@ module MatterHumiditySensor
       device_name
     end
 
-    def humidity : Matter::Cluster::RelativeHumidityMeasurementCluster
-      @humidity.as(Matter::Cluster::RelativeHumidityMeasurementCluster)
+    def humidity : Matter::Cluster::RelativeHumidityMeasurement
+      @humidity.as(Matter::Cluster::RelativeHumidityMeasurement)
     end
 
     protected def device_clusters : Array(Matter::Cluster::Base)
       endpoint = Matter::DataType::EndpointNumber.new(1_u16)
 
-      @humidity = Matter::Cluster::RelativeHumidityMeasurementCluster.new(
+      @humidity = Matter::Cluster::RelativeHumidityMeasurement.new(
         endpoint,
         measured_value: rand(MIN_HUMIDITY..MAX_HUMIDITY),
         min_measured_value: MIN_HUMIDITY,
@@ -71,25 +71,25 @@ module MatterHumiditySensor
       )
       humidity.on_humidity_changed do |_old_value, new_value|
         if new_value
-          percent = Matter::Cluster::RelativeHumidityMeasurementCluster.to_percent(new_value)
+          percent = Matter::Cluster::RelativeHumidityMeasurement.to_percent(new_value)
           puts "Humidity: #{"%.2f" % percent}%"
         end
       end
 
-      @identify = Matter::Cluster::IdentifyCluster.new(
+      @identify = Matter::Cluster::Identify.new(
         endpoint,
-        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLED
+        identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLED
       )
 
-      @fixed_label = Matter::Cluster::FixedLabelCluster.new(
+      @fixed_label = Matter::Cluster::FixedLabel.new(
         endpoint,
         [Matter::Cluster::LabelStruct.new("name", "Example Humidity Sensor")]
       )
 
       [
         humidity,
-        @identify.as(Matter::Cluster::IdentifyCluster),
-        @fixed_label.as(Matter::Cluster::FixedLabelCluster),
+        @identify.as(Matter::Cluster::Identify),
+        @fixed_label.as(Matter::Cluster::FixedLabel),
       ] of Matter::Cluster::Base
     end
 
