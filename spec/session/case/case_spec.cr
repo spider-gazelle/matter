@@ -3,159 +3,160 @@ require "../../../src/matter/session/case/case"
 require "../../../src/matter/certificate/attestation_certificate_manager"
 require "tlv"
 
-# Encrypt `cert` the way a CASE responder does for Sigma2: with the
-# Sigma2 key and nonce derived from the ECDH secret of the responder's key
-# and the initiator's ephemeral public key.
-private def encrypt_sigma2_cert(
+# Node ID carried by the fixture certificates below
+private NODE_ID = 0x2222222222222222_u64
+# Fabric the fixture handshakes run on
+private FABRIC_ID = 0x1111111111111111_u64
+# Responder node ID used by the fixture handshakes
+private RESPONDER_NODE_ID = 0x3333333333333333_u64
+# Matter TLV certificate context tags used to build fixture certificates
+private SUBJECT_TAG    =  6_u8
+private PUBLIC_KEY_TAG =  9_u8
+private NODE_ID_TAG    = 17_u8
+private FABRIC_ID_TAG  = 18_u8
+private CAT_TAG        = 22_u8
+
+# A Sigma1 destination id is an HMAC-SHA256 tag; its content is opaque here
+private def destination_id(crypto : Matter::Crypto::StandardCrypto) : Bytes
+  crypto.random_bytes(Matter::Session::Case::DESTINATION_ID_LENGTH)
+end
+
+# Build a minimal Matter TLV certificate carrying `public_key` in tag 9 and a
+# subject DN with the given node id.
+private def tlv_certificate(public_key : Bytes, node_id : UInt64 = NODE_ID) : Bytes
+  subject = TLV::Structure.new
+  subject[NODE_ID_TAG] = TLV::Any.new(node_id, NODE_ID_TAG)
+  subject[FABRIC_ID_TAG] = TLV::Any.new(FABRIC_ID, FABRIC_ID_TAG)
+
+  cert = TLV::Structure.new
+  cert[SUBJECT_TAG] = TLV::Any.new(subject, SUBJECT_TAG)
+  cert[PUBLIC_KEY_TAG] = TLV::Any.new(public_key, PUBLIC_KEY_TAG)
+
+  TLV::Any.new(cert, nil).to_slice
+end
+
+private def new_initiator(
   crypto : Matter::Crypto::StandardCrypto,
-  peer_key : Matter::Crypto::Key,
-  initiator_ephemeral_public_key : Bytes,
-  cert : Bytes,
-) : Bytes
-  shared = Matter::Crypto::ECDH.compute_shared_secret(peer_key.private_key, initiator_ephemeral_public_key)
-  key = crypto.create_hkdf_key(shared, Bytes.new(0), "Sigma2EncryptionKey".to_slice, 16)
-  nonce = crypto.create_hkdf_key(shared, Bytes.new(0), "Sigma2Nonce".to_slice, 13)
-  crypto.encrypt(key, cert, nonce)
+  ipk : Bytes,
+  key : Matter::Crypto::Key = crypto.create_key_pair,
+) : Matter::Session::Case::CaseInitiator
+  Matter::Session::Case::CaseInitiator.new(
+    operational_cert: tlv_certificate(key.public_key),
+    operational_key: key,
+    fabric_id: FABRIC_ID,
+    node_id: NODE_ID,
+    ipk: ipk,
+    crypto: crypto
+  )
+end
+
+private def new_responder(
+  crypto : Matter::Crypto::StandardCrypto,
+  ipk : Bytes,
+  key : Matter::Crypto::Key = crypto.create_key_pair,
+) : Matter::Session::Case::CaseResponder
+  Matter::Session::Case::CaseResponder.new(
+    cert_chain: Matter::Session::Case::OperationalCertChain.new(tlv_certificate(key.public_key, RESPONDER_NODE_ID)),
+    operational_key: key,
+    fabric_id: FABRIC_ID,
+    node_id: RESPONDER_NODE_ID,
+    ipk: ipk,
+    crypto: crypto
+  )
 end
 
 describe Matter::Session::Case do
-  describe "extract_node_id_from_tlv_cert" do
+  describe "Matter::Crypto::MatterCertificate TLV helpers" do
     it "extracts node ID from TLV cert with nested structure subject" do
-      # Create a TLV cert with a nested structure subject field
-      # Matter TLV cert structure:
-      # - Tag 6: Subject (nested structure)
-      #   - Tag 17 (0x11): Node ID
-      #   - Tag 18 (0x12): Fabric ID
-      # - Tag 9: Public Key (for completeness)
-
       expected_node_id = 0xDFC02ECA70EBC76F_u64
-      fabric_id = 0x0000000000000001_u64
 
-      # Build the nested subject structure
       subject = TLV::Structure.new
-      subject[17_u8] = TLV::Any.new(expected_node_id, 17_u8)
-      subject[18_u8] = TLV::Any.new(fabric_id, 18_u8)
+      subject[NODE_ID_TAG] = TLV::Any.new(expected_node_id, NODE_ID_TAG)
+      subject[FABRIC_ID_TAG] = TLV::Any.new(FABRIC_ID, FABRIC_ID_TAG)
 
-      # Build the outer cert structure
       cert = TLV::Structure.new
-      cert[6_u8] = TLV::Any.new(subject, 6_u8)
-      cert[9_u8] = TLV::Any.new(Bytes.new(65, 0x04_u8), 9_u8)
+      cert[SUBJECT_TAG] = TLV::Any.new(subject, SUBJECT_TAG)
+      cert[PUBLIC_KEY_TAG] = TLV::Any.new(Bytes.new(65, 0x04_u8), PUBLIC_KEY_TAG)
 
-      # Encode to bytes
       cert_tlv = TLV::Any.new(cert, nil).to_slice
 
-      # Create a responder to test the extraction method
-      crypto = Matter::Crypto::StandardCrypto.new
-      key = crypto.create_key_pair
-      noc = Bytes.new(100)
-      chain = Matter::Session::Case::OperationalCertChain.new(noc)
-      ipk = crypto.random_bytes(16)
-
-      responder = Matter::Session::Case::CaseResponder.new(
-        cert_chain: chain,
-        operational_key: key,
-        fabric_id: fabric_id,
-        node_id: 0x1111111111111111_u64,
-        ipk: ipk,
-        crypto: crypto
-      )
-
-      # Test the extraction
-      extracted = responder.extract_node_id_from_tlv_cert(cert_tlv)
-      extracted.should eq(expected_node_id)
+      Matter::Crypto::MatterCertificate.node_id_from_tlv(cert_tlv).should eq(expected_node_id)
     end
 
     it "extracts node ID from TLV cert with List subject" do
-      # Test with a List subject (like PathContainer)
       expected_node_id = 0x123456789ABCDEF0_u64
-      fabric_id = 0x0000000000000002_u64
 
-      # Build the subject as a List with tagged elements
       subject_list = TLV::List.new
-      subject_list << TLV::Any.new(expected_node_id, 17_u8)
-      subject_list << TLV::Any.new(fabric_id, 18_u8)
+      subject_list << TLV::Any.new(expected_node_id, NODE_ID_TAG)
+      subject_list << TLV::Any.new(FABRIC_ID, FABRIC_ID_TAG)
 
-      # Build the outer cert structure
       cert = TLV::Structure.new
-      cert[6_u8] = TLV::Any.new(subject_list, 6_u8)
-      cert[9_u8] = TLV::Any.new(Bytes.new(65, 0x04_u8), 9_u8)
+      cert[SUBJECT_TAG] = TLV::Any.new(subject_list, SUBJECT_TAG)
+      cert[PUBLIC_KEY_TAG] = TLV::Any.new(Bytes.new(65, 0x04_u8), PUBLIC_KEY_TAG)
 
-      # Encode to bytes
       cert_tlv = TLV::Any.new(cert, nil).to_slice
 
-      crypto = Matter::Crypto::StandardCrypto.new
-      key = crypto.create_key_pair
-      noc = Bytes.new(100)
-      chain = Matter::Session::Case::OperationalCertChain.new(noc)
-      ipk = crypto.random_bytes(16)
-
-      responder = Matter::Session::Case::CaseResponder.new(
-        cert_chain: chain,
-        operational_key: key,
-        fabric_id: fabric_id,
-        node_id: 0x1111111111111111_u64,
-        ipk: ipk,
-        crypto: crypto
-      )
-
-      extracted = responder.extract_node_id_from_tlv_cert(cert_tlv)
-      extracted.should eq(expected_node_id)
+      Matter::Crypto::MatterCertificate.node_id_from_tlv(cert_tlv).should eq(expected_node_id)
     end
 
     it "returns nil when subject field is missing" do
-      # Create a cert without subject field (tag 6)
       cert = TLV::Structure.new
-      cert[9_u8] = TLV::Any.new(Bytes.new(65, 0x04_u8), 9_u8)
+      cert[PUBLIC_KEY_TAG] = TLV::Any.new(Bytes.new(65, 0x04_u8), PUBLIC_KEY_TAG)
 
       cert_tlv = TLV::Any.new(cert, nil).to_slice
 
-      crypto = Matter::Crypto::StandardCrypto.new
-      key = crypto.create_key_pair
-      noc = Bytes.new(100)
-      chain = Matter::Session::Case::OperationalCertChain.new(noc)
-      ipk = crypto.random_bytes(16)
-
-      responder = Matter::Session::Case::CaseResponder.new(
-        cert_chain: chain,
-        operational_key: key,
-        fabric_id: 0x1_u64,
-        node_id: 0x1111111111111111_u64,
-        ipk: ipk,
-        crypto: crypto
-      )
-
-      extracted = responder.extract_node_id_from_tlv_cert(cert_tlv)
-      extracted.should be_nil
+      Matter::Crypto::MatterCertificate.node_id_from_tlv(cert_tlv).should be_nil
     end
 
     it "returns nil when node ID field is missing in subject" do
-      # Create a cert with subject but no node ID (only fabric ID)
       subject = TLV::Structure.new
-      subject[18_u8] = TLV::Any.new(0x1_u64, 18_u8) # Only Fabric ID, no Node ID
+      subject[FABRIC_ID_TAG] = TLV::Any.new(FABRIC_ID, FABRIC_ID_TAG)
 
       cert = TLV::Structure.new
-      cert[6_u8] = TLV::Any.new(subject, 6_u8)
-      cert[9_u8] = TLV::Any.new(Bytes.new(65, 0x04_u8), 9_u8)
+      cert[SUBJECT_TAG] = TLV::Any.new(subject, SUBJECT_TAG)
+      cert[PUBLIC_KEY_TAG] = TLV::Any.new(Bytes.new(65, 0x04_u8), PUBLIC_KEY_TAG)
 
       cert_tlv = TLV::Any.new(cert, nil).to_slice
 
-      crypto = Matter::Crypto::StandardCrypto.new
-      key = crypto.create_key_pair
-      noc = Bytes.new(100)
-      chain = Matter::Session::Case::OperationalCertChain.new(noc)
-      ipk = crypto.random_bytes(16)
+      Matter::Crypto::MatterCertificate.node_id_from_tlv(cert_tlv).should be_nil
+    end
 
-      responder = Matter::Session::Case::CaseResponder.new(
-        cert_chain: chain,
-        operational_key: key,
-        fabric_id: 0x1_u64,
-        node_id: 0x1111111111111111_u64,
-        ipk: ipk,
-        crypto: crypto
-      )
+    it "extracts the EC public key" do
+      public_key = Bytes.new(65, 0x04_u8)
 
-      extracted = responder.extract_node_id_from_tlv_cert(cert_tlv)
-      extracted.should be_nil
+      Matter::Crypto::MatterCertificate.public_key_from_tlv(tlv_certificate(public_key)).should eq(public_key)
+    end
+
+    it "raises when the certificate carries no public key" do
+      subject = TLV::Structure.new
+      subject[NODE_ID_TAG] = TLV::Any.new(NODE_ID, NODE_ID_TAG)
+
+      cert = TLV::Structure.new
+      cert[SUBJECT_TAG] = TLV::Any.new(subject, SUBJECT_TAG)
+
+      expect_raises(Matter::CertificateError, /public key field/) do
+        Matter::Crypto::MatterCertificate.public_key_from_tlv(TLV::Any.new(cert, nil).to_slice)
+      end
+    end
+
+    it "extracts subject IDs with the node ID first and CATs after it" do
+      cat_value = 0x0001_0001_u32
+
+      subject_list = TLV::List.new
+      subject_list << TLV::Any.new(NODE_ID, NODE_ID_TAG)
+      subject_list << TLV::Any.new(FABRIC_ID, FABRIC_ID_TAG)
+      subject_list << TLV::Any.new(cat_value, CAT_TAG)
+
+      cert = TLV::Structure.new
+      cert[SUBJECT_TAG] = TLV::Any.new(subject_list, SUBJECT_TAG)
+      cert[PUBLIC_KEY_TAG] = TLV::Any.new(Bytes.new(65, 0x04_u8), PUBLIC_KEY_TAG)
+
+      subject_ids = Matter::Crypto::MatterCertificate.subject_ids_from_tlv(TLV::Any.new(cert, nil).to_slice)
+
+      expected_cat_node_id = Matter::DataType::NodeId.from_case_authenticated_tag(
+        Matter::DataType::CaseAuthenticatedTag.new(cat_value)
+      ).id
+      subject_ids.should eq([NODE_ID, expected_cat_node_id])
     end
   end
 
@@ -186,102 +187,117 @@ describe Matter::Session::Case do
     it "creates an initiator with operational credentials" do
       crypto = Matter::Crypto::StandardCrypto.new
       key = crypto.create_key_pair
-      cert = Bytes.new(100, 1_u8)
-      fabric_id = 0x1111111111111111_u64
-      node_id = 0x2222222222222222_u64
+      ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
 
-      initiator = Matter::Session::Case::CaseInitiator.new(
-        operational_cert: cert,
-        operational_key: key,
-        fabric_id: fabric_id,
-        node_id: node_id,
-        crypto: crypto
-      )
+      initiator = new_initiator(crypto, ipk, key)
 
-      initiator.operational_cert.should eq(cert)
       initiator.operational_key.should eq(key)
-      initiator.fabric_id.should eq(fabric_id)
-      initiator.node_id.should eq(node_id)
+      initiator.fabric_id.should eq(FABRIC_ID)
+      initiator.node_id.should eq(NODE_ID)
+      initiator.ipk.should eq(ipk)
       initiator.ephemeral_key.should be_nil
     end
 
     it "generates Sigma1 message" do
       crypto = Matter::Crypto::StandardCrypto.new
-      key = crypto.create_key_pair
-      cert = Bytes.new(100)
+      initiator = new_initiator(crypto, crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH))
 
-      initiator = Matter::Session::Case::CaseInitiator.new(
-        operational_cert: cert,
-        operational_key: key,
-        fabric_id: 0x1111_u64,
-        node_id: 0x2222_u64
-      )
+      destination = destination_id(crypto)
+      sigma1 = initiator.generate_sigma1(destination)
 
-      sigma1 = initiator.generate_sigma1
-
-      sigma1[:ephemeral_public_key].should be_a(Bytes)
       sigma1[:ephemeral_public_key].size.should eq(65) # Uncompressed EC point
-      sigma1[:random].should be_a(Bytes)
-      sigma1[:random].size.should eq(32)
+      sigma1[:random].size.should eq(Matter::Session::Case::RANDOM_LENGTH)
       sigma1[:session_id].should be_a(UInt16)
-
       initiator.ephemeral_key.should_not be_nil
+
+      # The message it stored for the transcript is the encoded Sigma1
+      decoded = Matter::Session::Case::Definitions::Sigma1.from_slice(sigma1[:sigma1_bytes])
+      decoded.initiator_random.should eq(sigma1[:random])
+      decoded.initiator_session_id.should eq(sigma1[:session_id])
+      decoded.initiator_eph_pub_key.should eq(sigma1[:ephemeral_public_key])
+      decoded.destination_id.should eq(destination)
+      initiator.sigma1_bytes.should eq(sigma1[:sigma1_bytes])
     end
 
-    it "processes Sigma2 and generates Sigma3" do
+    it "processes Sigma2 from a responder and generates Sigma3" do
       crypto = Matter::Crypto::StandardCrypto.new
-      key = crypto.create_key_pair
-      cert = Bytes.new(100)
+      ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
+      initiator = new_initiator(crypto, ipk)
+      responder = new_responder(crypto, ipk)
 
-      initiator = Matter::Session::Case::CaseInitiator.new(
-        operational_cert: cert,
-        operational_key: key,
-        fabric_id: 0x1111_u64,
-        node_id: 0x2222_u64,
-        crypto: crypto
+      sigma1 = initiator.generate_sigma1(destination_id(crypto))
+      sigma2 = responder.process_sigma1(
+        sigma1[:ephemeral_public_key],
+        sigma1[:random],
+        sigma1[:session_id],
+        sigma1[:sigma1_bytes]
       )
 
-      # Generate Sigma1 first
-      sigma1 = initiator.generate_sigma1
-
-      # Simulate peer response
-      peer_key = crypto.create_key_pair
-      peer_ephemeral = peer_key.public_key
-      peer_random = crypto.random_bytes(32)
-      peer_cert = Bytes.new(100, 0x42_u8)
-      peer_encrypted_cert = encrypt_sigma2_cert(crypto, peer_key, sigma1[:ephemeral_public_key], peer_cert)
-      peer_session_id = crypto.random_uint16
-
+      sigma2_bytes = sigma2[:sigma2_bytes]
       sigma3 = initiator.process_sigma2(
-        peer_ephemeral,
-        peer_random,
-        peer_encrypted_cert,
-        peer_session_id
+        Matter::Session::Case::Definitions::Sigma2.from_slice(sigma2_bytes),
+        sigma2_bytes
       )
 
-      initiator.peer_cert.should eq(peer_cert)
-      sigma3[:encrypted_cert].should be_a(Bytes)
-      sigma3[:encrypted_cert].size.should eq(116) # 100 + 16 for MIC
-      sigma3[:signature].should be_a(Bytes)
+      # The initiator unwrapped TBE_Data2 and kept the responder's credentials
+      initiator.peer_cert.should eq(responder.cert_chain.noc)
+      initiator.peer_icac.should be_nil
+      initiator.peer_signature.try(&.size).should eq(64)
+      initiator.peer_resumption_id.try(&.size).should eq(Matter::Session::Case::RESUMPTION_ID_LENGTH)
+      initiator.peer_session_id.should eq(sigma2[:session_id])
+
       sigma3[:signature].size.should eq(64) # ECDSA P-256 signature
+      sigma3[:encrypted_cert].size.should be > 0
+      Matter::Session::Case::Definitions::Sigma3.from_slice(sigma3[:sigma3_bytes]).encrypted3.should eq(sigma3[:encrypted_cert])
+    end
+
+    it "signs TBS_Data3 with its operational key" do
+      crypto = Matter::Crypto::StandardCrypto.new
+      ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
+      key = crypto.create_key_pair
+      initiator = new_initiator(crypto, ipk, key)
+      responder = new_responder(crypto, ipk)
+
+      sigma1 = initiator.generate_sigma1(destination_id(crypto))
+      sigma2 = responder.process_sigma1(
+        sigma1[:ephemeral_public_key],
+        sigma1[:random],
+        sigma1[:session_id],
+        sigma1[:sigma1_bytes]
+      )
+      sigma2_bytes = sigma2[:sigma2_bytes]
+      sigma3 = initiator.process_sigma2(
+        Matter::Session::Case::Definitions::Sigma2.from_slice(sigma2_bytes),
+        sigma2_bytes
+      )
+
+      # TBS_Data3: our NOC, our ephemeral key, then the responder's, exactly as
+      # the responder rebuilds it to verify.
+      signed_data = Matter::Session::Case::Definitions::SignedData.new(
+        responder_noc: initiator.operational_cert,
+        responder_icac: nil,
+        responder_public_key: sigma1[:ephemeral_public_key],
+        initiator_public_key: sigma2[:ephemeral_public_key]
+      )
+
+      crypto.verify_ecdsa(key, signed_data.to_slice, sigma3[:signature])
     end
 
     it "fails the handshake when the Sigma2 certificate does not decrypt" do
       crypto = Matter::Crypto::StandardCrypto.new
-      initiator = Matter::Session::Case::CaseInitiator.new(
-        operational_cert: Bytes.new(100),
-        operational_key: crypto.create_key_pair,
-        fabric_id: 0x1111_u64,
-        node_id: 0x2222_u64,
-        crypto: crypto
-      )
-      initiator.generate_sigma1
+      initiator = new_initiator(crypto, crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH))
+      initiator.generate_sigma1(destination_id(crypto))
 
       peer_key = crypto.create_key_pair
-      forged_cert = crypto.random_bytes(116) # 100 + 16 for MIC, not encrypted with the shared secret
+      sigma2 = Matter::Session::Case::Definitions::Sigma2.new(
+        responder_random: crypto.random_bytes(Matter::Session::Case::RANDOM_LENGTH),
+        responder_session_id: crypto.random_uint16,
+        responder_eph_pub_key: peer_key.public_key,
+        encrypted2: crypto.random_bytes(116) # not encrypted with the shared secret
+      )
 
       error = expect_raises(Matter::AuthenticationError, /Sigma2 certificate decryption failed/) do
-        initiator.process_sigma2(peer_key.public_key, crypto.random_bytes(32), forged_cert, crypto.random_uint16)
+        initiator.process_sigma2(sigma2, sigma2.to_slice)
       end
       error.cause.should be_a(Matter::AuthenticationError)
       initiator.peer_cert.should be_nil
@@ -289,13 +305,7 @@ describe Matter::Session::Case do
 
     it "verifies a Sigma3 signature with the peer certificate" do
       crypto = Matter::Crypto::StandardCrypto.new
-      initiator = Matter::Session::Case::CaseInitiator.new(
-        operational_cert: Bytes.new(100),
-        operational_key: crypto.create_key_pair,
-        fabric_id: 0x1111_u64,
-        node_id: 0x2222_u64,
-        crypto: crypto
-      )
+      initiator = new_initiator(crypto, crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH))
       manager = Matter::Certificate::AttestationCertificateManager.new(0xFFF1_u16)
       peer_cert_der, peer_key = manager.get_dac_cert(0x8000_u16)
       initiator.peer_cert = peer_cert_der
@@ -313,13 +323,7 @@ describe Matter::Session::Case do
 
     it "rejects Sigma3 when the peer certificate cannot be parsed" do
       crypto = Matter::Crypto::StandardCrypto.new
-      initiator = Matter::Session::Case::CaseInitiator.new(
-        operational_cert: Bytes.new(100),
-        operational_key: crypto.create_key_pair,
-        fabric_id: 0x1111_u64,
-        node_id: 0x2222_u64,
-        crypto: crypto
-      )
+      initiator = new_initiator(crypto, crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH))
       initiator.peer_cert = Bytes.new(100, 0x42_u8)
 
       expect_raises(Matter::AuthenticationError, /peer certificate cannot be parsed/) do
@@ -327,38 +331,13 @@ describe Matter::Session::Case do
       end
     end
 
-    it "derives session keys" do
+    it "refuses to derive session keys before the handshake completes" do
       crypto = Matter::Crypto::StandardCrypto.new
-      key = crypto.create_key_pair
-      cert = Bytes.new(100)
+      initiator = new_initiator(crypto, crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH))
 
-      initiator = Matter::Session::Case::CaseInitiator.new(
-        operational_cert: cert,
-        operational_key: key,
-        fabric_id: 0x1111_u64,
-        node_id: 0x2222_u64,
-        crypto: crypto
-      )
-
-      # Must go through protocol flow to compute shared secret
-      sigma1 = initiator.generate_sigma1
-
-      # Simulate peer response
-      peer_key = crypto.create_key_pair
-      peer_ephemeral = peer_key.public_key
-      peer_random = crypto.random_bytes(32)
-      peer_encrypted_cert = encrypt_sigma2_cert(crypto, peer_key, sigma1[:ephemeral_public_key], Bytes.new(100))
-      peer_session_id = crypto.random_uint16
-
-      initiator.process_sigma2(peer_ephemeral, peer_random, peer_encrypted_cert, peer_session_id)
-
-      # Now can derive keys
-      keys = initiator.derive_session_keys
-
-      keys[:encryption].should be_a(Bytes)
-      keys[:encryption].size.should eq(16)
-      keys[:decryption].should be_a(Bytes)
-      keys[:decryption].size.should eq(16)
+      expect_raises(Matter::ProtocolError, /Shared secret not computed/) do
+        initiator.derive_session_keys
+      end
     end
   end
 
@@ -366,174 +345,199 @@ describe Matter::Session::Case do
     it "creates a responder with certificate chain" do
       crypto = Matter::Crypto::StandardCrypto.new
       key = crypto.create_key_pair
-      noc = Bytes.new(100, 1_u8)
-      chain = Matter::Session::Case::OperationalCertChain.new(noc)
-      fabric_id = 0x3333333333333333_u64
-      node_id = 0x4444444444444444_u64
-      ipk = crypto.random_bytes(16) # Test IPK
+      ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
 
-      responder = Matter::Session::Case::CaseResponder.new(
-        cert_chain: chain,
-        operational_key: key,
-        fabric_id: fabric_id,
-        node_id: node_id,
-        ipk: ipk,
-        crypto: crypto
-      )
+      responder = new_responder(crypto, ipk, key)
 
-      responder.cert_chain.should eq(chain)
       responder.operational_key.should eq(key)
-      responder.fabric_id.should eq(fabric_id)
-      responder.node_id.should eq(node_id)
+      responder.fabric_id.should eq(FABRIC_ID)
+      responder.node_id.should eq(RESPONDER_NODE_ID)
       responder.ephemeral_key.should be_nil
     end
 
     it "processes Sigma1 and generates Sigma2" do
       crypto = Matter::Crypto::StandardCrypto.new
-      key = crypto.create_key_pair
-      noc = Bytes.new(100)
-      chain = Matter::Session::Case::OperationalCertChain.new(noc)
-      ipk = crypto.random_bytes(16)
+      responder = new_responder(crypto, crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH))
 
-      responder = Matter::Session::Case::CaseResponder.new(
-        cert_chain: chain,
-        operational_key: key,
-        fabric_id: 0x3333_u64,
-        node_id: 0x4444_u64,
-        ipk: ipk,
-        crypto: crypto
-      )
-
-      # Simulate peer Sigma1
       peer_key = crypto.create_key_pair
-      peer_ephemeral = peer_key.public_key
-      peer_random = crypto.random_bytes(32)
-      peer_session_id = crypto.random_uint16
       sigma1_bytes = crypto.random_bytes(100) # Mock Sigma1 TLV for transcript
 
       sigma2 = responder.process_sigma1(
-        peer_ephemeral,
-        peer_random,
-        peer_session_id,
+        peer_key.public_key,
+        crypto.random_bytes(Matter::Session::Case::RANDOM_LENGTH),
+        crypto.random_uint16,
         sigma1_bytes
       )
 
-      sigma2[:ephemeral_public_key].should be_a(Bytes)
       sigma2[:ephemeral_public_key].size.should eq(65)
-      sigma2[:random].should be_a(Bytes)
-      sigma2[:random].size.should eq(32)
-      sigma2[:encrypted_cert].should be_a(Bytes)
+      sigma2[:random].size.should eq(Matter::Session::Case::RANDOM_LENGTH)
       # The encrypted cert includes TLV-wrapped NOC + signature + resumption_id + MIC
-      # Size varies based on TLV encoding
       sigma2[:encrypted_cert].size.should be > 100
       sigma2[:session_id].should be_a(UInt16)
+      sigma2[:sigma2_bytes].size.should be > 0
 
       responder.ephemeral_key.should_not be_nil
     end
 
     it "processes Sigma3 and verifies" do
       crypto = Matter::Crypto::StandardCrypto.new
-      key = crypto.create_key_pair
-      noc = Bytes.new(100)
-      chain = Matter::Session::Case::OperationalCertChain.new(noc)
-      ipk = crypto.random_bytes(16)
+      responder = new_responder(crypto, crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH))
 
-      responder = Matter::Session::Case::CaseResponder.new(
-        cert_chain: chain,
-        operational_key: key,
-        fabric_id: 0x3333_u64,
-        node_id: 0x4444_u64,
-        ipk: ipk,
-        crypto: crypto
+      peer_key = crypto.create_key_pair
+      responder.process_sigma1(
+        peer_key.public_key,
+        crypto.random_bytes(Matter::Session::Case::RANDOM_LENGTH),
+        crypto.random_uint16,
+        crypto.random_bytes(100)
       )
 
-      # Process Sigma1 first
-      peer_key = crypto.create_key_pair
-      sigma1_bytes = crypto.random_bytes(100) # Mock Sigma1 TLV for transcript
-      responder.process_sigma1(peer_key.public_key, crypto.random_bytes(32), crypto.random_uint16, sigma1_bytes)
-
-      # Process Sigma3 with random data - this will fail verification
-      # because the encrypted_cert needs to be properly AES-CCM encrypted
-      # and the decryption will fail with invalid/random bytes
-      encrypted_cert = crypto.random_bytes(116)
-      signature = crypto.random_bytes(64)
-
       # With random data, process_sigma3 returns false (decryption fails)
-      result = responder.process_sigma3(encrypted_cert, signature)
-      result.should be_false
+      responder.process_sigma3(crypto.random_bytes(116), crypto.random_bytes(64)).should be_false
+    end
+  end
+
+  describe "certificate chain validation" do
+    it "behaves identically whichever side it is called from" do
+      crypto = Matter::Crypto::StandardCrypto.new
+      ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
+      initiator = new_initiator(crypto, ipk)
+      responder = new_responder(crypto, ipk)
+
+      manager = Matter::Certificate::AttestationCertificateManager.new(0xFFF1_u16)
+      roots = [manager.paa_cert] of Bytes | OpenSSL::X509::Certificate
+      no_roots = [] of Bytes | OpenSSL::X509::Certificate
+
+      # No peer certificate received yet
+      initiator.validate_certificate_chain(roots).should be_false
+      responder.validate_certificate_chain(roots).should be_false
+
+      # The PAI is signed by the PAA, so it validates against it on both sides
+      initiator.peer_cert = manager.pai_cert
+      responder.peer_cert = manager.pai_cert
+      initiator.validate_certificate_chain(roots).should be_true
+      responder.validate_certificate_chain(roots).should be_true
+
+      # Without a trusted root both reject it
+      initiator.validate_certificate_chain(no_roots).should be_false
+      responder.validate_certificate_chain(no_roots).should be_false
+
+      # An unparseable peer certificate is rejected, not raised, on both sides
+      garbage = crypto.random_bytes(64)
+      initiator.peer_cert = garbage
+      responder.peer_cert = garbage
+      initiator.validate_certificate_chain(roots).should be_false
+      responder.validate_certificate_chain(roots).should be_false
     end
   end
 
   describe "CASE session establishment" do
-    it "initiator can generate Sigma1 message" do
+    it "derives the same session keys on both sides of an in-process handshake" do
       crypto = Matter::Crypto::StandardCrypto.new
+      ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
+      initiator = new_initiator(crypto, ipk)
+      responder = new_responder(crypto, ipk)
 
-      # Create initiator credentials
-      initiator_key = crypto.create_key_pair
-      initiator_cert = Bytes.new(100, 1_u8)
-
-      fabric_id = 0x1111111111111111_u64
-      initiator_node_id = 0x2222222222222222_u64
-
-      initiator = Matter::Session::Case::CaseInitiator.new(
-        operational_cert: initiator_cert,
-        operational_key: initiator_key,
-        fabric_id: fabric_id,
-        node_id: initiator_node_id,
-        crypto: crypto
+      sigma1 = initiator.generate_sigma1(destination_id(crypto))
+      sigma2 = responder.process_sigma1(
+        sigma1[:ephemeral_public_key],
+        sigma1[:random],
+        sigma1[:session_id],
+        sigma1[:sigma1_bytes]
       )
 
-      # Generate Sigma1
-      sigma1 = initiator.generate_sigma1
+      sigma2_bytes = sigma2[:sigma2_bytes]
+      sigma3 = initiator.process_sigma2(
+        Matter::Session::Case::Definitions::Sigma2.from_slice(sigma2_bytes),
+        sigma2_bytes
+      )
 
-      # Verify Sigma1 contains expected fields
-      sigma1[:ephemeral_public_key].size.should eq(65) # Uncompressed P-256 point
-      sigma1[:random].size.should eq(32)
-      sigma1[:session_id].should be > 0_u16
+      responder.process_sigma3(sigma3[:encrypted_cert], sigma3[:sigma3_bytes]).should be_true
+      responder.peer_cert.should eq(initiator.operational_cert)
+      responder.peer_node_id.should eq(NODE_ID)
+
+      initiator_keys = initiator.derive_session_keys
+      responder_keys = responder.derive_session_keys(sigma3[:sigma3_bytes])
+
+      # I2R on the initiator is what the responder decrypts with, and vice versa
+      initiator_keys[:encryption].size.should eq(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
+      initiator_keys[:encryption].should eq(responder_keys[:decryption])
+      initiator_keys[:decryption].should eq(responder_keys[:encryption])
+      initiator_keys[:encryption].should_not eq(initiator_keys[:decryption])
+      initiator_keys[:attestation_challenge].should eq(responder_keys[:attestation_challenge])
     end
 
-    it "responder can process Sigma1 and generate Sigma2 response" do
+    it "derives the keys the Matter spec constants prescribe" do
       crypto = Matter::Crypto::StandardCrypto.new
+      ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
+      initiator = new_initiator(crypto, ipk)
+      responder = new_responder(crypto, ipk)
 
-      # Create responder credentials
-      responder_key = crypto.create_key_pair
-      responder_noc = Bytes.new(100, 2_u8)
-      responder_chain = Matter::Session::Case::OperationalCertChain.new(responder_noc)
-      ipk = crypto.random_bytes(16)
-
-      fabric_id = 0x1111111111111111_u64
-      responder_node_id = 0x3333333333333333_u64
-
-      responder = Matter::Session::Case::CaseResponder.new(
-        cert_chain: responder_chain,
-        operational_key: responder_key,
-        fabric_id: fabric_id,
-        node_id: responder_node_id,
-        ipk: ipk,
-        crypto: crypto
-      )
-
-      # Generate a mock Sigma1 message (peer ephemeral key and random)
-      peer_key = crypto.create_key_pair
-      peer_random = crypto.random_bytes(32)
-      peer_session_id = 0x1234_u16
-      # Mock sigma1 bytes (the raw TLV message)
-      sigma1_bytes = crypto.random_bytes(64)
-
-      # Process Sigma1 and generate Sigma2 response
+      sigma1 = initiator.generate_sigma1(destination_id(crypto))
       sigma2 = responder.process_sigma1(
-        peer_ephemeral_public_key: peer_key.public_key,
-        peer_random: peer_random,
-        peer_session_id: peer_session_id,
-        sigma1_bytes: sigma1_bytes
+        sigma1[:ephemeral_public_key],
+        sigma1[:random],
+        sigma1[:session_id],
+        sigma1[:sigma1_bytes]
+      )
+      sigma2_bytes = sigma2[:sigma2_bytes]
+      sigma3 = initiator.process_sigma2(
+        Matter::Session::Case::Definitions::Sigma2.from_slice(sigma2_bytes),
+        sigma2_bytes
       )
 
-      # Verify Sigma2 contains expected fields
-      sigma2[:ephemeral_public_key].size.should eq(65)
-      sigma2[:random].size.should eq(32)
-      sigma2[:encrypted_cert].size.should be > 0
-      sigma2[:session_id].should be > 0_u16
-      sigma2[:sigma2_bytes].size.should be > 0
+      shared_secret = initiator.shared_secret
+      shared_secret.should eq(responder.shared_secret)
+      raise "the handshake computed no shared secret" if shared_secret.nil?
+
+      # SessionKeys = HKDF(sharedSecret, IPK ‖ SHA256(sigma1 ‖ sigma2 ‖ sigma3), "SessionKeys", 48)
+      transcript_hash = crypto.compute_sha256([sigma1[:sigma1_bytes], sigma2_bytes, sigma3[:sigma3_bytes]])
+      salt = IO::Memory.new
+      salt.write(ipk)
+      salt.write(transcript_hash)
+      expected = crypto.create_hkdf_key(
+        shared_secret,
+        salt.to_slice,
+        "SessionKeys".to_slice,
+        Matter::Session::Case::SESSION_KEYS_LENGTH
+      )
+
+      keys = initiator.derive_session_keys
+      keys[:encryption].should eq(expected[0, 16])
+      keys[:decryption].should eq(expected[16, 16])
+      keys[:attestation_challenge].should eq(expected[32, 16])
+    end
+
+    it "establishes matching secure contexts for both ends" do
+      crypto = Matter::Crypto::StandardCrypto.new
+      ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
+      initiator_key = crypto.create_key_pair
+      responder_key = crypto.create_key_pair
+
+      contexts = Matter::Session::Case.establish_session(
+        initiator_cert: tlv_certificate(initiator_key.public_key),
+        initiator_key: initiator_key,
+        responder_cert_chain: Matter::Session::Case::OperationalCertChain.new(
+          tlv_certificate(responder_key.public_key, RESPONDER_NODE_ID)
+        ),
+        responder_key: responder_key,
+        fabric_id: FABRIC_ID,
+        initiator_node_id: NODE_ID,
+        responder_node_id: RESPONDER_NODE_ID,
+        crypto: crypto,
+        ipk: ipk
+      )
+
+      initiator_context = contexts[:initiator]
+      responder_context = contexts[:responder]
+
+      initiator_context.encryption_key.should eq(responder_context.decryption_key)
+      initiator_context.decryption_key.should eq(responder_context.encryption_key)
+      initiator_context.attestation_challenge.should eq(responder_context.attestation_challenge)
+      initiator_context.session_id.should eq(responder_context.peer_session_id)
+      initiator_context.peer_session_id.should eq(responder_context.session_id)
+      initiator_context.initiator?.should be_true
+      responder_context.initiator?.should be_false
+      initiator_context.case_session?.should be_true
     end
   end
 end
