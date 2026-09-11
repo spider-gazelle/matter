@@ -3,8 +3,7 @@ require "../fabric"
 require "../mdns/responder"
 require "../mdns/responder_interface"
 require "../mdns/service_type"
-require "../protocol/message_handler"
-require "../protocol/session_manager"
+require "../protocol/session_registry"
 require "../cluster/operational_credentials"
 
 module Matter
@@ -40,7 +39,7 @@ module Matter
 
       def initialize(
         @fabric_table : FabricTable,
-        @message_handler : Protocol::SessionManager,
+        @registry : Protocol::SessionRegistry,
         @operational_credentials : Cluster::OperationalCredentials,
         @responder : MDNS::ResponderInterface,
         @commissioning_info : Proc(MDNS::CommissioningInfo),
@@ -104,7 +103,7 @@ module Matter
         # commissioners (notably iOS) abort.
         #
         # To avoid this, defer session deletion by a short grace period.
-        session_ids = @message_handler.sessions
+        session_ids = @registry.sessions
           .select { |_, session| session.fabric_index == fabric_index }
           .keys
 
@@ -113,12 +112,12 @@ module Matter
         else
           delay = @fabric_session_cleanup_delay
           if delay <= Time::Span.zero
-            session_ids.each { |session_id| @message_handler.delete_session(session_id) }
+            session_ids.each { |session_id| @registry.delete_session(session_id) }
           else
             Log.debug { "Deferring cleanup of #{session_ids.size} session(s) for fabric #{fabric_index} by #{delay.total_milliseconds}ms" }
             spawn do
               sleep delay
-              session_ids.each { |session_id| @message_handler.delete_session(session_id) }
+              session_ids.each { |session_id| @registry.delete_session(session_id) }
             end
           end
         end

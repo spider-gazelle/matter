@@ -11,15 +11,30 @@ module Matter
     # Handles:
     # - Sending and receiving Matter messages over UDP
     # - Message deduplication
-    # - Automatic retransmission with exponential backoff
-    # - Exchange management (request/response correlation)
+    # - Exchange management (request/response correlation) and acknowledgement
     #
     # Uses a single dual-stack IPv6 socket that accepts both IPv4 and IPv6 connections.
     class UDPTransport
+      Log = ::Log.for("matter.transport.udp_transport")
+
       # Matter default port
       MATTER_PORT = 5540
 
-      Log = ::Log.for("matter.transport.udp_transport")
+      # How long the receive loop waits for a datagram before looping.
+      RECEIVE_TIMEOUT = 100.milliseconds
+
+      # How often idle exchanges are swept out of the exchange table.
+      EXCHANGE_SWEEP_INTERVAL = 30.seconds
+
+      # Matter's maximum UDP payload.
+      MAX_DATAGRAM_SIZE = 1280
+
+      # Secure Channel MRP Standalone Acknowledgement (Matter spec 4.10).
+      STANDALONE_ACK_MESSAGE_TYPE = 0x10_u8
+
+      # The shortest well-formed packet: flags, session id, security flags and
+      # message counter.
+      MIN_PACKET_SIZE = 8
 
       getter socket : UDPSocket
       getter port : Int32
@@ -37,6 +52,7 @@ module Matter
 
       @running : Bool
       @receive_fiber : Fiber?
+      @last_exchange_sweep : Time = Time.utc
 
       def initialize(@port : Int32 = MATTER_PORT)
         # Create dual-stack IPv6 socket (accepts both IPv4 and IPv6)
@@ -45,7 +61,7 @@ module Matter
         @socket.reuse_address = true
         @socket.reuse_port = true
         @socket.bind("::", @port)
-        @socket.read_timeout = 100.milliseconds
+        @socket.read_timeout = RECEIVE_TIMEOUT
 
         # Support ephemeral ports: update @port with actual bound port
         @port = @socket.local_address.port if @port == 0
@@ -85,7 +101,6 @@ module Matter
       def send_message(
         message : Codec::MessageCodec::Message,
         peer_address : Socket::IPAddress,
-        exchange : Exchange? = nil,
       ) : Nil
         # Update message ID if not set
         if message.packet_header.message_id == 0
@@ -108,11 +123,6 @@ module Matter
           )
         end
 
-        # Store for potential retransmission if requires ACK
-        if message.payload_header.requires_acknowledge? && exchange
-          exchange.pending_message = message
-        end
-
         # Encode and send
         data = Codec::MessageCodec::Base.encode_message(message.packet_header, message.payload_header, message.payload)
 
@@ -122,11 +132,17 @@ module Matter
           "type=0x#{message.payload_header.message_type.to_s(16)} msg_id=#{message.packet_header.message_id}"
         end
 
-        @socket.send(data, peer_address)
+        transmit(data, peer_address)
       end
 
-      # Send raw packet (for testing)
+      # Send an already encoded packet.
       def send_raw(data : Bytes | Slice(UInt8), peer_address : Socket::IPAddress) : Nil
+        transmit(data, peer_address)
+      end
+
+      # The one place bytes leave the process. Specs override this to capture
+      # what would have gone out rather than bind a socket.
+      protected def transmit(data : Bytes | Slice(UInt8), peer_address : Socket::IPAddress) : Nil
         @socket.send(data, peer_address)
       end
 
@@ -175,35 +191,21 @@ module Matter
           payload: payload.to_slice
         )
 
-        send_message(message, peer_address, exchange)
+        send_message(message, peer_address)
         exchange
-      end
-
-      # Process retransmissions
-      # Should be called periodically (e.g., every 50ms)
-      def process_retransmissions : Nil
-        candidates = @exchange_manager.retransmit_candidates
-
-        candidates.each do |exchange_id, message|
-          if exchange = @exchange_manager.get_exchange(exchange_id)
-            if peer_address = exchange.peer_address
-              send_message(message, peer_address, exchange)
-            end
-          end
-        end
-
-        @exchange_manager.cleanup_stale_exchanges
       end
 
       private def receive_loop : Nil
         Log.debug { "UDP receive loop started (port=#{@port})" }
-        buffer = Bytes.new(1280) # Matter MTU
+        buffer = Bytes.new(MAX_DATAGRAM_SIZE)
         packet_count = 0
         peer_address : Socket::IPAddress? = nil
         bytes_read = 0
+        @last_exchange_sweep = Time.utc
 
         while @running
           begin
+            sweep_exchanges_if_due
             bytes_read, peer_address = @socket.receive(buffer)
             next if bytes_read == 0
 
@@ -223,18 +225,27 @@ module Matter
         Log.debug { "UDP receive loop stopped" }
       end
 
+      # Reclaims idle exchanges. The receive loop wakes every
+      # `RECEIVE_TIMEOUT`, which is where the sweep gets its ticks: nothing
+      # else drives the exchange table, so without this it only ever grows.
+      private def sweep_exchanges_if_due : Nil
+        now = Time.utc
+        return if now - @last_exchange_sweep < EXCHANGE_SWEEP_INTERVAL
+
+        @last_exchange_sweep = now
+        @exchange_manager.cleanup_stale_exchanges(now)
+      end
+
       private def handle_received_data(data : Bytes, peer_address : Socket::IPAddress) : Nil
-        # Validate minimum packet size
-        # Minimum Matter packet: 8 bytes (flags + session_id + security_flags + message_id)
-        if data.size < 8
-          Log.warn { "Packet too small (#{data.size} bytes, minimum 8); ignoring malformed packet" }
+        if data.size < MIN_PACKET_SIZE
+          Log.warn { "Packet too small (#{data.size} bytes, minimum #{MIN_PACKET_SIZE}); ignoring malformed packet" }
           return
         end
 
         Log.trace { "Decoding packet: bytes=#{data.size} peer=#{peer_address.address}:#{peer_address.port}" }
 
         # For encrypted messages, dump packet header bytes to debug source_node_id parsing
-        if data.size > 8
+        if data.size > MIN_PACKET_SIZE
           session_id_offset = Codec::MessageCodec::SESSION_ID_OFFSET
           session_id_bytes = data[session_id_offset, 2]
           session_id = IO::ByteFormat::LittleEndian.decode(UInt16, session_id_bytes)
@@ -322,12 +333,6 @@ module Matter
             initiator: !message.payload_header.initiator_message?
           )
 
-          # Handle acknowledgments
-          if message.payload_header.acknowledged_message_id
-            # This message acknowledges a previous message
-            exchange.clear_pending_message
-          end
-
           # Send acknowledgment if required
           if message.payload_header.requires_acknowledge?
             Log.trace { "Sending acknowledgment for message #{packet.header.message_id}" }
@@ -367,7 +372,7 @@ module Matter
         payload_header = Codec::MessageCodec::PayloadHeader.new(
           exchange_id: exchange.exchange_id,
           protocol_id: original_message.payload_header.protocol_id,
-          message_type: 0x10_u8, # MRP Standalone Acknowledgement
+          message_type: STANDALONE_ACK_MESSAGE_TYPE,
           initiator_message: !original_message.payload_header.initiator_message?,
           requires_acknowledge: false,
           acknowledged_message_id: original_message.packet_header.message_id
@@ -379,7 +384,7 @@ module Matter
           payload: Bytes.new(0)
         )
 
-        send_message(ack_message, peer_address, nil) # ACKs don't need retransmission
+        send_message(ack_message, peer_address)
       end
     end
   end

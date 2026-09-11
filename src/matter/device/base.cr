@@ -127,7 +127,7 @@ module Matter
 
         @lifecycle = LifecycleManager.new(
           fabric_table: @fabric_table,
-          message_handler: @message_handler,
+          registry: @message_handler.registry,
           operational_credentials: operational_credentials,
           responder: @responder,
           port: @transport.port,
@@ -174,6 +174,9 @@ module Matter
         # Persist all session state before shutdown to ensure message counters
         # and other session data are saved for clean reconnection after restart
         @message_handler.persist_all_sessions
+
+        # Stop the session sweep before the store closes under it.
+        @message_handler.close
 
         @persistence.flush
         @persistence.close

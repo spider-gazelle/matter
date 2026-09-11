@@ -26,16 +26,17 @@ module Matter
     end
   end
 
-  class FakeSessionManager
-    include Protocol::SessionManager
-
-    getter sessions : Hash(UInt16, Session::SecureContext) = {} of UInt16 => Session::SecureContext
+  # A registry that records the sessions the lifecycle manager deletes.
+  class RecordingRegistry < Protocol::SessionRegistry
     getter deleted : Array(UInt16) = [] of UInt16
 
+    def self.new_for_spec : self
+      new(mrp_cache: Protocol::MrpCache.new(Matter::Spec::CaptureTransport.new_for_spec))
+    end
+
     def delete_session(session_id : UInt16) : Bool
-      existed = @sessions.delete(session_id)
       @deleted << session_id
-      !existed.nil?
+      super
     end
   end
 end
@@ -45,8 +46,8 @@ describe Matter::Device::LifecycleManager do
     storage = Matter::Storage::Memory.new
     fabric_table = Matter::FabricTable.new(storage)
 
-    handler = Matter::FakeSessionManager.new
-    handler.sessions[22282_u16] = Matter::Session::SecureContext.new(
+    registry = Matter::RecordingRegistry.new_for_spec
+    registry.sessions[22282_u16] = Matter::Session::SecureContext.new(
       session_id: 22282_u16,
       peer_session_id: 40019_u16,
       session_type: Matter::Session::SessionType::Unicast,
@@ -62,7 +63,7 @@ describe Matter::Device::LifecycleManager do
 
     Matter::Device::LifecycleManager.new(
       fabric_table: fabric_table,
-      message_handler: handler,
+      registry: registry,
       operational_credentials: opcreds,
       responder: advertiser,
       commissioning_info: -> {
@@ -80,13 +81,13 @@ describe Matter::Device::LifecycleManager do
 
     opcreds.on_fabric_removed.as(Proc(UInt8, Nil)).call(1_u8)
 
-    handler.sessions.has_key?(22282_u16).should be_true
+    registry.sessions.has_key?(22282_u16).should be_true
     sleep 50.milliseconds
-    handler.sessions.has_key?(22282_u16).should be_true
+    registry.sessions.has_key?(22282_u16).should be_true
 
     sleep 300.milliseconds
-    handler.sessions.has_key?(22282_u16).should be_false
-    handler.deleted.should contain(22282_u16)
+    registry.sessions.has_key?(22282_u16).should be_false
+    registry.deleted.should contain(22282_u16)
 
     # Ensure mDNS switches were invoked (fabric table is empty, so commissioning should be advertised)
     advertiser.advertise_commissioning_calls.should be >= 1
