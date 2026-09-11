@@ -13,21 +13,7 @@ module Matter
     class GeneralDiagnosticsCluster < Base
       Log = ::Log.for("matter.cluster.general_diagnostics")
 
-      CLUSTER_ID = 0x0033_u32
-
-      # Attribute IDs
-      ATTR_NETWORK_INTERFACES          = 0x0000_u32
-      ATTR_REBOOT_COUNT                = 0x0001_u32
-      ATTR_UP_TIME                     = 0x0002_u32
-      ATTR_TOTAL_OPERATIONAL_HOURS     = 0x0003_u32
-      ATTR_BOOT_REASON                 = 0x0004_u32
-      ATTR_ACTIVE_HARDWARE_FAULTS      = 0x0005_u32
-      ATTR_ACTIVE_RADIO_FAULTS         = 0x0006_u32
-      ATTR_ACTIVE_NETWORK_FAULTS       = 0x0007_u32
-      ATTR_TEST_EVENT_TRIGGERS_ENABLED = 0x0008_u32
-
-      # Command IDs
-      CMD_TEST_EVENT_TRIGGER = 0x00_u32
+      cluster 0x0033, revision: 2
 
       # Use definitions from the definitions module
       alias InterfaceType = Definitions::GeneralDiagnostics::InterfaceType
@@ -83,16 +69,34 @@ module Matter
         end
       end
 
-      # Instance variables
-      property network_interfaces : Array(NetworkInterfaceInfo)
-      property reboot_count : UInt16
-      property up_time : UInt64
-      property total_operational_hours : UInt32
-      property boot_reason : BootReason
-      property active_hardware_faults : Array(HardwareFault)
-      property active_radio_faults : Array(RadioFault)
-      property active_network_faults : Array(NetworkFault)
-      property? test_event_triggers_enabled : Bool
+      # TestEventTrigger request: the 16 byte enable key and the trigger id.
+      struct TestEventTriggerRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property enable_key : Bytes
+
+        @[TLV::Field(tag: 1)]
+        property event_trigger : UInt64
+
+        def initialize(@enable_key : Bytes, @event_trigger : UInt64)
+        end
+      end
+
+      # UpTime and TotalOperationalHours are computed on read from the time
+      # the cluster was created; the stored TotalOperationalHours is the
+      # count carried over from earlier runs.
+      attribute 0x0000, :network_interfaces, Array(NetworkInterfaceInfo), default: [] of NetworkInterfaceInfo
+      attribute 0x0001, :reboot_count, UInt16, default: 0_u16
+      attribute 0x0002, :up_time, UInt64, default: 0_u64, omit_changes: true
+      attribute 0x0003, :total_operational_hours, UInt32, default: 0_u32, omit_changes: true, optional: true
+      attribute 0x0004, :boot_reason, BootReason, default: BootReason::PowerOnReboot, optional: true
+      attribute 0x0005, :active_hardware_faults, Array(HardwareFault), default: [] of HardwareFault, optional: true
+      attribute 0x0006, :active_radio_faults, Array(RadioFault), default: [] of RadioFault, optional: true
+      attribute 0x0007, :active_network_faults, Array(NetworkFault), default: [] of NetworkFault, optional: true
+      attribute 0x0008, :test_event_triggers_enabled, Bool, default: false
+
+      command 0x00, :test_event_trigger, request: TestEventTriggerRequest, access: :manage
 
       @start_time : Time
 
@@ -102,159 +106,34 @@ module Matter
         @boot_reason : BootReason = BootReason::PowerOnReboot,
       )
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
-
-        @network_interfaces = [] of NetworkInterfaceInfo
-        @up_time = 0_u64
-        @total_operational_hours = 0_u32
-        @active_hardware_faults = [] of HardwareFault
-        @active_radio_faults = [] of RadioFault
-        @active_network_faults = [] of NetworkFault
-        @test_event_triggers_enabled = false
         @start_time = Time.utc
-      end
-
-      def name : String
-        "GeneralDiagnostics"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_NETWORK_INTERFACES),
-            "NetworkInterfaces",
-            :array,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_REBOOT_COUNT),
-            "RebootCount",
-            :uint16,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_UP_TIME),
-            "UpTime",
-            :uint64,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_TOTAL_OPERATIONAL_HOURS),
-            "TotalOperationalHours",
-            :uint32,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_BOOT_REASON),
-            "BootReason",
-            :enum8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_ACTIVE_HARDWARE_FAULTS),
-            "ActiveHardwareFaults",
-            :array,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_ACTIVE_RADIO_FAULTS),
-            "ActiveRadioFaults",
-            :array,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_ACTIVE_NETWORK_FAULTS),
-            "ActiveNetworkFaults",
-            :array,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_TEST_EVENT_TRIGGERS_ENABLED),
-            "TestEventTriggersEnabled",
-            :bool,
-            writable: false
-          ),
-        ]
-      end
-
-      def commands : Array(CommandMetadata)
-        [
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_TEST_EVENT_TRIGGER),
-            "TestEventTrigger"
-          ),
-        ]
       end
 
       def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
-        when ATTR_NETWORK_INTERFACES
-          tlv(@network_interfaces)
-        when ATTR_REBOOT_COUNT
-          tlv(@reboot_count)
         when ATTR_UP_TIME
-          # Calculate uptime in seconds since start
-          tlv((Time.utc - @start_time).total_seconds.to_u64)
+          tlv(elapsed.total_seconds.to_u64)
         when ATTR_TOTAL_OPERATIONAL_HOURS
-          # Calculate hours from uptime
-          uptime_hours = ((Time.utc - @start_time).total_hours).to_u32
-          tlv((@total_operational_hours + uptime_hours))
-        when ATTR_BOOT_REASON
-          tlv(@boot_reason.value)
-        when ATTR_ACTIVE_HARDWARE_FAULTS
-          tlv(@active_hardware_faults.map(&.value))
-        when ATTR_ACTIVE_RADIO_FAULTS
-          tlv(@active_radio_faults.map(&.value))
-        when ATTR_ACTIVE_NETWORK_FAULTS
-          tlv(@active_network_faults.map(&.value))
-        when ATTR_TEST_EVENT_TRIGGERS_ENABLED
-          tlv(@test_event_triggers_enabled)
-        when GLOBAL_FEATURE_MAP
-          tlv(0_u32) # No features
-        when GLOBAL_ATTRIBUTE_LIST
-          build_attribute_list
+          tlv(@total_operational_hours + elapsed.total_hours.to_u32)
         else
           super
         end
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        # All attributes are read-only
-        super
+      private def elapsed : Time::Span
+        Time.utc - @start_time
       end
 
-      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
-        case command_id
-        when CMD_TEST_EVENT_TRIGGER
-          # TestEventTrigger requires test mode to be enabled
-          # For production devices, always return constraint error
-          InteractionModel::Status.constraint_error
-        else
-          super
-        end
+      # Test event triggers are never enabled on a production device, so no
+      # enable key matches.
+      def test_event_trigger(request : TestEventTriggerRequest) : InteractionModel::Status
+        InteractionModel::Status.constraint_error
       end
 
       # Add a network interface
       def add_network_interface(interface : NetworkInterfaceInfo) : Nil
         @network_interfaces << interface
-        increment_version
-      end
-
-      # Helper to encode attribute list
-      private def build_attribute_list : TLV::Any
-        tlv([
-          ATTR_NETWORK_INTERFACES,
-          ATTR_REBOOT_COUNT,
-          ATTR_UP_TIME,
-          ATTR_TOTAL_OPERATIONAL_HOURS,
-          ATTR_BOOT_REASON,
-          ATTR_ACTIVE_HARDWARE_FAULTS,
-          ATTR_ACTIVE_RADIO_FAULTS,
-          ATTR_ACTIVE_NETWORK_FAULTS,
-          ATTR_TEST_EVENT_TRIGGERS_ENABLED,
-          GLOBAL_CLUSTER_REVISION,
-          GLOBAL_FEATURE_MAP,
-          GLOBAL_ATTRIBUTE_LIST,
-        ])
+        increment_version_and_notify(ATTR_NETWORK_INTERFACES)
       end
     end
   end
