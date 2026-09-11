@@ -1,5 +1,4 @@
 require "./cluster"
-require "./definitions/general_commissioning"
 require "../failsafe_context"
 require "log"
 
@@ -166,8 +165,37 @@ module Matter
       # Commands
       # ========================================================================
 
-      command 0x00, :arm_fail_safe, request: Definitions::GeneralCommissioning::ArmFailSafeRequest, response: ArmFailSafeResponse, response_id: 0x01, access: :administer
-      command 0x02, :set_regulatory_config, request: Definitions::GeneralCommissioning::SetRegularConfigurationRequest, response: SetRegulatoryConfigResponse, response_id: 0x03, access: :administer, handler: :handle_set_regulatory_config
+      # Wire-format (TLV) request structs of the commands; the handlers convert
+      # them to the hand-written request types above.
+      module Tlv
+        # Input to the GeneralCommissioning armFailSafe command
+        struct ArmFailSafeRequest
+          include TLV::Serializable
+
+          @[TLV::Field(tag: 0)]
+          property expiry_length_seconds : UInt16
+
+          @[TLV::Field(tag: 1)]
+          property breadcrumb : UInt64
+        end
+
+        # Input to the GeneralCommissioning setRegulatoryConfig command
+        struct SetRegularConfigurationRequest
+          include TLV::Serializable
+
+          @[TLV::Field(tag: 0)]
+          property new_regulatory_configuration : RegulatoryLocationType
+
+          @[TLV::Field(tag: 1)]
+          property country_code : String
+
+          @[TLV::Field(tag: 2)]
+          property breadcrumb : UInt64
+        end
+      end
+
+      command 0x00, :arm_fail_safe, request: Tlv::ArmFailSafeRequest, response: ArmFailSafeResponse, response_id: 0x01, access: :administer
+      command 0x02, :set_regulatory_config, request: Tlv::SetRegularConfigurationRequest, response: SetRegulatoryConfigResponse, response_id: 0x03, access: :administer, handler: :handle_set_regulatory_config
       command 0x04, :commissioning_complete, response: CommissioningCompleteResponse, response_id: 0x05, access: :administer
 
       # ========================================================================
@@ -230,7 +258,7 @@ module Matter
       # Command entry points (DSL dispatch)
       # ========================================================================
 
-      def arm_fail_safe(request_def : Definitions::GeneralCommissioning::ArmFailSafeRequest) : ArmFailSafeResponse
+      def arm_fail_safe(request_def : Tlv::ArmFailSafeRequest) : ArmFailSafeResponse
         # Convert to cluster request struct
         request = ArmFailSafeRequest.new(
           expiry_length_seconds: request_def.expiry_length_seconds,
@@ -245,7 +273,7 @@ module Matter
         )
       end
 
-      def handle_set_regulatory_config(request_def : Definitions::GeneralCommissioning::SetRegularConfigurationRequest) : SetRegulatoryConfigResponse
+      def handle_set_regulatory_config(request_def : Tlv::SetRegularConfigurationRequest) : SetRegulatoryConfigResponse
         # Convert to cluster request struct
         request = SetRegulatoryConfigRequest.new(
           new_regulatory_config: RegulatoryLocationType.from_value(request_def.new_regulatory_configuration.value),

@@ -1,5 +1,5 @@
 require "./cluster"
-require "./definitions/color_control"
+require "./color_control/types"
 
 module Matter
   module Cluster
@@ -24,8 +24,6 @@ module Matter
       feature :color_loop, bit: 2        # CL - Color loop functionality
       feature :xy, bit: 3                # XY - XY color space specification
       feature :color_temperature, bit: 4 # CT - Color temperature control
-
-      alias Def = Definitions::ColorControl
 
       HUE_MODULUS          =     255
       SATURATION_MAXIMUM   = 254_u16
@@ -55,11 +53,11 @@ module Matter
       attribute 0x0003, :current_x, UInt16, default: 0_u16, persist: true, scene: true, max: CHROMATICITY_MAX, requires: :xy
       attribute 0x0004, :current_y, UInt16, default: 0_u16, persist: true, scene: true, max: CHROMATICITY_MAX, requires: :xy
       attribute 0x0007, :color_temperature_mireds, UInt16, default: DEFAULT_COLOR_TEMPERATURE_MIREDS, persist: true, scene: true, requires: :color_temperature
-      attribute 0x0008, :color_mode, Def::ColorMode, default: Def::ColorMode::CurrentHueAndCurrentSaturation, persist: true
+      attribute 0x0008, :color_mode, ColorMode, default: ColorMode::CurrentHueAndCurrentSaturation, persist: true
       attribute 0x000F, :options, UInt8, default: 0_u8, writable: true
       attribute 0x0010, :number_of_primaries, UInt8, nullable: true, fixed: true
       attribute 0x4000, :enhanced_current_hue, UInt16, default: 0_u16, persist: true, scene: true, requires: :enhanced_hue
-      attribute 0x4001, :enhanced_color_mode, Def::EnhancedColorMode, default: Def::EnhancedColorMode::CurrentHueAndCurrentSaturation, persist: true, scene: true
+      attribute 0x4001, :enhanced_color_mode, EnhancedColorMode, default: EnhancedColorMode::CurrentHueAndCurrentSaturation, persist: true, scene: true
       attribute 0x4002, :color_loop_active, Bool, default: false, persist: true, scene: true, requires: :color_loop
       attribute 0x4003, :color_loop_direction, UInt8, default: COLOR_LOOP_DIRECTION_DECREASE, persist: true, scene: true, requires: :color_loop
       attribute 0x4004, :color_loop_time, UInt16, default: DEFAULT_COLOR_LOOP_TIME, persist: true, scene: true, requires: :color_loop
@@ -71,25 +69,25 @@ module Matter
       attribute 0x400D, :couple_color_temp_to_level_min_mireds, UInt16, nullable: true, optional: true, requires: :color_temperature
       attribute 0x4010, :start_up_color_temperature_mireds, UInt16, nullable: true, writable: true, optional: true, min: PHYSICAL_MIN_MIREDS_LOWER_BOUND, max: CHROMATICITY_MAX, requires: :color_temperature
 
-      command 0x00, :move_to_hue, request: Def::MoveToHueRequest, requires: :hue_saturation
-      command 0x01, :move_hue, request: Def::MoveHueRequest, requires: :hue_saturation
-      command 0x02, :step_hue, request: Def::StepHueRequest, requires: :hue_saturation
-      command 0x03, :move_to_saturation, request: Def::MoveToSaturationRequest, requires: :hue_saturation
-      command 0x04, :move_saturation, request: Def::MoveSaturationRequest, requires: :hue_saturation
-      command 0x05, :step_saturation, request: Def::StepSaturationRequest, requires: :hue_saturation
-      command 0x06, :move_to_hue_and_saturation, request: Def::MoveToHueAndSaturationRequest, requires: :hue_saturation
-      command 0x07, :move_to_color, request: Def::MoveToColorRequest, requires: :xy
-      command 0x08, :move_color, request: Def::MoveColorRequest, requires: :xy
-      command 0x09, :step_color, request: Def::StepColorRequest, requires: :xy
-      command 0x0A, :move_to_color_temperature, request: Def::MoveToColorTemperatureRequest, requires: :color_temperature
-      command 0x40, :enhanced_move_to_hue, request: Def::EnhancedMoveToHueRequest, requires: :enhanced_hue
-      command 0x41, :enhanced_move_hue, request: Def::EnhancedMoveHueRequest, requires: :enhanced_hue
-      command 0x42, :enhanced_step_hue, request: Def::EnhancedStepHueRequest, requires: :enhanced_hue
-      command 0x43, :enhanced_move_to_hue_and_saturation, request: Def::EnhancedMoveToHueAndSaturationRequest, requires: :enhanced_hue
-      command 0x44, :color_loop_set, request: Def::ColorLoopSetRequest, requires: :color_loop
-      command 0x47, :stop_move_step, request: Def::StopMoveStepRequest, requires: [:hue_saturation, :xy, :color_temperature]
-      command 0x4B, :move_color_temperature, request: Def::MoveColorTemperatureRequest, requires: :color_temperature
-      command 0x4C, :step_color_temperature, request: Def::StepColorTemperatureRequest, requires: :color_temperature
+      command 0x00, :move_to_hue, request: MoveToHueRequest, requires: :hue_saturation
+      command 0x01, :move_hue, request: MoveHueRequest, requires: :hue_saturation
+      command 0x02, :step_hue, request: StepHueRequest, requires: :hue_saturation
+      command 0x03, :move_to_saturation, request: MoveToSaturationRequest, requires: :hue_saturation
+      command 0x04, :move_saturation, request: MoveSaturationRequest, requires: :hue_saturation
+      command 0x05, :step_saturation, request: StepSaturationRequest, requires: :hue_saturation
+      command 0x06, :move_to_hue_and_saturation, request: MoveToHueAndSaturationRequest, requires: :hue_saturation
+      command 0x07, :move_to_color, request: MoveToColorRequest, requires: :xy
+      command 0x08, :move_color, request: MoveColorRequest, requires: :xy
+      command 0x09, :step_color, request: StepColorRequest, requires: :xy
+      command 0x0A, :move_to_color_temperature, request: MoveToColorTemperatureRequest, requires: :color_temperature
+      command 0x40, :enhanced_move_to_hue, request: EnhancedMoveToHueRequest, requires: :enhanced_hue
+      command 0x41, :enhanced_move_hue, request: EnhancedMoveHueRequest, requires: :enhanced_hue
+      command 0x42, :enhanced_step_hue, request: EnhancedStepHueRequest, requires: :enhanced_hue
+      command 0x43, :enhanced_move_to_hue_and_saturation, request: EnhancedMoveToHueAndSaturationRequest, requires: :enhanced_hue
+      command 0x44, :color_loop_set, request: ColorLoopSetRequest, requires: :color_loop
+      command 0x47, :stop_move_step, request: StopMoveStepRequest, requires: [:hue_saturation, :xy, :color_temperature]
+      command 0x4B, :move_color_temperature, request: MoveColorTemperatureRequest, requires: :color_temperature
+      command 0x4C, :step_color_temperature, request: StepColorTemperatureRequest, requires: :color_temperature
 
       # Fired after any colour attribute changes
       @on_color_changed : Proc(Nil)?
@@ -104,7 +102,7 @@ module Matter
         @color_temperature_mireds : UInt16 = DEFAULT_COLOR_TEMPERATURE_MIREDS,
         @color_temp_physical_min_mireds : UInt16 = DEFAULT_PHYSICAL_MIN_MIREDS,
         @color_temp_physical_max_mireds : UInt16 = DEFAULT_PHYSICAL_MAX_MIREDS,
-        @color_mode : Def::ColorMode = Def::ColorMode::CurrentHueAndCurrentSaturation,
+        @color_mode : ColorMode = ColorMode::CurrentHueAndCurrentSaturation,
         @options : UInt8 = 0_u8,
       )
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
@@ -118,15 +116,15 @@ module Matter
       # Commands (transitions are instant; move commands are accepted as no-ops)
       # ------------------------------------------------------------------------
 
-      def move_to_hue(request : Def::MoveToHueRequest) : InteractionModel::Status
+      def move_to_hue(request : MoveToHueRequest) : InteractionModel::Status
         move_to_hue(request.hue)
       end
 
-      def move_hue(request : Def::MoveHueRequest) : InteractionModel::Status
+      def move_hue(request : MoveHueRequest) : InteractionModel::Status
         InteractionModel::Status.success
       end
 
-      def step_hue(request : Def::StepHueRequest) : InteractionModel::Status
+      def step_hue(request : StepHueRequest) : InteractionModel::Status
         case request.step_mode
         in .up?
           move_to_hue(((@current_hue.to_u16 + request.step_size) % HUE_MODULUS).to_u8)
@@ -135,15 +133,15 @@ module Matter
         end
       end
 
-      def move_to_saturation(request : Def::MoveToSaturationRequest) : InteractionModel::Status
+      def move_to_saturation(request : MoveToSaturationRequest) : InteractionModel::Status
         move_to_saturation(request.saturation)
       end
 
-      def move_saturation(request : Def::MoveSaturationRequest) : InteractionModel::Status
+      def move_saturation(request : MoveSaturationRequest) : InteractionModel::Status
         InteractionModel::Status.success
       end
 
-      def step_saturation(request : Def::StepSaturationRequest) : InteractionModel::Status
+      def step_saturation(request : StepSaturationRequest) : InteractionModel::Status
         case request.step_mode
         in .up?
           move_to_saturation(Math.min(@current_saturation.to_u16 + request.step_size, SATURATION_MAXIMUM).to_u8)
@@ -152,34 +150,34 @@ module Matter
         end
       end
 
-      def move_to_hue_and_saturation(request : Def::MoveToHueAndSaturationRequest) : InteractionModel::Status
+      def move_to_hue_and_saturation(request : MoveToHueAndSaturationRequest) : InteractionModel::Status
         self.current_hue = request.hue
         self.current_saturation = request.saturation
         self.enhanced_current_hue = request.hue.to_u16 << ENHANCED_HUE_SHIFT
-        color_changed(Def::ColorMode::CurrentHueAndCurrentSaturation, Def::EnhancedColorMode::CurrentHueAndCurrentSaturation)
+        color_changed(ColorMode::CurrentHueAndCurrentSaturation, EnhancedColorMode::CurrentHueAndCurrentSaturation)
       end
 
-      def move_to_color(request : Def::MoveToColorRequest) : InteractionModel::Status
+      def move_to_color(request : MoveToColorRequest) : InteractionModel::Status
         move_to_color(request.x, request.y)
       end
 
-      def move_color(request : Def::MoveColorRequest) : InteractionModel::Status
+      def move_color(request : MoveColorRequest) : InteractionModel::Status
         InteractionModel::Status.success
       end
 
-      def step_color(request : Def::StepColorRequest) : InteractionModel::Status
+      def step_color(request : StepColorRequest) : InteractionModel::Status
         move_to_color(step_chromaticity(@current_x, request.x), step_chromaticity(@current_y, request.y))
       end
 
-      def move_to_color_temperature(request : Def::MoveToColorTemperatureRequest) : InteractionModel::Status
+      def move_to_color_temperature(request : MoveToColorTemperatureRequest) : InteractionModel::Status
         move_to_color_temperature(request.color_temperature_mireds)
       end
 
-      def move_color_temperature(request : Def::MoveColorTemperatureRequest) : InteractionModel::Status
+      def move_color_temperature(request : MoveColorTemperatureRequest) : InteractionModel::Status
         InteractionModel::Status.success
       end
 
-      def step_color_temperature(request : Def::StepColorTemperatureRequest) : InteractionModel::Status
+      def step_color_temperature(request : StepColorTemperatureRequest) : InteractionModel::Status
         case request.step_mode
         in .up?
           move_to_color_temperature(Math.min(@color_temperature_mireds.to_u32 + request.step_size, @color_temp_physical_max_mireds.to_u32).to_u16)
@@ -188,15 +186,15 @@ module Matter
         end
       end
 
-      def enhanced_move_to_hue(request : Def::EnhancedMoveToHueRequest) : InteractionModel::Status
+      def enhanced_move_to_hue(request : EnhancedMoveToHueRequest) : InteractionModel::Status
         move_to_enhanced_hue(request.enhanced_hue)
       end
 
-      def enhanced_move_hue(request : Def::EnhancedMoveHueRequest) : InteractionModel::Status
+      def enhanced_move_hue(request : EnhancedMoveHueRequest) : InteractionModel::Status
         InteractionModel::Status.success
       end
 
-      def enhanced_step_hue(request : Def::EnhancedStepHueRequest) : InteractionModel::Status
+      def enhanced_step_hue(request : EnhancedStepHueRequest) : InteractionModel::Status
         case request.step_mode
         in .up?
           move_to_enhanced_hue(((@enhanced_current_hue.to_u32 + request.step_size) % ENHANCED_HUE_MODULUS).to_u16)
@@ -205,20 +203,20 @@ module Matter
         end
       end
 
-      def enhanced_move_to_hue_and_saturation(request : Def::EnhancedMoveToHueAndSaturationRequest) : InteractionModel::Status
+      def enhanced_move_to_hue_and_saturation(request : EnhancedMoveToHueAndSaturationRequest) : InteractionModel::Status
         self.enhanced_current_hue = request.enhanced_hue
         self.current_hue = (request.enhanced_hue >> ENHANCED_HUE_SHIFT).to_u8
         self.current_saturation = request.saturation
-        color_changed(Def::ColorMode::CurrentHueAndCurrentSaturation, Def::EnhancedColorMode::EnhancedCurrentHueAndCurrentSaturation)
+        color_changed(ColorMode::CurrentHueAndCurrentSaturation, EnhancedColorMode::EnhancedCurrentHueAndCurrentSaturation)
       end
 
       # The loop is not run; the request is accepted
-      def color_loop_set(request : Def::ColorLoopSetRequest) : InteractionModel::Status
+      def color_loop_set(request : ColorLoopSetRequest) : InteractionModel::Status
         self.remaining_time = NO_TRANSITION
         InteractionModel::Status.success
       end
 
-      def stop_move_step(request : Def::StopMoveStepRequest) : InteractionModel::Status
+      def stop_move_step(request : StopMoveStepRequest) : InteractionModel::Status
         self.remaining_time = NO_TRANSITION
         InteractionModel::Status.success
       end
@@ -248,14 +246,14 @@ module Matter
 
         self.current_hue = hue
         self.enhanced_current_hue = hue.to_u16 << ENHANCED_HUE_SHIFT
-        color_changed(Def::ColorMode::CurrentHueAndCurrentSaturation, Def::EnhancedColorMode::CurrentHueAndCurrentSaturation)
+        color_changed(ColorMode::CurrentHueAndCurrentSaturation, EnhancedColorMode::CurrentHueAndCurrentSaturation)
       end
 
       private def move_to_saturation(saturation : UInt8) : InteractionModel::Status
         return InteractionModel::Status.success if @current_saturation == saturation
 
         self.current_saturation = saturation
-        color_changed(Def::ColorMode::CurrentHueAndCurrentSaturation, Def::EnhancedColorMode::CurrentHueAndCurrentSaturation)
+        color_changed(ColorMode::CurrentHueAndCurrentSaturation, EnhancedColorMode::CurrentHueAndCurrentSaturation)
       end
 
       private def move_to_color(x : UInt16, y : UInt16) : InteractionModel::Status
@@ -263,14 +261,14 @@ module Matter
 
         self.current_x = x
         self.current_y = y
-        color_changed(Def::ColorMode::CurrentXAndCurrentY, Def::EnhancedColorMode::CurrentXAndCurrentY)
+        color_changed(ColorMode::CurrentXAndCurrentY, EnhancedColorMode::CurrentXAndCurrentY)
       end
 
       private def move_to_color_temperature(mireds : UInt16) : InteractionModel::Status
         return InteractionModel::Status.success if @color_temperature_mireds == mireds
 
         self.color_temperature_mireds = mireds.clamp(@color_temp_physical_min_mireds, @color_temp_physical_max_mireds)
-        color_changed(Def::ColorMode::ColorTemperatureMireds, Def::EnhancedColorMode::ColorTemperatureMireds)
+        color_changed(ColorMode::ColorTemperatureMireds, EnhancedColorMode::ColorTemperatureMireds)
       end
 
       private def move_to_enhanced_hue(enhanced_hue : UInt16) : InteractionModel::Status
@@ -278,11 +276,11 @@ module Matter
 
         self.enhanced_current_hue = enhanced_hue
         self.current_hue = (enhanced_hue >> ENHANCED_HUE_SHIFT).to_u8
-        color_changed(Def::ColorMode::CurrentHueAndCurrentSaturation, Def::EnhancedColorMode::EnhancedCurrentHueAndCurrentSaturation)
+        color_changed(ColorMode::CurrentHueAndCurrentSaturation, EnhancedColorMode::EnhancedCurrentHueAndCurrentSaturation)
       end
 
       # Records the mode the colour was last set in and notifies the device
-      private def color_changed(mode : Def::ColorMode, enhanced_mode : Def::EnhancedColorMode) : InteractionModel::Status
+      private def color_changed(mode : ColorMode, enhanced_mode : EnhancedColorMode) : InteractionModel::Status
         self.color_mode = mode
         self.enhanced_color_mode = enhanced_mode
         self.remaining_time = NO_TRANSITION

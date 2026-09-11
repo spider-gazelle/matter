@@ -1,5 +1,5 @@
 require "./cluster"
-require "./definitions/network_commissioning"
+require "./network_commissioning/types"
 require "../network/backend"
 require "log"
 require "base64"
@@ -288,12 +288,12 @@ module Matter
       attribute 0x0009, :supported_thread_features, ThreadCapabilitiesBitmap, default: ThreadCapabilitiesBitmap::None, fixed: true, requires: :thread_network_interface
       attribute 0x000A, :thread_version, UInt16, default: THREAD_VERSION_1_3, fixed: true, requires: :thread_network_interface
 
-      command 0x00, :scan_networks, request: Definitions::NetworkCommissioning::ScanAvailableNetworksRequest, response: Definitions::NetworkCommissioning::ScanNetworksResponse, response_id: 0x01, access: :administer, requires: ANY_WIRELESS_INTERFACE
-      command 0x02, :add_or_update_wifi_network, request: Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest, response: Definitions::NetworkCommissioning::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: :wi_fi_network_interface
-      command 0x03, :add_or_update_thread_network, request: Definitions::NetworkCommissioning::AddOrUpdateThreadNetworkRequest, response: Definitions::NetworkCommissioning::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: :thread_network_interface
-      command 0x04, :remove_network, request: Definitions::NetworkCommissioning::RemoveNetworkRequest, response: Definitions::NetworkCommissioning::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: ANY_WIRELESS_INTERFACE
-      command 0x06, :connect_network, request: Definitions::NetworkCommissioning::ConnectNetworkRequest, response: Definitions::NetworkCommissioning::ConnectNetworkResponse, response_id: 0x07, access: :administer, requires: ANY_WIRELESS_INTERFACE
-      command 0x08, :reorder_network, request: Definitions::NetworkCommissioning::ReorderNetworkRequest, response: Definitions::NetworkCommissioning::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: ANY_WIRELESS_INTERFACE
+      command 0x00, :scan_networks, request: Tlv::ScanAvailableNetworksRequest, response: Tlv::ScanNetworksResponse, response_id: 0x01, access: :administer, requires: ANY_WIRELESS_INTERFACE
+      command 0x02, :add_or_update_wifi_network, request: Tlv::AddOrUpdateWiFiNetworkRequest, response: Tlv::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: :wi_fi_network_interface
+      command 0x03, :add_or_update_thread_network, request: Tlv::AddOrUpdateThreadNetworkRequest, response: Tlv::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: :thread_network_interface
+      command 0x04, :remove_network, request: Tlv::RemoveNetworkRequest, response: Tlv::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: ANY_WIRELESS_INTERFACE
+      command 0x06, :connect_network, request: Tlv::ConnectNetworkRequest, response: Tlv::ConnectNetworkResponse, response_id: 0x07, access: :administer, requires: ANY_WIRELESS_INTERFACE
+      command 0x08, :reorder_network, request: Tlv::ReorderNetworkRequest, response: Tlv::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: ANY_WIRELESS_INTERFACE
 
       property network_type : NetworkType
 
@@ -728,20 +728,20 @@ module Matter
       # These bridge protocol-level TLV encoding with high-level struct handlers
 
       # Wire status answered when a request field violates its length constraint.
-      OUT_OF_RANGE_STATUS = Definitions::NetworkCommissioning::StatusCode.new(NetworkCommissioningStatus::OutOfRange.value)
+      OUT_OF_RANGE_STATUS = Tlv::StatusCode.new(NetworkCommissioningStatus::OutOfRange.value)
 
       # A request DTO rejected a field (oversized ssid / credentials / dataset /
       # network_id): answer `OutOfRange` with the validation message instead of
       # failing the whole command.
-      private def out_of_range_config_response(command : String, ex : ArgumentError) : Definitions::NetworkCommissioning::NetworkConfigurationResponse
+      private def out_of_range_config_response(command : String, ex : ArgumentError) : Tlv::NetworkConfigurationResponse
         Log.warn(exception: ex) { "#{command} rejected" }
-        Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
+        Tlv::NetworkConfigurationResponse.new(
           status_code: OUT_OF_RANGE_STATUS,
           debug_text: ex.message
         )
       end
 
-      def scan_networks(tlv_req : Definitions::NetworkCommissioning::ScanAvailableNetworksRequest) : Definitions::NetworkCommissioning::ScanNetworksResponse
+      def scan_networks(tlv_req : Tlv::ScanAvailableNetworksRequest) : Tlv::ScanNetworksResponse
         # Parse TLV request
 
         # Convert to simple struct
@@ -752,7 +752,7 @@ module Matter
           )
         rescue ex : ArgumentError
           Log.warn(exception: ex) { "ScanNetworks rejected" }
-          return Definitions::NetworkCommissioning::ScanNetworksResponse.new(
+          return Tlv::ScanNetworksResponse.new(
             status_code: OUT_OF_RANGE_STATUS,
             debug_text: ex.message
           )
@@ -765,8 +765,8 @@ module Matter
         wifi_results = if results = response.wifi_scan_results
                          results.compact_map do |result|
                            next unless result.ssid && result.bssid && result.channel
-                           band = result.wifi_band.try { |wifi_band| Definitions::NetworkCommissioning::Band.new(wifi_band.value) }
-                           Definitions::NetworkCommissioning::WiFiInterfaceScanResult.new(
+                           band = result.wifi_band.try { |wifi_band| Tlv::Band.new(wifi_band.value) }
+                           Tlv::WiFiInterfaceScanResult.new(
                              security: result.security.try(&.value) || 0_u8,
                              ssid: result.ssid.as(Bytes),
                              bssid: result.bssid.as(Bytes),
@@ -780,7 +780,7 @@ module Matter
         # Convert internal Thread results to Definitions struct
         thread_results = if results = response.thread_scan_results
                            results.map do |result|
-                             Definitions::NetworkCommissioning::ThreadInterfaceScanResult.new(
+                             Tlv::ThreadInterfaceScanResult.new(
                                pan_id: result.pan_id,
                                extended_pan_id: result.extended_pan_id,
                                network_name: result.network_name,
@@ -794,15 +794,15 @@ module Matter
                          end
 
         # Use TLV::Serializable struct for response
-        Definitions::NetworkCommissioning::ScanNetworksResponse.new(
-          status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
+        Tlv::ScanNetworksResponse.new(
+          status_code: Tlv::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           wifi_scan_results: wifi_results.try { |wifi_res| wifi_res.empty? ? nil : wifi_res },
           thread_scan_results: thread_results.try { |thread_res| thread_res.empty? ? nil : thread_res }
         )
       end
 
-      def add_or_update_wifi_network(tlv_req : Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest) : Definitions::NetworkCommissioning::NetworkConfigurationResponse
+      def add_or_update_wifi_network(tlv_req : Tlv::AddOrUpdateWiFiNetworkRequest) : Tlv::NetworkConfigurationResponse
         # Parse TLV request
 
         # Convert to simple struct
@@ -820,14 +820,14 @@ module Matter
         response = handle_add_or_update_wifi_network(req, failsafe_armed: true)
 
         # Use TLV::Serializable struct for response
-        Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
-          status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
+        Tlv::NetworkConfigurationResponse.new(
+          status_code: Tlv::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           network_index: response.network_index
         )
       end
 
-      def add_or_update_thread_network(tlv_req : Definitions::NetworkCommissioning::AddOrUpdateThreadNetworkRequest) : Definitions::NetworkCommissioning::NetworkConfigurationResponse
+      def add_or_update_thread_network(tlv_req : Tlv::AddOrUpdateThreadNetworkRequest) : Tlv::NetworkConfigurationResponse
         # Parse TLV request
 
         # Convert to simple struct
@@ -844,14 +844,14 @@ module Matter
         response = handle_add_or_update_thread_network(req, failsafe_armed: true)
 
         # Use TLV::Serializable struct for response
-        Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
-          status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
+        Tlv::NetworkConfigurationResponse.new(
+          status_code: Tlv::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           network_index: response.network_index
         )
       end
 
-      def remove_network(tlv_req : Definitions::NetworkCommissioning::RemoveNetworkRequest) : Definitions::NetworkCommissioning::NetworkConfigurationResponse
+      def remove_network(tlv_req : Tlv::RemoveNetworkRequest) : Tlv::NetworkConfigurationResponse
         # Parse TLV request
 
         # Convert to simple struct
@@ -868,14 +868,14 @@ module Matter
         response = handle_remove_network(req, failsafe_armed: true)
 
         # Use TLV::Serializable struct for response
-        Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
-          status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
+        Tlv::NetworkConfigurationResponse.new(
+          status_code: Tlv::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           network_index: response.network_index
         )
       end
 
-      def connect_network(tlv_req : Definitions::NetworkCommissioning::ConnectNetworkRequest) : Definitions::NetworkCommissioning::ConnectNetworkResponse
+      def connect_network(tlv_req : Tlv::ConnectNetworkRequest) : Tlv::ConnectNetworkResponse
         # Parse TLV request
 
         # Convert to simple struct
@@ -886,7 +886,7 @@ module Matter
           )
         rescue ex : ArgumentError
           Log.warn(exception: ex) { "ConnectNetwork rejected" }
-          return Definitions::NetworkCommissioning::ConnectNetworkResponse.new(
+          return Tlv::ConnectNetworkResponse.new(
             status_code: OUT_OF_RANGE_STATUS,
             debug_text: ex.message
           )
@@ -896,14 +896,14 @@ module Matter
         response = handle_connect_network(req, failsafe_armed: true)
 
         # Use TLV::Serializable struct for response
-        Definitions::NetworkCommissioning::ConnectNetworkResponse.new(
-          status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
+        Tlv::ConnectNetworkResponse.new(
+          status_code: Tlv::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           error_value: response.error_value
         )
       end
 
-      def reorder_network(tlv_req : Definitions::NetworkCommissioning::ReorderNetworkRequest) : Definitions::NetworkCommissioning::NetworkConfigurationResponse
+      def reorder_network(tlv_req : Tlv::ReorderNetworkRequest) : Tlv::NetworkConfigurationResponse
         # Parse TLV request
 
         # Convert to simple struct
@@ -921,8 +921,8 @@ module Matter
         response = handle_reorder_network(req, failsafe_armed: true)
 
         # Use TLV::Serializable struct for response
-        Definitions::NetworkCommissioning::NetworkConfigurationResponse.new(
-          status_code: Definitions::NetworkCommissioning::StatusCode.new(response.networking_status.value),
+        Tlv::NetworkConfigurationResponse.new(
+          status_code: Tlv::StatusCode.new(response.networking_status.value),
           debug_text: response.debug_text,
           network_index: response.network_index
         )

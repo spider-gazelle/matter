@@ -1,5 +1,5 @@
 require "./cluster"
-require "./definitions/operational_credentials"
+require "./operational_credentials/types"
 require "../fabric"
 require "../fabric_table"
 require "../crypto/key"
@@ -10,9 +10,6 @@ require "../certificate/certification_declaration"
 
 module Matter
   module Cluster
-    # Alias for operational credentials definitions
-    alias OpCredDefs = Definitions::OperationalCredentials
-
     # Operational Credentials Cluster (0x003E)
     #
     # Functionality to manage operational certificates and fabric membership.
@@ -65,21 +62,21 @@ module Matter
 
       # NOCs, Fabrics, SupportedFabrics, CommissionedFabrics and
       # CurrentFabricIndex are computed from the fabric table and the session.
-      attribute 0x0000, :nocs, Array(OpCredDefs::NOC), computed: true, read_access: :administer, fabric_scoped: true
-      attribute 0x0001, :fabrics, Array(OpCredDefs::FabricDescriptor), computed: true, fabric_scoped: true
+      attribute 0x0000, :nocs, Array(Tlv::NOC), computed: true, read_access: :administer, fabric_scoped: true
+      attribute 0x0001, :fabrics, Array(Tlv::FabricDescriptor), computed: true, fabric_scoped: true
       attribute 0x0002, :supported_fabrics, UInt8, computed: true, fixed: true
       attribute 0x0003, :commissioned_fabrics, UInt8, computed: true
       attribute 0x0004, :trusted_root_certificates, Array(Bytes), default: [] of Bytes
       attribute 0x0005, :current_fabric_index, UInt8, computed: true
 
-      command 0x00, :attestation_request, request: Definitions::OperationalCredentials::AttestationRequest, response: OpCredDefs::AttestationResponse, response_id: 0x01, access: :administer
-      command 0x02, :certificate_chain_request, request: Definitions::OperationalCredentials::CertificateChainRequest, response: OpCredDefs::CertificateChainResponse, response_id: 0x03, access: :administer
-      command 0x04, :csr_request, request: Definitions::OperationalCredentials::CsrRequest, response: OpCredDefs::CsrResponse, response_id: 0x05, access: :administer
-      command 0x06, :add_noc, request: Definitions::OperationalCredentials::AddNocRequest, response: OpCredDefs::TlvNocResponse, response_id: 0x08, access: :administer
-      command 0x07, :update_noc, request: Definitions::OperationalCredentials::UpdateNocRequest, response: OpCredDefs::TlvNocResponse, response_id: 0x08, access: :administer
-      command 0x09, :update_fabric_label, request: Definitions::OperationalCredentials::UpdateFabricLabelRequest, response: OpCredDefs::TlvNocResponse, response_id: 0x08, access: :administer
-      command 0x0A, :remove_fabric, request: Definitions::OperationalCredentials::RemoveFabricRequest, response: OpCredDefs::TlvNocResponse, response_id: 0x08, access: :administer
-      command 0x0B, :add_trusted_root_certificate, request: Definitions::OperationalCredentials::AddTrustedRootCertificateRequest, access: :administer
+      command 0x00, :attestation_request, request: Tlv::AttestationRequest, response: Tlv::AttestationResponse, response_id: 0x01, access: :administer
+      command 0x02, :certificate_chain_request, request: Tlv::CertificateChainRequest, response: Tlv::CertificateChainResponse, response_id: 0x03, access: :administer
+      command 0x04, :csr_request, request: Tlv::CsrRequest, response: Tlv::CsrResponse, response_id: 0x05, access: :administer
+      command 0x06, :add_noc, request: Tlv::AddNocRequest, response: Tlv::TlvNocResponse, response_id: 0x08, access: :administer
+      command 0x07, :update_noc, request: Tlv::UpdateNocRequest, response: Tlv::TlvNocResponse, response_id: 0x08, access: :administer
+      command 0x09, :update_fabric_label, request: Tlv::UpdateFabricLabelRequest, response: Tlv::TlvNocResponse, response_id: 0x08, access: :administer
+      command 0x0A, :remove_fabric, request: Tlv::RemoveFabricRequest, response: Tlv::TlvNocResponse, response_id: 0x08, access: :administer
+      command 0x0B, :add_trusted_root_certificate, request: Tlv::AddTrustedRootCertificateRequest, access: :administer
 
       struct NOCStruct
         property noc : Bytes          # Node Operational Certificate (DER encoded)
@@ -403,16 +400,16 @@ module Matter
       end
 
       # NOCs attribute (0x00): the operational certificates of every fabric
-      def nocs : Array(OpCredDefs::NOC)
+      def nocs : Array(Tlv::NOC)
         @fabric_table.all_fabrics.map do |fabric|
-          OpCredDefs::NOC.new(noc: fabric.operational_cert, icac: fabric.intermediate_cert, fabric_index: fabric.fabric_index)
+          Tlv::NOC.new(noc: fabric.operational_cert, icac: fabric.intermediate_cert, fabric_index: fabric.fabric_index)
         end
       end
 
       # Fabrics attribute (0x01): a descriptor per fabric
-      def fabrics : Array(OpCredDefs::FabricDescriptor)
+      def fabrics : Array(Tlv::FabricDescriptor)
         @fabric_table.fabric_descriptors.map do |fabric|
-          OpCredDefs::FabricDescriptor.new(
+          Tlv::FabricDescriptor.new(
             root_public_key: fabric.root_public_key,
             vendor_id: fabric.vendor_id,
             fabric_id: fabric.fabric_id,
@@ -424,7 +421,7 @@ module Matter
       end
 
       # Get fabric descriptor by index (for tests)
-      def get_fabric_by_index(index : UInt8) : OpCredDefs::FabricDescriptor?
+      def get_fabric_by_index(index : UInt8) : Tlv::FabricDescriptor?
         fabrics.find { |fabric| fabric.fabric_index == index }
       end
 
@@ -434,7 +431,7 @@ module Matter
       end
 
       # Get NOC by fabric index (for tests)
-      def get_noc_by_fabric_index(index : UInt8) : OpCredDefs::NOC?
+      def get_noc_by_fabric_index(index : UInt8) : Tlv::NOC?
         nocs.find { |noc| noc.fabric_index == index }
       end
 
@@ -456,7 +453,7 @@ module Matter
 
       # Command Handlers
 
-      def attestation_request(request : Definitions::OperationalCredentials::AttestationRequest) : OpCredDefs::AttestationResponse
+      def attestation_request(request : Tlv::AttestationRequest) : Tlv::AttestationResponse
         # Build attestation elements (TLV structure containing certification declaration, nonce, timestamp)
         attestation_elements = build_attestation_elements(request.attestation_nonce)
 
@@ -464,23 +461,23 @@ module Matter
         attestation_signature = sign_attestation(attestation_elements, request_session_id)
 
         # Encode response as TLV
-        OpCredDefs::AttestationResponse.new(attestation_elements, attestation_signature)
+        Tlv::AttestationResponse.new(attestation_elements, attestation_signature)
       end
 
-      def certificate_chain_request(request : Definitions::OperationalCredentials::CertificateChainRequest) : OpCredDefs::CertificateChainResponse
+      def certificate_chain_request(request : Tlv::CertificateChainRequest) : Tlv::CertificateChainResponse
         # Get the appropriate certificate
         certificate = case request.certificate_type
-                      when Definitions::OperationalCredentials::CertificateChainType::DacCertificate
+                      when Tlv::CertificateChainType::DacCertificate
                         @dac
-                      when Definitions::OperationalCredentials::CertificateChainType::PaiCertificate
+                      when Tlv::CertificateChainType::PaiCertificate
                         @pai
                       end
 
         # Encode response as TLV
-        OpCredDefs::CertificateChainResponse.new(certificate || Bytes.new(0))
+        Tlv::CertificateChainResponse.new(certificate || Bytes.new(0))
       end
 
-      def csr_request(request : Definitions::OperationalCredentials::CsrRequest) : InteractionModel::Status | OpCredDefs::CsrResponse
+      def csr_request(request : Tlv::CsrRequest) : InteractionModel::Status | Tlv::CsrResponse
         # Validate failsafe is armed
         # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
         unless @failsafe_armed
@@ -510,10 +507,10 @@ module Matter
         @pending_credentials.set_csr(session_id, is_for_update)
 
         # Encode response as TLV
-        OpCredDefs::CsrResponse.new(csr_elements, csr_signature)
+        Tlv::CsrResponse.new(csr_elements, csr_signature)
       end
 
-      def add_noc(request : Definitions::OperationalCredentials::AddNocRequest) : OpCredDefs::TlvNocResponse
+      def add_noc(request : Tlv::AddNocRequest) : Tlv::TlvNocResponse
         # Validate failsafe is armed
         # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
         unless @failsafe_armed
@@ -642,7 +639,7 @@ module Matter
         noc_response(NodeOperationalCertStatus::Ok, fabric.fabric_index)
       end
 
-      def update_noc(request : Definitions::OperationalCredentials::UpdateNocRequest) : OpCredDefs::TlvNocResponse
+      def update_noc(request : Tlv::UpdateNocRequest) : Tlv::TlvNocResponse
         # Validate failsafe is armed
         # NOTE: @failsafe_armed should be set by protocol layer, defaults to true for testing
         unless @failsafe_armed
@@ -705,7 +702,7 @@ module Matter
         noc_response(NodeOperationalCertStatus::Ok, fabric.fabric_index)
       end
 
-      def update_fabric_label(request : Definitions::OperationalCredentials::UpdateFabricLabelRequest) : OpCredDefs::TlvNocResponse
+      def update_fabric_label(request : Tlv::UpdateFabricLabelRequest) : Tlv::TlvNocResponse
         # Get session fabric index from instance variable or request
         # Per Matter spec, fabric_index in command is optional - use session context if not provided
         fabric_idx = request_fabric_index || request.fabric_index
@@ -735,7 +732,7 @@ module Matter
         noc_response(NodeOperationalCertStatus::Ok, fabric.fabric_index)
       end
 
-      def remove_fabric(request : Definitions::OperationalCredentials::RemoveFabricRequest) : OpCredDefs::TlvNocResponse
+      def remove_fabric(request : Tlv::RemoveFabricRequest) : Tlv::TlvNocResponse
         fabric_idx = request.fabric_index
         Log.debug { "RemoveFabric: fabric_index=#{fabric_idx}" }
 
@@ -796,12 +793,12 @@ module Matter
       end
 
       # AddTrustedRootCertificate has no response; a rejected certificate is logged.
-      def add_trusted_root_certificate(request : Definitions::OperationalCredentials::AddTrustedRootCertificateRequest) : InteractionModel::Status
+      def add_trusted_root_certificate(request : Tlv::AddTrustedRootCertificateRequest) : InteractionModel::Status
         store_trusted_root_certificate(request)
         InteractionModel::Status.success
       end
 
-      private def store_trusted_root_certificate(request : Definitions::OperationalCredentials::AddTrustedRootCertificateRequest) : Nil
+      private def store_trusted_root_certificate(request : Tlv::AddTrustedRootCertificateRequest) : Nil
         Log.debug { "Received AddTrustedRootCertificate: #{request.root_certificate.size} bytes" }
         Log.trace { "Root cert hex (first 100): #{request.root_certificate[0, [100, request.root_certificate.size].min].hexstring}" }
 
@@ -1561,9 +1558,9 @@ module Matter
 
       # Shared response for commands that change operational credentials.
 
-      private def noc_response(status : NodeOperationalCertStatus, fabric_index : UInt8?, debug_text : String? = nil) : OpCredDefs::TlvNocResponse
-        OpCredDefs::TlvNocResponse.new(
-          status_code: OpCredDefs::NodeOperationalCertificateStatus.from_value(status.value.to_i64),
+      private def noc_response(status : NodeOperationalCertStatus, fabric_index : UInt8?, debug_text : String? = nil) : Tlv::TlvNocResponse
+        Tlv::TlvNocResponse.new(
+          status_code: Tlv::NodeOperationalCertificateStatus.from_value(status.value.to_i64),
           fabric_index: fabric_index,
           debug_text: debug_text
         )

@@ -1,7 +1,11 @@
+require "../cluster"
+
 module Matter
   module Cluster
-    module Definitions
-      module NetworkCommissioning
+    class NetworkCommissioningCluster < Base
+      # Wire-format (TLV) types of the commands and attributes. The hand-written
+      # types of the same names above are the cluster's domain API.
+      module Tlv
         enum StatusCode : UInt8
           # OK, no error
           Success = 0

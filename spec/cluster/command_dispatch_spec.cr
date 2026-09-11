@@ -55,7 +55,7 @@ describe "typed cluster command dispatch" do
   it "dispatches a signed Thermostat SetpointRaiseLower amount" do
     thermostat = Matter::Cluster::ThermostatCluster.new(endpoint(1))
     previous = thermostat.occupied_heating_setpoint
-    request = ThermostatSetpointWireRequest.new(mode: Matter::Cluster::Definitions::Thermostat::SetpointAdjustMode::Heat.value, amount: -10_i8)
+    request = ThermostatSetpointWireRequest.new(mode: Matter::Cluster::ThermostatCluster::SetpointAdjustMode::Heat.value, amount: -10_i8)
 
     dispatch_cluster_command(thermostat, Matter::Cluster::ThermostatCluster::CMD_SETPOINT_RAISE_LOWER, request).should eq(Matter::InteractionModel::StatusCode::Success.value)
     thermostat.occupied_heating_setpoint.should eq(previous - 100)

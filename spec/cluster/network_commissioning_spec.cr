@@ -348,15 +348,15 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       )
 
       # Use TLV::Serializable struct for request
-      request_bytes = Matter::Cluster::Definitions::NetworkCommissioning::ScanAvailableNetworksRequest.new.to_tlv(nil)
+      request_bytes = Matter::Cluster::NetworkCommissioningCluster::Tlv::ScanAvailableNetworksRequest.new.to_tlv(nil)
 
       # Invoke command
       result = invoke(cluster, Matter::Cluster::NetworkCommissioningCluster::CMD_SCAN_NETWORKS, request_bytes)
       result.should be_a(Matter::Cluster::CommandResponse)
 
       # Parse response using TLV::Serializable
-      response = Matter::Cluster::Definitions::NetworkCommissioning::ScanNetworksResponse.from_tlv(result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any))
-      response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::Success)
+      response = Matter::Cluster::NetworkCommissioningCluster::Tlv::ScanNetworksResponse.from_tlv(result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any))
+      response.status_code.should eq(Matter::Cluster::NetworkCommissioningCluster::Tlv::StatusCode::Success)
       response.wifi_scan_results.should_not be_nil
     end
 
@@ -369,7 +369,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       )
 
       # Use TLV::Serializable struct for request
-      request_bytes = Matter::Cluster::Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest.new(
+      request_bytes = Matter::Cluster::NetworkCommissioningCluster::Tlv::AddOrUpdateWiFiNetworkRequest.new(
         ssid: "TestSSID".to_slice,
         credentials: "password".to_slice
       ).to_tlv(nil)
@@ -379,8 +379,8 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       result.should be_a(Matter::Cluster::CommandResponse)
 
       # Parse response using TLV::Serializable
-      response = Matter::Cluster::Definitions::NetworkCommissioning::NetworkConfigurationResponse.from_tlv(result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any))
-      response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::Success)
+      response = Matter::Cluster::NetworkCommissioningCluster::Tlv::NetworkConfigurationResponse.from_tlv(result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any))
+      response.status_code.should eq(Matter::Cluster::NetworkCommissioningCluster::Tlv::StatusCode::Success)
     end
 
     it "answers OutOfRange when a request field violates its length constraint" do
@@ -390,15 +390,15 @@ describe Matter::Cluster::NetworkCommissioningCluster do
         network_type: Matter::Cluster::NetworkCommissioningCluster::NetworkType::WiFi,
         backend: backend
       )
-      request_bytes = Matter::Cluster::Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest.new(
+      request_bytes = Matter::Cluster::NetworkCommissioningCluster::Tlv::AddOrUpdateWiFiNetworkRequest.new(
         ssid: Bytes.new(33, 0x41_u8),
         credentials: "password".to_slice
       ).to_tlv(nil)
 
       result = invoke(cluster, Matter::Cluster::NetworkCommissioningCluster::CMD_ADD_OR_UPDATE_WIFI_NETWORK, request_bytes)
 
-      response = Matter::Cluster::Definitions::NetworkCommissioning::NetworkConfigurationResponse.from_tlv(result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any))
-      response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::OutOfRange)
+      response = Matter::Cluster::NetworkCommissioningCluster::Tlv::NetworkConfigurationResponse.from_tlv(result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any))
+      response.status_code.should eq(Matter::Cluster::NetworkCommissioningCluster::Tlv::StatusCode::OutOfRange)
       response.debug_text.should eq("ssid must be max 32 bytes")
       cluster.networks.should be_empty
     end
@@ -419,7 +419,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       cluster.handle_add_or_update_wifi_network(add_req, failsafe_armed: true)
 
       # Use TLV::Serializable struct for request
-      request_bytes = Matter::Cluster::Definitions::NetworkCommissioning::ConnectNetworkRequest.new(
+      request_bytes = Matter::Cluster::NetworkCommissioningCluster::Tlv::ConnectNetworkRequest.new(
         network_id: "TestNet".to_slice
       ).to_tlv(nil)
 
@@ -428,8 +428,8 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       result.should be_a(Matter::Cluster::CommandResponse)
 
       # Parse response using TLV::Serializable
-      response = Matter::Cluster::Definitions::NetworkCommissioning::ConnectNetworkResponse.from_tlv(result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any))
-      response.status_code.should eq(Matter::Cluster::Definitions::NetworkCommissioning::StatusCode::Success)
+      response = Matter::Cluster::NetworkCommissioningCluster::Tlv::ConnectNetworkResponse.from_tlv(result.as(Matter::Cluster::CommandResponse).response.as(TLV::Any))
+      response.status_code.should eq(Matter::Cluster::NetworkCommissioningCluster::Tlv::StatusCode::Success)
     end
   end
 

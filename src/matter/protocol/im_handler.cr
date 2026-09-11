@@ -17,7 +17,7 @@ module Matter
 
       private def self.authorized?(
         clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
-        required : Cluster::Definitions::AccessControl::EntryPrivilege,
+        required : InteractionModel::EntryPrivilege,
         endpoint_id : UInt16,
         cluster_id : UInt32,
         is_case_session : Bool,
@@ -44,7 +44,7 @@ module Matter
             privilege: required,
             cluster: cluster_id,
             endpoint: endpoint_id,
-            auth_mode: Cluster::Definitions::AccessControl::EntryAuthMode::Case
+            auth_mode: InteractionModel::EntryAuthMode::Case
           )
         end
       end
@@ -150,7 +150,7 @@ module Matter
                 attribute: attribute_id
               )
 
-              required = cluster.attributes.find { |attr| attr.id.id == attribute_id }.try(&.access) || Cluster::Definitions::AccessControl::EntryPrivilege::View
+              required = cluster.attributes.find { |attr| attr.id.id == attribute_id }.try(&.access) || InteractionModel::EntryPrivilege::View
               unless authorized?(clusters, required, endpoint_id, cluster_id, is_case_session, fabric_index, peer_subject_ids)
                 status_ib = InteractionModel::StatusIB.new(status: InteractionModel::StatusCode::UnsupportedAccess.value)
                 attr_status = InteractionModel::AttributeStatusIB.new(path: concrete_path, status: status_ib)
@@ -182,7 +182,7 @@ module Matter
             next
           end
 
-          required = cluster.attributes.find { |attr| attr.id.id == attribute_id }.try(&.access) || Cluster::Definitions::AccessControl::EntryPrivilege::View
+          required = cluster.attributes.find { |attr| attr.id.id == attribute_id }.try(&.access) || InteractionModel::EntryPrivilege::View
           unless authorized?(clusters, required, endpoint_id, cluster_id, is_case_session, fabric_index, peer_subject_ids)
             status_ib = InteractionModel::StatusIB.new(status: InteractionModel::StatusCode::UnsupportedAccess.value)
             attr_status = InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)

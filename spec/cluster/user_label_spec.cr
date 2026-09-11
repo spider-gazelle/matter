@@ -1,6 +1,6 @@
 require "../spec_helper"
 require "../../src/matter/cluster/user_label_cluster"
-require "../../src/matter/cluster/definitions/label_struct"
+require "../../src/matter/cluster/label_struct"
 
 describe Matter::Cluster::UserLabelCluster do
   it "creates a UserLabel cluster with empty label list by default" do

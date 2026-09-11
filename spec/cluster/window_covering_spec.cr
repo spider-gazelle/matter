@@ -162,14 +162,14 @@ describe Matter::Cluster::WindowCoveringCluster do
   describe "percentage commands on the wire" do
     it "sets the lift target from tag zero" do
       cluster = Matter::Cluster::WindowCoveringCluster.new(endpoint(1))
-      request = Matter::Cluster::Definitions::WindowCovering::GoToLiftPercentageRequest.new(4321_u16)
+      request = Matter::Cluster::WindowCoveringCluster::GoToLiftPercentageRequest.new(4321_u16)
       expect_success(invoke(cluster, Matter::Cluster::WindowCoveringCluster::CMD_GO_TO_LIFT_PERCENTAGE, request))
       read(cluster, Matter::Cluster::WindowCoveringCluster::ATTR_TARGET_POSITION_LIFT_PERCENT100THS).should eq(4321_u16)
     end
 
     it "rejects a lift percentage above 100 percent without changing the target" do
       cluster = Matter::Cluster::WindowCoveringCluster.new(endpoint(1))
-      request = Matter::Cluster::Definitions::WindowCovering::GoToLiftPercentageRequest.new(10001_u16)
+      request = Matter::Cluster::WindowCoveringCluster::GoToLiftPercentageRequest.new(10001_u16)
       expect_status(invoke(cluster, Matter::Cluster::WindowCoveringCluster::CMD_GO_TO_LIFT_PERCENTAGE, request), Matter::InteractionModel::StatusCode::ConstraintError)
       cluster.target_position_lift_percent100ths.should eq(0_u16)
     end
@@ -182,7 +182,7 @@ describe Matter::Cluster::WindowCoveringCluster do
     it "sets the tilt target from tag zero" do
       cluster = Matter::Cluster::WindowCoveringCluster.new(endpoint(1),
         feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Tilt | Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareTilt)
-      request = Matter::Cluster::Definitions::WindowCovering::GoToTiltPercentageRequest.new(6789_u16)
+      request = Matter::Cluster::WindowCoveringCluster::GoToTiltPercentageRequest.new(6789_u16)
       expect_success(invoke(cluster, Matter::Cluster::WindowCoveringCluster::CMD_GO_TO_TILT_PERCENTAGE, request))
       read(cluster, Matter::Cluster::WindowCoveringCluster::ATTR_TARGET_POSITION_TILT_PERCENT100THS).should eq(6789_u16)
       read(cluster, Matter::Cluster::WindowCoveringCluster::ATTR_CURRENT_POSITION_TILT_PERCENT100THS).should eq(0_u16)
@@ -193,7 +193,7 @@ describe Matter::Cluster::WindowCoveringCluster do
     it "rejects a tilt percentage above 100 percent" do
       cluster = Matter::Cluster::WindowCoveringCluster.new(endpoint(1),
         feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Tilt | Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareTilt)
-      request = Matter::Cluster::Definitions::WindowCovering::GoToTiltPercentageRequest.new(10001_u16)
+      request = Matter::Cluster::WindowCoveringCluster::GoToTiltPercentageRequest.new(10001_u16)
       expect_status(invoke(cluster, Matter::Cluster::WindowCoveringCluster::CMD_GO_TO_TILT_PERCENTAGE, request), Matter::InteractionModel::StatusCode::ConstraintError)
       cluster.target_position_tilt_percent100ths.should eq(0_u16)
     end

@@ -3,7 +3,7 @@ require "../interaction_model/status_code"
 require "../storage/record"
 require "../interaction_model/paths"
 require "../datatype/*"
-require "./definitions/access_control"
+require "../interaction_model/access"
 require "./dsl"
 
 module Matter
@@ -20,7 +20,7 @@ module Matter
       property min : Int64?
       property max : Int64?
       # Privilege required to read the attribute
-      property access : Definitions::AccessControl::EntryPrivilege
+      property access : InteractionModel::EntryPrivilege
       # Quality flags (declarative only; no runtime behaviour yet)
       property? timed : Bool
       property? fabric_scoped : Bool
@@ -37,8 +37,8 @@ module Matter
         @default : TLV::Any? = nil,
         @min : Int64? = nil,
         @max : Int64? = nil,
-        @access : Definitions::AccessControl::EntryPrivilege = Definitions::AccessControl::EntryPrivilege::View,
-        @write_access : Definitions::AccessControl::EntryPrivilege? = nil,
+        @access : InteractionModel::EntryPrivilege = InteractionModel::EntryPrivilege::View,
+        @write_access : InteractionModel::EntryPrivilege? = nil,
         @timed : Bool = false,
         @fabric_scoped : Bool = false,
         @scene : Bool = false,
@@ -48,7 +48,7 @@ module Matter
 
       # Privilege required to write the attribute; the read privilege unless
       # a different one was declared.
-      def write_access : Definitions::AccessControl::EntryPrivilege
+      def write_access : InteractionModel::EntryPrivilege
         @write_access || @access
       end
     end
@@ -58,7 +58,7 @@ module Matter
       property id : DataType::CommandId
       property name : String
       property? optional : Bool
-      property access : Definitions::AccessControl::EntryPrivilege
+      property access : InteractionModel::EntryPrivilege
       # Id of the response command this command generates, if any
       property response_id : UInt32?
       property? timed : Bool
@@ -67,7 +67,7 @@ module Matter
         @id : DataType::CommandId,
         @name : String,
         @optional : Bool = false,
-        @access : Definitions::AccessControl::EntryPrivilege = Definitions::AccessControl::EntryPrivilege::Operate,
+        @access : InteractionModel::EntryPrivilege = InteractionModel::EntryPrivilege::Operate,
         @response_id : UInt32? = nil,
         @timed : Bool = false,
       )

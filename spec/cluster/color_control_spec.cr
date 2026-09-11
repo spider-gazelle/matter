@@ -20,7 +20,7 @@ describe Matter::Cluster::ColorControlCluster do
       cluster.current_x.should eq(0_u16)
       cluster.current_y.should eq(0_u16)
       cluster.color_temperature_mireds.should eq(250_u16)
-      cluster.color_mode.should eq(Matter::Cluster::Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation)
+      cluster.color_mode.should eq(Matter::Cluster::ColorControlCluster::ColorMode::CurrentHueAndCurrentSaturation)
     end
 
     it "creates cluster with custom values" do
@@ -46,12 +46,12 @@ describe Matter::Cluster::ColorControlCluster do
       cluster.current_hue.should eq(0_u8)
 
       # MoveToHue(hue=127, ...)
-      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, Matter::Cluster::Definitions::ColorControl::MoveToHueRequest.new(hue: (127).to_u8, direction: Matter::Cluster::Definitions::ColorControl::Direction::ShortestDistance, transition_time: (0).to_u16))
+      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, Matter::Cluster::ColorControlCluster::MoveToHueRequest.new(hue: (127).to_u8, direction: Matter::Cluster::ColorControlCluster::Direction::ShortestDistance, transition_time: (0).to_u16))
 
       result.should be_a(Matter::InteractionModel::Status)
       result.as(Matter::InteractionModel::Status).success?.should be_true
       cluster.current_hue.should eq(127_u8)
-      cluster.color_mode.should eq(Matter::Cluster::Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation)
+      cluster.color_mode.should eq(Matter::Cluster::ColorControlCluster::ColorMode::CurrentHueAndCurrentSaturation)
     end
 
     it "executes StepHue Up command" do
@@ -59,7 +59,7 @@ describe Matter::Cluster::ColorControlCluster do
       cluster = Matter::Cluster::ColorControlCluster.new(endpoint_id, current_hue: 100_u8)
 
       # StepHue(mode=Up, step_size=20, ...)
-      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_HUE, Matter::Cluster::Definitions::ColorControl::StepHueRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Up, step_size: (20).to_u8, transition_time: (0).to_u8))
+      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_HUE, Matter::Cluster::ColorControlCluster::StepHueRequest.new(step_mode: Matter::Cluster::ColorControlCluster::StepMode::Up, step_size: (20).to_u8, transition_time: (0).to_u8))
 
       result.as(Matter::InteractionModel::Status).success?.should be_true
       cluster.current_hue.should eq(120_u8)
@@ -70,7 +70,7 @@ describe Matter::Cluster::ColorControlCluster do
       cluster = Matter::Cluster::ColorControlCluster.new(endpoint_id, current_hue: 100_u8)
 
       # StepHue(mode=Down, step_size=30, ...)
-      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_HUE, Matter::Cluster::Definitions::ColorControl::StepHueRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Down, step_size: (30).to_u8, transition_time: (0).to_u8))
+      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_HUE, Matter::Cluster::ColorControlCluster::StepHueRequest.new(step_mode: Matter::Cluster::ColorControlCluster::StepMode::Down, step_size: (30).to_u8, transition_time: (0).to_u8))
 
       result.as(Matter::InteractionModel::Status).success?.should be_true
       cluster.current_hue.should eq(70_u8)
@@ -81,7 +81,7 @@ describe Matter::Cluster::ColorControlCluster do
       cluster = Matter::Cluster::ColorControlCluster.new(endpoint_id, current_hue: 250_u8)
 
       # Step up by 10 should wrap to 5
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_HUE, Matter::Cluster::Definitions::ColorControl::StepHueRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Up, step_size: (10).to_u8, transition_time: (0).to_u8))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_HUE, Matter::Cluster::ColorControlCluster::StepHueRequest.new(step_mode: Matter::Cluster::ColorControlCluster::StepMode::Up, step_size: (10).to_u8, transition_time: (0).to_u8))
 
       cluster.current_hue.should eq(5_u8)
     end
@@ -93,7 +93,7 @@ describe Matter::Cluster::ColorControlCluster do
       cluster = Matter::Cluster::ColorControlCluster.new(endpoint_id, current_saturation: 0_u8)
 
       # MoveToSaturation(saturation=200, ...)
-      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_SATURATION, Matter::Cluster::Definitions::ColorControl::MoveToSaturationRequest.new(saturation: (200).to_u8, transition_time: (0).to_u16))
+      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_SATURATION, Matter::Cluster::ColorControlCluster::MoveToSaturationRequest.new(saturation: (200).to_u8, transition_time: (0).to_u16))
 
       result.as(Matter::InteractionModel::Status).success?.should be_true
       cluster.current_saturation.should eq(200_u8)
@@ -103,7 +103,7 @@ describe Matter::Cluster::ColorControlCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::ColorControlCluster.new(endpoint_id, current_saturation: 100_u8)
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_SATURATION, Matter::Cluster::Definitions::ColorControl::StepSaturationRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Up, step_size: (50).to_u8, transition_time: (0).to_u8))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_SATURATION, Matter::Cluster::ColorControlCluster::StepSaturationRequest.new(step_mode: Matter::Cluster::ColorControlCluster::StepMode::Up, step_size: (50).to_u8, transition_time: (0).to_u8))
 
       cluster.current_saturation.should eq(150_u8)
     end
@@ -112,7 +112,7 @@ describe Matter::Cluster::ColorControlCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::ColorControlCluster.new(endpoint_id, current_saturation: 100_u8)
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_SATURATION, Matter::Cluster::Definitions::ColorControl::StepSaturationRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Down, step_size: (40).to_u8, transition_time: (0).to_u8))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_SATURATION, Matter::Cluster::ColorControlCluster::StepSaturationRequest.new(step_mode: Matter::Cluster::ColorControlCluster::StepMode::Down, step_size: (40).to_u8, transition_time: (0).to_u8))
 
       cluster.current_saturation.should eq(60_u8)
     end
@@ -121,7 +121,7 @@ describe Matter::Cluster::ColorControlCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::ColorControlCluster.new(endpoint_id, current_saturation: 240_u8)
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_SATURATION, Matter::Cluster::Definitions::ColorControl::StepSaturationRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Up, step_size: (50).to_u8, transition_time: (0).to_u8))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_SATURATION, Matter::Cluster::ColorControlCluster::StepSaturationRequest.new(step_mode: Matter::Cluster::ColorControlCluster::StepMode::Up, step_size: (50).to_u8, transition_time: (0).to_u8))
 
       cluster.current_saturation.should eq(254_u8)
     end
@@ -130,7 +130,7 @@ describe Matter::Cluster::ColorControlCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::ColorControlCluster.new(endpoint_id, current_saturation: 10_u8)
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_SATURATION, Matter::Cluster::Definitions::ColorControl::StepSaturationRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Down, step_size: (50).to_u8, transition_time: (0).to_u8))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_SATURATION, Matter::Cluster::ColorControlCluster::StepSaturationRequest.new(step_mode: Matter::Cluster::ColorControlCluster::StepMode::Down, step_size: (50).to_u8, transition_time: (0).to_u8))
 
       cluster.current_saturation.should eq(0_u8)
     end
@@ -142,12 +142,12 @@ describe Matter::Cluster::ColorControlCluster do
       cluster = Matter::Cluster::ColorControlCluster.new(endpoint_id)
 
       # MoveToHueAndSaturation(hue=180, saturation=220, ...)
-      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE_AND_SATURATION, Matter::Cluster::Definitions::ColorControl::MoveToHueAndSaturationRequest.new(hue: (180).to_u8, saturation: (220).to_u8, transition_time: (0).to_u16))
+      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE_AND_SATURATION, Matter::Cluster::ColorControlCluster::MoveToHueAndSaturationRequest.new(hue: (180).to_u8, saturation: (220).to_u8, transition_time: (0).to_u16))
 
       result.as(Matter::InteractionModel::Status).success?.should be_true
       cluster.current_hue.should eq(180_u8)
       cluster.current_saturation.should eq(220_u8)
-      cluster.color_mode.should eq(Matter::Cluster::Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation)
+      cluster.color_mode.should eq(Matter::Cluster::ColorControlCluster::ColorMode::CurrentHueAndCurrentSaturation)
     end
   end
 
@@ -158,12 +158,12 @@ describe Matter::Cluster::ColorControlCluster do
 
       # MoveToColor(x=32768, y=32768, ...)
 
-      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_COLOR, Matter::Cluster::Definitions::ColorControl::MoveToColorRequest.new(x: 32768_u16, y: 32768_u16, transition_time: (0).to_u16))
+      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_COLOR, Matter::Cluster::ColorControlCluster::MoveToColorRequest.new(x: 32768_u16, y: 32768_u16, transition_time: (0).to_u16))
 
       result.as(Matter::InteractionModel::Status).success?.should be_true
       cluster.current_x.should eq(32768_u16)
       cluster.current_y.should eq(32768_u16)
-      cluster.color_mode.should eq(Matter::Cluster::Definitions::ColorControl::ColorMode::CurrentXAndCurrentY)
+      cluster.color_mode.should eq(Matter::Cluster::ColorControlCluster::ColorMode::CurrentXAndCurrentY)
     end
 
     it "executes StepColor command" do
@@ -176,7 +176,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       # StepColor(step_x=1000, step_y=-500, ...)
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_COLOR, Matter::Cluster::Definitions::ColorControl::StepColorRequest.new(x: 1000_i16, y: -500_i16, transition_time: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_COLOR, Matter::Cluster::ColorControlCluster::StepColorRequest.new(x: 1000_i16, y: -500_i16, transition_time: (0).to_u16))
 
       cluster.current_x.should eq(31000_u16)
       cluster.current_y.should eq(29500_u16)
@@ -192,7 +192,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       # Try to step beyond max
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_COLOR, Matter::Cluster::Definitions::ColorControl::StepColorRequest.new(x: 2000_i16, y: -2000_i16, transition_time: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_COLOR, Matter::Cluster::ColorControlCluster::StepColorRequest.new(x: 2000_i16, y: -2000_i16, transition_time: (0).to_u16))
 
       cluster.current_x.should eq(65535_u16) # Clamped to max
       cluster.current_y.should eq(0_u16)     # Clamped to min
@@ -206,11 +206,11 @@ describe Matter::Cluster::ColorControlCluster do
 
       # MoveToColorTemperature(mireds=300, ...)
 
-      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_COLOR_TEMPERATURE, Matter::Cluster::Definitions::ColorControl::MoveToColorTemperatureRequest.new(color_temperature_mireds: 300_u16, transition_time: (0).to_u16))
+      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_COLOR_TEMPERATURE, Matter::Cluster::ColorControlCluster::MoveToColorTemperatureRequest.new(color_temperature_mireds: 300_u16, transition_time: (0).to_u16))
 
       result.as(Matter::InteractionModel::Status).success?.should be_true
       cluster.color_temperature_mireds.should eq(300_u16)
-      cluster.color_mode.should eq(Matter::Cluster::Definitions::ColorControl::ColorMode::ColorTemperatureMireds)
+      cluster.color_mode.should eq(Matter::Cluster::ColorControlCluster::ColorMode::ColorTemperatureMireds)
     end
 
     it "executes StepColorTemperature Up command" do
@@ -219,7 +219,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       # StepColorTemperature(mode=Up, step_size=50, ...)
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_COLOR_TEMPERATURE, Matter::Cluster::Definitions::ColorControl::StepColorTemperatureRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Up, step_size: 50_u16, transition_time: (0).to_u16, color_temperature_minimum_mireds: (0).to_u16, color_temperature_maximum_mireds: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_COLOR_TEMPERATURE, Matter::Cluster::ColorControlCluster::StepColorTemperatureRequest.new(step_mode: Matter::Cluster::ColorControlCluster::StepMode::Up, step_size: 50_u16, transition_time: (0).to_u16, color_temperature_minimum_mireds: (0).to_u16, color_temperature_maximum_mireds: (0).to_u16))
 
       cluster.color_temperature_mireds.should eq(350_u16)
     end
@@ -230,7 +230,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       # StepColorTemperature(mode=Down, step_size=50, ...)
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_COLOR_TEMPERATURE, Matter::Cluster::Definitions::ColorControl::StepColorTemperatureRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Down, step_size: 50_u16, transition_time: (0).to_u16, color_temperature_minimum_mireds: (0).to_u16, color_temperature_maximum_mireds: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_STEP_COLOR_TEMPERATURE, Matter::Cluster::ColorControlCluster::StepColorTemperatureRequest.new(step_mode: Matter::Cluster::ColorControlCluster::StepMode::Down, step_size: 50_u16, transition_time: (0).to_u16, color_temperature_minimum_mireds: (0).to_u16, color_temperature_maximum_mireds: (0).to_u16))
 
       cluster.color_temperature_mireds.should eq(250_u16)
     end
@@ -245,7 +245,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       # Try to go below min
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_COLOR_TEMPERATURE, Matter::Cluster::Definitions::ColorControl::MoveToColorTemperatureRequest.new(color_temperature_mireds: 100_u16, transition_time: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_COLOR_TEMPERATURE, Matter::Cluster::ColorControlCluster::MoveToColorTemperatureRequest.new(color_temperature_mireds: 100_u16, transition_time: (0).to_u16))
 
       cluster.color_temperature_mireds.should eq(147_u16) # Clamped to min
     end
@@ -260,7 +260,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       # Try to go above max
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_COLOR_TEMPERATURE, Matter::Cluster::Definitions::ColorControl::MoveToColorTemperatureRequest.new(color_temperature_mireds: 600_u16, transition_time: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_COLOR_TEMPERATURE, Matter::Cluster::ColorControlCluster::MoveToColorTemperatureRequest.new(color_temperature_mireds: 600_u16, transition_time: (0).to_u16))
 
       cluster.color_temperature_mireds.should eq(500_u16) # Clamped to max
     end
@@ -277,12 +277,12 @@ describe Matter::Cluster::ColorControlCluster do
 
       # EnhancedMoveToHue(enhanced_hue=32768, ...)
 
-      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_ENHANCED_MOVE_TO_HUE, Matter::Cluster::Definitions::ColorControl::EnhancedMoveToHueRequest.new(enhanced_hue: 32768_u16, direction: Matter::Cluster::Definitions::ColorControl::Direction::ShortestDistance, transition_time: (0).to_u16))
+      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_ENHANCED_MOVE_TO_HUE, Matter::Cluster::ColorControlCluster::EnhancedMoveToHueRequest.new(enhanced_hue: 32768_u16, direction: Matter::Cluster::ColorControlCluster::Direction::ShortestDistance, transition_time: (0).to_u16))
 
       result.as(Matter::InteractionModel::Status).success?.should be_true
       cluster.enhanced_current_hue.should eq(32768_u16)
       cluster.current_hue.should eq(128_u8) # High byte
-      cluster.enhanced_color_mode.should eq(Matter::Cluster::Definitions::ColorControl::EnhancedColorMode::EnhancedCurrentHueAndCurrentSaturation)
+      cluster.enhanced_color_mode.should eq(Matter::Cluster::ColorControlCluster::EnhancedColorMode::EnhancedCurrentHueAndCurrentSaturation)
     end
 
     it "executes EnhancedStepHue Up command" do
@@ -298,7 +298,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       # EnhancedStepHue(mode=Up, step_size=1000, ...)
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_ENHANCED_STEP_HUE, Matter::Cluster::Definitions::ColorControl::EnhancedStepHueRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Up, step_size: 1000_u16, transition_time: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_ENHANCED_STEP_HUE, Matter::Cluster::ColorControlCluster::EnhancedStepHueRequest.new(step_mode: Matter::Cluster::ColorControlCluster::StepMode::Up, step_size: 1000_u16, transition_time: (0).to_u16))
 
       cluster.enhanced_current_hue.should eq(initial_enhanced_hue + 1000)
     end
@@ -312,10 +312,10 @@ describe Matter::Cluster::ColorControlCluster do
       )
 
       # Set to near max
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_ENHANCED_MOVE_TO_HUE, Matter::Cluster::Definitions::ColorControl::EnhancedMoveToHueRequest.new(enhanced_hue: 65500_u16, direction: Matter::Cluster::Definitions::ColorControl::Direction::ShortestDistance, transition_time: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_ENHANCED_MOVE_TO_HUE, Matter::Cluster::ColorControlCluster::EnhancedMoveToHueRequest.new(enhanced_hue: 65500_u16, direction: Matter::Cluster::ColorControlCluster::Direction::ShortestDistance, transition_time: (0).to_u16))
 
       # Step up by 100 should wrap
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_ENHANCED_STEP_HUE, Matter::Cluster::Definitions::ColorControl::EnhancedStepHueRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Up, step_size: 100_u16, transition_time: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_ENHANCED_STEP_HUE, Matter::Cluster::ColorControlCluster::EnhancedStepHueRequest.new(step_mode: Matter::Cluster::ColorControlCluster::StepMode::Up, step_size: 100_u16, transition_time: (0).to_u16))
 
       cluster.enhanced_current_hue.should eq(64_u16) # Wrapped
     end
@@ -330,7 +330,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       # EnhancedMoveToHueAndSaturation(enhanced_hue=40000, saturation=200, ...)
 
-      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_ENHANCED_MOVE_TO_HUE_AND_SATURATION, Matter::Cluster::Definitions::ColorControl::EnhancedMoveToHueAndSaturationRequest.new(enhanced_hue: 40000_u16, saturation: 200_u8, transition_time: (0).to_u16))
+      result = invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_ENHANCED_MOVE_TO_HUE_AND_SATURATION, Matter::Cluster::ColorControlCluster::EnhancedMoveToHueAndSaturationRequest.new(enhanced_hue: 40000_u16, saturation: 200_u8, transition_time: (0).to_u16))
 
       result.as(Matter::InteractionModel::Status).success?.should be_true
       cluster.enhanced_current_hue.should eq(40000_u16)
@@ -344,36 +344,36 @@ describe Matter::Cluster::ColorControlCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::ColorControlCluster.new(
         endpoint_id,
-        color_mode: Matter::Cluster::Definitions::ColorControl::ColorMode::ColorTemperatureMireds
+        color_mode: Matter::Cluster::ColorControlCluster::ColorMode::ColorTemperatureMireds
       )
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, Matter::Cluster::Definitions::ColorControl::MoveToHueRequest.new(hue: (100).to_u8, direction: Matter::Cluster::Definitions::ColorControl::Direction::ShortestDistance, transition_time: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, Matter::Cluster::ColorControlCluster::MoveToHueRequest.new(hue: (100).to_u8, direction: Matter::Cluster::ColorControlCluster::Direction::ShortestDistance, transition_time: (0).to_u16))
 
-      cluster.color_mode.should eq(Matter::Cluster::Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation)
+      cluster.color_mode.should eq(Matter::Cluster::ColorControlCluster::ColorMode::CurrentHueAndCurrentSaturation)
     end
 
     it "sets color mode to XY when changing color" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::ColorControlCluster.new(
         endpoint_id,
-        color_mode: Matter::Cluster::Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation
+        color_mode: Matter::Cluster::ColorControlCluster::ColorMode::CurrentHueAndCurrentSaturation
       )
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_COLOR, Matter::Cluster::Definitions::ColorControl::MoveToColorRequest.new(x: 30000_u16, y: 30000_u16, transition_time: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_COLOR, Matter::Cluster::ColorControlCluster::MoveToColorRequest.new(x: 30000_u16, y: 30000_u16, transition_time: (0).to_u16))
 
-      cluster.color_mode.should eq(Matter::Cluster::Definitions::ColorControl::ColorMode::CurrentXAndCurrentY)
+      cluster.color_mode.should eq(Matter::Cluster::ColorControlCluster::ColorMode::CurrentXAndCurrentY)
     end
 
     it "sets color mode to CT when changing temperature" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::ColorControlCluster.new(
         endpoint_id,
-        color_mode: Matter::Cluster::Definitions::ColorControl::ColorMode::CurrentXAndCurrentY
+        color_mode: Matter::Cluster::ColorControlCluster::ColorMode::CurrentXAndCurrentY
       )
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_COLOR_TEMPERATURE, Matter::Cluster::Definitions::ColorControl::MoveToColorTemperatureRequest.new(color_temperature_mireds: 300_u16, transition_time: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_COLOR_TEMPERATURE, Matter::Cluster::ColorControlCluster::MoveToColorTemperatureRequest.new(color_temperature_mireds: 300_u16, transition_time: (0).to_u16))
 
-      cluster.color_mode.should eq(Matter::Cluster::Definitions::ColorControl::ColorMode::ColorTemperatureMireds)
+      cluster.color_mode.should eq(Matter::Cluster::ColorControlCluster::ColorMode::ColorTemperatureMireds)
     end
   end
 
@@ -387,7 +387,7 @@ describe Matter::Cluster::ColorControlCluster do
         callback_called = true
       end
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, Matter::Cluster::Definitions::ColorControl::MoveToHueRequest.new(hue: (100).to_u8, direction: Matter::Cluster::Definitions::ColorControl::Direction::ShortestDistance, transition_time: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, Matter::Cluster::ColorControlCluster::MoveToHueRequest.new(hue: (100).to_u8, direction: Matter::Cluster::ColorControlCluster::Direction::ShortestDistance, transition_time: (0).to_u16))
 
       callback_called.should be_true
     end
@@ -402,7 +402,7 @@ describe Matter::Cluster::ColorControlCluster do
       end
 
       # Move to same hue
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, Matter::Cluster::Definitions::ColorControl::MoveToHueRequest.new(hue: (100).to_u8, direction: Matter::Cluster::Definitions::ColorControl::Direction::ShortestDistance, transition_time: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, Matter::Cluster::ColorControlCluster::MoveToHueRequest.new(hue: (100).to_u8, direction: Matter::Cluster::ColorControlCluster::Direction::ShortestDistance, transition_time: (0).to_u16))
 
       callback_called.should be_false
     end
@@ -415,7 +415,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       initial_version = cluster.data_version
 
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, Matter::Cluster::Definitions::ColorControl::MoveToHueRequest.new(hue: (100).to_u8, direction: Matter::Cluster::Definitions::ColorControl::Direction::ShortestDistance, transition_time: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, Matter::Cluster::ColorControlCluster::MoveToHueRequest.new(hue: (100).to_u8, direction: Matter::Cluster::ColorControlCluster::Direction::ShortestDistance, transition_time: (0).to_u16))
 
       cluster.data_version.should be > initial_version
     end
@@ -427,7 +427,7 @@ describe Matter::Cluster::ColorControlCluster do
       initial_version = cluster.data_version
 
       # Move to same hue
-      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, Matter::Cluster::Definitions::ColorControl::MoveToHueRequest.new(hue: (100).to_u8, direction: Matter::Cluster::Definitions::ColorControl::Direction::ShortestDistance, transition_time: (0).to_u16))
+      invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, Matter::Cluster::ColorControlCluster::MoveToHueRequest.new(hue: (100).to_u8, direction: Matter::Cluster::ColorControlCluster::Direction::ShortestDistance, transition_time: (0).to_u16))
 
       cluster.data_version.should eq(initial_version) # No increment
     end
@@ -486,7 +486,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       result = read_tlv(cluster, Matter::Cluster::ColorControlCluster::ATTR_COLOR_MODE)
       result.should be_a(TLV::Any)
-      result.value.should eq(Matter::Cluster::Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation.value)
+      result.value.should eq(Matter::Cluster::ColorControlCluster::ColorMode::CurrentHueAndCurrentSaturation.value)
     end
   end
 
@@ -517,18 +517,18 @@ describe Matter::Cluster::ColorControlCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       light = Matter::Cluster::ColorControlCluster.new(endpoint_id)
 
-      invoke(light, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE_AND_SATURATION, Matter::Cluster::Definitions::ColorControl::MoveToHueAndSaturationRequest.new(hue: (0).to_u8, saturation: (254).to_u8, transition_time: (0).to_u16))
+      invoke(light, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE_AND_SATURATION, Matter::Cluster::ColorControlCluster::MoveToHueAndSaturationRequest.new(hue: (0).to_u8, saturation: (254).to_u8, transition_time: (0).to_u16))
 
       light.current_hue.should eq(0_u8)
       light.current_saturation.should eq(254_u8)
-      light.color_mode.should eq(Matter::Cluster::Definitions::ColorControl::ColorMode::CurrentHueAndCurrentSaturation)
+      light.color_mode.should eq(Matter::Cluster::ColorControlCluster::ColorMode::CurrentHueAndCurrentSaturation)
     end
 
     it "creates blue color (hue=170, sat=254)" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       light = Matter::Cluster::ColorControlCluster.new(endpoint_id)
 
-      invoke(light, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE_AND_SATURATION, Matter::Cluster::Definitions::ColorControl::MoveToHueAndSaturationRequest.new(hue: (170).to_u8, saturation: (254).to_u8, transition_time: (0).to_u16))
+      invoke(light, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE_AND_SATURATION, Matter::Cluster::ColorControlCluster::MoveToHueAndSaturationRequest.new(hue: (170).to_u8, saturation: (254).to_u8, transition_time: (0).to_u16))
 
       light.current_hue.should eq(170_u8)
       light.current_saturation.should eq(254_u8)
@@ -540,7 +540,7 @@ describe Matter::Cluster::ColorControlCluster do
 
       # Step through hues
       10.times do |_|
-        invoke(light, Matter::Cluster::ColorControlCluster::CMD_STEP_HUE, Matter::Cluster::Definitions::ColorControl::StepHueRequest.new(step_mode: Matter::Cluster::Definitions::ColorControl::StepMode::Up, step_size: (25).to_u8, transition_time: (0).to_u8))
+        invoke(light, Matter::Cluster::ColorControlCluster::CMD_STEP_HUE, Matter::Cluster::ColorControlCluster::StepHueRequest.new(step_mode: Matter::Cluster::ColorControlCluster::StepMode::Up, step_size: (25).to_u8, transition_time: (0).to_u8))
       end
 
       light.current_hue.should eq(250_u8) # 0 + (25 * 10)

@@ -265,9 +265,9 @@ module Matter
       end
 
       # Convenience wrapper for the generated cluster metadata privilege enum.
-      def check_access(subject : UInt64, fabric_index : UInt8, privilege : Definitions::AccessControl::EntryPrivilege,
+      def check_access(subject : UInt64, fabric_index : UInt8, privilege : InteractionModel::EntryPrivilege,
                        cluster : UInt32? = nil, endpoint : UInt16? = nil, device_type : UInt32? = nil,
-                       auth_mode : Definitions::AccessControl::EntryAuthMode = Definitions::AccessControl::EntryAuthMode::Case) : Bool
+                       auth_mode : InteractionModel::EntryAuthMode = InteractionModel::EntryAuthMode::Case) : Bool
         check_access(
           subject: subject,
           fabric_index: fabric_index,

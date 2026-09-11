@@ -5,7 +5,7 @@ module ChipTool
     module OperationalCredentials
       extend self
 
-      alias FabricDescriptor = Matter::Cluster::Definitions::OperationalCredentials::FabricDescriptor
+      alias FabricDescriptor = Matter::Cluster::OperationalCredentialsCluster::Tlv::FabricDescriptor
 
       def register : Nil
         Registry.register("operationalcredentials", "read", "Read OperationalCredentials cluster attributes") do |_ctx, _args|

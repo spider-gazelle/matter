@@ -153,9 +153,9 @@ module MatterDoorLock
 
         opened = !opened
         if opened
-          door_lock.update_door_state(Matter::Cluster::Definitions::DoorLock::DoorState::DoorOpen)
+          door_lock.update_door_state(Matter::Cluster::DoorLockCluster::DoorState::DoorOpen)
         else
-          door_lock.update_door_state(Matter::Cluster::Definitions::DoorLock::DoorState::DoorClosed)
+          door_lock.update_door_state(Matter::Cluster::DoorLockCluster::DoorState::DoorClosed)
         end
       end
     end
@@ -195,9 +195,9 @@ module MatterDoorLock
       when "unbolt"
         show_status(door_lock.unbolt(pin: pin))
       when "open"
-        door_lock.update_door_state(Matter::Cluster::Definitions::DoorLock::DoorState::DoorOpen)
+        door_lock.update_door_state(Matter::Cluster::DoorLockCluster::DoorState::DoorOpen)
       when "close"
-        door_lock.update_door_state(Matter::Cluster::Definitions::DoorLock::DoorState::DoorClosed)
+        door_lock.update_door_state(Matter::Cluster::DoorLockCluster::DoorState::DoorClosed)
       when "status"
         print_status
       when "reset"
@@ -242,11 +242,11 @@ module MatterDoorLock
       exit(0)
     end
 
-    private def format_lock_state(state : Matter::Cluster::Definitions::DoorLock::LockState?) : String
+    private def format_lock_state(state : Matter::Cluster::DoorLockCluster::LockState?) : String
       state ? state.to_s : "null"
     end
 
-    private def format_door_state(state : Matter::Cluster::Definitions::DoorLock::DoorState?) : String
+    private def format_door_state(state : Matter::Cluster::DoorLockCluster::DoorState?) : String
       state ? state.to_s : "null"
     end
 

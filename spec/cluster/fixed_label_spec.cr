@@ -1,6 +1,6 @@
 require "../spec_helper"
 require "../../src/matter/cluster/fixed_label_cluster"
-require "../../src/matter/cluster/definitions/label_struct"
+require "../../src/matter/cluster/label_struct"
 
 describe Matter::Cluster::FixedLabelCluster do
   it "creates a FixedLabel cluster with label list" do

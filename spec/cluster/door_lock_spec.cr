@@ -1,6 +1,6 @@
 require "../spec_helper"
 
-private alias Def = Matter::Cluster::Definitions::DoorLock
+private alias Def = Matter::Cluster::DoorLockCluster
 
 private def lock_request(pin : String? = nil) : Def::LockDoorRequest
   Def::LockDoorRequest.new(pin.try(&.to_slice))

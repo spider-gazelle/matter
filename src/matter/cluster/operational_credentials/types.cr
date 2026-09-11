@@ -1,7 +1,11 @@
+require "../cluster"
+
 module Matter
   module Cluster
-    module Definitions
-      module OperationalCredentials
+    class OperationalCredentialsCluster < Base
+      # Wire-format (TLV) types of the commands and attributes. The hand-written
+      # types of the same names above are the cluster's domain API.
+      module Tlv
         # This enumeration is used by the CertificateChainRequest command to convey which certificate from the device
         # attestation certificate chain to transmit back to the client.
         enum CertificateChainType : UInt8

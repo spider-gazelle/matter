@@ -114,7 +114,7 @@ describe Matter::Cluster::LevelControlCluster do
 
       cluster.current_level.should eq(0_u8)
 
-      request = Matter::Cluster::Definitions::LevelControl::MoveToLevelRequest.new(
+      request = Matter::Cluster::LevelControlCluster::MoveToLevelRequest.new(
         level: 200_u8,
         transition_time: 10_u16,
         mask: 0_u8,
@@ -134,8 +134,8 @@ describe Matter::Cluster::LevelControlCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, current_level: 100_u8)
 
-      request = Matter::Cluster::Definitions::LevelControl::MoveRequest.new(
-        move_mode: Matter::Cluster::Definitions::LevelControl::MoveMode::Up,
+      request = Matter::Cluster::LevelControlCluster::MoveRequest.new(
+        move_mode: Matter::Cluster::LevelControlCluster::MoveMode::Up,
         rate: 10_u8,
         mask: 0_u8,
         override: 0_u8
@@ -153,8 +153,8 @@ describe Matter::Cluster::LevelControlCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id, current_level: 100_u8)
 
-      request = Matter::Cluster::Definitions::LevelControl::StepRequest.new(
-        step_mode: Matter::Cluster::Definitions::LevelControl::StepMode::Up,
+      request = Matter::Cluster::LevelControlCluster::StepRequest.new(
+        step_mode: Matter::Cluster::LevelControlCluster::StepMode::Up,
         step_size: 20_u8,
         transition_time: 5_u16,
         mask: 0_u8,
@@ -174,7 +174,7 @@ describe Matter::Cluster::LevelControlCluster do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
       cluster = Matter::Cluster::LevelControlCluster.new(endpoint_id)
 
-      request = Matter::Cluster::Definitions::LevelControl::StopRequest.new(
+      request = Matter::Cluster::LevelControlCluster::StopRequest.new(
         mask: 0_u8,
         override: 0_u8
       )
@@ -190,15 +190,15 @@ describe Matter::Cluster::LevelControlCluster do
 
   describe "MoveMode enum" do
     it "has move modes" do
-      Matter::Cluster::Definitions::LevelControl::MoveMode::Up.value.should eq(0)
-      Matter::Cluster::Definitions::LevelControl::MoveMode::Down.value.should eq(1)
+      Matter::Cluster::LevelControlCluster::MoveMode::Up.value.should eq(0)
+      Matter::Cluster::LevelControlCluster::MoveMode::Down.value.should eq(1)
     end
   end
 
   describe "StepMode enum" do
     it "has step modes" do
-      Matter::Cluster::Definitions::LevelControl::StepMode::Up.value.should eq(0)
-      Matter::Cluster::Definitions::LevelControl::StepMode::Down.value.should eq(1)
+      Matter::Cluster::LevelControlCluster::StepMode::Up.value.should eq(0)
+      Matter::Cluster::LevelControlCluster::StepMode::Down.value.should eq(1)
     end
   end
 
@@ -212,7 +212,7 @@ describe Matter::Cluster::LevelControlCluster do
       )
 
       # Try to move below min
-      request = Matter::Cluster::Definitions::LevelControl::MoveToLevelRequest.new(
+      request = Matter::Cluster::LevelControlCluster::MoveToLevelRequest.new(
         level: 10_u8,
         transition_time: 0_u16,
         mask: 0_u8,
@@ -235,7 +235,7 @@ describe Matter::Cluster::LevelControlCluster do
       )
 
       # Try to move above max
-      request = Matter::Cluster::Definitions::LevelControl::MoveToLevelRequest.new(
+      request = Matter::Cluster::LevelControlCluster::MoveToLevelRequest.new(
         level: 250_u8,
         transition_time: 0_u16,
         mask: 0_u8,
@@ -257,8 +257,8 @@ describe Matter::Cluster::LevelControlCluster do
 
       invoke(cluster,
         Matter::Cluster::LevelControlCluster::CMD_STEP,
-        Matter::Cluster::Definitions::LevelControl::StepRequest.new(
-          step_mode: Matter::Cluster::Definitions::LevelControl::StepMode::Up,
+        Matter::Cluster::LevelControlCluster::StepRequest.new(
+          step_mode: Matter::Cluster::LevelControlCluster::StepMode::Up,
           step_size: 50_u8,
           transition_time: 0_u16,
           mask: 0_u8,
@@ -275,8 +275,8 @@ describe Matter::Cluster::LevelControlCluster do
 
       invoke(cluster,
         Matter::Cluster::LevelControlCluster::CMD_STEP,
-        Matter::Cluster::Definitions::LevelControl::StepRequest.new(
-          step_mode: Matter::Cluster::Definitions::LevelControl::StepMode::Down,
+        Matter::Cluster::LevelControlCluster::StepRequest.new(
+          step_mode: Matter::Cluster::LevelControlCluster::StepMode::Down,
           step_size: 30_u8,
           transition_time: 0_u16,
           mask: 0_u8,
@@ -297,8 +297,8 @@ describe Matter::Cluster::LevelControlCluster do
 
       invoke(cluster,
         Matter::Cluster::LevelControlCluster::CMD_STEP,
-        Matter::Cluster::Definitions::LevelControl::StepRequest.new(
-          step_mode: Matter::Cluster::Definitions::LevelControl::StepMode::Up,
+        Matter::Cluster::LevelControlCluster::StepRequest.new(
+          step_mode: Matter::Cluster::LevelControlCluster::StepMode::Up,
           step_size: 50_u8,
           transition_time: 0_u16,
           mask: 0_u8,
@@ -319,8 +319,8 @@ describe Matter::Cluster::LevelControlCluster do
 
       invoke(cluster,
         Matter::Cluster::LevelControlCluster::CMD_STEP,
-        Matter::Cluster::Definitions::LevelControl::StepRequest.new(
-          step_mode: Matter::Cluster::Definitions::LevelControl::StepMode::Down,
+        Matter::Cluster::LevelControlCluster::StepRequest.new(
+          step_mode: Matter::Cluster::LevelControlCluster::StepMode::Down,
           step_size: 50_u8,
           transition_time: 0_u16,
           mask: 0_u8,
@@ -347,7 +347,7 @@ describe Matter::Cluster::LevelControlCluster do
 
       invoke(cluster,
         Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL,
-        Matter::Cluster::Definitions::LevelControl::MoveToLevelRequest.new(
+        Matter::Cluster::LevelControlCluster::MoveToLevelRequest.new(
           level: 100_u8,
           transition_time: 0_u16,
           mask: 0_u8,
@@ -369,7 +369,7 @@ describe Matter::Cluster::LevelControlCluster do
 
       invoke(cluster,
         Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL,
-        Matter::Cluster::Definitions::LevelControl::MoveToLevelRequest.new(
+        Matter::Cluster::LevelControlCluster::MoveToLevelRequest.new(
           level: 100_u8,
           transition_time: 0_u16,
           mask: 0_u8,
@@ -508,7 +508,7 @@ describe Matter::Cluster::LevelControlCluster do
 
       invoke(light,
         Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL,
-        Matter::Cluster::Definitions::LevelControl::MoveToLevelRequest.new(
+        Matter::Cluster::LevelControlCluster::MoveToLevelRequest.new(
           level: 127_u8,
           transition_time: 10_u16,
           mask: 0_u8,
@@ -526,8 +526,8 @@ describe Matter::Cluster::LevelControlCluster do
       5.times do
         invoke(light,
           Matter::Cluster::LevelControlCluster::CMD_STEP,
-          Matter::Cluster::Definitions::LevelControl::StepRequest.new(
-            step_mode: Matter::Cluster::Definitions::LevelControl::StepMode::Up,
+          Matter::Cluster::LevelControlCluster::StepRequest.new(
+            step_mode: Matter::Cluster::LevelControlCluster::StepMode::Up,
             step_size: 10_u8,
             transition_time: 2_u16,
             mask: 0_u8,
@@ -549,7 +549,7 @@ describe Matter::Cluster::LevelControlCluster do
 
       invoke(light,
         Matter::Cluster::LevelControlCluster::CMD_MOVE_TO_LEVEL,
-        Matter::Cluster::Definitions::LevelControl::MoveToLevelRequest.new(
+        Matter::Cluster::LevelControlCluster::MoveToLevelRequest.new(
           level: 10_u8,
           transition_time: 20_u16,
           mask: 0_u8,

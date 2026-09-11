@@ -2,8 +2,6 @@ require "log"
 
 require "../../cluster/general_commissioning_cluster"
 require "../../cluster/operational_credentials_cluster"
-require "../../cluster/definitions/general_commissioning"
-require "../../cluster/definitions/operational_credentials"
 require "../../crypto/certificate"
 require "../../crypto/key"
 require "../scanner"
@@ -75,7 +73,7 @@ module Matter
           )
           assert_invoke_ok!(arm_resp, "ArmFailSafe")
 
-          add_root_req = Cluster::Definitions::OperationalCredentials::AddTrustedRootCertificateRequest.new(
+          add_root_req = Cluster::OperationalCredentialsCluster::Tlv::AddTrustedRootCertificateRequest.new(
             root_certificate: fabric.root_cert.to_slice
           )
           add_root_resp = im.invoke(
@@ -89,7 +87,7 @@ module Matter
           assert_invoke_ok!(add_root_resp, "AddTrustedRootCertificate")
 
           csr_nonce = @crypto.random_bytes(32)
-          csr_req = Cluster::Definitions::OperationalCredentials::CsrRequest.new(
+          csr_req = Cluster::OperationalCredentialsCluster::Tlv::CsrRequest.new(
             csr_nonce: csr_nonce.to_slice,
             is_for_update_noc: nil
           )
@@ -102,13 +100,13 @@ module Matter
             fields: csr_req.to_slice
           )
           csr_fields = first_command_fields(csr_resp_msg, Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST_RESPONSE)
-          csr_resp = Cluster::Definitions::OperationalCredentials::CsrResponse.from_slice(csr_fields)
+          csr_resp = Cluster::OperationalCredentialsCluster::Tlv::CsrResponse.from_slice(csr_fields)
           csr_elements = Cluster::OperationalCredentialsCluster::CSRElements.from_slice(csr_resp.nocsr_elements)
 
           device_pub_key = CertificateUtil.extract_uncompressed_public_key_from_csr(csr_elements.csr)
           device_noc = create_noc(fabric_id: fabric.fabric_id, node_id: node_id, public_key: device_pub_key)
 
-          add_noc_req = Cluster::Definitions::OperationalCredentials::AddNocRequest.new(
+          add_noc_req = Cluster::OperationalCredentialsCluster::Tlv::AddNocRequest.new(
             noc_value: device_noc.to_slice,
             icac_value: nil,
             ipk_value: fabric.ipk_value.to_slice,
@@ -124,7 +122,7 @@ module Matter
             fields: add_noc_req.to_slice
           )
           noc_fields = first_command_fields(add_noc_resp_msg, Cluster::OperationalCredentialsCluster::CMD_ADD_NOC_RESPONSE)
-          noc_resp = Cluster::Definitions::OperationalCredentials::TlvNocResponse.from_slice(noc_fields)
+          noc_resp = Cluster::OperationalCredentialsCluster::Tlv::TlvNocResponse.from_slice(noc_fields)
           unless noc_resp.status_code.ok?
             raise Matter::CommissioningError.new("AddNOC failed (status=#{noc_resp.status_code} debug=#{noc_resp.debug_text})")
           end

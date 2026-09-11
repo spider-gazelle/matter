@@ -97,7 +97,7 @@ module ChipTool
 
             case option
             when 0
-              request = Matter::Cluster::Definitions::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(window_timeout)
+              request = Matter::Cluster::AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(window_timeout)
               resp = im.invoke(
                 session: session,
                 peer: peer,

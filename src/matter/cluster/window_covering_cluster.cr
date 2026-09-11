@@ -1,5 +1,4 @@
 require "./cluster"
-require "./definitions/window_covering"
 
 module Matter
   module Cluster
@@ -102,6 +101,26 @@ module Matter
         LedFeedback            = 0x08
       end
 
+      struct GoToLiftPercentageRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property lift_percent100ths_value : UInt16
+
+        def initialize(@lift_percent100ths_value : UInt16)
+        end
+      end
+
+      struct GoToTiltPercentageRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property tilt_percent100ths_value : UInt16
+
+        def initialize(@tilt_percent100ths_value : UInt16)
+        end
+      end
+
       attribute 0x0000, :type, CoveringType, default: CoveringType::Rollershade, fixed: true
       attribute 0x0005, :number_of_actuations_lift, UInt16, default: 0_u16, persist: true, optional: true, requires: :lift
       attribute 0x0006, :number_of_actuations_tilt, UInt16, default: 0_u16, persist: true, optional: true, requires: :tilt
@@ -121,9 +140,9 @@ module Matter
       command 0x01, :down_or_close
       command 0x02, :stop_motion
       command 0x04, :go_to_lift_value, optional: true, requires: {lift: true, absolute_position: true}
-      command 0x05, :go_to_lift_percentage, request: Definitions::WindowCovering::GoToLiftPercentageRequest, requires: {lift: true, position_aware_lift: true}
+      command 0x05, :go_to_lift_percentage, request: GoToLiftPercentageRequest, requires: {lift: true, position_aware_lift: true}
       command 0x07, :go_to_tilt_value, optional: true, requires: {tilt: true, absolute_position: true}
-      command 0x08, :go_to_tilt_percentage, request: Definitions::WindowCovering::GoToTiltPercentageRequest, requires: {tilt: true, position_aware_tilt: true}
+      command 0x08, :go_to_tilt_percentage, request: GoToTiltPercentageRequest, requires: {tilt: true, position_aware_tilt: true}
 
       def initialize(
         endpoint_id : DataType::EndpointNumber,
@@ -155,14 +174,14 @@ module Matter
         InteractionModel::Status.success
       end
 
-      def go_to_lift_percentage(request : Definitions::WindowCovering::GoToLiftPercentageRequest) : InteractionModel::Status
+      def go_to_lift_percentage(request : GoToLiftPercentageRequest) : InteractionModel::Status
         percentage = request.lift_percent100ths_value
         return InteractionModel::Status.constraint_error if percentage > MAX_POSITION_PERCENT100THS
 
         move_lift_to(percentage)
       end
 
-      def go_to_tilt_percentage(request : Definitions::WindowCovering::GoToTiltPercentageRequest) : InteractionModel::Status
+      def go_to_tilt_percentage(request : GoToTiltPercentageRequest) : InteractionModel::Status
         percentage = request.tilt_percent100ths_value
         return InteractionModel::Status.constraint_error if percentage > MAX_POSITION_PERCENT100THS
 

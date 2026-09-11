@@ -9,14 +9,14 @@ def build_op_creds_cluster(endpoint_id : Matter::DataType::EndpointNumber = Matt
 end
 
 def create_attestation_request_tlv(nonce : Bytes) : TLV::Any
-  Matter::Cluster::Definitions::OperationalCredentials::AttestationRequest.new(
+  Matter::Cluster::OperationalCredentialsCluster::Tlv::AttestationRequest.new(
     attestation_nonce: nonce
   ).to_tlv(nil)
 end
 
 def create_certificate_chain_request_tlv(cert_type : UInt8) : TLV::Any
-  Matter::Cluster::Definitions::OperationalCredentials::CertificateChainRequest.new(
-    certificate_type: Matter::Cluster::Definitions::OperationalCredentials::CertificateChainType.new(cert_type)
+  Matter::Cluster::OperationalCredentialsCluster::Tlv::CertificateChainRequest.new(
+    certificate_type: Matter::Cluster::OperationalCredentialsCluster::Tlv::CertificateChainType.new(cert_type)
   ).to_tlv(nil)
 end
 
@@ -42,14 +42,14 @@ def create_test_tlv_certificate(public_key : Bytes, fabric_id : UInt64 = 0x1_u64
 end
 
 def create_csr_request_tlv(nonce : Bytes, is_for_update : Bool? = nil) : TLV::Any
-  Matter::Cluster::Definitions::OperationalCredentials::CsrRequest.new(
+  Matter::Cluster::OperationalCredentialsCluster::Tlv::CsrRequest.new(
     csr_nonce: nonce,
     is_for_update_noc: is_for_update
   ).to_tlv(nil)
 end
 
 def create_add_noc_request_tlv(noc : Bytes, icac : Bytes?, ipk : Bytes, admin_subject : UInt64, admin_vendor : UInt16) : TLV::Any
-  Matter::Cluster::Definitions::OperationalCredentials::AddNocRequest.new(
+  Matter::Cluster::OperationalCredentialsCluster::Tlv::AddNocRequest.new(
     noc_value: noc,
     icac_value: icac,
     ipk_value: ipk,
@@ -59,7 +59,7 @@ def create_add_noc_request_tlv(noc : Bytes, icac : Bytes?, ipk : Bytes, admin_su
 end
 
 def create_update_noc_request_tlv(noc : Bytes, icac : Bytes?, fabric_index : UInt8) : TLV::Any
-  Matter::Cluster::Definitions::OperationalCredentials::UpdateNocRequest.new(
+  Matter::Cluster::OperationalCredentialsCluster::Tlv::UpdateNocRequest.new(
     noc_value: noc,
     fabric_index: fabric_index,
     icac_value: icac
@@ -67,13 +67,13 @@ def create_update_noc_request_tlv(noc : Bytes, icac : Bytes?, fabric_index : UIn
 end
 
 def create_add_trusted_root_cert_request_tlv(cert : Bytes) : TLV::Any
-  Matter::Cluster::Definitions::OperationalCredentials::AddTrustedRootCertificateRequest.new(
+  Matter::Cluster::OperationalCredentialsCluster::Tlv::AddTrustedRootCertificateRequest.new(
     root_certificate: cert
   ).to_tlv(nil)
 end
 
 def create_remove_fabric_request_tlv(fabric_index : UInt8) : TLV::Any
-  Matter::Cluster::Definitions::OperationalCredentials::RemoveFabricRequest.new(
+  Matter::Cluster::OperationalCredentialsCluster::Tlv::RemoveFabricRequest.new(
     fabric_index: fabric_index
   ).to_tlv(nil)
 end
@@ -110,7 +110,7 @@ end
 
 # Helper to create UpdateFabricLabel request TLV
 def create_update_fabric_label_request(label : String, fabric_index : UInt8) : TLV::Any
-  Matter::Cluster::Definitions::OperationalCredentials::UpdateFabricLabelRequest.new(
+  Matter::Cluster::OperationalCredentialsCluster::Tlv::UpdateFabricLabelRequest.new(
     label: label,
     fabric_index: fabric_index
   ).to_tlv(nil)

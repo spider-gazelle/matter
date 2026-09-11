@@ -13,7 +13,7 @@ describe "cluster command wire format" do
 
   it "decodes tagged MoveToHue fields instead of the TLV header" do
     cluster = Matter::Cluster::ColorControlCluster.new(endpoint(1))
-    fields = Matter::Cluster::Definitions::ColorControl::MoveToHueRequest.new(hue: 127_u8, direction: Matter::Cluster::Definitions::ColorControl::Direction::ShortestDistance, transition_time: 0_u16, mask: 0_u8, override: 0_u8)
+    fields = Matter::Cluster::ColorControlCluster::MoveToHueRequest.new(hue: 127_u8, direction: Matter::Cluster::ColorControlCluster::Direction::ShortestDistance, transition_time: 0_u16, mask: 0_u8, override: 0_u8)
     expect_success(invoke(cluster, Matter::Cluster::ColorControlCluster::CMD_MOVE_TO_HUE, fields))
     cluster.current_hue.should eq(127_u8)
   end

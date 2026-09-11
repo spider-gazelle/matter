@@ -9,7 +9,7 @@ def create_open_commissioning_window_tlv(
   iterations : UInt32,
   salt : Bytes,
 ) : TLV::Any
-  Matter::Cluster::Definitions::AdministratorCommissioning::OpenCommissioningWindowRequest.new(
+  Matter::Cluster::AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
     commissioning_timeout: timeout,
     pake_passcode_verifier: verifier,
     discriminator: discriminator,
@@ -20,7 +20,7 @@ end
 
 # Helper to create TLV-encoded OpenBasicCommissioningWindowRequest
 def create_open_basic_commissioning_window_tlv(timeout : UInt16) : TLV::Any
-  Matter::Cluster::Definitions::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(
+  Matter::Cluster::AdministratorCommissioningCluster::OpenBasicCommissioningWindowRequest.new(
     commissioning_timeout: timeout
   ).to_tlv(nil)
 end

@@ -1,5 +1,5 @@
 require "./cluster"
-require "./definitions/label_struct"
+require "./label_struct"
 
 module Matter
   module Cluster

@@ -169,7 +169,7 @@ module DslSpec
 end
 
 private alias Widget = DslSpec::Widget
-private alias Privilege = Matter::Cluster::Definitions::AccessControl::EntryPrivilege
+private alias Privilege = Matter::InteractionModel::EntryPrivilege
 private alias StatusCode = Matter::InteractionModel::StatusCode
 
 private def widget(feature_map : Widget::Feature = Widget::Feature::None) : Widget

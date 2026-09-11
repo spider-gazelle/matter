@@ -1,5 +1,5 @@
 require "tlv"
-require "../../storage/record"
+require "../storage/record"
 
 module Matter
   module Cluster

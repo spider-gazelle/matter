@@ -3,14 +3,14 @@ require "../../src/matter/cluster/identify_cluster"
 
 # Helper to encode Identify command (tag 0 = IdentifyTime)
 def encode_identify_command(time : UInt16) : TLV::Any
-  Matter::Cluster::Definitions::Identify::Request.new(time).to_tlv(nil)
+  Matter::Cluster::IdentifyCluster::Request.new(time).to_tlv(nil)
 end
 
 # Helper to encode TriggerEffect command (tag 0 = EffectIdentifier, tag 1 = EffectVariant)
 def encode_trigger_effect_command(effect : UInt8, variant : UInt8) : TLV::Any
-  Matter::Cluster::Definitions::Identify::TriggerEffectRequest.new(
-    effect_identifier: Matter::Cluster::Definitions::Identify::EffectIdentifier.new(effect),
-    effect_variany: Matter::Cluster::Definitions::Identify::EffectVariant.new(variant)
+  Matter::Cluster::IdentifyCluster::TriggerEffectRequest.new(
+    effect_identifier: Matter::Cluster::IdentifyCluster::EffectIdentifier.new(effect),
+    effect_variany: Matter::Cluster::IdentifyCluster::EffectVariant.new(variant)
   ).to_tlv(nil)
 end
 

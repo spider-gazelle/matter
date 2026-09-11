@@ -1,5 +1,4 @@
 require "./cluster"
-require "./definitions/thermostat"
 
 module Matter
   module Cluster
@@ -65,6 +64,85 @@ module Matter
       # in 0.1°C; the setpoints in 0.01°C
       DECI_TO_CENTI_DEGREES = 10_i16
 
+      enum SetpointAdjustMode : UInt8
+        Heat = 0
+        Cool = 1
+        Both = 2
+      end
+
+      # Input to the Thermostat setpointRaiseLower command
+      struct SetpointRaiseLowerRequest
+        include TLV::Serializable
+        @[TLV::Field(tag: 0)]
+        property mode : SetpointAdjustMode
+        @[TLV::Field(tag: 1)]
+        property amount : Int8
+
+        def initialize(@mode : SetpointAdjustMode, @amount : Int8)
+        end
+      end
+
+      # This represents a single transition in a Thermostat schedule
+      struct ThermostatScheduleTransition
+        include TLV::Serializable
+
+        # This field represents the start time of the schedule transition during the associated day. The time will be
+        # represented by a 16 bits unsigned integer to designate the minutes since midnight. For example, 6am will be
+        # represented by 360 minutes since midnight and 11:30pm will be represented by 1410 minutes since midnight.
+        @[TLV::Field(tag: 0)]
+        property transition_time : UInt16
+
+        @[TLV::Field(tag: 1)]
+        property heat_setpoint : UInt16?
+
+        @[TLV::Field(tag: 2)]
+        property cool_setpoint : UInt16?
+      end
+
+      # Input to the Thermostat setWeeklySchedule command
+      struct SetWeeklyScheduleRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property number_of_transitions_for_sequence : UInt8
+
+        @[TLV::Field(tag: 1)]
+        property day_of_week_for_sequence : UInt8
+
+        @[TLV::Field(tag: 2)]
+        property mode_for_sequence : UInt8
+
+        @[TLV::Field(tag: 3)]
+        property transitions : Array(ThermostatScheduleTransition)
+      end
+
+      # Input to the Thermostat getWeeklySchedule command
+      struct GetWeeklyScheduleRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property days_to_return : UInt8
+
+        @[TLV::Field(tag: 1)]
+        property mode_to_return : UInt8
+      end
+
+      struct GetWeeklyScheduleResponse
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property number_of_transitions_for_sequence : UInt8
+
+        @[TLV::Field(tag: 1)]
+        property day_of_week_for_sequence : UInt8
+
+        @[TLV::Field(tag: 2)]
+        property mode_for_sequence : UInt8
+
+        @[TLV::Field(tag: 3)]
+        property transitions : Array(ThermostatScheduleTransition)
+      end
+
       attribute 0x0000, :local_temperature, Int16, nullable: true
       attribute 0x0003, :abs_min_heat_setpoint_limit, Int16, default: DEFAULT_ABS_MIN_HEAT, fixed: true, optional: true, requires: :heating
       attribute 0x0004, :abs_max_heat_setpoint_limit, Int16, default: DEFAULT_ABS_MAX_HEAT, fixed: true, optional: true, requires: :heating
@@ -81,7 +159,7 @@ module Matter
       attribute 0x001C, :system_mode, SystemMode, default: SystemMode::Off, writable: true, write_access: :manage
       attribute 0x001E, :thermostat_running_mode, ThermostatRunningMode, default: ThermostatRunningMode::Off, optional: true, requires: :automode
 
-      command 0x00, :setpoint_raise_lower, request: Definitions::Thermostat::SetpointRaiseLowerRequest
+      command 0x00, :setpoint_raise_lower, request: SetpointRaiseLowerRequest
 
       def initialize(endpoint_id : DataType::EndpointNumber,
                      @feature_map : Feature = Feature::Cooling | Feature::Heating,
@@ -167,7 +245,7 @@ module Matter
       # Commands
       # ------------------------------------------------------------------------
 
-      def setpoint_raise_lower(request : Definitions::Thermostat::SetpointRaiseLowerRequest) : InteractionModel::Status
+      def setpoint_raise_lower(request : SetpointRaiseLowerRequest) : InteractionModel::Status
         delta = request.amount.to_i16 * DECI_TO_CENTI_DEGREES
         mode = request.mode
 

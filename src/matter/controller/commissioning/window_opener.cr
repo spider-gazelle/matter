@@ -32,7 +32,7 @@ module Matter
           pbkdf = Crypto::Spake2p::PbkdfParameters.new(iterations.to_i32, salt)
           verifier = Crypto::Spake2p.compute_passcode_verifier(@crypto, pbkdf, pin)
 
-          request = Cluster::Definitions::AdministratorCommissioning::OpenCommissioningWindowRequest.new(
+          request = Cluster::AdministratorCommissioningCluster::OpenCommissioningWindowRequest.new(
             commissioning_timeout: timeout_seconds,
             pake_passcode_verifier: verifier,
             discriminator: discriminator,

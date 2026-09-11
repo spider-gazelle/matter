@@ -1,7 +1,7 @@
 require "../spec_helper"
 require "../../src/matter/cluster/groups_cluster"
 
-alias GroupsDef = Matter::Cluster::Definitions::Groups
+alias GroupsDef = Matter::Cluster::GroupsCluster
 alias GroupsStatus = Matter::InteractionModel::StatusCode
 
 def add_test_group(cluster, id : UInt16, name = "")

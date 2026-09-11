@@ -9,7 +9,7 @@ describe Matter::Cluster::GroupsCluster do
 
     # Add group 0x0001 named "Test"
     invoke(cluster, Matter::Cluster::GroupsCluster::CMD_ADD_GROUP,
-      Matter::Cluster::Definitions::Groups::AddGroupRequest.new(Matter::DataType::GroupId.new(1_u16), "Test"))
+      Matter::Cluster::GroupsCluster::AddGroupRequest.new(Matter::DataType::GroupId.new(1_u16), "Test"))
 
     cluster.group_count.should eq(1)
     cluster.member_of?(1_u16).should be_true
