@@ -19,7 +19,9 @@ module Matter
     class AdministratorCommissioningCluster < Base
       Log = ::Log.for("matter.cluster.administrator_commissioning")
 
-      CLUSTER_ID = 0x003C_u32
+      cluster 0x003C, revision: 1
+
+      feature :basic, bit: 0 # BC - OpenBasicCommissioningWindow
 
       # ========================================================================
       # Enums
@@ -63,35 +65,23 @@ module Matter
       # Attribute IDs
       # ========================================================================
 
-      ATTR_WINDOW_STATUS      = 0x0000_u32
-      ATTR_ADMIN_FABRIC_INDEX = 0x0001_u32
-      ATTR_ADMIN_VENDOR_ID    = 0x0002_u32
+      # Current commissioning window state, the fabric that opened it and
+      # the vendor id of the opening administrator
+      attribute 0x0000, :window_status, CommissioningWindowStatus, default: CommissioningWindowStatus::WindowNotOpen
+      attribute 0x0001, :admin_fabric_index, UInt8, nullable: true
+      attribute 0x0002, :admin_vendor_id, UInt16, nullable: true
 
       # ========================================================================
-      # Command IDs
+      # Commands
       # ========================================================================
 
-      CMD_OPEN_COMMISSIONING_WINDOW       = 0x00_u32
-      CMD_OPEN_BASIC_COMMISSIONING_WINDOW = 0x01_u32
-      CMD_REVOKE_COMMISSIONING            = 0x02_u32
-
-      # ========================================================================
       # Use definitions for command structs (they have TLV::Serializable)
       alias OpenCommissioningWindowRequest = Definitions::AdministratorCommissioning::OpenCommissioningWindowRequest
       alias OpenBasicCommissioningWindowRequest = Definitions::AdministratorCommissioning::OpenBasicCommissioningWindowRequest
 
-      # ========================================================================
-      # Attributes
-      # ========================================================================
-
-      # WindowStatus attribute (0x0000) - current commissioning window state
-      property window_status : CommissioningWindowStatus
-
-      # AdminFabricIndex attribute (0x0001) - fabric that opened the window
-      property admin_fabric_index : UInt8?
-
-      # AdminVendorId attribute (0x0002) - vendor ID of opening administrator
-      property admin_vendor_id : UInt16?
+      command 0x00, :open_commissioning_window, request: OpenCommissioningWindowRequest, access: :administer, timed: true
+      command 0x01, :open_basic_commissioning_window, request: OpenBasicCommissioningWindowRequest, access: :administer, timed: true, requires: :basic
+      command 0x02, :revoke_commissioning, access: :administer, timed: true
 
       # ========================================================================
       # Window State (for backward compatibility with cluster/ version)
@@ -144,12 +134,9 @@ module Matter
         endpoint_id : DataType::EndpointNumber = DataType::EndpointNumber.new(0_u16),
         minimum_timeout : UInt16 = MINIMUM_COMMISSIONING_TIMEOUT,
         maximum_timeout : UInt16 = STANDARD_COMMISSIONING_TIMEOUT,
+        @feature_map : Feature = Feature::Basic,
       )
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
-
-        @window_status = CommissioningWindowStatus::WindowNotOpen
-        @admin_fabric_index = nil
-        @admin_vendor_id = nil
 
         @window_timeout = nil
         @pake_verifier = nil
@@ -173,93 +160,6 @@ module Matter
         @on_close_failsafe = nil
         @on_start_commissioning_advertising = nil
         @on_stop_commissioning_advertising = nil
-      end
-
-      # ========================================================================
-      # Base Class Required Methods
-      # ========================================================================
-
-      def name : String
-        "AdministratorCommissioning"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_WINDOW_STATUS),
-            "WindowStatus",
-            :enum8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_ADMIN_FABRIC_INDEX),
-            "AdminFabricIndex",
-            :uint8,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_ADMIN_VENDOR_ID),
-            "AdminVendorId",
-            :uint16,
-            writable: false
-          ),
-        ]
-      end
-
-      def commands : Array(CommandMetadata)
-        [
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_OPEN_COMMISSIONING_WINDOW),
-            "OpenCommissioningWindow"
-          ),
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_OPEN_BASIC_COMMISSIONING_WINDOW),
-            "OpenBasicCommissioningWindow"
-          ),
-          CommandMetadata.new(
-            DataType::CommandId.new(CMD_REVOKE_COMMISSIONING),
-            "RevokeCommissioning"
-          ),
-        ]
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_WINDOW_STATUS
-          tlv(@window_status.value)
-        when ATTR_ADMIN_FABRIC_INDEX
-          if index = @admin_fabric_index
-            tlv(index)
-          else
-            tlv(nil)
-          end
-        when ATTR_ADMIN_VENDOR_ID
-          if vendor = @admin_vendor_id
-            tlv(vendor)
-          else
-            tlv(nil)
-          end
-        else
-          super
-        end
-      end
-
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        # All attributes are read-only
-        super
-      end
-
-      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
-        case command_id
-        when CMD_OPEN_COMMISSIONING_WINDOW
-          handle_open_commissioning_window(fields)
-        when CMD_OPEN_BASIC_COMMISSIONING_WINDOW
-          handle_open_basic_commissioning_window(fields)
-        when CMD_REVOKE_COMMISSIONING
-          handle_revoke_commissioning(fields)
-        else
-          super
-        end
       end
 
       # ========================================================================
@@ -386,7 +286,7 @@ module Matter
       # Closes any open commissioning window and stops accepting new PASE sessions.
       #
       # @return nil on success, raises exception if no window open
-      def revoke_commissioning : Nil
+      def revoke_commissioning! : Nil
         Log.info { "RevokeCommissioning" }
 
         # Check if window currently open
@@ -404,11 +304,7 @@ module Matter
       # Internal Command Handlers (cluster/ version style)
       # ========================================================================
 
-      private def handle_open_commissioning_window(fields : TLV::Any?) : InteractionModel::Status
-        # Parse TLV-encoded command using the TLV library
-
-        request = OpenCommissioningWindowRequest.from_tlv(fields || tlv(nil))
-
+      def open_commissioning_window(request : OpenCommissioningWindowRequest) : InteractionModel::Status
         fabric_index = @session_fabric_index
         vendor_id = @session_vendor_id
 
@@ -422,16 +318,9 @@ module Matter
           Log.warn(exception: ex) { "OpenCommissioningWindow rejected" }
           InteractionModel::Status.constraint_error
         end
-      rescue ex
-        Log.error(exception: ex) { "OpenCommissioningWindow: failed to parse request (fields=#{fields.inspect})" }
-        InteractionModel::Status.failure
       end
 
-      private def handle_open_basic_commissioning_window(fields : TLV::Any?) : InteractionModel::Status
-        # Parse TLV-encoded command using the TLV library
-
-        request = OpenBasicCommissioningWindowRequest.from_tlv(fields || tlv(nil))
-
+      def open_basic_commissioning_window(request : OpenBasicCommissioningWindowRequest) : InteractionModel::Status
         fabric_index = @session_fabric_index
         vendor_id = @session_vendor_id
 
@@ -445,15 +334,10 @@ module Matter
           Log.warn(exception: ex) { "OpenBasicCommissioningWindow rejected" }
           InteractionModel::Status.constraint_error
         end
-      rescue ex
-        Log.error(exception: ex) { "OpenBasicCommissioningWindow: failed to parse request (fields=#{fields.inspect})" }
-        InteractionModel::Status.failure
       end
 
-      private def handle_revoke_commissioning(fields : TLV::Any?) : InteractionModel::Status
-        # RevokeCommissioning command has no parameters
-
-        revoke_commissioning
+      def revoke_commissioning : InteractionModel::Status
+        revoke_commissioning!
         InteractionModel::Status.success
       rescue ex : Matter::ClusterError
         Log.warn(exception: ex) { "RevokeCommissioning rejected" }
