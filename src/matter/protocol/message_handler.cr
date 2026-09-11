@@ -152,7 +152,7 @@ module Matter
       # Initialize device clusters (called during construction)
       #
       # These are placeholders that let a bare handler answer a read before a
-      # device has been built on top of it; `Device::Base` replaces the root
+      # device has been built on top of it; `Matter::Device` replaces the root
       # endpoint wholesale with the real clusters. The endpoint carries no
       # device type, so it is not held to the Root Node conformance a device
       # must satisfy.
