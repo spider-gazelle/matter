@@ -122,11 +122,17 @@ module Matter
           "type=0x#{message.payload_header.message_type.to_s(16)} msg_id=#{message.packet_header.message_id}"
         end
 
-        @socket.send(data, peer_address)
+        transmit(data, peer_address)
       end
 
-      # Send raw packet (for testing)
+      # Send an already encoded packet.
       def send_raw(data : Bytes | Slice(UInt8), peer_address : Socket::IPAddress) : Nil
+        transmit(data, peer_address)
+      end
+
+      # The one place bytes leave the process. Specs override this to capture
+      # what would have gone out rather than bind a socket.
+      protected def transmit(data : Bytes | Slice(UInt8), peer_address : Socket::IPAddress) : Nil
         @socket.send(data, peer_address)
       end
 

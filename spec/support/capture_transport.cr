@@ -19,6 +19,11 @@ module Matter
       protected def initialize_for_spec : Nil
         @port = 0
         @on_message = nil
+        @running = false
+        @receive_fiber = nil
+        @message_counter = Transport::MessageCounter.new
+        @unsecured_counters = {} of UInt64 => Transport::MessageCounter
+        @exchange_manager = Transport::ExchangeManager.new
         @sent_packets = [] of Tuple(Bytes, Socket::IPAddress)
       end
 
@@ -31,7 +36,7 @@ module Matter
       def close : Nil
       end
 
-      def send_raw(data : Bytes | Slice(UInt8), peer_address : Socket::IPAddress) : Nil
+      protected def transmit(data : Bytes | Slice(UInt8), peer_address : Socket::IPAddress) : Nil
         @sent_packets << {data.to_slice.dup, peer_address}
       end
     end
