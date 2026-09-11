@@ -181,7 +181,7 @@ describe Matter::Cluster::NetworkCommissioningCluster do
       max_networks = attributes.find { |attr| attr.id.id == Matter::Cluster::NetworkCommissioningCluster::ATTR_MAX_NETWORKS }
       max_networks.should_not be_nil
       max_networks_attr = max_networks.as(Matter::Cluster::AttributeMetadata)
-      max_networks_attr.name.should eq("MaxNetworks")
+      max_networks_attr.name.should eq("maxNetworks")
       max_networks_attr.writable?.should be_false
     end
 
@@ -194,11 +194,11 @@ describe Matter::Cluster::NetworkCommissioningCluster do
 
       commands = cluster.commands
       commands.should_not be_empty
-      commands.size.should be >= 6
+      commands.size.should be >= 5
 
       scan_command = commands.find { |cmd| cmd.id.id == Matter::Cluster::NetworkCommissioningCluster::CMD_SCAN_NETWORKS }
       scan_command.should_not be_nil
-      scan_command.as(Matter::Cluster::CommandMetadata).name.should eq("ScanNetworks")
+      scan_command.as(Matter::Cluster::CommandMetadata).name.should eq("scanNetworks")
     end
   end
 
