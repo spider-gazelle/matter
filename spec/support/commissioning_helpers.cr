@@ -38,3 +38,26 @@ class RaisingRollbackTarget
     raise Matter::CommissioningError.new("window close failed")
   end
 end
+
+# Captures what the window service published, standing in for the cluster
+# attributes a commissioner reads.
+class RecordingWindowTarget
+  include Matter::Commissioning::WindowTarget
+
+  getter status : Matter::Commissioning::WindowStatus = Matter::Commissioning::WindowStatus::WindowNotOpen
+  getter admin_fabric_index : UInt8?
+  getter admin_vendor_id : UInt16?
+  getter notifications : Int32 = 0
+
+  def publish_window_state(
+    status : Matter::Commissioning::WindowStatus,
+    admin_fabric_index : UInt8?,
+    admin_vendor_id : UInt16?,
+    notify : Bool,
+  ) : Nil
+    @status = status
+    @admin_fabric_index = admin_fabric_index
+    @admin_vendor_id = admin_vendor_id
+    @notifications += 1 if notify
+  end
+end
