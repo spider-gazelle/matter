@@ -102,11 +102,11 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
       cluster = Matter::Cluster::IlluminanceMeasurementCluster.new(endpoint_id)
       attrs = cluster.attributes
       attrs.size.should eq(5)
-      attrs.map(&.name).should contain("MeasuredValue")
-      attrs.map(&.name).should contain("MinMeasuredValue")
-      attrs.map(&.name).should contain("MaxMeasuredValue")
-      attrs.map(&.name).should contain("Tolerance")
-      attrs.map(&.name).should contain("LightSensorType")
+      attrs.map(&.name).should contain("measuredValue")
+      attrs.map(&.name).should contain("minMeasuredValue")
+      attrs.map(&.name).should contain("maxMeasuredValue")
+      attrs.map(&.name).should contain("tolerance")
+      attrs.map(&.name).should contain("lightSensorType")
     end
 
     it "reads MeasuredValue when set" do

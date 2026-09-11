@@ -18,40 +18,37 @@ module Matter
     #
     # Specification: Matter 1.4 § 2.2
     class IlluminanceMeasurementCluster < Base
-      CLUSTER_ID = 0x0400_u32
-
-      # Attributes
-      ATTR_MEASURED_VALUE     = 0x0000_u32
-      ATTR_MIN_MEASURED_VALUE = 0x0001_u32
-      ATTR_MAX_MEASURED_VALUE = 0x0002_u32
-      ATTR_TOLERANCE          = 0x0003_u32
-      ATTR_LIGHT_SENSOR_TYPE  = 0x0004_u32
+      cluster 0x0400, revision: 3
 
       # Illuminance value limits
       MIN_ILLUMINANCE =     0_u16 # Too low to measure
       MAX_ILLUMINANCE = 65534_u16 # 0xFFFE
 
+      # MinMeasuredValue must be measurable and leave room for MaxMeasuredValue
+      MIN_MEASURED_VALUE_RANGE = 1_u16..(MAX_ILLUMINANCE - 1)
+
+      # Largest tolerance the specification allows
+      MAX_TOLERANCE = 2048_u16
+
+      # Scale of the logarithmic encoding: MeasuredValue = LOG_SCALE x log10(lux) + LOG_OFFSET
+      LOG_SCALE  = 10_000.0
+      LOG_OFFSET =      1.0
+
+      # Brightest illuminance the encoding can represent (lux)
+      MAX_LUX = 3_576_000.0
+
       # Light sensor types
-      enum LightSensorType
+      enum LightSensorType : UInt8
         Photodiode = 0
         CMOS       = 1
       end
 
-      # Current measured illuminance, or nil if unknown
       # Value of 0 indicates too low to measure
-      property measured_value : UInt16?
-
-      # Minimum measurable illuminance (1-65533, or nil)
-      property min_measured_value : UInt16?
-
-      # Maximum measurable illuminance (or nil)
-      property max_measured_value : UInt16?
-
-      # Measurement tolerance (max 2048), optional
-      property tolerance : UInt16?
-
-      # Light sensor type, optional
-      property light_sensor_type : LightSensorType?
+      attribute 0x0000, :measured_value, UInt16, nullable: true, min: MIN_ILLUMINANCE, max: MAX_ILLUMINANCE
+      attribute 0x0001, :min_measured_value, UInt16, nullable: true, min: MIN_MEASURED_VALUE_RANGE.begin, max: MIN_MEASURED_VALUE_RANGE.end
+      attribute 0x0002, :max_measured_value, UInt16, nullable: true, max: MAX_ILLUMINANCE
+      attribute 0x0003, :tolerance, UInt16, nullable: true, optional: true, max: MAX_TOLERANCE
+      attribute 0x0004, :light_sensor_type, LightSensorType, nullable: true, optional: true
 
       def initialize(endpoint_id : DataType::EndpointNumber,
                      @measured_value : UInt16? = nil,
@@ -61,151 +58,63 @@ module Matter
                      @light_sensor_type : LightSensorType? = nil)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
-        # Validate min_measured_value if provided
         if min = @min_measured_value
-          raise ArgumentError.new("min_measured_value must be between 1 and 65533") if min < 1_u16 || min > 65533_u16
+          raise ArgumentError.new("min_measured_value must be between #{MIN_MEASURED_VALUE_RANGE.begin} and #{MIN_MEASURED_VALUE_RANGE.end}") unless MIN_MEASURED_VALUE_RANGE.includes?(min)
         end
 
-        # Validate max_measured_value if provided
         if max = @max_measured_value
           raise ArgumentError.new("max_measured_value must be <= #{MAX_ILLUMINANCE}") if max > MAX_ILLUMINANCE
         end
 
-        # Validate min/max relationship if both provided
         if (min = @min_measured_value) && (max = @max_measured_value)
           raise ArgumentError.new("min_measured_value must be <= max_measured_value") if min > max
         end
 
-        # Validate measured_value if provided
         if measured = @measured_value
-          # 0 is valid (too low to measure)
-          if measured > 0
-            if (min = @min_measured_value) && measured < min
-              raise ArgumentError.new("measured_value must be >= min_measured_value")
-            end
-            if (max = @max_measured_value) && measured > max
-              raise ArgumentError.new("measured_value must be <= max_measured_value")
-            end
-          end
+          raise ArgumentError.new("measured_value must be >= min_measured_value") if below_minimum?(measured)
+          raise ArgumentError.new("measured_value must be <= max_measured_value") if above_maximum?(measured)
         end
 
-        # Validate tolerance if provided
         if tolerance = @tolerance
-          raise ArgumentError.new("tolerance must be <= 2048") if tolerance > 2048_u16
+          raise ArgumentError.new("tolerance must be <= #{MAX_TOLERANCE}") if tolerance > MAX_TOLERANCE
         end
       end
 
-      def name : String
-        "IlluminanceMeasurement"
-      end
-
-      def attributes : Array(AttributeMetadata)
-        [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MEASURED_VALUE),
-            "MeasuredValue",
-            :uint16,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MIN_MEASURED_VALUE),
-            "MinMeasuredValue",
-            :uint16,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MAX_MEASURED_VALUE),
-            "MaxMeasuredValue",
-            :uint16,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_TOLERANCE),
-            "Tolerance",
-            :uint16,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_LIGHT_SENSOR_TYPE),
-            "LightSensorType",
-            :uint8,
-            writable: false
-          ),
-        ]
-      end
-
-      def commands : Array(CommandMetadata)
-        [] of CommandMetadata # No commands for measurement clusters
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
+      # Tolerance and LightSensorType are optional: unsupported until configured.
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
         case attribute_id
-        when ATTR_MEASURED_VALUE
-          if value = @measured_value
-            tlv(value)
-          else
-            tlv(nil)
-          end
-        when ATTR_MIN_MEASURED_VALUE
-          if value = @min_measured_value
-            tlv(value)
-          else
-            tlv(nil)
-          end
-        when ATTR_MAX_MEASURED_VALUE
-          if value = @max_measured_value
-            tlv(value)
-          else
-            tlv(nil)
-          end
         when ATTR_TOLERANCE
-          if tolerance = @tolerance
-            tlv(tolerance)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
+          return InteractionModel::Status.unsupported_attribute if @tolerance.nil?
         when ATTR_LIGHT_SENSOR_TYPE
-          if sensor_type = @light_sensor_type
-            tlv(sensor_type.value.to_u8)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        else
-          super
+          return InteractionModel::Status.unsupported_attribute if @light_sensor_type.nil?
         end
+        super
       end
 
-      # Update the measured illuminance value
-      def update_illuminance(value : UInt16?)
-        old_value = @measured_value
-
-        # Validate new value
+      # Reports a new reading (nil when unknown, 0 when too low to measure);
+      # `measured_value=` with a device-facing name that enforces the
+      # measurable range.
+      def update_illuminance(value : UInt16?) : Nil
         if value
-          # 0 is valid (too low to measure)
-          if value > 0
-            if (min = @min_measured_value) && value < min
-              raise ArgumentError.new("Illuminance #{value} is below minimum measurable value #{min}")
-            end
-            if (max = @max_measured_value) && value > max
-              raise ArgumentError.new("Illuminance #{value} is above maximum measurable value #{max}")
-            end
-          end
+          raise ArgumentError.new("Illuminance #{value} is below minimum measurable value #{@min_measured_value}") if below_minimum?(value)
+          raise ArgumentError.new("Illuminance #{value} is above maximum measurable value #{@max_measured_value}") if above_maximum?(value)
         end
-
-        @measured_value = value
-
-        # Invoke callback if value changed
-        if old_value != value
-          increment_version_and_notify(ATTR_MEASURED_VALUE)
-          @on_illuminance_changed.try &.call(old_value, value)
-        end
+        self.measured_value = value
       end
 
-      # Callback when illuminance changes
-      @on_illuminance_changed : Proc(UInt16?, UInt16?, Nil)?
+      # Called with the previous and the new value whenever MeasuredValue changes
+      def on_illuminance_changed(&block : UInt16?, UInt16? -> Nil) : Nil
+        on_measured_value_changed(&block)
+      end
 
-      def on_illuminance_changed(&block : UInt16?, UInt16? -> Nil)
-        @on_illuminance_changed = block
+      # 0 (too low to measure) is always valid
+      private def below_minimum?(value : UInt16) : Bool
+        return false if value == MIN_ILLUMINANCE
+        (min = @min_measured_value) ? value < min : false
+      end
+
+      private def above_maximum?(value : UInt16) : Bool
+        (max = @max_measured_value) ? value > max : false
       end
 
       # Helper methods for illuminance conversion
@@ -213,22 +122,18 @@ module Matter
       # Convert from measured value to lux (illuminance)
       # Formula: illuminance = 10^((MeasuredValue - 1) / 10000)
       def self.to_lux(measured_value : UInt16) : Float64
-        return 0.0 if measured_value == 0 # Too low to measure
-        10.0 ** ((measured_value - 1) / 10000.0)
+        return 0.0 if measured_value == MIN_ILLUMINANCE # Too low to measure
+        10.0 ** ((measured_value - LOG_OFFSET) / LOG_SCALE)
       end
 
       # Convert from lux (illuminance) to measured value
       # Formula: MeasuredValue = 10,000 x log10(illuminance) + 1
       # Valid range: 1 lx to 3.576 Mlx
       def self.from_lux(lux : Float64) : UInt16
-        return 0_u16 if lux < 1.0 # Too low to measure
-        raise ArgumentError.new("Illuminance must be <= 3,576,000 lux") if lux > 3_576_000.0
+        return MIN_ILLUMINANCE if lux < 1.0 # Too low to measure
+        raise ArgumentError.new("Illuminance must be <= 3,576,000 lux") if lux > MAX_LUX
 
-        value = (10000.0 * Math.log10(lux) + 1.0).round.to_u16
-        # Clamp to valid range
-        value = 1_u16 if value < 1_u16
-        value = MAX_ILLUMINANCE if value > MAX_ILLUMINANCE
-        value
+        (LOG_SCALE * Math.log10(lux) + LOG_OFFSET).round.to_u16.clamp(MIN_MEASURED_VALUE_RANGE.begin, MAX_ILLUMINANCE)
       end
     end
   end
