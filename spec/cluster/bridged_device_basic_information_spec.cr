@@ -127,11 +127,10 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       callback_called = false
       callback_value = true
 
-      cluster.on_reachable_changed = ->(new_state : Bool) {
+      cluster.on_reachable_changed do |new_state|
         callback_called = true
         callback_value = new_state
-        nil
-      }
+      end
 
       cluster.reachable = (false)
 
@@ -144,10 +143,9 @@ describe Matter::Cluster::BridgedDeviceBasicInformationCluster do
       cluster = Matter::Cluster::BridgedDeviceBasicInformationCluster.new(endpoint, reachable: true)
 
       callback_called = false
-      cluster.on_reachable_changed = ->(_new_state : Bool) {
+      cluster.on_reachable_changed do |_new_state|
         callback_called = true
-        nil
-      }
+      end
 
       cluster.reachable = (true) # Same state
       callback_called.should be_false
