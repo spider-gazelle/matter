@@ -1,5 +1,6 @@
 require "./datatype/device_type_id"
 require "./datatype/cluster_id"
+require "./hex"
 
 module Matter
   # Device type definitions from the Matter specification
@@ -255,6 +256,37 @@ module Matter
           0x0006_u32, # On/Off
         ]
       )
+    end
+
+    # Revision reported for a device type this library has no definition for.
+    # Every Matter device type starts at revision 1.
+    UNKNOWN_REVISION = 1_u16
+
+    # The definition for *device_type*, or a bare definition carrying just the
+    # id (no mandatory clusters, revision `UNKNOWN_REVISION`) when this library
+    # has no table entry for it. Endpoints built from a raw device type id go
+    # through here, so an unknown id costs conformance checking but never
+    # refuses to boot.
+    def self.for(device_type : UInt32) : DeviceType
+      case device_type
+      when ROOT_NODE           then root_node
+      when ON_OFF_LIGHT        then on_off_light
+      when DIMMABLE_LIGHT      then dimmable_light
+      when ON_OFF_PLUG_IN_UNIT then on_off_plug_in_unit
+      when ON_OFF_LIGHT_SWITCH then on_off_light_switch
+      when DIMMER_SWITCH       then dimmer_switch
+      when CONTACT_SENSOR      then contact_sensor
+      when TEMPERATURE_SENSOR  then temperature_sensor
+      when DOOR_LOCK           then door_lock
+      when THERMOSTAT          then thermostat
+      when FAN                 then fan
+      else
+        new(
+          DataType::DeviceTypeId.new(device_type),
+          name(device_type) || "Device Type #{Hex.u32(device_type)}",
+          UNKNOWN_REVISION
+        )
+      end
     end
 
     # Human-readable name for a device type id, `nil` when unknown
