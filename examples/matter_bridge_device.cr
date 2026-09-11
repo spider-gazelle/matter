@@ -1,623 +1,199 @@
-require "goban"
-require "../src/matter"
-require "../src/matter/cluster/bridged_device_basic_information"
-require "../src/matter/cluster/on_off"
-require "../src/matter/cluster/identify"
-require "../src/matter/cluster/groups"
+require "./support/console"
+require "./support/main"
 
 # Matter Bridge Device Example
 #
-# - Acts as a bridge aggregating multiple non-Matter devices
-# - Presents as a Matter Bridge (Root Node with Aggregator device type)
-# - Dynamically bridges On/Off devices on endpoints 1, 2, 3, etc.
-# - Supports adding/removing bridged devices at runtime via stdin
-# - Each bridged device has BridgedDeviceBasicInformation + OnOff clusters
-#
-# Commands:
-#   add          - Add a new bridged device
-#   remove <n>   - Remove bridged device on endpoint n
-#   list         - List all bridged devices
-#   toggle <n>   - Toggle device on endpoint n
-#   on <n>       - Turn on device on endpoint n
-#   off <n>      - Turn off device on endpoint n
-#   status       - Show bridge status
-#   reset        - Factory reset
-#   quit         - Exit
-
+# - Presents the root endpoint as an Aggregator and bridges non-Matter On/Off
+#   devices on endpoints 1, 2, 3, ...
+# - Bridged endpoints are declared once as an `endpoint_template` and added or
+#   removed at runtime; the library persists their parameters, so they come
+#   back after a restart
+# - Each bridged endpoint is a Bridged Node + On/Off Light, with
+#   BridgedDeviceBasicInformation, OnOff, Identify and Groups
 module MatterBridge
-  # Persisted state for a bridged device
-  struct BridgedDeviceConfig
-    include Matter::Storage::Record
+  class Device < Matter::Device
+    include Examples::Console
 
-    property endpoint_id : UInt16
-    property name : String
-    property unique_id : String
+    BRIDGED_VENDOR_NAME            = "Bridged Vendor"
+    BRIDGED_HARDWARE_VERSION       = 1_u16
+    BRIDGED_HARDWARE_VERSION_LABEL = "1.0"
+    BRIDGED_SOFTWARE_VERSION       = 1_u32
+    BRIDGED_SOFTWARE_VERSION_LABEL = "1.0.0"
 
-    def initialize(@endpoint_id : UInt16, @name : String, @unique_id : String)
-    end
-  end
+    # How many lights a bridge with no stored devices starts with.
+    INITIAL_DEVICES = 1..2
 
-  # Persisted state for all bridged devices
-  struct BridgedDevicesState
-    include Matter::Storage::Record
+    # Random bytes behind a bridged device's unique id.
+    UNIQUE_ID_BYTES = 4
 
-    property devices : Array(BridgedDeviceConfig)
-    property device_counter : Int32
+    identity vendor: "Spider-Gazelle", product: "Crystal Bridge",
+      vendor_id: Matter::SetupPayload.test_vendor_id,
+      product_id: rand(0x0001_u16..0xFFFF_u16),
+      discriminator: Matter::SetupPayload.generate_random_discriminator,
+      pin: Matter::SetupPayload.generate_random_pin,
+      device_type: Matter::DeviceType::ROOT_NODE,
+      appearance: :matte
 
-    def initialize(@devices : Array(BridgedDeviceConfig) = [] of BridgedDeviceConfig, @device_counter : Int32 = 0)
-    end
-  end
+    storage yaml: "matter_bridge_storage.yml"
 
-  # Represents a bridged device (non-Matter device exposed through the bridge)
-  class BridgedDevice
-    getter endpoint_id : UInt16
-    getter name : String
-    getter unique_id : String
-    property? reachable : Bool = true
+    # The bridge has no static endpoints of its own: the root endpoint is the
+    # aggregator its bridged endpoints hang off.
+    endpoint 0, device_type: Matter::DeviceType::AGGREGATOR
 
-    @on_off_cluster : Matter::Cluster::OnOff
-    @bridged_info_cluster : Matter::Cluster::BridgedDeviceBasicInformation
-    @identify_cluster : Matter::Cluster::Identify
-    @groups_cluster : Matter::Cluster::Groups
-
-    def initialize(@endpoint_id : UInt16, @name : String, @unique_id : String)
-      endpoint = Matter::DataType::EndpointNumber.new(@endpoint_id)
-
-      @on_off_cluster = Matter::Cluster::OnOff.new(
-        endpoint,
-        feature_map: Matter::Cluster::OnOff::Feature::None
-      )
-
-      @bridged_info_cluster = Matter::Cluster::BridgedDeviceBasicInformation.new(
-        endpoint,
-        reachable: @reachable,
-        vendor_name: "Bridged Vendor",
-        product_name: @name,
-        node_label: @name,
-        unique_id: @unique_id,
-        hardware_version: 1_u16,
-        hardware_version_string: "1.0",
-        software_version: 1_u32,
-        software_version_string: "1.0.0"
-      )
-
-      @identify_cluster = Matter::Cluster::Identify.new(
-        endpoint,
-        identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLight
-      )
-
+    endpoint_template :bridged_light,
+      device_type: [Matter::DeviceType::ON_OFF_LIGHT, Matter::DeviceType::BRIDGED_NODE],
+      parameters: {name: String, unique_id: String} do
+      cluster Matter::Cluster::OnOff
+      cluster Matter::Cluster::BridgedDeviceBasicInformation,
+        vendor_name: BRIDGED_VENDOR_NAME,
+        product_name: name,
+        node_label: name,
+        unique_id: unique_id,
+        hardware_version: BRIDGED_HARDWARE_VERSION,
+        hardware_version_string: BRIDGED_HARDWARE_VERSION_LABEL,
+        software_version: BRIDGED_SOFTWARE_VERSION,
+        software_version_string: BRIDGED_SOFTWARE_VERSION_LABEL
+      cluster Matter::Cluster::Identify, identify_type: :visible_light
       # Groups is a mandatory server cluster of the On/Off Light device type
       # (Matter Device Library 4.1, On/Off Light), so every bridged endpoint
       # carries one.
-      @groups_cluster = Matter::Cluster::Groups.new(endpoint)
-
-      # Wire reachability callback
-      @bridged_info_cluster.on_reachable_changed do |new_state|
-        @reachable = new_state
-      end
+      cluster Matter::Cluster::Groups
     end
 
-    def clusters : Array(Matter::Cluster::Base)
+    def console_notes : Array(String)
+      ["Bridges non-Matter On/Off devices to Matter"]
+    end
+
+    def state_details : Nil
+      puts "  Bridged Devices: #{bridged_endpoints.size}"
+      list_devices
+    end
+
+    def status_details : Nil
+      puts "  Bridged Devices: #{bridged_endpoints.size}"
+      list_devices
+    end
+
+    def commands : Array(Tuple(String, String))
       [
-        @on_off_cluster.as(Matter::Cluster::Base),
-        @bridged_info_cluster.as(Matter::Cluster::Base),
-        @identify_cluster.as(Matter::Cluster::Base),
-        @groups_cluster.as(Matter::Cluster::Base),
+        {"add", "Add a new bridged On/Off device"},
+        {"remove <n>", "Remove the bridged device on endpoint n"},
+        {"list", "List all bridged devices with their states"},
+        {"toggle <n>", "Toggle the device on endpoint n"},
+        {"on <n>", "Turn on the device on endpoint n"},
+        {"off <n>", "Turn off the device on endpoint n"},
+        {"reachable <n>", "Toggle reachability of the device on endpoint n"},
       ]
     end
 
-    def on_off_cluster : Matter::Cluster::OnOff
-      @on_off_cluster
-    end
-
-    def bridged_info_cluster : Matter::Cluster::BridgedDeviceBasicInformation
-      @bridged_info_cluster
-    end
-
-    def on? : Bool
-      @on_off_cluster.on_off?
-    end
-
-    def on=(value : Bool)
-      @on_off_cluster.on = value
-    end
-
-    def toggle
-      @on_off_cluster.toggle
-    end
-
-    def reachable=(value : Bool)
-      @reachable = value
-      @bridged_info_cluster.reachable = value
-    end
-  end
-
-  class Device < Matter::Device::Base
-    DEVICE_NAME  = "Crystal Bridge"
-    STORAGE_FILE = "matter_bridge_storage.yml"
-
-    VENDOR_ID      = Matter::SetupPayload.test_vendor_id
-    PRODUCT_ID     = rand(0x0001_u16..0xFFFF_u16)
-    DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
-    SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
-
-    # Application document holding the bridged device list
-    BRIDGED_DEVICES_DOCUMENT = "bridged_devices"
-
-    # Track bridged devices by endpoint ID
-    @bridged_devices : Hash(UInt16, BridgedDevice) = {} of UInt16 => BridgedDevice
-    @device_counter : Int32 = 0
-
-    def initialize
-      super(Matter::Storage::YamlFile.new(STORAGE_FILE), ip_addresses: Matter::Network.local_ip_addresses)
-    end
-
-    # Save bridged devices configuration to storage
-    private def save_bridged_devices : Nil
-      configs = @bridged_devices.values.map do |device|
-        BridgedDeviceConfig.new(
-          endpoint_id: device.endpoint_id,
-          name: device.name,
-          unique_id: device.unique_id
-        )
+    def handle_command(name : String, argument : String?) : Bool
+      case name
+      when "add"       then add_bridged_device
+      when "list"      then list_devices
+      when "remove"    then with_endpoint(argument) { |endpoint| remove_bridged_device(endpoint) }
+      when "toggle"    then with_endpoint(argument) { |endpoint| on_off(endpoint).toggle }
+      when "on"        then with_endpoint(argument) { |endpoint| on_off(endpoint).on = true }
+      when "off"       then with_endpoint(argument) { |endpoint| on_off(endpoint).on = false }
+      when "reachable" then with_endpoint(argument) { |endpoint| toggle_reachable(endpoint) }
+      else                  return false
       end
-
-      state = BridgedDevicesState.new(
-        devices: configs,
-        device_counter: @device_counter
-      )
-
-      persistence.write_app_document(BRIDGED_DEVICES_DOCUMENT, state.to_document)
-    rescue ex
-      puts "Warning: Failed to save bridged devices: #{ex.message}"
-    end
-
-    # Restore bridged devices from storage
-    # Returns true if devices were restored, false if none were stored
-    private def restore_bridged_devices : Bool
-      document = persistence.app_document(BRIDGED_DEVICES_DOCUMENT)
-      return false unless document
-
-      state = BridgedDevicesState.from_document(document)
-      @device_counter = state.device_counter
-
-      return false if state.devices.empty?
-
-      puts "Restoring #{state.devices.size} bridged device(s) from storage..."
-
-      state.devices.each do |config|
-        restore_bridged_device(config)
-      end
-
-      # Restore cluster states (OnOff state, etc.) after devices are created
-      persistence.restore_clusters(@bridged_devices.values.flat_map(&.clusters))
-
       true
-    rescue ex
-      puts "Warning: Failed to restore bridged devices: #{ex.message}"
-      false
-    end
-
-    # Restore a single bridged device from config
-    private def restore_bridged_device(config : BridgedDeviceConfig) : BridgedDevice?
-      device = BridgedDevice.new(config.endpoint_id, config.name, config.unique_id)
-
-      # Don't send subscription notifications when restoring - the controller
-      # already knows about these devices from before the restart
-      success = add_endpoint(
-        endpoint_id: config.endpoint_id,
-        device_type: Matter::DeviceType::ON_OFF_LIGHT,
-        clusters: device.clusters,
-        notify_subscribers: false
-      )
-
-      unless success
-        puts "  Warning: Failed to restore endpoint #{config.endpoint_id}"
-        return
-      end
-
-      @bridged_devices[config.endpoint_id] = device
-
-      # Wire up state change callback
-      device.on_off_cluster.on_state_changed do |new_state|
-        puts "\n  [Endpoint #{config.endpoint_id}] #{device.name} is now: #{new_state ? "ON" : "OFF"}"
-        print "> "
-      end
-
-      puts "  Restored: Endpoint #{config.endpoint_id} - #{config.name}"
-      device
-    end
-
-    def device_name : String
-      DEVICE_NAME
-    end
-
-    def vendor_id : UInt16
-      VENDOR_ID
-    end
-
-    def product_id : UInt16
-      PRODUCT_ID
-    end
-
-    def discriminator : UInt16
-      DISCRIMINATOR
-    end
-
-    def setup_pin : UInt32
-      SETUP_PIN_CODE
-    end
-
-    # Bridge is a Root Node device type
-    def primary_device_type_id : UInt32
-      Matter::DeviceType::ROOT_NODE
-    end
-
-    def vendor_name : String
-      "Spider-Gazelle"
-    end
-
-    def product_name : String
-      device_name
-    end
-
-    def product_appearance : Matter::Cluster::BasicInformation::ProductAppearanceStruct?
-      Matter::Cluster::BasicInformation::ProductAppearanceStruct.new(
-        Matter::Cluster::BasicInformation::ProductFinish::Matte
-      )
-    end
-
-    # Bridge doesn't have static device endpoints - we use dynamic endpoints
-    protected def device_clusters : Array(Matter::Cluster::Base)
-      [] of Matter::Cluster::Base
-    end
-
-    # Override endpoint_device_types to return empty since we add devices dynamically
-    protected def endpoint_device_types : Hash(UInt16, UInt32)
-      {} of UInt16 => UInt32
     end
 
     protected def before_start : Nil
-      print_header
-
-      # Try to restore bridged devices from storage first
-      if restore_bridged_devices
-        puts ""
+      if bridged_endpoints.empty?
+        count = rand(INITIAL_DEVICES)
+        puts "Creating #{count} initial bridged device(s)..."
+        count.times { add_bridged_device }
       else
-        # No stored devices - create random initial devices
-        initial_count = rand(1..2)
-        puts "Creating #{initial_count} initial bridged device(s)..."
-        initial_count.times do
-          add_bridged_device
-        end
-        puts ""
+        puts "Restored #{bridged_endpoints.size} bridged device(s) from storage"
       end
 
-      print_state
-    end
-
-    protected def started_commissioning_mode : Nil
-      puts "Starting in Commissioning Mode"
-      puts "   The bridge is ready to be paired with a Matter controller"
+      bridged_endpoints.each { |endpoint| watch(endpoint) }
       puts ""
-      puts "mDNS Advertisement Active:"
-      puts "   Service: _matterc._udp.local"
-      puts "   Instance: #{responder.commissioning_instance_name || "<pending>"}"
-      puts "   Hostname: #{hostname}"
-      puts "   Port: #{port}"
-      puts "   Discriminator: #{discriminator}"
-      puts ""
-
-      print_qr_code
-
-      manual_code = setup_code
-      puts "To pair this bridge:"
-      puts "   chip-tool pairing code 1 #{manual_code}"
-      puts ""
+      super
     end
 
-    protected def started_operational_mode : Nil
-      puts "Starting in Operational Mode"
-      puts "   The bridge is commissioned and ready for use"
-      puts ""
-
-      fabric_table.all_fabrics.each do |fabric|
-        puts "Operational Advertisement (Fabric #{fabric.fabric_index}):"
-        puts "   Service: _matter._tcp.local"
-        puts "   Fabric ID: 0x#{fabric.fabric_id.to_s(16).upcase}"
-        puts "   Node ID: 0x#{fabric.node_id.to_s(16).upcase}"
-        puts ""
-      end
+    # Every bridged endpoint, in endpoint order.
+    def bridged_endpoints : Array(Matter::Endpoint)
+      endpoint_ids.compact_map { |endpoint_id| node.endpoint(endpoint_id) }
     end
 
-    protected def on_started : Nil
-      interactive = !ARGV.includes?("--no-interactive")
-      if interactive
-        spawn { run_interactive_loop }
-      else
-        puts "Running in non-interactive mode (--no-interactive)"
-        puts "   Press Ctrl+C to stop"
-        puts ""
-      end
-    end
-
-    protected def on_shutdown : Nil
-      puts "Shutdown complete"
-    end
-
-    # Add a new bridged device
-    def add_bridged_device : BridgedDevice?
+    def add_bridged_device : Matter::Endpoint
       endpoint_id = next_endpoint_id
-      @device_counter += 1
-
-      name = "Bridged Light #{@device_counter}"
-      unique_id = "bridged-#{@device_counter}-#{Random::Secure.hex(4)}"
-
-      device = BridgedDevice.new(endpoint_id, name, unique_id)
-
-      # Register with the bridge using dynamic endpoint management
-      success = add_endpoint(
-        endpoint_id: endpoint_id,
-        device_type: Matter::DeviceType::ON_OFF_LIGHT,
-        clusters: device.clusters
+      endpoint = add_endpoint(
+        :bridged_light,
+        name: "Bridged Light #{endpoint_id}",
+        unique_id: "bridged-#{endpoint_id}-#{Random::Secure.hex(UNIQUE_ID_BYTES)}"
       )
 
-      unless success
-        puts "Failed to add endpoint #{endpoint_id}"
-        return
-      end
-
-      @bridged_devices[endpoint_id] = device
-
-      # Wire up state change callback
-      device.on_off_cluster.on_state_changed do |new_state|
-        puts "\n  [Endpoint #{endpoint_id}] #{device.name} is now: #{new_state ? "ON" : "OFF"}"
-        print "> "
-      end
-
-      puts "  Added: Endpoint #{endpoint_id} - #{name}"
-
-      # Persist the updated device list
-      save_bridged_devices
-
-      device
-    end
-
-    # Remove a bridged device
-    def remove_bridged_device(endpoint_id : UInt16) : Bool
-      return false unless @bridged_devices.has_key?(endpoint_id)
-
-      device = @bridged_devices.delete(endpoint_id)
-      remove_endpoint(endpoint_id)
-
-      if device
-        puts "  Removed: Endpoint #{endpoint_id} - #{device.name}"
-
-        # Persist the updated device list
-        save_bridged_devices
-
-        true
-      else
-        false
-      end
-    end
-
-    private def print_header : Nil
-      puts "\n" + "=" * 70
-      puts "  Matter Bridge Device"
-      puts "  Bridges non-Matter On/Off devices to Matter"
-      puts "=" * 70
-      puts ""
-    end
-
-    private def print_state : Nil
-      puts "Bridge Status:"
-      puts "   Name: #{device_name}"
-      puts "   Bridged Devices: #{@bridged_devices.size}"
-      puts "   Commissioned: #{fabric_table.empty? ? "No" : "Yes"}"
-      puts "   Fabrics: #{fabric_table.size}"
-      puts "   Discriminator: #{discriminator}"
-      puts "   Setup PIN: #{setup_pin}"
-      puts ""
-      ip_addresses.each do |ip|
-        puts "   IP: #{ip.address} (#{ip.family == Socket::Family::INET ? "IPv4" : "IPv6"})"
-      end
-      puts ""
-
-      unless @bridged_devices.empty?
-        puts "Bridged Devices:"
-        @bridged_devices.each do |endpoint_id, device|
-          state = device.on? ? "ON" : "OFF"
-          reachable = device.reachable? ? "" : " [UNREACHABLE]"
-          puts "   Endpoint #{endpoint_id}: #{device.name} - #{state}#{reachable}"
-        end
-        puts ""
-      end
-    end
-
-    private def setup_code : String
-      Matter::SetupPayload.generate_manual_code(discriminator, setup_pin)
-    end
-
-    private def qr_code_payload : String
-      Matter::SetupPayload::QRCode.generate_qr_code(
-        discriminator: discriminator,
-        pin: setup_pin,
-        vendor_id: vendor_id,
-        product_id: product_id,
-        flow: Matter::SetupPayload::QRCode::CommissionFlow::Standard,
-        capabilities: Matter::SetupPayload::QRCode::DiscoveryCapability::BLE
-      )
-    end
-
-    private def print_qr_code : Nil
-      payload = qr_code_payload
-      qr = Goban::QR.encode_string(payload, Goban::ECC::Level::Low)
-      puts "Scan this QR code with your Matter controller app:"
-      puts ""
-      qr.print_to_console
-      puts ""
-    rescue ex
-      puts "Failed to generate QR code: #{ex.message}"
-    end
-
-    private def run_interactive_loop : Nil
-      puts "Interactive Commands:"
-      puts "   add           - Add a new bridged device"
-      puts "   remove <n>    - Remove device on endpoint n"
-      puts "   list          - List all bridged devices"
-      puts "   toggle <n>    - Toggle device on endpoint n"
-      puts "   on <n>        - Turn on device on endpoint n"
-      puts "   off <n>       - Turn off device on endpoint n"
-      puts "   reachable <n> - Toggle reachability of device n"
-      puts "   status        - Show bridge status"
-      puts "   reset         - Reset to factory defaults"
-      puts "   quit          - Exit the application"
-      puts ""
-
-      loop do
-        print "> "
-        input = gets
-        break unless input
-        handle_command(input.strip)
-      end
-    end
-
-    private def handle_command(command : String) : Nil
-      parts = command.split(/\s+/, 2)
-      cmd = parts[0].downcase
-      arg = parts[1]?
-
-      case cmd
-      when "add"
-        add_bridged_device
-      when "remove"
-        if endpoint = parse_endpoint(arg)
-          unless remove_bridged_device(endpoint)
-            puts "  No device on endpoint #{endpoint}"
-          end
-        end
-      when "list"
-        list_devices
-      when "toggle"
-        if endpoint = parse_endpoint(arg)
-          if device = @bridged_devices[endpoint]?
-            device.toggle
-          else
-            puts "  No device on endpoint #{endpoint}"
-          end
-        end
-      when "on"
-        if endpoint = parse_endpoint(arg)
-          if device = @bridged_devices[endpoint]?
-            device.on = true
-          else
-            puts "  No device on endpoint #{endpoint}"
-          end
-        end
-      when "off"
-        if endpoint = parse_endpoint(arg)
-          if device = @bridged_devices[endpoint]?
-            device.on = false
-          else
-            puts "  No device on endpoint #{endpoint}"
-          end
-        end
-      when "reachable"
-        if endpoint = parse_endpoint(arg)
-          if device = @bridged_devices[endpoint]?
-            new_state = !device.reachable?
-            device.reachable = new_state
-            puts "  Endpoint #{endpoint} reachability: #{new_state ? "REACHABLE" : "UNREACHABLE"}"
-          else
-            puts "  No device on endpoint #{endpoint}"
-          end
-        end
-      when "status"
-        print_state
-      when "reset"
-        factory_reset
-      when "quit", "exit", "q"
-        puts "Shutting down..."
-        shutdown!
-      when "help", "?"
-        show_help
-      when ""
-        # Ignore empty input
-      else
-        puts "Unknown command: #{cmd}"
-        puts "   Type 'help' for available commands"
-      end
-    end
-
-    private def parse_endpoint(arg : String?) : UInt16?
-      return unless arg
-      endpoint = arg.to_u16?
-      unless endpoint
-        puts "  Invalid endpoint number: #{arg}"
-        return
-      end
+      watch(endpoint)
+      puts "  Added: Endpoint #{endpoint.number} - #{label(endpoint)}"
       endpoint
     end
 
+    def remove_bridged_device(endpoint : Matter::Endpoint) : Nil
+      name = label(endpoint)
+      remove_endpoint(endpoint.number)
+      puts "  Removed: Endpoint #{endpoint.number} - #{name}"
+    end
+
+    private def watch(endpoint : Matter::Endpoint) : Nil
+      number = endpoint.number
+      info = bridged_info(endpoint)
+      on_off(endpoint).on_state_changed do |state|
+        notify "  [Endpoint #{number}] #{info.node_label} is now: #{state ? "ON" : "OFF"}"
+      end
+    end
+
+    private def toggle_reachable(endpoint : Matter::Endpoint) : Nil
+      info = bridged_info(endpoint)
+      info.reachable = !info.reachable?
+      puts "  Endpoint #{endpoint.number} reachability: #{info.reachable? ? "REACHABLE" : "UNREACHABLE"}"
+    end
+
     private def list_devices : Nil
-      if @bridged_devices.empty?
+      endpoints = bridged_endpoints
+      if endpoints.empty?
         puts "  No bridged devices"
         return
       end
 
-      puts ""
-      puts "Bridged Devices:"
-      @bridged_devices.each do |endpoint_id, device|
-        state = device.on? ? "ON" : "OFF"
-        reachable = device.reachable? ? "" : " [UNREACHABLE]"
-        puts "   Endpoint #{endpoint_id}: #{device.name} - #{state}#{reachable}"
+      endpoints.each do |endpoint|
+        state = on_off(endpoint).on_off? ? "ON" : "OFF"
+        reachable = bridged_info(endpoint).reachable? ? "" : " [UNREACHABLE]"
+        puts "  Endpoint #{endpoint.number}: #{label(endpoint)} - #{state}#{reachable}"
       end
-      puts ""
     end
 
-    private def show_help : Nil
-      puts ""
-      puts "Available Commands:"
-      puts "   add           - Add a new bridged On/Off device"
-      puts "   remove <n>    - Remove the bridged device on endpoint n"
-      puts "   list          - List all bridged devices with their states"
-      puts "   toggle <n>    - Toggle the On/Off state of device on endpoint n"
-      puts "   on <n>        - Turn on the device on endpoint n"
-      puts "   off <n>       - Turn off the device on endpoint n"
-      puts "   reachable <n> - Toggle reachability of device on endpoint n"
-      puts "   status        - Show detailed bridge status"
-      puts "   reset         - Reset bridge to factory defaults"
-      puts "   quit          - Shut down the bridge and exit"
-      puts ""
+    private def with_endpoint(argument : String?, & : Matter::Endpoint -> Nil) : Nil
+      endpoint_id = argument.try(&.to_u16?)
+      unless endpoint_id
+        puts "  Invalid endpoint number: #{argument}"
+        return
+      end
+
+      endpoint = node.endpoint(endpoint_id) if endpoint_id != Matter::Node::ROOT_ENDPOINT_ID
+      unless endpoint
+        puts "  No device on endpoint #{endpoint_id}"
+        return
+      end
+
+      yield endpoint
     end
 
-    private def factory_reset : Nil
-      print "Are you sure you want to reset to factory defaults? (yes/no): "
-      confirmation = gets
-      return unless confirmation && confirmation.strip.downcase == "yes"
+    private def on_off(endpoint : Matter::Endpoint) : Matter::Cluster::OnOff
+      endpoint.get_cluster!(Matter::Cluster::OnOff)
+    end
 
-      puts "Performing factory reset..."
-      shutdown!
-      persistence.reset!
-      puts "Factory reset complete"
-      puts "Please restart the application"
-      exit(0)
+    private def bridged_info(endpoint : Matter::Endpoint) : Matter::Cluster::BridgedDeviceBasicInformation
+      endpoint.get_cluster!(Matter::Cluster::BridgedDeviceBasicInformation)
+    end
+
+    private def label(endpoint : Matter::Endpoint) : String
+      bridged_info(endpoint).node_label
     end
   end
 end
 
-puts "Starting Matter Bridge Device..."
-puts ""
-
-Log.setup(Log::Severity.parse(ENV["MATTER_LOG"]? || "info"))
-
-device = MatterBridge::Device.new
-
-Process.on_terminate do
-  puts "\n\nReceived interrupt signal"
-  device.shutdown!
-end
-
-device.start
-device.await_shutdown
+Examples.main("Matter Bridge Device") { MatterBridge::Device.new }

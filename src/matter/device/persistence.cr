@@ -8,7 +8,7 @@ require "../cluster/cluster"
 require "../storage/backend"
 
 module Matter
-  module Device
+  abstract class Device
     # Everything a device persists, on one `Storage::Backend`:
     #
     # * `fabrics` via `FabricTable`, `sessions`/`subscriptions` via
@@ -21,7 +21,7 @@ module Matter
     # last-used times, session counters) are coalesced: a change marks the
     # owner dirty and arms one `SAVE_DEBOUNCE` timer; when it fires everything
     # dirty is written in a single backend transaction. `flush` writes
-    # synchronously and is called from `Device::Base#shutdown!`.
+    # synchronously and is called from `Device#shutdown!`.
     class Persistence
       Log = ::Log.for("matter.device.persistence")
 

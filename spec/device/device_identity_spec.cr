@@ -1,8 +1,8 @@
 require "../spec_helper"
-require "../../src/matter/device/base"
+require "../../src/matter/device"
 
 # Test device that uses default serial_number and unique_id (auto-generated)
-class TestDeviceWithDefaults < Matter::Device::Base
+class TestDeviceWithDefaults < Matter::Device
   def initialize(backend : Matter::Storage::Backend = Matter::Storage::Memory.new)
     super(backend)
   end
@@ -41,7 +41,7 @@ class TestDeviceWithDefaults < Matter::Device::Base
 end
 
 # Test device that provides custom serial_number and unique_id
-class TestDeviceWithCustomIdentity < Matter::Device::Base
+class TestDeviceWithCustomIdentity < Matter::Device
   CUSTOM_SERIAL = "CUSTOM-SERIAL-123"
   CUSTOM_UNIQUE = "custom-unique-id-456"
 

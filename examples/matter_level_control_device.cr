@@ -1,204 +1,75 @@
-require "goban"
-require "../src/matter"
+require "./support/console"
+require "./support/main"
 
+# Matter Level Control Device Example
+#
+# - Endpoint 1: Dimmable Light (OnOff + LevelControl)
+# - Endpoint 2: Extended Color Light (OnOff + LevelControl + ColorControl)
+# - Endpoint 3: Window Covering
 module MatterLevelControl
-  class Device < Matter::Device::Base
-    DEVICE_NAME  = "Crystal Level Control"
-    STORAGE_FILE = "matter_level_control_storage.yml"
+  class Device < Matter::Device
+    include Examples::Console
 
-    VENDOR_ID      = Matter::SetupPayload.test_vendor_id
-    PRODUCT_ID     = rand(0x0001_u16..0xFFFF_u16)
-    DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
-    SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
+    DIMMABLE_LIGHT_ENDPOINT  = 1
+    COLOR_LIGHT_ENDPOINT     = 2
+    WINDOW_COVERING_ENDPOINT = 3
 
-    enum Endpoint : UInt16
-      DimmableLight  = 1
-      ColorLight     = 2
-      WindowCovering = 3
-    end
+    MIN_LEVEL     =   1_u8
+    MAX_LEVEL     = 254_u8
+    INITIAL_LEVEL = 128_u8
 
-    @on_off : Matter::Cluster::OnOff? = nil
-    @level_control : Matter::Cluster::LevelControl? = nil
-    @fixed_label : Matter::Cluster::FixedLabel? = nil
-    @identify : Matter::Cluster::Identify? = nil
-    @groups : Matter::Cluster::Groups? = nil
-    @scenes_management : Matter::Cluster::ScenesManagement? = nil
+    # Percentages a level is reported as.
+    FULL_PERCENT = 100
 
-    def initialize
-      super(Matter::Storage::YamlFile.new(STORAGE_FILE), ip_addresses: Matter::Network.local_ip_addresses)
-    end
+    identity vendor: "Spider-Gazelle", product: "Crystal Level Control",
+      vendor_id: Matter::SetupPayload.test_vendor_id,
+      product_id: rand(0x0001_u16..0xFFFF_u16),
+      discriminator: Matter::SetupPayload.generate_random_discriminator,
+      pin: Matter::SetupPayload.generate_random_pin,
+      device_type: Matter::DeviceType::DIMMABLE_LIGHT,
+      appearance: :satin
 
-    def device_name : String
-      DEVICE_NAME
-    end
+    storage yaml: "matter_level_control_storage.yml"
 
-    def vendor_id : UInt16
-      VENDOR_ID
-    end
-
-    def product_id : UInt16
-      PRODUCT_ID
-    end
-
-    def discriminator : UInt16
-      DISCRIMINATOR
-    end
-
-    def setup_pin : UInt32
-      SETUP_PIN_CODE
-    end
-
-    def primary_device_type_id : UInt32
-      Matter::DeviceType::DIMMABLE_LIGHT
-    end
-
-    def vendor_name : String
-      "Spider-Gazelle"
-    end
-
-    def product_name : String
-      device_name
-    end
-
-    def product_appearance : Matter::Cluster::BasicInformation::ProductAppearanceStruct?
-      Matter::Cluster::BasicInformation::ProductAppearanceStruct.new(
-        Matter::Cluster::BasicInformation::ProductFinish::Satin
-      )
-    end
-
-    def on_off : Matter::Cluster::OnOff
-      @on_off.as(Matter::Cluster::OnOff)
-    end
-
-    def level_control : Matter::Cluster::LevelControl
-      @level_control.as(Matter::Cluster::LevelControl)
-    end
-
-    protected def endpoint_device_types : Hash(UInt16, UInt32)
-      {
-        Endpoint::DimmableLight.value  => Matter::DeviceType::DIMMABLE_LIGHT,
-        Endpoint::ColorLight.value     => Matter::DeviceType::EXTENDED_COLOR_LIGHT,
-        Endpoint::WindowCovering.value => Matter::DeviceType::WINDOW_COVERING,
-      }
-    end
-
-    protected def device_clusters : Array(Matter::Cluster::Base)
-      endpoint = Matter::DataType::EndpointNumber.new(Endpoint::DimmableLight.value)
-      color_endpoint = Matter::DataType::EndpointNumber.new(Endpoint::ColorLight.value)
-      covering_endpoint = Matter::DataType::EndpointNumber.new(Endpoint::WindowCovering.value)
-
-      @on_off = Matter::Cluster::OnOff.new(
-        endpoint,
-        feature_map: Matter::Cluster::OnOff::Feature::Lighting
-      )
-      @level_control = Matter::Cluster::LevelControl.new(
-        endpoint,
-        current_level: 128_u8,
-        min_level: 1_u8,
-        max_level: 254_u8,
-        feature_map: Matter::Cluster::LevelControl::Feature::OnOff |
-                     Matter::Cluster::LevelControl::Feature::Lighting
-      )
-      on_off.on_state_changed { |new_state| handle_on_off_change(new_state) }
-      level_control.on_level_changed { |old_level, new_level| handle_level_change(old_level, new_level) }
-
+    endpoint DIMMABLE_LIGHT_ENDPOINT, device_type: Matter::DeviceType::DIMMABLE_LIGHT do
+      cluster Matter::Cluster::OnOff, feature_map: :lighting, as: :on_off
+      cluster Matter::Cluster::LevelControl,
+        current_level: INITIAL_LEVEL,
+        min_level: MIN_LEVEL,
+        max_level: MAX_LEVEL,
+        feature_map: Matter::Cluster::LevelControl::Feature::OnOff | Matter::Cluster::LevelControl::Feature::Lighting,
+        as: :level_control
       # FixedLabel is optional, but can help controllers show a friendly name for this endpoint.
-      @fixed_label = Matter::Cluster::FixedLabel.new(
-        endpoint,
-        [
-          Matter::Cluster::LabelStruct.new("name", "Example Level"),
-          Matter::Cluster::LabelStruct.new("name", "Example Mute"),
-        ]
-      )
-
-      @identify = Matter::Cluster::Identify.new(
-        endpoint,
-        identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLight
-      )
-      @groups = Matter::Cluster::Groups.new(endpoint)
-      @scenes_management = Matter::Cluster::ScenesManagement.new(endpoint)
-
-      [
-        on_off,
-        level_control,
-        @fixed_label.as(Matter::Cluster::FixedLabel),
-        @identify.as(Matter::Cluster::Identify),
-        @groups.as(Matter::Cluster::Groups),
-        @scenes_management.as(Matter::Cluster::ScenesManagement),
-        Matter::Cluster::OnOff.new(color_endpoint, feature_map: Matter::Cluster::OnOff::Feature::Lighting),
-        Matter::Cluster::LevelControl.new(color_endpoint),
-        Matter::Cluster::ColorControl.new(color_endpoint),
-        Matter::Cluster::Groups.new(color_endpoint),
-        Matter::Cluster::ScenesManagement.new(color_endpoint),
-        Matter::Cluster::Identify.new(color_endpoint, identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLight),
-        Matter::Cluster::WindowCovering.new(covering_endpoint),
-        Matter::Cluster::Identify.new(covering_endpoint),
-      ] of Matter::Cluster::Base
+      cluster Matter::Cluster::FixedLabel, [
+        Matter::Cluster::LabelStruct.new("name", "Example Level"),
+        Matter::Cluster::LabelStruct.new("name", "Example Mute"),
+      ]
+      cluster Matter::Cluster::Identify, identify_type: :visible_light
+      cluster Matter::Cluster::Groups
+      cluster Matter::Cluster::ScenesManagement
     end
 
-    protected def before_start : Nil
-      print_header
-      print_state
+    endpoint COLOR_LIGHT_ENDPOINT, device_type: Matter::DeviceType::EXTENDED_COLOR_LIGHT do
+      cluster Matter::Cluster::OnOff, feature_map: :lighting
+      cluster Matter::Cluster::LevelControl
+      cluster Matter::Cluster::ColorControl
+      cluster Matter::Cluster::Groups
+      cluster Matter::Cluster::ScenesManagement
+      cluster Matter::Cluster::Identify, identify_type: :visible_light
     end
 
-    protected def started_commissioning_mode : Nil
-      puts "Starting in Commissioning Mode"
-      puts "The device is ready to be paired with a Matter controller."
-      puts ""
-      puts "mDNS Advertisement Active:"
-      puts "  Service: _matterc._udp.local"
-      puts "  Instance: #{responder.commissioning_instance_name || "<pending>"}"
-      puts "  Hostname: #{hostname}"
-      puts "  Port: #{port}"
-      puts "  Discriminator: #{discriminator}"
-      puts ""
-
-      print_qr_code
-
-      manual_code = setup_code
-      puts "To pair this device:"
-      puts "  chip-tool pairing code 1 #{manual_code}"
-      puts ""
+    endpoint WINDOW_COVERING_ENDPOINT, device_type: Matter::DeviceType::WINDOW_COVERING do
+      cluster Matter::Cluster::WindowCovering
+      cluster Matter::Cluster::Identify
     end
 
-    protected def started_operational_mode : Nil
-      puts "Starting in Operational Mode"
-      puts "The device is commissioned and ready for use."
-      puts ""
-
-      fabric_table.all_fabrics.each do |fabric|
-        puts "Operational Advertisement (Fabric #{fabric.fabric_index}):"
-        puts "  Service: _matter._tcp.local"
-        puts "  Fabric ID: 0x#{fabric.fabric_id.to_s(16).upcase}"
-        puts "  Node ID: 0x#{fabric.node_id.to_s(16).upcase}"
-        puts ""
-      end
+    on(:on_off, :state_changed) do |state|
+      notify "Light state: #{state ? "ON" : "OFF"}",
+        "Level: #{level_summary}",
+        "Data version: #{on_off.data_version}"
     end
 
-    protected def on_started : Nil
-      interactive = !ARGV.includes?("--no-interactive")
-      if interactive
-        spawn { run_interactive_loop }
-      else
-        puts "Running in non-interactive mode (--no-interactive)"
-        puts "Press Ctrl+C to stop."
-        puts ""
-      end
-    end
-
-    protected def on_shutdown : Nil
-      puts "Shutdown complete"
-    end
-
-    private def handle_on_off_change(new_state : Bool) : Nil
-      puts ""
-      puts "Light state: #{new_state ? "ON" : "OFF"}"
-      puts "Level: #{level_control.current_level} (#{level_percent(level_control.current_level)}%)"
-      puts "Data version: #{on_off.data_version}"
-      print "> "
-    end
-
-    private def handle_level_change(old_level : UInt8, new_level : UInt8) : Nil
+    on(:level_control, :level_changed) do |old_level, new_level|
       # Apple Home treats `currentLevel == minLevel` as OFF for dimmable lights.
       # Align the OnOff state so controllers don't interpret a "minimum on" level as 100%.
       if new_level <= level_control.min_level
@@ -207,183 +78,70 @@ module MatterLevelControl
         on_off.on = true
       end
 
-      puts ""
-      puts "Level changed: #{old_level} -> #{new_level} (#{level_percent(new_level)}%)"
-      puts "Data version: #{level_control.data_version}"
-      print "> "
+      notify "Level changed: #{old_level} -> #{new_level} (#{level_percent(new_level)}%)",
+        "Data version: #{level_control.data_version}"
     end
 
-    private def level_percent(level : UInt8) : Int32
-      (level.to_i * 100) // 254
+    def console_notes : Array(String)
+      [
+        "Endpoint #{DIMMABLE_LIGHT_ENDPOINT}: Dimmable Light",
+        "Endpoint #{COLOR_LIGHT_ENDPOINT}: Extended Color Light",
+        "Endpoint #{WINDOW_COVERING_ENDPOINT}: Window Covering",
+      ]
     end
 
-    private def print_header : Nil
-      puts "\n" + "=" * 70
-      puts "  Matter Level Control Device"
-      puts "  Device Type: Dimmable Light"
-      puts "=" * 70
-      puts ""
-    end
-
-    private def print_state : Nil
-      puts "Loading device state..."
-      puts "  Name: #{device_name}"
+    def state_details : Nil
       puts "  Light: #{on_off.on_off? ? "ON" : "OFF"}"
-      puts "  Level: #{level_control.current_level} (#{level_percent(level_control.current_level)}%)"
+      puts "  Level: #{level_summary}"
       puts "  Data Version: #{level_control.data_version}"
-      puts "  Commissioned: #{fabric_table.empty? ? "No" : "Yes"}"
-      puts "  Fabrics: #{fabric_table.size}"
-      puts "  Discriminator: #{discriminator}"
-      puts "  Setup PIN: #{setup_pin}"
-      puts ""
-      ip_addresses.each do |ip|
-        puts "  IP: #{ip.address} (#{ip.family == Socket::Family::INET ? "IPv4" : "IPv6"})"
+    end
+
+    def status_details : Nil
+      puts "  Light State: #{on_off.on_off? ? "ON" : "OFF"}"
+      puts "  Level: #{level_summary}"
+      puts "  Data Version: #{level_control.data_version}"
+    end
+
+    def commands : Array(Tuple(String, String))
+      [
+        {"toggle", "Toggle the light between on and off"},
+        {"on", "Turn the light on"},
+        {"off", "Turn the light off"},
+        {"level <0-100>", "Set the brightness level %"},
+      ]
+    end
+
+    def handle_command(name : String, argument : String?) : Bool
+      case name
+      when "toggle"              then on_off.toggle
+      when "on"                  then on_off.on = true
+      when "off"                 then on_off.on = false
+      when "level", "brightness" then set_level(argument)
+      else                            return false
       end
-      puts ""
+      true
     end
 
-    private def setup_code : String
-      Matter::SetupPayload.generate_manual_code(discriminator, setup_pin)
-    end
-
-    private def qr_code_payload : String
-      Matter::SetupPayload::QRCode.generate_qr_code(
-        discriminator: discriminator,
-        pin: setup_pin,
-        vendor_id: vendor_id,
-        product_id: product_id,
-        flow: Matter::SetupPayload::QRCode::CommissionFlow::Standard,
-        capabilities: Matter::SetupPayload::QRCode::DiscoveryCapability::BLE
-      )
-    end
-
-    private def print_qr_code : Nil
-      payload = qr_code_payload
-      qr = Goban::QR.encode_string(payload, Goban::ECC::Level::Low)
-      puts "Scan this QR code with your Matter controller app:"
-      puts ""
-      qr.print_to_console
-      puts ""
-    rescue ex
-      puts "Failed to generate QR code: #{ex.message}"
-    end
-
-    private def run_interactive_loop : Nil
-      puts "Interactive Commands:"
-      puts "  toggle           - Toggle the light on/off"
-      puts "  on               - Turn the light on"
-      puts "  off              - Turn the light off"
-      puts "  level <0-100>    - Set the brightness level %"
-      puts "  status           - Show current status"
-      puts "  reset            - Reset to factory defaults"
-      puts "  quit             - Exit the application"
-      puts ""
-
-      loop do
-        print "> "
-        input = gets
-        break unless input
-        handle_command(input.strip)
-      end
-    end
-
-    private def handle_command(command : String) : Nil
-      parts = command.strip.split
-      return if parts.empty?
-
-      case parts[0].downcase
-      when "toggle"
-        on_off.toggle
-      when "on"
-        on_off.on = true
-      when "off"
-        on_off.on = false
-      when "level", "brightness"
-        set_level_from_command(parts)
-      when "status"
-        show_status
-      when "reset"
-        factory_reset
-      when "quit", "exit", "q"
-        puts "Shutting down..."
-        shutdown!
-      when "help", "?"
-        show_help
-      else
-        puts "Unknown command: #{command}"
-        puts "Type 'help' for available commands."
-      end
-    end
-
-    private def set_level_from_command(parts : Array(String)) : Nil
-      if parts.size < 2
-        puts "Usage: level <0-100>"
-        return
-      end
-
-      value = parts[1].to_f?
+    private def set_level(argument : String?) : Nil
+      value = argument.try(&.to_f?)
       unless value
-        puts "Invalid level: #{parts[1]}"
+        puts "Usage: level <0-#{FULL_PERCENT}>"
         return
       end
 
-      # cluster performs clamping and value checks
+      # the cluster performs clamping and value checks
       level_control.level = value
     end
 
-    private def show_status : Nil
-      puts ""
-      puts "Device Status:"
-      puts "  Name: #{device_name}"
-      puts "  Light State: #{on_off.on_off? ? "ON" : "OFF"}"
-      puts "  Level: #{level_control.current_level} (#{level_percent(level_control.current_level)}%)"
-      puts "  Data Version: #{level_control.data_version}"
-      puts "  Commissioned: #{fabric_table.empty? ? "No" : "Yes"}"
-      puts "  Fabrics: #{fabric_table.size}"
-      puts "  Sessions: #{message_handler.sessions.size}"
-      puts "  Subscriptions: #{message_handler.active_subscriptions.size}"
-      puts ""
+    private def level_summary : String
+      level = level_control.current_level
+      "#{level} (#{level_percent(level)}%)"
     end
 
-    private def show_help : Nil
-      puts ""
-      puts "Available Commands:"
-      puts "  toggle        - Toggle the light between on and off"
-      puts "  on            - Turn the light on"
-      puts "  off           - Turn the light off"
-      puts "  level <0-100> - Set the brightness level %"
-      puts "  status        - Show detailed device status"
-      puts "  reset         - Reset device to factory defaults"
-      puts "  quit          - Shut down the device and exit"
-      puts ""
-    end
-
-    private def factory_reset : Nil
-      print "Are you sure you want to reset to factory defaults? (yes/no): "
-      confirmation = gets
-      return unless confirmation && confirmation.strip.downcase == "yes"
-
-      puts "Performing factory reset..."
-      shutdown!
-      persistence.reset!
-      puts "Factory reset complete."
-      puts "Please restart the application."
-      exit(0)
+    private def level_percent(level : UInt8) : Int32
+      (level.to_i * FULL_PERCENT) // MAX_LEVEL
     end
   end
 end
 
-puts "Starting Matter Level Control Device..."
-puts ""
-
-Log.setup(Log::Severity.parse(ENV["MATTER_LOG"]? || "info"))
-
-device = MatterLevelControl::Device.new
-
-Process.on_terminate do
-  puts "\n\nReceived interrupt signal"
-  device.shutdown!
-end
-
-device.start
-device.await_shutdown
+Examples.main("Matter Level Control Device") { MatterLevelControl::Device.new }

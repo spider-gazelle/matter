@@ -1,206 +1,77 @@
-require "../src/matter"
+require "./support/console"
+require "./support/main"
 
+# Matter Ambient Light Sensor Device Example
+#
+# - Presents as a Light Sensor (endpoint 1)
+# - Samples a simulated illuminance every 10 seconds
 module MatterAmbientLightSensor
-  class Device < Matter::Device::Base
-    DEVICE_NAME  = "Crystal Ambient Light Sensor"
-    STORAGE_FILE = "matter_ambient_light_sensor_storage.yml"
+  class Device < Matter::Device
+    include Examples::Console
 
-    UPDATE_INTERVAL_SECONDS =     10
-    MIN_LUX                 =   25.0
-    MAX_LUX                 = 1500.0
+    SAMPLE_INTERVAL = 10.seconds
 
-    VENDOR_ID      = Matter::SetupPayload.test_vendor_id
-    PRODUCT_ID     = rand(0x0001_u16..0xFFFF_u16)
-    DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
-    SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
+    MIN_LUX =   25.0
+    MAX_LUX = 1500.0
 
-    @illuminance : Matter::Cluster::IlluminanceMeasurement? = nil
-    @identify : Matter::Cluster::Identify? = nil
-    @fixed_label : Matter::Cluster::FixedLabel? = nil
-    @running : Bool = false
+    identity vendor: "Spider-Gazelle", product: "Crystal Ambient Light Sensor",
+      vendor_id: Matter::SetupPayload.test_vendor_id,
+      product_id: rand(0x0001_u16..0xFFFF_u16),
+      discriminator: Matter::SetupPayload.generate_random_discriminator,
+      pin: Matter::SetupPayload.generate_random_pin,
+      device_type: Matter::DeviceType::LIGHT_SENSOR
 
-    def initialize
-      super(Matter::Storage::YamlFile.new(STORAGE_FILE), ip_addresses: Matter::Network.local_ip_addresses)
+    storage yaml: "matter_ambient_light_sensor_storage.yml"
+
+    endpoint 1, device_type: Matter::DeviceType::LIGHT_SENSOR do
+      cluster Matter::Cluster::IlluminanceMeasurement,
+        measured_value: Matter::Cluster::IlluminanceMeasurement.from_lux(rand(MIN_LUX..MAX_LUX)),
+        as: :illuminance
+      cluster Matter::Cluster::Identify, identify_type: :visible_led
+      cluster Matter::Cluster::FixedLabel, [Matter::Cluster::LabelStruct.new("name", "Example Ambient Light Sensor")]
     end
 
-    def device_name : String
-      DEVICE_NAME
+    on(:illuminance, :illuminance_changed) do |_old_value, new_value|
+      notify "Ambient light: #{format_lux(new_value)}" if new_value
     end
 
-    def vendor_id : UInt16
-      VENDOR_ID
+    def console_notes : Array(String)
+      ["Device Type: Light Sensor"]
     end
 
-    def product_id : UInt16
-      PRODUCT_ID
+    def state_details : Nil
+      puts "  Ambient light: #{format_lux(illuminance.measured_value)}"
+      puts "  Sample interval: #{SAMPLE_INTERVAL.total_seconds.to_i}s"
     end
 
-    def discriminator : UInt16
-      DISCRIMINATOR
+    def status_details : Nil
+      puts "  Ambient light: #{format_lux(illuminance.measured_value)}"
     end
 
-    def setup_pin : UInt32
-      SETUP_PIN_CODE
+    def commands : Array(Tuple(String, String))
+      [{"sample", "Sample the ambient light now"}]
     end
 
-    def primary_device_type_id : UInt32
-      Matter::DeviceType::LIGHT_SENSOR
-    end
-
-    def vendor_name : String
-      "Spider-Gazelle"
-    end
-
-    def product_name : String
-      device_name
-    end
-
-    def illuminance : Matter::Cluster::IlluminanceMeasurement
-      @illuminance.as(Matter::Cluster::IlluminanceMeasurement)
-    end
-
-    protected def device_clusters : Array(Matter::Cluster::Base)
-      endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-
-      initial_lux = rand(MIN_LUX..MAX_LUX)
-      @illuminance = Matter::Cluster::IlluminanceMeasurement.new(
-        endpoint,
-        measured_value: Matter::Cluster::IlluminanceMeasurement.from_lux(initial_lux)
-      )
-      illuminance.on_illuminance_changed do |_old_value, new_value|
-        if new_value
-          lux = Matter::Cluster::IlluminanceMeasurement.to_lux(new_value)
-          puts "Ambient light: #{"%.1f" % lux} lx"
-        end
-      end
-
-      @identify = Matter::Cluster::Identify.new(
-        endpoint,
-        identify_type: Matter::Cluster::Identify::IdentifyType::VisibleLED
-      )
-
-      @fixed_label = Matter::Cluster::FixedLabel.new(
-        endpoint,
-        [Matter::Cluster::LabelStruct.new("name", "Example Ambient Light Sensor")]
-      )
-
-      [
-        illuminance,
-        @identify.as(Matter::Cluster::Identify),
-        @fixed_label.as(Matter::Cluster::FixedLabel),
-      ] of Matter::Cluster::Base
-    end
-
-    protected def started_commissioning_mode : Nil
-      manual_code = Matter::SetupPayload.generate_manual_code(discriminator, setup_pin)
-      puts "Starting in Commissioning Mode"
-      puts "  Discriminator: #{discriminator}"
-      puts "  Setup PIN: #{setup_pin}"
-      puts ""
-      puts "To pair this device:"
-      puts "  chip-tool pairing code 1 #{manual_code}"
-      puts ""
-    end
-
-    protected def started_operational_mode : Nil
-      puts "Starting in Operational Mode (already commissioned)"
-      puts ""
+    def handle_command(name : String, argument : String?) : Bool
+      return false unless name == "sample"
+      sample
+      true
     end
 
     protected def on_started : Nil
-      @running = true
-      puts "Sampling ambient light every #{UPDATE_INTERVAL_SECONDS}s"
-      spawn { run_sensor_loop }
-      spawn { run_interactive_loop } unless ARGV.includes?("--no-interactive")
+      super
+      every(SAMPLE_INTERVAL) { sample }
     end
 
-    protected def on_shutdown : Nil
-      @running = false
-      puts "Shutdown complete"
+    private def sample : Nil
+      illuminance.update_illuminance(Matter::Cluster::IlluminanceMeasurement.from_lux(rand(MIN_LUX..MAX_LUX)))
     end
 
-    private def run_sensor_loop : Nil
-      while @running
-        sleep UPDATE_INTERVAL_SECONDS.seconds
-        break unless @running
-
-        lux = rand(MIN_LUX..MAX_LUX)
-        measured = Matter::Cluster::IlluminanceMeasurement.from_lux(lux)
-        illuminance.update_illuminance(measured)
-      end
-    end
-
-    private def run_interactive_loop : Nil
-      puts "Interactive Commands:"
-      puts "  status - Show current status"
-      puts "  reset  - Reset to factory defaults"
-      puts "  quit   - Exit the application"
-      puts ""
-
-      loop do
-        print "> "
-        input = gets
-        break unless input
-        handle_command(input.strip.downcase)
-      end
-    end
-
-    private def handle_command(command : String) : Nil
-      case command
-      when "status"
-        show_status
-      when "reset"
-        factory_reset
-      when "quit", "exit", "q"
-        puts "Shutting down..."
-        shutdown!
-      when "help", "?"
-        puts "Commands: status, reset, quit"
-      when ""
-        # Ignore empty input
-      else
-        puts "Unknown command: #{command}"
-        puts "Type 'help' for available commands"
-      end
-    end
-
-    private def show_status : Nil
-      puts ""
-      puts "Device Status:"
-      puts "  Name: #{device_name}"
-      puts "  Commissioned: #{fabric_table.empty? ? "No" : "Yes"}"
-      puts "  Fabrics: #{fabric_table.size}"
-      puts "  Sessions: #{message_handler.sessions.size}"
-      puts "  Subscriptions: #{message_handler.active_subscriptions.size}"
-      puts ""
-    end
-
-    private def factory_reset : Nil
-      print "Are you sure you want to reset to factory defaults? (yes/no): "
-      confirmation = gets
-      return unless confirmation && confirmation.strip.downcase == "yes"
-
-      puts "Performing factory reset..."
-      shutdown!
-      persistence.reset!
-      puts "Factory reset complete."
-      puts "Please restart the application."
-      exit(0)
+    private def format_lux(measured : UInt16?) : String
+      return "unknown" unless measured
+      "#{"%.1f" % Matter::Cluster::IlluminanceMeasurement.to_lux(measured)} lx"
     end
   end
 end
 
-puts "Starting Matter Ambient Light Sensor Device..."
-puts ""
-
-Log.setup(Log::Severity.parse(ENV["MATTER_LOG"]? || "info"))
-
-device = MatterAmbientLightSensor::Device.new
-
-Process.on_terminate do
-  puts "\n\nReceived interrupt signal"
-  device.shutdown!
-end
-
-device.start
-device.await_shutdown
+Examples.main("Matter Ambient Light Sensor Device") { MatterAmbientLightSensor::Device.new }
