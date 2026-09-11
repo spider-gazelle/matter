@@ -730,7 +730,7 @@ describe Matter::Cluster::AccessControlCluster do
         invalid_data = Bytes[0xFF, 0xFF, 0xFF]
         status = write(cluster, Matter::Cluster::AccessControlCluster::ATTR_ACL, invalid_data)
 
-        status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
+        status.status.should eq(Matter::InteractionModel::StatusCode::InvalidDataType)
       end
     end
 
@@ -806,7 +806,7 @@ describe Matter::Cluster::AccessControlCluster do
         invalid_data = Bytes[0xFF, 0xFF, 0xFF]
         status = write(cluster, Matter::Cluster::AccessControlCluster::ATTR_EXTENSION, invalid_data)
 
-        status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
+        status.status.should eq(Matter::InteractionModel::StatusCode::InvalidDataType)
       end
     end
 

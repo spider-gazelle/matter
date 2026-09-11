@@ -64,14 +64,13 @@ module Matter
       end
 
       # NOCs, Fabrics, SupportedFabrics, CommissionedFabrics and
-      # CurrentFabricIndex are derived from the fabric table and the session
-      # in `read_attribute`; the declarations provide the metadata.
-      attribute 0x0000, :nocs, Array(OpCredDefs::NOC), default: [] of OpCredDefs::NOC, read_access: :administer, fabric_scoped: true
-      attribute 0x0001, :fabrics, Array(OpCredDefs::FabricDescriptor), default: [] of OpCredDefs::FabricDescriptor, fabric_scoped: true
-      attribute 0x0002, :supported_fabrics, UInt8, default: FabricTable::DEFAULT_MAX_FABRICS, fixed: true
-      attribute 0x0003, :commissioned_fabrics, UInt8, default: 0_u8
+      # CurrentFabricIndex are computed from the fabric table and the session.
+      attribute 0x0000, :nocs, Array(OpCredDefs::NOC), computed: true, read_access: :administer, fabric_scoped: true
+      attribute 0x0001, :fabrics, Array(OpCredDefs::FabricDescriptor), computed: true, fabric_scoped: true
+      attribute 0x0002, :supported_fabrics, UInt8, computed: true, fixed: true
+      attribute 0x0003, :commissioned_fabrics, UInt8, computed: true
       attribute 0x0004, :trusted_root_certificates, Array(Bytes), default: [] of Bytes
-      attribute 0x0005, :current_fabric_index, UInt8, default: 0_u8
+      attribute 0x0005, :current_fabric_index, UInt8, computed: true
 
       command 0x00, :attestation_request, request: Definitions::OperationalCredentials::AttestationRequest, response: OpCredDefs::AttestationResponse, response_id: 0x01, access: :administer
       command 0x02, :certificate_chain_request, request: Definitions::OperationalCredentials::CertificateChainRequest, response: OpCredDefs::CertificateChainResponse, response_id: 0x03, access: :administer
@@ -304,7 +303,6 @@ module Matter
       @attestation_cert_manager : Certificate::AttestationCertificateManager? # Certificate manager
       @access_control_cluster : AccessControlCluster?                         # Optional ACL cluster reference
       @general_commissioning_cluster : GeneralCommissioningCluster?           # Optional GeneralCommissioning cluster reference
-      @current_fabric_index_value : UInt8 = 0_u8
       @failsafe_armed : Bool = true                                           # Default to true for testing
 
       # Callback to get session's attestation challenge
@@ -327,9 +325,9 @@ module Matter
       property on_fabric_removed : Proc(UInt8, Nil)?
       property general_commissioning_cluster : GeneralCommissioningCluster?
 
-      # CurrentFabricIndex helper method (returns passed value or stored value)
-      def current_fabric_index(session_fabric_index : UInt8?) : UInt8
-        session_fabric_index || @current_fabric_index
+      # CurrentFabricIndex attribute (0x05): the accessing fabric, none outside one
+      def current_fabric_index(fabric_index : UInt8? = nil) : UInt8
+        fabric_index || DataType::FabricIndex::NO_FABRIC
       end
 
       def initialize(
@@ -346,7 +344,6 @@ module Matter
         # Generate a default attestation key for testing
         @attestation_key = Crypto::Key.generate_key_pair
         @pending_noc_key = nil
-        @current_fabric_index = 0_u8
         # Default test vendor/product IDs (typically set via set_attestation_credentials)
         @vendor_id = 0xFFF1_u16  # Test vendor ID
         @product_id = 0x8000_u16 # Test product ID
@@ -405,40 +402,29 @@ module Matter
         Log.debug { "  Public key (full 65 bytes): #{dac_key.public_key.hexstring}" }
       end
 
-      # Attribute accessors using fabric_table
-      # NOCs attribute (0x00) - Fabric-scoped list of NOC certificates
-      # NOCs attribute for specific fabric (0x00)
-      def nocs(fabric_index : UInt8) : Array(NOCStruct)
-        fabric = @fabric_table.get_fabric(fabric_index)
-        return [] of NOCStruct unless fabric
-
-        [NOCStruct.new(
-          noc: fabric.operational_cert,
-          icac: fabric.intermediate_cert,
-          fabric_index: fabric.fabric_index
-        )]
+      # NOCs attribute (0x00): the operational certificates of every fabric
+      def nocs : Array(OpCredDefs::NOC)
+        @fabric_table.all_fabrics.map do |fabric|
+          OpCredDefs::NOC.new(noc: fabric.operational_cert, icac: fabric.intermediate_cert, fabric_index: fabric.fabric_index)
+        end
       end
 
-      # Get all NOCs from all fabrics (for tests)
-      def nocs : Array(NOCStruct)
-        result = [] of NOCStruct
-        @fabric_table.all_fabrics.each do |fabric|
-          result << NOCStruct.new(
-            noc: fabric.operational_cert,
-            icac: fabric.intermediate_cert,
+      # Fabrics attribute (0x01): a descriptor per fabric
+      def fabrics : Array(OpCredDefs::FabricDescriptor)
+        @fabric_table.fabric_descriptors.map do |fabric|
+          OpCredDefs::FabricDescriptor.new(
+            root_public_key: fabric.root_public_key,
+            vendor_id: fabric.vendor_id,
+            fabric_id: fabric.fabric_id,
+            node_id: fabric.node_id,
+            label: fabric.label,
             fabric_index: fabric.fabric_index
           )
         end
-        result
-      end
-
-      # Fabrics attribute (0x01) - List of all fabric descriptors
-      def fabrics : Array(FabricDescriptor)
-        @fabric_table.fabric_descriptors
       end
 
       # Get fabric descriptor by index (for tests)
-      def get_fabric_by_index(index : UInt8) : FabricDescriptor?
+      def get_fabric_by_index(index : UInt8) : OpCredDefs::FabricDescriptor?
         fabrics.find { |fabric| fabric.fabric_index == index }
       end
 
@@ -448,7 +434,7 @@ module Matter
       end
 
       # Get NOC by fabric index (for tests)
-      def get_noc_by_fabric_index(index : UInt8) : NOCStruct?
+      def get_noc_by_fabric_index(index : UInt8) : OpCredDefs::NOC?
         nocs.find { |noc| noc.fabric_index == index }
       end
 
@@ -466,36 +452,6 @@ module Matter
       # Called during device startup to restore TrustedRootCertificates
       def restore_root_cert(root_cert : Bytes)
         @trusted_root_certificates << root_cert unless @trusted_root_certificates.includes?(root_cert)
-      end
-
-      # CurrentFabricIndex attribute (0x05) - Fabric index from session context
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_NOCS
-          tlv(nocs.map do |noc|
-            OpCredDefs::NOC.new(noc: noc.noc, icac: noc.icac, fabric_index: noc.fabric_index)
-          end)
-        when ATTR_FABRICS
-          tlv(fabrics.map do |fabric|
-            OpCredDefs::FabricDescriptor.new(
-              root_public_key: fabric.root_public_key,
-              vendor_id: fabric.vendor_id,
-              fabric_id: fabric.fabric_id,
-              node_id: fabric.node_id,
-              label: fabric.label,
-              fabric_index: fabric.fabric_index
-            )
-          end)
-        when ATTR_SUPPORTED_FABRICS
-          tlv(supported_fabrics)
-        when ATTR_COMMISSIONED_FABRICS
-          tlv(commissioned_fabrics)
-        when ATTR_CURRENT_FABRIC_INDEX
-          # Use passed fabric_index from session context, fall back to stored value
-          tlv((fabric_index || @current_fabric_index))
-        else
-          super
-        end
       end
 
       # Command Handlers

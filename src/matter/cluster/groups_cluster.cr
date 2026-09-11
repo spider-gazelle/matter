@@ -12,7 +12,7 @@ module Matter
     #
     # Specification: Matter 1.4 § 1.3
     class GroupsCluster < Base
-      cluster 0x0004, revision: 4
+      cluster 0x0004, revision: 4, persist_state: false
 
       feature :group_names, bit: 0 # GN - Store names for groups
 

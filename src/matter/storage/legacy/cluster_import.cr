@@ -45,8 +45,9 @@ module Matter
         SCENE_PAIR_SIZE      = 2
         ATTRIBUTE_PAIR_SIZE  = 2
 
-        # UserLabel persisted a bare array of `{label, value}`.
-        LABELS = "labels"
+        # UserLabel persisted a bare array of `{label, value}`; the cluster
+        # now stores it under its LabelList attribute.
+        LABEL_LIST = "label_list"
 
         # Returns the converted document, or `nil` when *cluster_id* is unknown.
         def self.convert(cluster_id : Int64, value : Type) : Document?
@@ -111,7 +112,7 @@ module Matter
 
         private def self.user_label(labels : Array(Type)) : Document
           Document{
-            LABELS       => labels.map { |label| Fields.compact(JsonParser.object(label)).as(Type) },
+            LABEL_LIST   => labels.map { |label| Fields.compact(JsonParser.object(label)).as(Type) },
             DATA_VERSION => INITIAL_DATA_VERSION,
           }
         end

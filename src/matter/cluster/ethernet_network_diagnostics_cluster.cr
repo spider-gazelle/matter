@@ -39,7 +39,7 @@ module Matter
       attribute 0x0005, :collision_count, UInt64, default: 0_u64, omit_changes: true, requires: :error_counts
       attribute 0x0006, :overrun_count, UInt64, default: 0_u64, omit_changes: true, requires: :error_counts
       attribute 0x0007, :carrier_detect, Bool, nullable: true, omit_changes: true, optional: true
-      attribute 0x0008, :time_since_reset, UInt64, default: 0_u64, omit_changes: true, optional: true
+      attribute 0x0008, :time_since_reset, UInt64, computed: true, omit_changes: true, optional: true
 
       command 0x00, :reset_counts, requires: [:packet_counts, :error_counts]
 
@@ -57,10 +57,9 @@ module Matter
         @reset_time = Time.utc
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        return super unless attribute_id == ATTR_TIME_SINCE_RESET
-        # TimeSinceReset is in minutes per Matter spec
-        tlv((Time.utc - @reset_time).total_minutes.to_u64)
+      # TimeSinceReset attribute (0x08): minutes since the counters were reset
+      def time_since_reset : UInt64
+        (Time.utc - @reset_time).total_minutes.to_u64
       end
 
       def reset_counts : InteractionModel::Status

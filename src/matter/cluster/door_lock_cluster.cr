@@ -113,28 +113,28 @@ module Matter
       command 0x00, :lock_door, request: Def::LockDoorRequest, timed: true
       command 0x01, :unlock_door, request: Def::UnlockDoorRequest, timed: true
       command 0x03, :unlock_with_timeout, request: Def::UnlockWithTimeoutRequest, timed: true, optional: true
-      command 0x0B, :set_week_day_schedule, request: Def::SetWeekDayScheduleRequest, access: :administer, requires: :week_day_access_schedules
+      command 0x0B, :set_week_day_schedule, request: Def::SetWeekDayScheduleRequest, access: :administer, requires: :week_day_access_schedules, handler: :handle_set_week_day_schedule
       command 0x0C, :get_week_day_schedule, request: Def::GetWeekDayScheduleRequest, response: Def::GetWeekDayScheduleResponse, access: :administer, requires: :week_day_access_schedules
       command 0x0D, :clear_week_day_schedule, request: Def::ClearWeekDayScheduleRequest, access: :administer, requires: :week_day_access_schedules
-      command 0x0E, :set_year_day_schedule, request: Def::SetYearDayScheduleRequest, access: :administer, requires: :year_day_access_schedules
+      command 0x0E, :set_year_day_schedule, request: Def::SetYearDayScheduleRequest, access: :administer, requires: :year_day_access_schedules, handler: :handle_set_year_day_schedule
       command 0x0F, :get_year_day_schedule, request: Def::GetYearDayScheduleRequest, response: Def::GetYearDayScheduleResponse, access: :administer, requires: :year_day_access_schedules
       command 0x10, :clear_year_day_schedule, request: Def::ClearYearDayScheduleRequest, access: :administer, requires: :year_day_access_schedules
-      command 0x11, :set_holiday_schedule, request: Def::SetHolidayScheduleRequest, access: :administer, requires: :holiday_schedules
+      command 0x11, :set_holiday_schedule, request: Def::SetHolidayScheduleRequest, access: :administer, requires: :holiday_schedules, handler: :handle_set_holiday_schedule
       command 0x12, :get_holiday_schedule, request: Def::GetHolidayScheduleRequest, response: Def::GetHolidayScheduleResponse, access: :administer, requires: :holiday_schedules
       command 0x13, :clear_holiday_schedule, request: Def::ClearHolidayScheduleRequest, access: :administer, requires: :holiday_schedules
-      command 0x1A, :set_user, request: Def::SetUserRequest, access: :administer, timed: true, requires: :user
+      command 0x1A, :set_user, request: Def::SetUserRequest, access: :administer, timed: true, requires: :user, handler: :handle_set_user
       command 0x1B, :get_user, request: Def::GetUserRequest, response: Def::GetUserResponse, response_id: 0x1C, access: :administer, requires: :user
       command 0x1D, :clear_user, request: Def::ClearUserRequest, access: :administer, timed: true, requires: :user
-      command 0x22, :set_credential, request: Def::SetCredentialRequest, response: Def::SetCredentialResponse, response_id: 0x23, access: :administer, timed: true, requires: :user
+      command 0x22, :set_credential, request: Def::SetCredentialRequest, response: Def::SetCredentialResponse, response_id: 0x23, access: :administer, timed: true, requires: :user, handler: :handle_set_credential
       command 0x24, :get_credential_status, request: Def::GetCredentialStatusRequest, response: Def::GetCredentialStatusResponse, response_id: 0x25, access: :administer, requires: :user
       command 0x26, :clear_credential, request: Def::ClearCredentialRequest, access: :administer, timed: true, requires: :user
       command 0x27, :unbolt_door, request: Def::UnboltDoorRequest, timed: true, requires: :unbolting
 
       event 0x00, :door_lock_alarm, priority: :critical
-      event 0x01, :door_state_change, priority: :critical
+      event 0x01, :door_state_change, priority: :critical, requires: :door_position_sensor
       event 0x02, :lock_operation, priority: :critical
       event 0x03, :lock_operation_error, priority: :critical
-      event 0x04, :lock_user_change, priority: :info
+      event 0x04, :lock_user_change, priority: :info, requires: :user
 
       private struct UserRecord
         property user_index : UInt16
@@ -358,7 +358,7 @@ module Matter
       # Schedule commands
       # ------------------------------------------------------------------------
 
-      def set_week_day_schedule(request : Def::SetWeekDayScheduleRequest) : InteractionModel::Status # ameba:disable Naming/AccessorMethodName
+      def handle_set_week_day_schedule(request : Def::SetWeekDayScheduleRequest) : InteractionModel::Status
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) unless valid_user_index?(request.user_index)
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) unless valid_week_day_schedule_index?(request.week_day_index)
         return InteractionModel::Status.cluster_failure(Def::StatusCode::NotFound) unless @users.has_key?(request.user_index)
@@ -404,7 +404,7 @@ module Matter
         InteractionModel::Status.success
       end
 
-      def set_year_day_schedule(request : Def::SetYearDayScheduleRequest) : InteractionModel::Status # ameba:disable Naming/AccessorMethodName
+      def handle_set_year_day_schedule(request : Def::SetYearDayScheduleRequest) : InteractionModel::Status
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) unless valid_user_index?(request.user_index)
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) unless valid_year_day_schedule_index?(request.year_day_index)
         return InteractionModel::Status.cluster_failure(Def::StatusCode::NotFound) unless @users.has_key?(request.user_index)
@@ -448,7 +448,7 @@ module Matter
         InteractionModel::Status.success
       end
 
-      def set_holiday_schedule(request : Def::SetHolidayScheduleRequest) : InteractionModel::Status # ameba:disable Naming/AccessorMethodName
+      def handle_set_holiday_schedule(request : Def::SetHolidayScheduleRequest) : InteractionModel::Status
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) unless valid_holiday_schedule_index?(request.holiday_index)
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) if request.local_start_time >= request.local_end_time
 
@@ -490,7 +490,7 @@ module Matter
       # User commands
       # ------------------------------------------------------------------------
 
-      def set_user(request : Def::SetUserRequest) : InteractionModel::Status # ameba:disable Naming/AccessorMethodName
+      def handle_set_user(request : Def::SetUserRequest) : InteractionModel::Status
         return InteractionModel::Status.cluster_failure(Def::StatusCode::InvalidField) unless valid_user_index?(request.user_index)
 
         case request.operation_type
@@ -587,7 +587,7 @@ module Matter
       # Credential commands
       # ------------------------------------------------------------------------
 
-      def set_credential(request : Def::SetCredentialRequest) : Def::SetCredentialResponse # ameba:disable Naming/AccessorMethodName
+      def handle_set_credential(request : Def::SetCredentialRequest) : Def::SetCredentialResponse
         if (user_index = request.user_index) && !valid_user_index?(user_index)
           return set_credential_response(request, Def::StatusCode::InvalidField)
         end

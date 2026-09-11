@@ -95,6 +95,14 @@ Detailed plan: [phase5-plan.md](phase5-plan.md).
       level_control; `spec/cluster/dsl_spec.cr` (boolean_state 64→31, on_off 563→184, level_control
       720→173 lines; `AttributeMetadata#write_access` split from the read privilege)
 - [x] Step 2: migrate the remaining 33 clusters smallest first (facade clusters: declarations only)
+- [x] Step 2b: close the DSL gaps the migration reported and delete the cluster workarounds
+      - [x] `computed: true` attributes (reader `name`/`name(fabric_index)`; writable ones call `name=`)
+      - [x] `present_if:` presence-gated attributes (predicate method, or `!@ivar.nil?` for a nullable attribute)
+      - [x] `event ... requires:`; `before_write` may return a replacement value; `cluster ... name:`
+      - [x] `CMD_<NAME>_RESPONSE` constants; `persist_state: false`; `command ... handler:`
+      - [x] `Base#invoke_command` sets `request_*` (duck typing removed); `requires:` accepts a constant
+      - [x] DSL rules documented at the top of `dsl.cr`; legacy user_label key `label_list`
+      - [x] workarounds removed from the 20 clusters; full suite, builds, format, ameba green
 - [ ] Step 3: definitions folded into clusters, `EntryPrivilege` to interaction_model, class/file rename
       (`Cluster::OnOff`), `Cluster::Registry`, global-list ordering re-baselined
 - [ ] `./test` green at each step end; iOS smoke test by the user at the end
@@ -248,3 +256,22 @@ Detailed plan: [phase5-plan.md](phase5-plan.md).
 | e2e examples | 63 | 66 |
 | cluster wire boundary | encoded/raw Bytes | TLV::Any |
 | ameba findings | 0 | 0 |
+
+### Phase 5 Step 2b (2026-09-11)
+- DSL: `computed:` (reader `name` / `name(fabric_index)`, writer `name=` when writable),
+  `present_if:`, `event ... requires:`, `before_write` value replacement, `cluster ... name:` /
+  `persist_state: false`, `command ... handler:`, generated `CMD_<NAME>_RESPONSE`, `requires:`
+  constants, `Base#invoke_command` populating `request_*` (duck typing gone); 20 new
+  `dsl_spec` examples plus a missing-reader compile fixture.
+- Workarounds removed from 21 cluster files (+196/-485 lines): every `read_attribute` override,
+  the ACL/GKM/basic_information `handle_write_attribute` overrides, the bridged/power_source
+  `macro finished` redefinitions and `attribute_present?` tables, the per-attribute
+  `persist: false` on hand-persisted clusters, OTA's `name`, the door_lock/general_commissioning
+  ameba disables, GKM's ad-hoc `fabric_index`, OC's `session_id` / `session_fabric_index`.
+- Behaviour normalised: an optional attribute without a value is absent from AttributeList and
+  rejects writes (five sensor specs now construct with the value); undecodable ACL/Extension
+  writes answer InvalidDataType like every other DSL write; CurrentFabricIndex has no setter.
+- Legacy import writes user labels under `label_list`; the boot spec restores them.
+- Gates: full suite 2356 examples / 0 failures / 1 pre-existing pending; controller, chip-tool
+  and all ten example devices compile; `crystal tool format --check` and `./bin/ameba`
+  (348 files, 0 findings) clean.

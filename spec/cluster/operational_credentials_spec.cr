@@ -500,19 +500,12 @@ describe Matter::Cluster::OperationalCredentialsCluster do
   end
 
   describe "current fabric" do
-    it "tracks current fabric index" do
+    it "reports the accessing fabric, none outside a fabric" do
       endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
       cluster = build_op_creds_cluster(endpoint_id)
 
-      cluster.current_fabric_index.should eq(0_u8)
-    end
-
-    it "updates current fabric index" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = build_op_creds_cluster(endpoint_id)
-
-      cluster.current_fabric_index = 1_u8
-      cluster.current_fabric_index.should eq(1_u8)
+      cluster.current_fabric_index.should eq(Matter::DataType::FabricIndex::NO_FABRIC)
+      read(cluster, Matter::Cluster::OperationalCredentialsCluster::ATTR_CURRENT_FABRIC_INDEX, 1_u8).should eq(1_u8)
     end
   end
 
@@ -1443,8 +1436,7 @@ describe Matter::Cluster::OperationalCredentialsCluster do
       fabric_table = OpCredsTestHelpers.create_fabric_table
       cluster = Matter::Cluster::OperationalCredentialsCluster.new(fabric_table)
 
-      nocs = cluster.nocs(99_u8)
-      nocs.should be_empty
+      cluster.get_noc_by_fabric_index(99_u8).should be_nil
     end
 
     it "returns current fabric index from session" do

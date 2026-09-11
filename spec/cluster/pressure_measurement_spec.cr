@@ -78,7 +78,7 @@ describe Matter::Cluster::PressureMeasurementCluster do
 
   describe "attributes" do
     it "has required attributes" do
-      cluster = Matter::Cluster::PressureMeasurementCluster.new(endpoint_id)
+      cluster = Matter::Cluster::PressureMeasurementCluster.new(endpoint_id, tolerance: 0_u16)
       attrs = cluster.attributes
       attrs.size.should eq(4)
       attrs.map(&.name).should contain("measuredValue")

@@ -18,7 +18,7 @@ module Matter
     # - Strict Validation: Epoch keys must be ordered, security policies enforced
     # - Cryptographic Operations: HKDF-based key derivation for operational keys
     class GroupKeyManagementCluster < Base
-      cluster 0x003F, revision: 2
+      cluster 0x003F, revision: 2, persist_state: false
 
       feature :cache_and_sync, bit: 0 # Currently provisional/disabled
 
@@ -292,12 +292,22 @@ module Matter
       end
 
       # GroupKeyMap and GroupTable are fabric-scoped: reads are filtered to the
-      # accessing fabric in `read_attribute` and a GroupKeyMap write replaces
-      # only that fabric's entries in `handle_write_attribute`. Persistence is
-      # hand-written below (key sets are stored alongside), so the DSL does
-      # not persist them.
-      attribute 0x0000, :group_key_map, Array(GroupKeyMapStruct), default: [] of GroupKeyMapStruct, writable: true, persist: false, write_access: :manage, fabric_scoped: true
-      attribute 0x0001, :group_table, Array(GroupInfoMapStruct), default: [] of GroupInfoMapStruct, fabric_scoped: true
+      # accessing fabric and a GroupKeyMap write replaces only that fabric's
+      # entries (`group_key_map=`). Persistence is hand-written below (key
+      # sets are stored alongside).
+      attribute 0x0000, :group_key_map, Array(GroupKeyMapStruct), computed: true, writable: true, write_access: :manage, fabric_scoped: true
+      attribute 0x0001, :group_table, Array(GroupInfoMapStruct), computed: true, fabric_scoped: true
+
+      # A GroupKeyMap write needs a fabric and stays within its limits (Matter Core §11.2.7.1).
+      before_write :group_key_map do |entries|
+        if request_fabric_index.nil?
+          InteractionModel::Status.unsupported_access
+        elsif entries.any? { |entry| entry.group_id == RESERVED_GROUP_ID || entry.group_key_set_id == IPK_KEY_SET_ID }
+          InteractionModel::Status.constraint_error
+        elsif entries.size > @max_groups_per_fabric
+          InteractionModel::Status.resource_exhausted
+        end
+      end
       attribute 0x0002, :max_groups_per_fabric, UInt16, default: DEFAULT_MAX_GROUPS_PER_FABRIC, fixed: true
       attribute 0x0003, :max_group_keys_per_fabric, UInt16, default: DEFAULT_MAX_GROUP_KEYS_PER_FABRIC, fixed: true
 
@@ -305,6 +315,9 @@ module Matter
       command 0x01, :key_set_read, request: KeySetReadRequest, response: KeySetReadResponse, response_id: 0x02, access: :administer
       command 0x03, :key_set_remove, request: KeySetRemoveRequest, access: :administer
       command 0x04, :key_set_read_all_indices, response: KeySetReadAllIndicesResponse, response_id: 0x05, access: :administer
+
+      @group_key_map = [] of GroupKeyMapStruct
+      @group_table = [] of GroupInfoMapStruct
 
       # Internal storage (fabric-scoped)
       # Key: fabricIndex, Value: GroupKeySetStruct (with actual keys stored)
@@ -320,36 +333,9 @@ module Matter
         @key_sets = Hash(UInt8, Hash(UInt16, GroupKeySetStruct)).new
       end
 
-      # The fabric-scoped lists hold only the accessing fabric's entries; a
-      # read outside a fabric sees none.
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_GROUP_KEY_MAP
-          tlv(fabric_index ? group_key_map(fabric_index) : [] of GroupKeyMapStruct)
-        when ATTR_GROUP_TABLE
-          tlv(fabric_index ? group_table(fabric_index) : [] of GroupInfoMapStruct)
-        else
-          super
-        end
-      end
-
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        case attribute_id
-        when ATTR_GROUP_KEY_MAP
-          replace_group_key_map(decode(value, Array(GroupKeyMapStruct)), request_fabric_index)
-        else
-          super
-        end
-      end
-
-      # Replaces the accessing fabric's GroupKeyMap entries (Matter Core §11.2.7.1).
-      private def replace_group_key_map(entries : Array(GroupKeyMapStruct), fabric_index : UInt8?) : InteractionModel::Status
-        return InteractionModel::Status.unsupported_access unless fabric_index
-        if entries.any? { |entry| entry.group_id == RESERVED_GROUP_ID || entry.group_key_set_id == IPK_KEY_SET_ID }
-          return InteractionModel::Status.constraint_error
-        end
-        return InteractionModel::Status.resource_exhausted if entries.size > @max_groups_per_fabric
-
+      # Replaces the accessing fabric's GroupKeyMap entries.
+      def group_key_map=(entries : Array(GroupKeyMapStruct)) : Nil
+        fabric_index = accessing_fabric_index
         entries.map! do |entry|
           entry.fabric_index = fabric_index
           entry
@@ -357,7 +343,6 @@ module Matter
         @group_key_map.reject! { |entry| entry.fabric_index == fabric_index }
         @group_key_map.concat(entries)
         increment_version_and_notify(ATTR_GROUP_KEY_MAP)
-        InteractionModel::Status.success
       end
 
       # ------------------------------------------------------------------------
@@ -388,13 +373,13 @@ module Matter
         request_fabric_index || raise Matter::ClusterError.new("Group key commands require a fabric-scoped session", InteractionModel::StatusCode::UnsupportedAccess)
       end
 
-      # Get group key map for the specified fabric
-      def group_key_map(fabric_index : UInt8) : Array(GroupKeyMapStruct)
+      # The fabric-scoped lists hold only the accessing fabric's entries; a
+      # read outside a fabric sees none.
+      def group_key_map(fabric_index : UInt8?) : Array(GroupKeyMapStruct)
         @group_key_map.select { |entry| entry.fabric_index == fabric_index }
       end
 
-      # Get group table for the specified fabric
-      def group_table(fabric_index : UInt8) : Array(GroupInfoMapStruct)
+      def group_table(fabric_index : UInt8?) : Array(GroupInfoMapStruct)
         @group_table.select { |entry| entry.fabric_index == fabric_index }
       end
 

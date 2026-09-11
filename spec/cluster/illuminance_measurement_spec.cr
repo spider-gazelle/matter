@@ -99,7 +99,7 @@ describe Matter::Cluster::IlluminanceMeasurementCluster do
 
   describe "attributes" do
     it "has required attributes" do
-      cluster = Matter::Cluster::IlluminanceMeasurementCluster.new(endpoint_id)
+      cluster = Matter::Cluster::IlluminanceMeasurementCluster.new(endpoint_id, tolerance: 0_u16, light_sensor_type: Matter::Cluster::IlluminanceMeasurementCluster::LightSensorType::Photodiode)
       attrs = cluster.attributes
       attrs.size.should eq(5)
       attrs.map(&.name).should contain("measuredValue")

@@ -15,7 +15,7 @@ module Matter
     class AccessControlCluster < Base
       Log = ::Log.for("matter.cluster.access_control")
 
-      cluster 0x001F, revision: 2
+      cluster 0x001F, revision: 2, persist_state: false
 
       feature :extension, bit: 0 # EXTS - Extension attribute and its change event
 
@@ -100,17 +100,20 @@ module Matter
       end
 
       # ACL and Extension are fabric-scoped lists: reads are filtered to the
-      # accessing fabric and writes replace only that fabric's entries in the
-      # overrides below. They are persisted by the hand-written records
-      # further down, so the DSL does not persist them.
-      attribute 0x0000, :acl, Array(AccessControlEntry), default: [] of AccessControlEntry, writable: true, persist: false, read_access: :administer, write_access: :administer, fabric_scoped: true
-      attribute 0x0001, :extension, Array(ExtensionEntry), default: [] of ExtensionEntry, writable: true, persist: false, read_access: :administer, write_access: :administer, fabric_scoped: true, requires: :extension
+      # accessing fabric and writes replace only that fabric's entries (see
+      # `acl`, `acl=`, `extension` and `extension=`). They are persisted by
+      # the hand-written records further down.
+      attribute 0x0000, :acl, Array(AccessControlEntry), computed: true, writable: true, read_access: :administer, write_access: :administer, fabric_scoped: true
+      attribute 0x0001, :extension, Array(ExtensionEntry), computed: true, writable: true, read_access: :administer, write_access: :administer, fabric_scoped: true, requires: :extension
       attribute 0x0002, :subjects_per_access_control_entry, UInt16, default: DEFAULT_SUBJECTS_PER_ENTRY, fixed: true
       attribute 0x0003, :targets_per_access_control_entry, UInt16, default: DEFAULT_TARGETS_PER_ENTRY, fixed: true
       attribute 0x0004, :access_control_entries_per_fabric, UInt16, default: DEFAULT_ENTRIES_PER_FABRIC, fixed: true
 
       event 0x00, :access_control_entry_changed, priority: :info
-      event 0x01, :access_control_extension_changed, priority: :info
+      event 0x01, :access_control_extension_changed, priority: :info, requires: :extension
+
+      @acl = [] of AccessControlEntry
+      @extension = [] of ExtensionEntry
 
       def initialize(endpoint_id : DataType::EndpointNumber, @feature_map : Feature = Feature::Extension)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
@@ -118,28 +121,12 @@ module Matter
 
       # The fabric-scoped lists are filtered to the accessing fabric; a read
       # outside a fabric (PASE) sees every entry.
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_ACL
-          tlv(fabric_index ? get_acl_for_fabric(fabric_index) : @acl)
-        when ATTR_EXTENSION
-          return super unless @feature_map.extension?
-          tlv(fabric_index ? @extension.select { |entry| entry.fabric_index == fabric_index } : @extension)
-        else
-          super
-        end
+      def acl(fabric_index : UInt8? = nil) : Array(AccessControlEntry)
+        fabric_index ? get_acl_for_fabric(fabric_index) : @acl
       end
 
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        case attribute_id
-        when ATTR_ACL
-          replace_acl(value)
-        when ATTR_EXTENSION
-          return super unless @feature_map.extension?
-          replace_extension(value)
-        else
-          super
-        end
+      def extension(fabric_index : UInt8? = nil) : Array(ExtensionEntry)
+        fabric_index ? @extension.select { |entry| entry.fabric_index == fabric_index } : @extension
       end
 
       struct PersistedTarget
@@ -331,9 +318,8 @@ module Matter
       end
 
       # Replaces the accessing fabric's ACL entries (all entries outside a fabric).
-      private def replace_acl(value : TLV::Any) : InteractionModel::Status
+      def acl=(entries : Array(AccessControlEntry)) : Nil
         fabric_index = request_fabric_index
-        entries = decode(value, Array(AccessControlEntry))
         entries.map! do |entry|
           entry.fabric_index ||= fabric_index
           entry
@@ -345,16 +331,11 @@ module Matter
           @acl = entries
         end
         increment_version_and_notify(ATTR_ACL)
-        InteractionModel::Status.success
-      rescue ex : TLV::DeserializationError | TypeCastError | ArgumentError
-        Log.warn(exception: ex) { "Invalid access control list" }
-        InteractionModel::Status.constraint_error
       end
 
       # Replaces the accessing fabric's Extension entries (all entries outside a fabric).
-      private def replace_extension(value : TLV::Any) : InteractionModel::Status
+      def extension=(entries : Array(ExtensionEntry)) : Nil
         fabric_index = request_fabric_index
-        entries = decode(value, Array(ExtensionEntry))
         if fabric_index
           entries.map! do |entry|
             entry.fabric_index = fabric_index
@@ -366,10 +347,6 @@ module Matter
           @extension = entries
         end
         increment_version_and_notify(ATTR_EXTENSION)
-        InteractionModel::Status.success
-      rescue ex
-        Log.warn(exception: ex) { "Invalid access control extension list" }
-        InteractionModel::Status.constraint_error
       end
     end
   end

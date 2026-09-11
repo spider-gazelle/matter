@@ -274,8 +274,11 @@ module Matter
 
       attribute 0x0000, :max_networks, UInt8, default: DEFAULT_MAX_NETWORKS, fixed: true, read_access: :administer
       attribute 0x0001, :networks, Array(NetworkInfo), default: [] of NetworkInfo, read_access: :administer
-      attribute 0x0002, :scan_max_time_seconds, UInt8, default: DEFAULT_SCAN_MAX_TIME_SECONDS, fixed: true, requires: [:wi_fi_network_interface, :thread_network_interface]
-      attribute 0x0003, :connect_max_time_seconds, UInt8, default: DEFAULT_CONNECT_MAX_TIME_SECONDS, fixed: true, requires: [:wi_fi_network_interface, :thread_network_interface]
+      # Elements shared by the wireless interface types
+      ANY_WIRELESS_INTERFACE = [:wi_fi_network_interface, :thread_network_interface]
+
+      attribute 0x0002, :scan_max_time_seconds, UInt8, default: DEFAULT_SCAN_MAX_TIME_SECONDS, fixed: true, requires: ANY_WIRELESS_INTERFACE
+      attribute 0x0003, :connect_max_time_seconds, UInt8, default: DEFAULT_CONNECT_MAX_TIME_SECONDS, fixed: true, requires: ANY_WIRELESS_INTERFACE
       # Persisted by `restore_network_state`, not by the DSL
       attribute 0x0004, :interface_enabled, Bool, default: true, writable: true, persist: false, write_access: :administer
       attribute 0x0005, :last_networking_status, NetworkCommissioningStatus, nullable: true, read_access: :administer
@@ -285,12 +288,12 @@ module Matter
       attribute 0x0009, :supported_thread_features, ThreadCapabilitiesBitmap, default: ThreadCapabilitiesBitmap::None, fixed: true, requires: :thread_network_interface
       attribute 0x000A, :thread_version, UInt16, default: THREAD_VERSION_1_3, fixed: true, requires: :thread_network_interface
 
-      command 0x00, :scan_networks, request: Definitions::NetworkCommissioning::ScanAvailableNetworksRequest, response: Definitions::NetworkCommissioning::ScanNetworksResponse, response_id: 0x01, access: :administer, requires: [:wi_fi_network_interface, :thread_network_interface]
+      command 0x00, :scan_networks, request: Definitions::NetworkCommissioning::ScanAvailableNetworksRequest, response: Definitions::NetworkCommissioning::ScanNetworksResponse, response_id: 0x01, access: :administer, requires: ANY_WIRELESS_INTERFACE
       command 0x02, :add_or_update_wifi_network, request: Definitions::NetworkCommissioning::AddOrUpdateWiFiNetworkRequest, response: Definitions::NetworkCommissioning::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: :wi_fi_network_interface
       command 0x03, :add_or_update_thread_network, request: Definitions::NetworkCommissioning::AddOrUpdateThreadNetworkRequest, response: Definitions::NetworkCommissioning::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: :thread_network_interface
-      command 0x04, :remove_network, request: Definitions::NetworkCommissioning::RemoveNetworkRequest, response: Definitions::NetworkCommissioning::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: [:wi_fi_network_interface, :thread_network_interface]
-      command 0x06, :connect_network, request: Definitions::NetworkCommissioning::ConnectNetworkRequest, response: Definitions::NetworkCommissioning::ConnectNetworkResponse, response_id: 0x07, access: :administer, requires: [:wi_fi_network_interface, :thread_network_interface]
-      command 0x08, :reorder_network, request: Definitions::NetworkCommissioning::ReorderNetworkRequest, response: Definitions::NetworkCommissioning::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: [:wi_fi_network_interface, :thread_network_interface]
+      command 0x04, :remove_network, request: Definitions::NetworkCommissioning::RemoveNetworkRequest, response: Definitions::NetworkCommissioning::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: ANY_WIRELESS_INTERFACE
+      command 0x06, :connect_network, request: Definitions::NetworkCommissioning::ConnectNetworkRequest, response: Definitions::NetworkCommissioning::ConnectNetworkResponse, response_id: 0x07, access: :administer, requires: ANY_WIRELESS_INTERFACE
+      command 0x08, :reorder_network, request: Definitions::NetworkCommissioning::ReorderNetworkRequest, response: Definitions::NetworkCommissioning::NetworkConfigurationResponse, response_id: 0x05, access: :administer, requires: ANY_WIRELESS_INTERFACE
 
       property network_type : NetworkType
 

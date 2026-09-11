@@ -19,12 +19,8 @@ module Matter
     class OtaRequestorCluster < Base
       Log = ::Log.for("matter.cluster.ota_requestor")
 
-      cluster 0x002A, revision: 1
-
-      # The spec cluster name; the class name is shortened.
-      def name : String
-        "OtaSoftwareUpdateRequestor"
-      end
+      # The class name is shortened from the spec cluster name.
+      cluster 0x002A, revision: 1, name: "OtaSoftwareUpdateRequestor"
 
       # UpdateState enum values
       enum UpdateState : UInt8

@@ -61,7 +61,7 @@ module Matter
       attribute 0x0004, :peak_measured_value_window, UInt32, default: 0_u32, max: MAX_WINDOW, requires: :peak_measurement
       attribute 0x0005, :average_measured_value, Float32, nullable: true, requires: :average_measurement
       attribute 0x0006, :average_measured_value_window, UInt32, default: 0_u32, max: MAX_WINDOW, requires: :average_measurement
-      attribute 0x0007, :uncertainty, Float32, nullable: true, optional: true, requires: :numeric_measurement
+      attribute 0x0007, :uncertainty, Float32, nullable: true, optional: true, requires: :numeric_measurement, present_if: :uncertainty
       attribute 0x0008, :measurement_unit, MeasurementUnit, default: MeasurementUnit::Ppm, fixed: true, requires: :numeric_measurement
       attribute 0x0009, :measurement_medium, MeasurementMedium, default: MeasurementMedium::Air, fixed: true
       attribute 0x000A, :level_value, LevelValue, default: LevelValue::Unknown, requires: :level_indication
@@ -120,11 +120,6 @@ module Matter
       end
 
       # Uncertainty is optional: unsupported until the device reports one.
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        return InteractionModel::Status.unsupported_attribute if attribute_id == ATTR_UNCERTAINTY && @uncertainty.nil?
-        super
-      end
-
       # ------------------------------------------------------------------------
       # Public Interface
       # ------------------------------------------------------------------------

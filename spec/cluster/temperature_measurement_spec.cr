@@ -93,7 +93,7 @@ describe Matter::Cluster::TemperatureMeasurementCluster do
   describe "attributes" do
     it "has required attributes" do
       endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::TemperatureMeasurementCluster.new(endpoint_id)
+      cluster = Matter::Cluster::TemperatureMeasurementCluster.new(endpoint_id, tolerance: 0_u16)
 
       attributes = cluster.attributes
       attributes.size.should eq(4)

@@ -84,12 +84,11 @@ module Matter
       end
 
       # UpTime and TotalOperationalHours are computed on read from the time
-      # the cluster was created; the stored TotalOperationalHours is the
-      # count carried over from earlier runs.
+      # the cluster was created.
       attribute 0x0000, :network_interfaces, Array(NetworkInterfaceInfo), default: [] of NetworkInterfaceInfo
       attribute 0x0001, :reboot_count, UInt16, default: 0_u16
-      attribute 0x0002, :up_time, UInt64, default: 0_u64, omit_changes: true
-      attribute 0x0003, :total_operational_hours, UInt32, default: 0_u32, omit_changes: true, optional: true
+      attribute 0x0002, :up_time, UInt64, computed: true, omit_changes: true
+      attribute 0x0003, :total_operational_hours, UInt32, computed: true, omit_changes: true, optional: true
       attribute 0x0004, :boot_reason, BootReason, default: BootReason::PowerOnReboot, optional: true
       attribute 0x0005, :active_hardware_faults, Array(HardwareFault), default: [] of HardwareFault, optional: true
       attribute 0x0006, :active_radio_faults, Array(RadioFault), default: [] of RadioFault, optional: true
@@ -109,15 +108,14 @@ module Matter
         @start_time = Time.utc
       end
 
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_UP_TIME
-          tlv(elapsed.total_seconds.to_u64)
-        when ATTR_TOTAL_OPERATIONAL_HOURS
-          tlv(@total_operational_hours + elapsed.total_hours.to_u32)
-        else
-          super
-        end
+      # UpTime attribute (0x02): seconds since the cluster was created
+      def up_time : UInt64
+        elapsed.total_seconds.to_u64
+      end
+
+      # TotalOperationalHours attribute (0x03)
+      def total_operational_hours : UInt32
+        elapsed.total_hours.to_u32
       end
 
       private def elapsed : Time::Span

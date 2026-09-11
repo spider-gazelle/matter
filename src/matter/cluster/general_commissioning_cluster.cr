@@ -141,10 +141,13 @@ module Matter
       # Failsafe and network commissioning windows default to 15 minutes
       DEFAULT_COMMISSIONING_SECONDS = 900_u16
 
+      # Recommended ArmFailSafe expiry reported in BasicCommissioningInfo
+      FAIL_SAFE_EXPIRY_LENGTH_SECONDS = 60_u16
+
       # Progress tracking during commissioning; not persisted (Matter Core §11.10.6.1)
       attribute 0x0000, :breadcrumb, UInt64, default: 0_u64, writable: true, persist: false, write_access: :administer
-      # Built from `max_cumulative_failsafe_seconds` / `max_network_commissioning_seconds` in `read_attribute`
-      attribute 0x0001, :basic_commissioning_info, BasicCommissioningInfo, default: BasicCommissioningInfo.new(DEFAULT_COMMISSIONING_SECONDS, DEFAULT_COMMISSIONING_SECONDS), fixed: true
+      # Built from `FAIL_SAFE_EXPIRY_LENGTH_SECONDS` and `max_cumulative_failsafe_seconds`
+      attribute 0x0001, :basic_commissioning_info, BasicCommissioningInfo, computed: true, fixed: true
       attribute 0x0002, :regulatory_config, RegulatoryLocationType, default: RegulatoryLocationType::IndoorOutdoor
       attribute 0x0003, :location_capability, RegulatoryLocationType, default: RegulatoryLocationType::IndoorOutdoor, fixed: true
       attribute 0x0004, :supports_concurrent_connection, Bool, default: true, fixed: true
@@ -164,7 +167,7 @@ module Matter
       # ========================================================================
 
       command 0x00, :arm_fail_safe, request: Definitions::GeneralCommissioning::ArmFailSafeRequest, response: ArmFailSafeResponse, response_id: 0x01, access: :administer
-      command 0x02, :set_regulatory_config, request: Definitions::GeneralCommissioning::SetRegularConfigurationRequest, response: SetRegulatoryConfigResponse, response_id: 0x03, access: :administer
+      command 0x02, :set_regulatory_config, request: Definitions::GeneralCommissioning::SetRegularConfigurationRequest, response: SetRegulatoryConfigResponse, response_id: 0x03, access: :administer, handler: :handle_set_regulatory_config
       command 0x04, :commissioning_complete, response: CommissioningCompleteResponse, response_id: 0x05, access: :administer
 
       # ========================================================================
@@ -223,16 +226,6 @@ module Matter
       # Base Class Implementation
       # ========================================================================
 
-      # BasicCommissioningInfo is built from the configured windows.
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_BASIC_COMMISSIONING_INFO
-          tlv(BasicCommissioningInfo.new(@max_cumulative_failsafe_seconds, @max_network_commissioning_seconds))
-        else
-          super
-        end
-      end
-
       # ========================================================================
       # Command entry points (DSL dispatch)
       # ========================================================================
@@ -252,8 +245,7 @@ module Matter
         )
       end
 
-      # ameba:disable Naming/AccessorMethodName
-      def set_regulatory_config(request_def : Definitions::GeneralCommissioning::SetRegularConfigurationRequest) : SetRegulatoryConfigResponse
+      def handle_set_regulatory_config(request_def : Definitions::GeneralCommissioning::SetRegularConfigurationRequest) : SetRegulatoryConfigResponse
         # Convert to cluster request struct
         request = SetRegulatoryConfigRequest.new(
           new_regulatory_config: RegulatoryLocationType.from_value(request_def.new_regulatory_configuration.value),
@@ -645,13 +637,10 @@ module Matter
         end
       end
 
-      # Get basic commissioning info (for BasicCommissioningInfo attribute)
+      # BasicCommissioningInfo attribute (0x01)
       def basic_commissioning_info : BasicCommissioningInfo
-        # Default fail-safe expiry length (60 seconds as per Matter spec default)
-        fail_safe_expiry = 60_u16
-
         BasicCommissioningInfo.new(
-          fail_safe_expiry_length: fail_safe_expiry,
+          fail_safe_expiry_length: FAIL_SAFE_EXPIRY_LENGTH_SECONDS,
           max_cumulative_failsafe_seconds: @max_cumulative_failsafe_seconds
         )
       end

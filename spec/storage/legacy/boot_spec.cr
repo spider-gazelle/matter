@@ -5,6 +5,7 @@ require "../../../src/matter/cluster/on_off_cluster"
 require "../../../src/matter/cluster/level_control_cluster"
 require "../../../src/matter/cluster/groups_cluster"
 require "../../../src/matter/cluster/scenes_management_cluster"
+require "../../../src/matter/cluster/user_label_cluster"
 
 # A dimmable light on endpoint 1 with every cluster the legacy fixture has a
 # document for, so booting it on an imported store exercises each restore.
@@ -112,6 +113,7 @@ module LegacyBootSpec
   HOSTNAME      = "0123456789ABCDEF.local"
   SERIAL_NUMBER = "ABCDEF0123456789"
   UNIQUE_ID     = "00112233445566778899aabbccddeeff"
+  USER_LABELS   = [{"room", "kitchen"}, {"floor", "1"}]
 
   def self.with_temp_file(& : String ->) : Nil
     path = File.join(Dir.tempdir, "matter-legacy-boot-#{Random::Secure.hex(6)}.yml")
@@ -153,6 +155,21 @@ describe "Booting a device from a legacy import" do
       fabric.node_id.should eq(LegacyBootSpec::NODE_ID)
       fabric.vendor_id.should eq(LegacyBootSpec::VENDOR_ID)
       fabric.label.should eq(LegacyBootSpec::FABRIC_LABEL)
+    end
+  end
+
+  it "restores the user labels from the imported document" do
+    LegacyBootSpec.with_temp_file do |path|
+      LegacyBootSpec.import(path)
+      store = Matter::Storage::YamlFile.new(path)
+      store.open
+      key = Matter::Cluster::Base.persistence_key(0_u16, Matter::Cluster::UserLabelCluster::CLUSTER_ID)
+      document = store.read(Matter::Storage::Collections::CLUSTERS, key).as(Matter::Storage::Document)
+      store.close
+
+      labels = Matter::Cluster::UserLabelCluster.new(endpoint(0))
+      labels.restore_state(document)
+      labels.label_list.map { |entry| {entry.label, entry.value} }.should eq(LegacyBootSpec::USER_LABELS)
     end
   end
 

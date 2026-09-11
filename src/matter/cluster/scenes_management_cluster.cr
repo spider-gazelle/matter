@@ -381,7 +381,7 @@ module Matter
     class ScenesManagementCluster < Base
       Log = ::Log.for("matter.cluster.scenes_management")
 
-      cluster 0x0062, revision: 1
+      cluster 0x0062, revision: 1, persist_state: false
 
       feature :scene_names, bit: 0 # SN - Store names for scenes
 
@@ -536,8 +536,8 @@ module Matter
 
       # Scene table size (total across all fabrics)
       attribute 0x0001, :scene_table_size, UInt16, default: DEFAULT_SCENE_TABLE_SIZE, fixed: true
-      # Computed per accessing fabric from `scene_info_by_fabric` in `read_attribute`.
-      attribute 0x0002, :fabric_scene_info, Array(SceneInfoTlv), default: [] of SceneInfoTlv, fabric_scoped: true
+      # Computed for the accessing fabric from `scene_info_by_fabric`.
+      attribute 0x0002, :fabric_scene_info, Array(SceneInfoTlv), computed: true, fabric_scoped: true
 
       command 0x00, :add_scene, request: AddSceneRequest, response: SceneStatusResponse, access: :manage
       command 0x01, :view_scene, request: ViewSceneRequest, response: ViewSceneResponseTlv
@@ -575,30 +575,19 @@ module Matter
         @scene_info_by_fabric = Hash(UInt8, SceneInfo).new
       end
 
-      # FabricSceneInfo is computed for the accessing fabric.
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_FABRIC_SCENE_INFO
-          fabric_scene_info_tlv(fabric_index || DEFAULT_FABRIC_INDEX)
-        else
-          super
-        end
-      end
-
-      # Encode FabricSceneInfo as TLV array
-      private def fabric_scene_info_tlv(fabric_index : UInt8) : TLV::Any
+      # FabricSceneInfo attribute (0x02): the accessing fabric's scene info
+      def fabric_scene_info(fabric_index : UInt8?) : Array(SceneInfoTlv)
+        fabric_index ||= DEFAULT_FABRIC_INDEX
         scene_info = @scene_info_by_fabric[fabric_index]? || SceneInfo.new(fabric_index: fabric_index)
 
-        tlv_info = SceneInfoTlv.new(
+        [SceneInfoTlv.new(
           scene_count: scene_info.scene_count,
           current_scene: scene_info.current_scene,
           current_group: scene_info.current_group,
           scene_valid: scene_info.scene_valid?,
           remaining_capacity: scene_info.remaining_capacity,
           fabric_index: fabric_index
-        )
-
-        tlv([tlv_info])
+        )]
       end
 
       # ------------------------------------------------------------------------

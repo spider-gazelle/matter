@@ -73,39 +73,26 @@ module Matter
       attribute 0x0002, :description, String, default: "Battery", fixed: true
 
       # Feature attributes. Those without a default are present exactly when
-      # the device supplied a value (see `attribute_present?`).
-      attribute 0x0003, :wired_assessed_input_voltage, UInt32, nullable: true, optional: true, omit_changes: true, requires: :wired
-      attribute 0x0004, :wired_assessed_input_frequency, UInt16, nullable: true, optional: true, omit_changes: true, requires: :wired
+      # the device supplied a value.
+      attribute 0x0003, :wired_assessed_input_voltage, UInt32, nullable: true, optional: true, omit_changes: true, requires: :wired, present_if: :wired_assessed_input_voltage
+      attribute 0x0004, :wired_assessed_input_frequency, UInt16, nullable: true, optional: true, omit_changes: true, requires: :wired, present_if: :wired_assessed_input_frequency
       attribute 0x0005, :wired_current_type, WiredCurrentType, default: WiredCurrentType::AC, fixed: true, requires: :wired
-      attribute 0x0009, :wired_present, Bool, nullable: true, optional: true, requires: :wired
+      attribute 0x0009, :wired_present, Bool, nullable: true, optional: true, requires: :wired, present_if: :wired_present
 
-      attribute 0x000B, :bat_voltage, UInt32, nullable: true, optional: true, omit_changes: true, requires: :battery
-      attribute 0x000C, :bat_percent_remaining, UInt8, nullable: true, optional: true, max: BAT_PERCENT_REMAINING_MAX, requires: :battery
-      attribute 0x000D, :bat_time_remaining, UInt32, nullable: true, optional: true, requires: :battery
-      attribute 0x000E, :bat_charge_level, BatChargeLevel, nullable: true, requires: :battery
-      attribute 0x000F, :bat_replacement_needed, Bool, nullable: true, requires: :battery
-      attribute 0x0010, :bat_replaceability, BatReplaceability, nullable: true, fixed: true, requires: :battery
-      attribute 0x0011, :bat_present, Bool, nullable: true, optional: true, requires: :battery
+      attribute 0x000B, :bat_voltage, UInt32, nullable: true, optional: true, omit_changes: true, requires: :battery, present_if: :bat_voltage
+      attribute 0x000C, :bat_percent_remaining, UInt8, nullable: true, optional: true, max: BAT_PERCENT_REMAINING_MAX, requires: :battery, present_if: :bat_percent_remaining
+      attribute 0x000D, :bat_time_remaining, UInt32, nullable: true, optional: true, requires: :battery, present_if: :bat_time_remaining
+      attribute 0x000E, :bat_charge_level, BatChargeLevel, nullable: true, requires: :battery, present_if: :bat_charge_level
+      attribute 0x000F, :bat_replacement_needed, Bool, nullable: true, requires: :battery, present_if: :bat_replacement_needed
+      attribute 0x0010, :bat_replaceability, BatReplaceability, nullable: true, fixed: true, requires: :battery, present_if: :bat_replaceability
+      attribute 0x0011, :bat_present, Bool, nullable: true, optional: true, requires: :battery, present_if: :bat_present
 
-      attribute 0x0013, :bat_replacement_description, String, nullable: true, fixed: true, requires: :replaceable
-      attribute 0x0019, :bat_quantity, UInt8, nullable: true, fixed: true, requires: :replaceable
+      attribute 0x0013, :bat_replacement_description, String, nullable: true, fixed: true, requires: :replaceable, present_if: :bat_replacement_description
+      attribute 0x0019, :bat_quantity, UInt8, nullable: true, fixed: true, requires: :replaceable, present_if: :bat_quantity
 
-      attribute 0x001A, :bat_charge_state, BatChargeState, nullable: true, optional: true, requires: :rechargeable
-      attribute 0x001B, :bat_time_to_full_charge, UInt32, nullable: true, optional: true, requires: :rechargeable
-      attribute 0x001C, :bat_functional_while_charging, Bool, nullable: true, optional: true, requires: :rechargeable
-
-      # The DSL gates attributes on features only; this hook runs after the
-      # DSL's own `finished` hook and narrows the generated tables to the
-      # attributes that have a value.
-      macro finished
-        protected def dsl_attribute_supported?(attribute_id : UInt32) : Bool
-          previous_def && attribute_present?(attribute_id)
-        end
-
-        def attributes : Array(AttributeMetadata)
-          ATTRIBUTES.select { |attribute| dsl_attribute_supported?(attribute.id.id) }
-        end
-      end
+      attribute 0x001A, :bat_charge_state, BatChargeState, nullable: true, optional: true, requires: :rechargeable, present_if: :bat_charge_state
+      attribute 0x001B, :bat_time_to_full_charge, UInt32, nullable: true, optional: true, requires: :rechargeable, present_if: :bat_time_to_full_charge
+      attribute 0x001C, :bat_functional_while_charging, Bool, nullable: true, optional: true, requires: :rechargeable, present_if: :bat_functional_while_charging
 
       def initialize(endpoint_id : DataType::EndpointNumber,
                      @feature_map : Feature = Feature::Battery,
@@ -162,38 +149,6 @@ module Matter
         if @feature_map.rechargeable? && !@feature_map.battery?
           raise ArgumentError.new("Rechargeable feature requires Battery feature")
         end
-      end
-
-      # A feature attribute without a value is absent.
-      private def attribute_present?(attribute_id : UInt32) : Bool
-        case attribute_id
-        when ATTR_WIRED_ASSESSED_INPUT_VOLTAGE   then !@wired_assessed_input_voltage.nil?
-        when ATTR_WIRED_ASSESSED_INPUT_FREQUENCY then !@wired_assessed_input_frequency.nil?
-        when ATTR_WIRED_PRESENT                  then !@wired_present.nil?
-        when ATTR_BAT_VOLTAGE                    then !@bat_voltage.nil?
-        when ATTR_BAT_PERCENT_REMAINING          then !@bat_percent_remaining.nil?
-        when ATTR_BAT_TIME_REMAINING             then !@bat_time_remaining.nil?
-        when ATTR_BAT_CHARGE_LEVEL               then !@bat_charge_level.nil?
-        when ATTR_BAT_REPLACEMENT_NEEDED         then !@bat_replacement_needed.nil?
-        when ATTR_BAT_REPLACEABILITY             then !@bat_replaceability.nil?
-        when ATTR_BAT_PRESENT                    then !@bat_present.nil?
-        when ATTR_BAT_REPLACEMENT_DESCRIPTION    then !@bat_replacement_description.nil?
-        when ATTR_BAT_QUANTITY                   then !@bat_quantity.nil?
-        when ATTR_BAT_CHARGE_STATE               then !@bat_charge_state.nil?
-        when ATTR_BAT_TIME_TO_FULL_CHARGE        then !@bat_time_to_full_charge.nil?
-        when ATTR_BAT_FUNCTIONAL_WHILE_CHARGING  then !@bat_functional_while_charging.nil?
-        else                                          true
-        end
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        return InteractionModel::Status.unsupported_attribute unless attribute_present?(attribute_id)
-        super
-      end
-
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        return InteractionModel::Status.unsupported_attribute unless attribute_present?(attribute_id)
-        super
       end
 
       # Update the remaining battery percentage (0-200 half-percent units,

@@ -68,9 +68,9 @@ describe Matter::Cluster::OccupancySensingCluster do
 
   describe "attributes" do
     it "has required attributes" do
-      cluster = Matter::Cluster::OccupancySensingCluster.new(endpoint_id)
+      cluster = Matter::Cluster::OccupancySensingCluster.new(endpoint_id, hold_time: 60_u16)
       attrs = cluster.attributes
-      # Base attributes (3) + optional HoldTime + PIR feature attributes (3)
+      # Base attributes (3) + HoldTime (present with a value) + PIR feature attributes (3)
       attrs.size.should eq(7)
       attrs.map(&.name).should contain("occupancy")
       attrs.map(&.name).should contain("occupancySensorType")

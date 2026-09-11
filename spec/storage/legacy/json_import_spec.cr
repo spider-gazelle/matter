@@ -298,7 +298,7 @@ describe Matter::Storage::Legacy::JsonImport do
 
     it "wraps the user label array in a document" do
       LegacyImportSpec.fixture(Matter::Storage::Collections::CLUSTERS, "0-65").should eq(Matter::Storage::Document{
-        "labels" => LegacyImportSpec.list(
+        "label_list" => LegacyImportSpec.list(
           Matter::Storage::Document{"label" => "room", "value" => "kitchen"},
           Matter::Storage::Document{"label" => "floor", "value" => "1"},
         ),

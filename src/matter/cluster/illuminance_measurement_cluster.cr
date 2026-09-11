@@ -47,8 +47,8 @@ module Matter
       attribute 0x0000, :measured_value, UInt16, nullable: true, min: MIN_ILLUMINANCE, max: MAX_ILLUMINANCE
       attribute 0x0001, :min_measured_value, UInt16, nullable: true, min: MIN_MEASURED_VALUE_RANGE.begin, max: MIN_MEASURED_VALUE_RANGE.end
       attribute 0x0002, :max_measured_value, UInt16, nullable: true, max: MAX_ILLUMINANCE
-      attribute 0x0003, :tolerance, UInt16, nullable: true, optional: true, max: MAX_TOLERANCE
-      attribute 0x0004, :light_sensor_type, LightSensorType, nullable: true, optional: true
+      attribute 0x0003, :tolerance, UInt16, nullable: true, optional: true, max: MAX_TOLERANCE, present_if: :tolerance
+      attribute 0x0004, :light_sensor_type, LightSensorType, nullable: true, optional: true, present_if: :light_sensor_type
 
       def initialize(endpoint_id : DataType::EndpointNumber,
                      @measured_value : UInt16? = nil,
@@ -81,16 +81,6 @@ module Matter
       end
 
       # Tolerance and LightSensorType are optional: unsupported until configured.
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_TOLERANCE
-          return InteractionModel::Status.unsupported_attribute if @tolerance.nil?
-        when ATTR_LIGHT_SENSOR_TYPE
-          return InteractionModel::Status.unsupported_attribute if @light_sensor_type.nil?
-        end
-        super
-      end
-
       # Reports a new reading (nil when unknown, 0 when too low to measure);
       # `measured_value=` with a device-facing name that enforces the
       # measurable range.

@@ -39,7 +39,7 @@ module Matter
       attribute 0x0000, :measured_value, Int16, nullable: true
       attribute 0x0001, :min_measured_value, Int16, nullable: true, max: MAX_MIN_MEASURED_VALUE
       attribute 0x0002, :max_measured_value, Int16, nullable: true
-      attribute 0x0003, :tolerance, UInt16, nullable: true, optional: true, max: MAX_TOLERANCE
+      attribute 0x0003, :tolerance, UInt16, nullable: true, optional: true, max: MAX_TOLERANCE, present_if: :tolerance
 
       def initialize(endpoint_id : DataType::EndpointNumber,
                      @measured_value : Int16? = nil,
@@ -67,11 +67,6 @@ module Matter
       end
 
       # Tolerance is optional: unsupported until the device reports one.
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        return InteractionModel::Status.unsupported_attribute if attribute_id == ATTR_TOLERANCE && @tolerance.nil?
-        super
-      end
-
       # Reports a new reading (nil when unknown); `measured_value=` with a
       # device-facing name that enforces the measurable range.
       def update_pressure(value : Int16?) : Nil

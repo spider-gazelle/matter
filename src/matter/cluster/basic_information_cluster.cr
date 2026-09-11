@@ -141,7 +141,12 @@ module Matter
       attribute 0x0011, :reachable, Bool, default: true, optional: true
       attribute 0x0012, :unique_id, String, default: "", fixed: true
       attribute 0x0013, :capability_minima, CapabilityMinimaStruct, default: CapabilityMinimaStruct.new, fixed: true
-      attribute 0x0014, :product_appearance, ProductAppearanceStruct, nullable: true, fixed: true, optional: true
+      attribute 0x0014, :product_appearance, ProductAppearanceStruct, nullable: true, fixed: true, optional: true, present_if: :product_appearance
+
+      # Location is validated as a country code and stored upper case.
+      before_write :location do |code|
+        valid_location?(code) ? code.upcase : InteractionModel::Status.constraint_error
+      end
 
       event 0x00, :start_up, priority: :critical
       event 0x01, :shut_down, priority: :critical
@@ -178,25 +183,6 @@ module Matter
 
         # Default product_label to product_name if not explicitly set
         @product_label = product_label || @product_name
-      end
-
-      # ProductAppearance is optional and not nullable: without a value the
-      # attribute is not present.
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        return InteractionModel::Status.unsupported_attribute if attribute_id == ATTR_PRODUCT_APPEARANCE && @product_appearance.nil?
-        super
-      end
-
-      # Location is validated as a country code and stored upper case.
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        return super unless attribute_id == ATTR_LOCATION
-
-        code = decode?(value, String)
-        return InteractionModel::Status.invalid_data_type unless code
-        return InteractionModel::Status.constraint_error unless valid_location?(code)
-
-        self.location = code.upcase
-        InteractionModel::Status.success
       end
 
       private def valid_location?(code : String) : Bool

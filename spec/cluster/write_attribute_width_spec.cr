@@ -192,7 +192,7 @@ describe "write_attribute with typed TLV values (chip-tool)" do
   end
 
   it "writes OccupancySensing PIROccupiedToUnoccupiedDelay (uint16) sent as a single TLV byte" do
-    occupancy = Matter::Cluster::OccupancySensingCluster.new(endpoint, feature_map: Matter::Cluster::OccupancySensingCluster::Feature::PassiveInfrared)
+    occupancy = Matter::Cluster::OccupancySensingCluster.new(endpoint, feature_map: Matter::Cluster::OccupancySensingCluster::Feature::PassiveInfrared, hold_time: 0_u16)
 
     # chip-tool occupancysensing write piroccupied-to-unoccupied-delay 10 1 1
     result = write_via_im(occupancy, Matter::Cluster::OccupancySensingCluster::ATTR_PIR_OCCUPIED_TO_UNOCCUPIED_DELAY, TLV::Any.new(10_u16))

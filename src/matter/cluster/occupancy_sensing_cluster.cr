@@ -55,7 +55,7 @@ module Matter
       attribute 0x0000, :occupancy, UInt8, default: OCCUPANCY_UNOCCUPIED, max: OCCUPANCY_OCCUPIED
       attribute 0x0001, :occupancy_sensor_type, OccupancySensorType, default: OccupancySensorType::PIR, fixed: true
       attribute 0x0002, :occupancy_sensor_type_bitmap, UInt8, default: SENSOR_TYPE_BITMAP_PIR, fixed: true
-      attribute 0x0003, :hold_time, UInt16, nullable: true, optional: true, writable: true, write_access: :manage
+      attribute 0x0003, :hold_time, UInt16, nullable: true, optional: true, writable: true, write_access: :manage, present_if: :hold_time
 
       attribute 0x0010, :pir_occupied_to_unoccupied_delay, UInt16, default: DEFAULT_DELAY, writable: true, write_access: :manage, optional: true, requires: :passive_infrared
       attribute 0x0011, :pir_unoccupied_to_occupied_delay, UInt16, default: DEFAULT_DELAY, writable: true, write_access: :manage, optional: true, requires: :passive_infrared
@@ -95,11 +95,6 @@ module Matter
       end
 
       # HoldTime is optional: unsupported until configured.
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        return InteractionModel::Status.unsupported_attribute if attribute_id == ATTR_HOLD_TIME && @hold_time.nil?
-        super
-      end
-
       # Reports the occupancy state; `occupancy=` with a device-facing name
       def update_occupancy(occupied : Bool) : Nil
         self.occupancy = occupied ? OCCUPANCY_OCCUPIED : OCCUPANCY_UNOCCUPIED
