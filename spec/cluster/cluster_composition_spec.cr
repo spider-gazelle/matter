@@ -307,7 +307,7 @@ describe "Cluster Composition" do
       attr_names.includes?("operationalStatus").should be_true
       attr_names.includes?("endProductType").should be_true
       attr_names.includes?("mode").should be_true
-      attr_names.includes?("featureMap").should be_true
+      read(cluster, Matter::Cluster::Base::GLOBAL_FEATURE_MAP).should eq(Matter::Cluster::WindowCoveringCluster::Feature::Lift.value)
     end
   end
 end

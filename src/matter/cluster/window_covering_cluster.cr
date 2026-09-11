@@ -17,18 +17,17 @@ module Matter
     # - AbsolutePosition (ABS): Supports absolute position control
     # - PositionAwareTilt (PA_TL): Supports precise tilt positioning
     class WindowCoveringCluster < Base
-      CLUSTER_ID                 = 0x0102_u32
-      MAX_POSITION_PERCENT100THS = 10_000_u16
+      cluster 0x0102, revision: 6
 
-      # Feature flags
-      @[Flags]
-      enum Feature : UInt32
-        Lift              = 0x01 # LF - Lift/lower control
-        Tilt              = 0x02 # TL - Tilt control
-        PositionAwareLift = 0x04 # PA_LF - Precise lift positioning
-        AbsolutePosition  = 0x08 # ABS - Absolute position
-        PositionAwareTilt = 0x10 # PA_TL - Precise tilt positioning
-      end
+      feature :lift, bit: 0                # LF - Lift/lower control
+      feature :tilt, bit: 1                # TL - Tilt control
+      feature :position_aware_lift, bit: 2 # PA_LF - Precise lift positioning
+      feature :absolute_position, bit: 3   # ABS - Absolute position
+      feature :position_aware_tilt, bit: 4 # PA_TL - Precise tilt positioning
+
+      # Fully open and fully closed in the percent100ths attributes
+      OPEN_POSITION_PERCENT100THS =      0_u16
+      MAX_POSITION_PERCENT100THS  = 10_000_u16
 
       # WindowCoveringType enum
       enum CoveringType : UInt8
@@ -103,426 +102,78 @@ module Matter
         LedFeedback            = 0x08
       end
 
-      # Attribute IDs
-      ATTR_TYPE                                = 0x0000_u32
-      ATTR_PHYSICAL_CLOSED_LIMIT_LIFT          = 0x0001_u32
-      ATTR_PHYSICAL_CLOSED_LIMIT_TILT          = 0x0002_u32
-      ATTR_CURRENT_POSITION_LIFT               = 0x0003_u32
-      ATTR_CURRENT_POSITION_TILT               = 0x0004_u32
-      ATTR_NUMBER_OF_ACTUATIONS_LIFT           = 0x0005_u32
-      ATTR_NUMBER_OF_ACTUATIONS_TILT           = 0x0006_u32
-      ATTR_CONFIG_STATUS                       = 0x0007_u32
-      ATTR_CURRENT_POSITION_LIFT_PERCENTAGE    = 0x0008_u32
-      ATTR_CURRENT_POSITION_TILT_PERCENTAGE    = 0x0009_u32
-      ATTR_OPERATIONAL_STATUS                  = 0x000A_u32
-      ATTR_TARGET_POSITION_LIFT_PERCENT100THS  = 0x000B_u32
-      ATTR_TARGET_POSITION_TILT_PERCENT100THS  = 0x000C_u32
-      ATTR_END_PRODUCT_TYPE                    = 0x000D_u32
-      ATTR_CURRENT_POSITION_LIFT_PERCENT100THS = 0x000E_u32
-      ATTR_CURRENT_POSITION_TILT_PERCENT100THS = 0x000F_u32
-      ATTR_INSTALLED_OPEN_LIMIT_LIFT           = 0x0010_u32
-      ATTR_INSTALLED_CLOSED_LIMIT_LIFT         = 0x0011_u32
-      ATTR_INSTALLED_OPEN_LIMIT_TILT           = 0x0012_u32
-      ATTR_INSTALLED_CLOSED_LIMIT_TILT         = 0x0013_u32
-      ATTR_MODE                                = 0x0017_u32
-      ATTR_SAFETY_STATUS                       = 0x001A_u32
+      attribute 0x0000, :type, CoveringType, default: CoveringType::Rollershade, fixed: true
+      attribute 0x0005, :number_of_actuations_lift, UInt16, default: 0_u16, persist: true, optional: true, requires: :lift
+      attribute 0x0006, :number_of_actuations_tilt, UInt16, default: 0_u16, persist: true, optional: true, requires: :tilt
+      attribute 0x0007, :config_status, ConfigStatus, default: ConfigStatus::Operational, persist: true
+      attribute 0x0008, :current_position_lift_percentage, UInt8, nullable: true, optional: true, requires: {lift: true, position_aware_lift: true}
+      attribute 0x0009, :current_position_tilt_percentage, UInt8, nullable: true, optional: true, requires: {tilt: true, position_aware_tilt: true}
+      attribute 0x000A, :operational_status, OperationalStatus, default: OperationalStatus::None
+      attribute 0x000B, :target_position_lift_percent100ths, UInt16, default: OPEN_POSITION_PERCENT100THS, nullable: true, max: MAX_POSITION_PERCENT100THS, requires: {lift: true, position_aware_lift: true}
+      attribute 0x000C, :target_position_tilt_percent100ths, UInt16, default: OPEN_POSITION_PERCENT100THS, nullable: true, max: MAX_POSITION_PERCENT100THS, requires: {tilt: true, position_aware_tilt: true}
+      attribute 0x000D, :end_product_type, EndProductType, default: EndProductType::RollerShade, fixed: true
+      attribute 0x000E, :current_position_lift_percent100ths, UInt16, default: OPEN_POSITION_PERCENT100THS, nullable: true, persist: true, max: MAX_POSITION_PERCENT100THS, requires: {lift: true, position_aware_lift: true}
+      attribute 0x000F, :current_position_tilt_percent100ths, UInt16, default: OPEN_POSITION_PERCENT100THS, nullable: true, persist: true, max: MAX_POSITION_PERCENT100THS, requires: {tilt: true, position_aware_tilt: true}
+      attribute 0x0017, :mode, Mode, default: Mode::None, writable: true, write_access: :manage
+      attribute 0x001A, :safety_status, UInt16, default: 0_u16, optional: true
 
-      # Command IDs
-      CMD_UP_OR_OPEN            = 0x00_u32
-      CMD_DOWN_OR_CLOSE         = 0x01_u32
-      CMD_STOP_MOTION           = 0x02_u32
-      CMD_GO_TO_LIFT_VALUE      = 0x04_u32
-      CMD_GO_TO_LIFT_PERCENTAGE = 0x05_u32
-      CMD_GO_TO_TILT_VALUE      = 0x07_u32
-      CMD_GO_TO_TILT_PERCENTAGE = 0x08_u32
-
-      CLUSTER_REVISION = 5_u16
-
-      property feature_map : Feature
-      property covering_type : CoveringType
-      property end_product_type : EndProductType
-      property config_status : ConfigStatus
-      property operational_status : OperationalStatus
-      property mode : Mode
-
-      # Lift properties
-      property current_position_lift_percentage : UInt8?
-      property current_position_lift_percent100ths : UInt16?
-      property target_position_lift_percent100ths : UInt16?
-      property number_of_actuations_lift : UInt16?
-
-      # Tilt properties
-      property current_position_tilt_percentage : UInt8?
-      property current_position_tilt_percent100ths : UInt16?
-      property target_position_tilt_percent100ths : UInt16?
-      property number_of_actuations_tilt : UInt16?
-
-      # Safety status
-      property safety_status : UInt16?
+      command 0x00, :up_or_open
+      command 0x01, :down_or_close
+      command 0x02, :stop_motion
+      command 0x04, :go_to_lift_value, optional: true, requires: {lift: true, absolute_position: true}
+      command 0x05, :go_to_lift_percentage, request: Definitions::WindowCovering::GoToLiftPercentageRequest, requires: {lift: true, position_aware_lift: true}
+      command 0x07, :go_to_tilt_value, optional: true, requires: {tilt: true, absolute_position: true}
+      command 0x08, :go_to_tilt_percentage, request: Definitions::WindowCovering::GoToTiltPercentageRequest, requires: {tilt: true, position_aware_tilt: true}
 
       def initialize(
         endpoint_id : DataType::EndpointNumber,
         @feature_map : Feature = Feature::Lift | Feature::PositionAwareLift,
-        @covering_type : CoveringType = CoveringType::Rollershade,
+        covering_type : CoveringType = CoveringType::Rollershade,
         @end_product_type : EndProductType = EndProductType::RollerShade,
       )
+        @type = covering_type
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
-        @config_status = ConfigStatus::Operational
-        @operational_status = OperationalStatus::None
-        @mode = Mode::None
-
-        # Initialize lift attributes if Lift feature is enabled
-        if @feature_map.includes?(Feature::Lift)
-          @current_position_lift_percentage = nil
-          @number_of_actuations_lift = 0_u16
-
-          if @feature_map.includes?(Feature::PositionAwareLift)
-            @current_position_lift_percent100ths = 0_u16
-            @target_position_lift_percent100ths = 0_u16
-            @config_status = @config_status | ConfigStatus::LiftPositionAware
-          end
-        end
-
-        # Initialize tilt attributes if Tilt feature is enabled
-        if @feature_map.includes?(Feature::Tilt)
-          @current_position_tilt_percentage = nil
-          @number_of_actuations_tilt = 0_u16
-
-          if @feature_map.includes?(Feature::PositionAwareTilt)
-            @current_position_tilt_percent100ths = 0_u16
-            @target_position_tilt_percent100ths = 0_u16
-            @config_status = @config_status | ConfigStatus::TiltPositionAware
-          end
-        end
+        @config_status |= ConfigStatus::LiftPositionAware if @feature_map.lift? && @feature_map.position_aware_lift?
+        @config_status |= ConfigStatus::TiltPositionAware if @feature_map.tilt? && @feature_map.position_aware_tilt?
       end
 
-      def name : String
-        "WindowCovering"
+      # ------------------------------------------------------------------------
+      # Commands (movement is not simulated; the target moves immediately)
+      # ------------------------------------------------------------------------
+
+      def up_or_open : InteractionModel::Status
+        move_lift_to(OPEN_POSITION_PERCENT100THS)
       end
 
-      def attributes : Array(AttributeMetadata)
-        attrs = [] of AttributeMetadata
-
-        # Type (mandatory, fixed)
-        attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(ATTR_TYPE),
-          name: "type",
-          type: :uint8,
-          writable: false,
-          fixed: true
-        )
-
-        # ConfigStatus (mandatory)
-        attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(ATTR_CONFIG_STATUS),
-          name: "configStatus",
-          type: :uint8,
-          writable: false
-        )
-
-        # OperationalStatus (mandatory)
-        attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(ATTR_OPERATIONAL_STATUS),
-          name: "operationalStatus",
-          type: :uint8,
-          writable: false
-        )
-
-        # EndProductType (mandatory, fixed)
-        attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(ATTR_END_PRODUCT_TYPE),
-          name: "endProductType",
-          type: :uint8,
-          writable: false,
-          fixed: true
-        )
-
-        # Mode (mandatory, writable)
-        attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(ATTR_MODE),
-          name: "mode",
-          type: :uint8,
-          writable: true
-        )
-
-        # Lift-related attributes
-        if @feature_map.includes?(Feature::Lift)
-          # NumberOfActuationsLift (optional)
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_NUMBER_OF_ACTUATIONS_LIFT),
-            name: "numberOfActuationsLift",
-            type: :uint16,
-            writable: false,
-            optional: true
-          )
-
-          if @feature_map.includes?(Feature::PositionAwareLift)
-            # CurrentPositionLiftPercent100ths (mandatory with PA_LF)
-            attrs << AttributeMetadata.new(
-              id: DataType::AttributeId.new(ATTR_CURRENT_POSITION_LIFT_PERCENT100THS),
-              name: "currentPositionLiftPercent100ths",
-              type: :uint16,
-              writable: false
-            )
-
-            # TargetPositionLiftPercent100ths (mandatory with PA_LF)
-            attrs << AttributeMetadata.new(
-              id: DataType::AttributeId.new(ATTR_TARGET_POSITION_LIFT_PERCENT100THS),
-              name: "targetPositionLiftPercent100ths",
-              type: :uint16,
-              writable: false
-            )
-
-            # CurrentPositionLiftPercentage (optional)
-            attrs << AttributeMetadata.new(
-              id: DataType::AttributeId.new(ATTR_CURRENT_POSITION_LIFT_PERCENTAGE),
-              name: "currentPositionLiftPercentage",
-              type: :uint8,
-              writable: false,
-              optional: true
-            )
-          end
-        end
-
-        # Tilt-related attributes
-        if @feature_map.includes?(Feature::Tilt)
-          # NumberOfActuationsTilt (optional)
-          attrs << AttributeMetadata.new(
-            id: DataType::AttributeId.new(ATTR_NUMBER_OF_ACTUATIONS_TILT),
-            name: "numberOfActuationsTilt",
-            type: :uint16,
-            writable: false,
-            optional: true
-          )
-
-          if @feature_map.includes?(Feature::PositionAwareTilt)
-            # CurrentPositionTiltPercent100ths (mandatory with PA_TL)
-            attrs << AttributeMetadata.new(
-              id: DataType::AttributeId.new(ATTR_CURRENT_POSITION_TILT_PERCENT100THS),
-              name: "currentPositionTiltPercent100ths",
-              type: :uint16,
-              writable: false
-            )
-
-            # TargetPositionTiltPercent100ths (mandatory with PA_TL)
-            attrs << AttributeMetadata.new(
-              id: DataType::AttributeId.new(ATTR_TARGET_POSITION_TILT_PERCENT100THS),
-              name: "targetPositionTiltPercent100ths",
-              type: :uint16,
-              writable: false
-            )
-
-            # CurrentPositionTiltPercentage (optional)
-            attrs << AttributeMetadata.new(
-              id: DataType::AttributeId.new(ATTR_CURRENT_POSITION_TILT_PERCENTAGE),
-              name: "currentPositionTiltPercentage",
-              type: :uint8,
-              writable: false,
-              optional: true
-            )
-          end
-        end
-
-        # SafetyStatus (optional)
-        attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(ATTR_SAFETY_STATUS),
-          name: "safetyStatus",
-          type: :uint16,
-          writable: false,
-          optional: true
-        )
-
-        # Global attributes
-        attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(GLOBAL_CLUSTER_REVISION),
-          name: "clusterRevision",
-          type: :uint16,
-          writable: false,
-          default: tlv(CLUSTER_REVISION)
-        )
-
-        attrs << AttributeMetadata.new(
-          id: DataType::AttributeId.new(GLOBAL_FEATURE_MAP),
-          name: "featureMap",
-          type: :uint32,
-          writable: false,
-          default: tlv(@feature_map.value)
-        )
-
-        attrs
+      def down_or_close : InteractionModel::Status
+        move_lift_to(MAX_POSITION_PERCENT100THS)
       end
 
-      def commands : Array(CommandMetadata)
-        cmds = [] of CommandMetadata
-
-        # UpOrOpen (mandatory)
-        cmds << CommandMetadata.new(
-          id: DataType::CommandId.new(CMD_UP_OR_OPEN),
-          name: "upOrOpen"
-        )
-
-        # DownOrClose (mandatory)
-        cmds << CommandMetadata.new(
-          id: DataType::CommandId.new(CMD_DOWN_OR_CLOSE),
-          name: "downOrClose"
-        )
-
-        # StopMotion (mandatory)
-        cmds << CommandMetadata.new(
-          id: DataType::CommandId.new(CMD_STOP_MOTION),
-          name: "stopMotion"
-        )
-
-        # GoToLiftPercentage (mandatory with LF & PA_LF)
-        if @feature_map.includes?(Feature::Lift) && @feature_map.includes?(Feature::PositionAwareLift)
-          cmds << CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_GO_TO_LIFT_PERCENTAGE),
-            name: "goToLiftPercentage"
-          )
-        end
-
-        # GoToTiltPercentage (mandatory with TL & PA_TL)
-        if @feature_map.includes?(Feature::Tilt) && @feature_map.includes?(Feature::PositionAwareTilt)
-          cmds << CommandMetadata.new(
-            id: DataType::CommandId.new(CMD_GO_TO_TILT_PERCENTAGE),
-            name: "goToTiltPercentage"
-          )
-        end
-
-        cmds
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
-        case attribute_id
-        when ATTR_TYPE
-          tlv(@covering_type.value)
-        when ATTR_CONFIG_STATUS
-          tlv(@config_status.value)
-        when ATTR_OPERATIONAL_STATUS
-          tlv(@operational_status.value)
-        when ATTR_END_PRODUCT_TYPE
-          tlv(@end_product_type.value)
-        when ATTR_MODE
-          tlv(@mode.value)
-        when ATTR_CURRENT_POSITION_LIFT_PERCENTAGE
-          if val = @current_position_lift_percentage
-            tlv(val)
-          else
-            tlv(nil)
-          end
-        when ATTR_CURRENT_POSITION_LIFT_PERCENT100THS
-          if val = @current_position_lift_percent100ths
-            tlv(val)
-          else
-            tlv(nil)
-          end
-        when ATTR_TARGET_POSITION_LIFT_PERCENT100THS
-          if val = @target_position_lift_percent100ths
-            tlv(val)
-          else
-            tlv(nil)
-          end
-        when ATTR_CURRENT_POSITION_TILT_PERCENTAGE
-          tlv(@current_position_tilt_percentage)
-        when ATTR_CURRENT_POSITION_TILT_PERCENT100THS
-          tlv(@current_position_tilt_percent100ths)
-        when ATTR_TARGET_POSITION_TILT_PERCENT100THS
-          tlv(@target_position_tilt_percent100ths)
-        when ATTR_NUMBER_OF_ACTUATIONS_TILT
-          tlv(@number_of_actuations_tilt || 0_u16)
-        when ATTR_NUMBER_OF_ACTUATIONS_LIFT
-          tlv((@number_of_actuations_lift || 0_u16))
-        when ATTR_SAFETY_STATUS
-          if val = @safety_status
-            tlv(val)
-          else
-            tlv(nil)
-          end
-        when GLOBAL_FEATURE_MAP
-          tlv(@feature_map.value)
-        else
-          super
-        end
-      end
-
-      protected def handle_write_attribute(attribute_id : UInt32, value : TLV::Any) : InteractionModel::Status
-        case attribute_id
-        when ATTR_MODE
-          if mode = narrow_u8?(value)
-            @mode = Mode.from_value(mode)
-            increment_version
-            InteractionModel::Status.success
-          else
-            InteractionModel::Status.invalid_data_type
-          end
-        else
-          super
-        end
-      end
-
-      protected def handle_command(command_id : UInt32, fields : TLV::Any?) : InteractionModel::Status | Cluster::CommandResponse
-        case command_id
-        when CMD_UP_OR_OPEN
-          handle_up_or_open
-        when CMD_DOWN_OR_CLOSE
-          handle_down_or_close
-        when CMD_STOP_MOTION
-          handle_stop_motion
-        when CMD_GO_TO_LIFT_PERCENTAGE
-          handle_go_to_lift_percentage(fields)
-        when CMD_GO_TO_TILT_PERCENTAGE
-          handle_go_to_tilt_percentage(fields)
-        else
-          super
-        end
-      end
-
-      private def handle_up_or_open
-        # Move to fully open position (0%)
-        if @feature_map.includes?(Feature::PositionAwareLift)
-          @target_position_lift_percent100ths = 0_u16
-        end
-        @operational_status = OperationalStatus::GlobalLiftMoving
-        increment_version
+      def stop_motion : InteractionModel::Status
+        self.operational_status = OperationalStatus::None
         InteractionModel::Status.success
       end
 
-      private def handle_down_or_close
-        # Move to fully closed position (100%)
-        if @feature_map.includes?(Feature::PositionAwareLift)
-          @target_position_lift_percent100ths = MAX_POSITION_PERCENT100THS # 100.00%
-        end
-        @operational_status = OperationalStatus::GlobalLiftMoving
-        increment_version
-        InteractionModel::Status.success
-      end
-
-      private def handle_stop_motion
-        @operational_status = OperationalStatus::None
-        increment_version
-        InteractionModel::Status.success
-      end
-
-      private def handle_go_to_lift_percentage(fields : TLV::Any?)
-        request = decode(fields, Definitions::WindowCovering::GoToLiftPercentageRequest)
+      def go_to_lift_percentage(request : Definitions::WindowCovering::GoToLiftPercentageRequest) : InteractionModel::Status
         percentage = request.lift_percent100ths_value
         return InteractionModel::Status.constraint_error if percentage > MAX_POSITION_PERCENT100THS
 
-        @target_position_lift_percent100ths = percentage
-        @operational_status = OperationalStatus::GlobalLiftMoving
-        increment_version
-        InteractionModel::Status.success
+        move_lift_to(percentage)
       end
 
-      private def handle_go_to_tilt_percentage(fields : TLV::Any?)
-        request = decode(fields, Definitions::WindowCovering::GoToTiltPercentageRequest)
+      def go_to_tilt_percentage(request : Definitions::WindowCovering::GoToTiltPercentageRequest) : InteractionModel::Status
         percentage = request.tilt_percent100ths_value
         return InteractionModel::Status.constraint_error if percentage > MAX_POSITION_PERCENT100THS
 
-        @target_position_tilt_percent100ths = percentage
-        @operational_status = OperationalStatus::GlobalTiltMoving
-        increment_version
+        self.target_position_tilt_percent100ths = percentage
+        self.operational_status = OperationalStatus::GlobalTiltMoving
+        InteractionModel::Status.success
+      end
+
+      private def move_lift_to(percentage : UInt16) : InteractionModel::Status
+        self.target_position_lift_percent100ths = percentage if @feature_map.position_aware_lift?
+        self.operational_status = OperationalStatus::GlobalLiftMoving
         InteractionModel::Status.success
       end
     end
