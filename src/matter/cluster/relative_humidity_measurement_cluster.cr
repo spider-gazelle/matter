@@ -12,29 +12,25 @@ module Matter
     #
     # Specification: Matter 1.4 § 2.6
     class RelativeHumidityMeasurementCluster < Base
-      CLUSTER_ID = 0x0405_u32
-
-      # Attributes
-      ATTR_MEASURED_VALUE     = 0x0000_u32
-      ATTR_MIN_MEASURED_VALUE = 0x0001_u32
-      ATTR_MAX_MEASURED_VALUE = 0x0002_u32
-      ATTR_TOLERANCE          = 0x0003_u32
+      cluster 0x0405, revision: 3
 
       # Humidity limits (in 0.01%)
       MIN_HUMIDITY =     0_u16 # 0.00%
       MAX_HUMIDITY = 10000_u16 # 100.00%
 
-      # Current measured humidity (in 0.01%), or nil if unknown
-      property measured_value : UInt16?
+      # MinMeasuredValue must leave room for a larger MaxMeasuredValue
+      MAX_MIN_MEASURED_VALUE = MAX_HUMIDITY - 1
 
-      # Minimum measurable humidity (in 0.01%)
-      property min_measured_value : UInt16
+      # Largest tolerance the specification allows (in 0.01%)
+      MAX_TOLERANCE = 2048_u16
 
-      # Maximum measurable humidity (in 0.01%)
-      property max_measured_value : UInt16
+      # Hundredths of a percent per percent
+      CENTI_PER_UNIT = 100.0
 
-      # Measurement tolerance (in 0.01%), optional
-      property tolerance : UInt16?
+      attribute 0x0000, :measured_value, UInt16, nullable: true, min: MIN_HUMIDITY, max: MAX_HUMIDITY
+      attribute 0x0001, :min_measured_value, UInt16, default: MIN_HUMIDITY, min: MIN_HUMIDITY, max: MAX_MIN_MEASURED_VALUE
+      attribute 0x0002, :max_measured_value, UInt16, default: MAX_HUMIDITY, max: MAX_HUMIDITY
+      attribute 0x0003, :tolerance, UInt16, nullable: true, optional: true, max: MAX_TOLERANCE
 
       def initialize(endpoint_id : DataType::EndpointNumber,
                      @measured_value : UInt16? = nil,
@@ -43,120 +39,54 @@ module Matter
                      @tolerance : UInt16? = nil)
         super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
 
-        # Validate ranges
-        raise ArgumentError.new("min_measured_value must be <= 9999") if @min_measured_value > 9999_u16
+        raise ArgumentError.new("min_measured_value must be <= #{MAX_MIN_MEASURED_VALUE}") if @min_measured_value > MAX_MIN_MEASURED_VALUE
         raise ArgumentError.new("max_measured_value must be <= #{MAX_HUMIDITY}") if @max_measured_value > MAX_HUMIDITY
         raise ArgumentError.new("min_measured_value must be <= max_measured_value") if @min_measured_value > @max_measured_value
 
-        # Validate measured_value if provided
         if measured_value = @measured_value
-          raise ArgumentError.new("measured_value must be between min and max") if measured_value < @min_measured_value || measured_value > @max_measured_value
+          raise ArgumentError.new("measured_value must be between min and max") unless measurable?(measured_value)
         end
 
-        # Validate tolerance if provided
         if tolerance = @tolerance
-          raise ArgumentError.new("tolerance must be <= 2048") if tolerance > 2048_u16
+          raise ArgumentError.new("tolerance must be <= #{MAX_TOLERANCE}") if tolerance > MAX_TOLERANCE
         end
       end
 
-      def name : String
-        "RelativeHumidityMeasurement"
+      # Tolerance is optional: unsupported until the device reports one.
+      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : InteractionModel::Status | TLV::Any
+        return InteractionModel::Status.unsupported_attribute if attribute_id == ATTR_TOLERANCE && @tolerance.nil?
+        super
       end
 
-      def attributes : Array(AttributeMetadata)
-        [
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MEASURED_VALUE),
-            "MeasuredValue",
-            :uint16,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MIN_MEASURED_VALUE),
-            "MinMeasuredValue",
-            :uint16,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_MAX_MEASURED_VALUE),
-            "MaxMeasuredValue",
-            :uint16,
-            writable: false
-          ),
-          AttributeMetadata.new(
-            DataType::AttributeId.new(ATTR_TOLERANCE),
-            "Tolerance",
-            :uint16,
-            writable: false
-          ),
-        ]
-      end
-
-      def commands : Array(CommandMetadata)
-        [] of CommandMetadata # No commands for measurement clusters
-      end
-
-      def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : TLV::Any | InteractionModel::Status
-        case attribute_id
-        when ATTR_MEASURED_VALUE
-          if value = @measured_value
-            tlv(value)
-          else
-            tlv(nil)
-          end
-        when ATTR_MIN_MEASURED_VALUE
-          tlv(@min_measured_value)
-        when ATTR_MAX_MEASURED_VALUE
-          tlv(@max_measured_value)
-        when ATTR_TOLERANCE
-          if tolerance = @tolerance
-            tlv(tolerance)
-          else
-            InteractionModel::Status.unsupported_attribute
-          end
-        else
-          super
+      # Reports a new reading (nil when unknown); `measured_value=` with a
+      # device-facing name that enforces the measurable range.
+      def update_humidity(value : UInt16?) : Nil
+        if value && !measurable?(value)
+          raise ArgumentError.new("Humidity #{value} is outside measurable range [#{@min_measured_value}, #{@max_measured_value}]")
         end
+        self.measured_value = value
       end
 
-      # Update the measured humidity value
-      def update_humidity(value : UInt16?)
-        old_value = @measured_value
-
-        # Validate new value
-        if value
-          if value < @min_measured_value || value > @max_measured_value
-            raise ArgumentError.new("Humidity #{value} is outside measurable range [#{@min_measured_value}, #{@max_measured_value}]")
-          end
-        end
-
-        @measured_value = value
-
-        # Invoke callback if value changed
-        if old_value != value
-          increment_version_and_notify(ATTR_MEASURED_VALUE)
-          @on_humidity_changed.try &.call(old_value, value)
-        end
+      # Called with the previous and the new value whenever MeasuredValue changes
+      def on_humidity_changed(&block : UInt16?, UInt16? -> Nil) : Nil
+        on_measured_value_changed(&block)
       end
 
-      # Callback when humidity changes
-      @on_humidity_changed : Proc(UInt16?, UInt16?, Nil)?
-
-      def on_humidity_changed(&block : UInt16?, UInt16? -> Nil)
-        @on_humidity_changed = block
+      private def measurable?(value : UInt16) : Bool
+        (@min_measured_value..@max_measured_value).includes?(value)
       end
 
       # Helper methods for humidity conversion
 
       # Convert from 0.01% to percent (Float)
       def self.to_percent(value : UInt16) : Float64
-        value / 100.0
+        value / CENTI_PER_UNIT
       end
 
       # Convert from percent (Float) to 0.01% (UInt16)
       def self.from_percent(value : Float64) : UInt16
         raise ArgumentError.new("Humidity percent must be between 0 and 100") if value < 0.0 || value > 100.0
-        (value * 100).round.to_u16
+        (value * CENTI_PER_UNIT).round.to_u16
       end
     end
   end

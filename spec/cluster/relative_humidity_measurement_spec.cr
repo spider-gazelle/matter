@@ -101,20 +101,20 @@ describe Matter::Cluster::RelativeHumidityMeasurementCluster do
       measured_value = attributes.find { |attr| attr.id.id == 0x0000_u32 }
       measured_value.should_not be_nil
       measured_attr = measured_value.as(Matter::Cluster::AttributeMetadata)
-      measured_attr.name.should eq("MeasuredValue")
+      measured_attr.name.should eq("measuredValue")
       measured_attr.writable?.should be_false
 
       min_value = attributes.find { |attr| attr.id.id == 0x0001_u32 }
       min_value.should_not be_nil
-      min_value.as(Matter::Cluster::AttributeMetadata).name.should eq("MinMeasuredValue")
+      min_value.as(Matter::Cluster::AttributeMetadata).name.should eq("minMeasuredValue")
 
       max_value = attributes.find { |attr| attr.id.id == 0x0002_u32 }
       max_value.should_not be_nil
-      max_value.as(Matter::Cluster::AttributeMetadata).name.should eq("MaxMeasuredValue")
+      max_value.as(Matter::Cluster::AttributeMetadata).name.should eq("maxMeasuredValue")
 
       tolerance = attributes.find { |attr| attr.id.id == 0x0003_u32 }
       tolerance.should_not be_nil
-      tolerance.as(Matter::Cluster::AttributeMetadata).name.should eq("Tolerance")
+      tolerance.as(Matter::Cluster::AttributeMetadata).name.should eq("tolerance")
     end
 
     it "reads MeasuredValue attribute when set" do
