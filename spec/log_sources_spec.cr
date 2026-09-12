@@ -24,7 +24,9 @@ describe "log sources" do
     segments.join('.')
   end
 
-  files = Dir.glob(File.join(source_root, "**", "*#{extension}")).sort
+  # Glob patterns are always posix: on Windows a backslash is an escape, not a
+  # separator, so a native path finds nothing.
+  files = Dir.glob("#{Path[source_root].to_posix}/**/*#{extension}").sort
   files_with_sources = files.select { |file| File.read(file).matches?(source_pattern) }
 
   it "finds log sources to check" do
@@ -32,7 +34,7 @@ describe "log sources" do
   end
 
   files_with_sources.each do |file|
-    relative_path = Path[file].relative_to(source_root).to_s
+    relative_path = Path[file].relative_to(source_root).to_posix.to_s
     sources = File.read(file).scan(source_pattern).map(&.["source"])
     allowed = allowlist[relative_path]? || [expected_source.call(relative_path)]
 

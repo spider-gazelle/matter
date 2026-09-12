@@ -421,10 +421,12 @@ module BackendContract
           end
 
           backend.collections.should eq([Collections::META])
-          quarantined = Dir.glob("#{path}.corrupt-*")
+          # Not `Dir.glob`: on Windows the backslashes in a temp path are glob escapes.
+          prefix = "#{File.basename(path)}.corrupt-"
+          quarantined = Dir.children(File.dirname(path)).select(&.starts_with?(prefix)).sort!
           quarantined.size.should eq(1)
           quarantined.first.should match(CORRUPT_PATTERN)
-          File.read(quarantined.first).should eq(CORRUPT_CONTENT)
+          File.read(File.join(File.dirname(path), quarantined.first)).should eq(CORRUPT_CONTENT)
           File.exists?(path).should be_false
           backend.destroy!
         end

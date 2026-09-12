@@ -75,8 +75,11 @@ end
 module PersistenceRestartSpec
   CLUSTERS = Matter::Storage::Collections::CLUSTERS
 
-  # Long enough for the debounce fiber to have fired.
-  DEBOUNCE_WAIT = Matter::Device::Persistence::SAVE_DEBOUNCE + 100.milliseconds
+  # The debounce fires after `SAVE_DEBOUNCE`, but a loaded machine can schedule
+  # the writer fiber much later than that, so the spec polls up to this deadline
+  # instead of sleeping a fixed interval once.
+  DEBOUNCE_DEADLINE = Matter::Device::Persistence::SAVE_DEBOUNCE * 40
+  DEBOUNCE_POLL     = 10.milliseconds
 
   # A fabric id above Int64::MAX exercises the UInt64 path of the store.
   FABRIC_INDEX =                      1_u8
@@ -131,13 +134,26 @@ module PersistenceRestartSpec
   end
 
   # Reads a cluster document straight from the file with a fresh backend.
-  def self.stored_cluster(path : String, endpoint : UInt16, cluster_id : UInt32) : Matter::Storage::Document
+  def self.stored_cluster?(path : String, endpoint : UInt16, cluster_id : UInt32) : Matter::Storage::Document?
+    return unless File.exists?(path)
     store = Matter::Storage::YamlFile.new(path)
     store.open
-    key = Matter::Cluster::Base.persistence_key(endpoint, cluster_id)
-    store.read(CLUSTERS, key) || raise "missing #{CLUSTERS}/#{key} in #{path}"
+    store.read(CLUSTERS, Matter::Cluster::Base.persistence_key(endpoint, cluster_id))
   ensure
     store.try(&.close)
+  end
+
+  # Waits for the debounced writer to have put the cluster in the file.
+  def self.await_stored_cluster(path : String, endpoint : UInt16, cluster_id : UInt32) : Matter::Storage::Document
+    deadline = Time.monotonic + DEBOUNCE_DEADLINE
+    loop do
+      if document = stored_cluster?(path, endpoint, cluster_id)
+        return document
+      end
+      key = Matter::Cluster::Base.persistence_key(endpoint, cluster_id)
+      raise "#{CLUSTERS}/#{key} never written to #{path}" if Time.monotonic > deadline
+      sleep DEBOUNCE_POLL
+    end
   end
 end
 
@@ -148,13 +164,11 @@ describe "Device restart persistence" do
       device_a = PersistenceRestartDevice.new(path)
       PersistenceRestartSpec.commission_and_mutate(device_a, fabric)
 
-      sleep PersistenceRestartSpec::DEBOUNCE_WAIT
-
       # A real crash never reaches `close`, so prove the file already holds the
       # state before releasing device A's handles.
-      on_off = PersistenceRestartSpec.stored_cluster(path, PersistenceRestartDevice::LIGHT_ENDPOINT, Matter::Cluster::OnOff::CLUSTER_ID)
+      on_off = PersistenceRestartSpec.await_stored_cluster(path, PersistenceRestartDevice::LIGHT_ENDPOINT, Matter::Cluster::OnOff::CLUSTER_ID)
       on_off["on_off"].should be_true
-      basic = PersistenceRestartSpec.stored_cluster(path, 0_u16, Matter::Cluster::BasicInformation::CLUSTER_ID)
+      basic = PersistenceRestartSpec.await_stored_cluster(path, 0_u16, Matter::Cluster::BasicInformation::CLUSTER_ID)
       basic["node_label"].should eq(PersistenceRestartSpec::NODE_LABEL)
       device_a.release
 
