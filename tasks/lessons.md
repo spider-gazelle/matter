@@ -1,5 +1,16 @@
 # Lessons
 
+- 2026-09-12: `examples/run_validation.sh` defaults to the *system* chip-tool; only
+  `--chip-tool ./bin/chip-tool` exercises the in-repo Crystal controller, which is what CI runs. A
+  local pass without that flag says nothing about the controller. Run it the way CI does before
+  claiming the controller works.
+- 2026-09-12: OpenSSL's two entry points spell the curve differently. `generate_by_curve_name` wants
+  `prime256v1`; `from_private_bytes` and `from_public_bytes` want the NIST name `P-256` and raise
+  "unknown NIST curve" otherwise. `Key#private_bits=` passed the short name inside a `rescue` that only
+  logged at debug, so deriving a public key from a stored private key silently produced nothing and
+  every caller failed later at the point of use. A rescue that swallows a configuration error turns a
+  one-line bug into a mystery: rescue the case you can actually handle, and assert what you expect.
+
 - 2026-09-12: Crystal keeps only the **ten** most recently used program directories in a cache root and
   deletes the rest at the *start* of every compile (`codegen/cache_dir.cr#cleanup`). The e2e builder
   compiled eleven programs in parallel into one root, so a starting build deleted a sibling's directory

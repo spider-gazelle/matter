@@ -4,8 +4,12 @@ require "base64"
 
 module Matter
   module Crypto
-    # ECDSA P-256 constants (prime256v1)
+    # ECDSA P-256 constants. The two OpenSSL APIs disagree on the spelling:
+    # `generate_by_curve_name` wants the short name, while `from_private_bytes`
+    # and `from_public_bytes` want the NIST name and raise "unknown NIST curve"
+    # for anything else.
     CRYPTO_EC_CURVE        = "prime256v1"
+    CRYPTO_EC_CURVE_NIST   = "P-256"
     CRYPTO_EC_KEY_BYTES    = 32
     CRYPTO_AUTH_TAG_LENGTH = 16
 
@@ -283,9 +287,9 @@ module Matter
 
         # Determine curve name from key size
         curve_name = case priv_bytes.size
-                     when 32 then "prime256v1" # P-256
-                     when 48 then "secp384r1"  # P-384
-                     when 66 then "secp521r1"  # P-521
+                     when 32 then CRYPTO_EC_CURVE_NIST
+                     when 48 then "P-384"
+                     when 66 then "P-521"
                      else
                        raise Matter::CryptoError.new("Unsupported private key size: #{priv_bytes.size}")
                      end
@@ -320,10 +324,9 @@ module Matter
         begin
           # Determine curve name
           curve_name = case @curve
-                       when CurveType::P256 then CRYPTO_EC_CURVE
-                       when CurveType::P384 then "secp384r1"
-                       when CurveType::P521 then "secp521r1"
-                       else                      CRYPTO_EC_CURVE # Default to P-256
+                       when CurveType::P384 then "P-384"
+                       when CurveType::P521 then "P-521"
+                       else                      CRYPTO_EC_CURVE_NIST
                        end
 
           # Use new openssl_ext API to derive public key from private key

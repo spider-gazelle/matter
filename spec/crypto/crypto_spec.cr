@@ -43,6 +43,18 @@ describe Matter::Crypto do
       key2.public_bits.should eq(key1.public_bits)
     end
 
+    it "derives the public key from a private key on its own" do
+      # The two OpenSSL entry points spell the curve differently, and passing
+      # the wrong one leaves the public key silently unset: every caller that
+      # rebuilds a key from stored private bytes then fails at the point of use.
+      original = Matter::Crypto::Key.generate_key_pair
+
+      rebuilt = Matter::Crypto.private_key(original.private_key)
+
+      rebuilt.public_bits.should_not be_nil
+      rebuilt.public_key.should eq(original.public_key)
+    end
+
     it "zero-pads private keys less than 32 bytes" do
       # Simulate a key with leading zeros (less than 32 bytes)
       # This can happen when the high bits are 0 and get stripped

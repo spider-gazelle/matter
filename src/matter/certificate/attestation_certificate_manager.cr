@@ -245,12 +245,12 @@ module Matter
 
       # Build EC public key from raw bytes
       private def build_ec_public_key(public_key_bytes : Bytes) : OpenSSL::PKey::EC
-        OpenSSL::PKey::EC.from_public_bytes(public_key_bytes, "P-256")
+        OpenSSL::PKey::EC.from_public_bytes(public_key_bytes, Crypto::CRYPTO_EC_CURVE_NIST)
       end
 
       # Build EC private key from raw bytes
       private def build_ec_private_key(private_key_bytes : Bytes) : OpenSSL::PKey::EC
-        OpenSSL::PKey::EC.from_private_bytes(private_key_bytes, "P-256")
+        OpenSSL::PKey::EC.from_private_bytes(private_key_bytes, Crypto::CRYPTO_EC_CURVE_NIST)
       end
     end
   end

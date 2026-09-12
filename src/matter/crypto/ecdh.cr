@@ -20,8 +20,8 @@ module Matter
         # Try new openssl_ext API first (OpenSSL 3+ compatible, cleaner code)
         # Fall back to low-level API if new API not available in this environment
         begin
-          priv_ec = OpenSSL::PKey::EC.from_private_bytes(private_key, "prime256v1")
-          peer_ec = OpenSSL::PKey::EC.from_public_bytes(peer_public_key, "prime256v1")
+          priv_ec = OpenSSL::PKey::EC.from_private_bytes(private_key, CRYPTO_EC_CURVE_NIST)
+          peer_ec = OpenSSL::PKey::EC.from_public_bytes(peer_public_key, CRYPTO_EC_CURVE_NIST)
           shared_secret = OpenSSL::PKey::EC.compute_shared_secret(priv_ec, peer_ec)
           raise Matter::CryptoError.new("Unexpected shared secret length: #{shared_secret.size}") unless shared_secret.size == 32
           return shared_secret
@@ -31,7 +31,7 @@ module Matter
 
         # Low-level ECDH implementation using direct OpenSSL bindings
         # Create a temporary EC key for P-256 to get the group
-        temp_key = OpenSSL::PKey::EC.generate("P-256")
+        temp_key = OpenSSL::PKey::EC.generate(CRYPTO_EC_CURVE_NIST)
         ec_key = LibCrypto.evp_pkey_get1_ec_key(temp_key)
         group = LibCrypto.ec_key_get0_group(ec_key)
 

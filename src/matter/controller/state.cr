@@ -68,7 +68,13 @@ module Matter
           )
         end
 
-        Crypto.private_key(private_key)
+        # Set the public key from the fabric rather than deriving it: the
+        # fabric already carries it, and a derivation is a round trip through
+        # OpenSSL that a restricted build can refuse.
+        key = Crypto::Key.new(Crypto::KeyType::EC, Crypto::CurveType::P256)
+        key.public_bits = @root_public_key
+        key.private_bits = private_key
+        key
       end
     end
 

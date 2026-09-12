@@ -391,7 +391,7 @@ module Matter
           if operational_key.public_bits.nil?
             # Use OpenSSL to derive public key from private key
             # Note: from_private_bytes expects NIST curve names like "P-256", not "prime256v1"
-            ec_key = OpenSSL::PKey::EC.from_private_bytes(operational_key.private_key, "P-256")
+            ec_key = OpenSSL::PKey::EC.from_private_bytes(operational_key.private_key, Crypto::CRYPTO_EC_CURVE_NIST)
             pub_bytes = ec_key.public_key_bytes
 
             # Create a new Key with both private and public components
