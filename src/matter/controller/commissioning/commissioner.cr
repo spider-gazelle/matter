@@ -21,6 +21,12 @@ module Matter
       class Commissioner
         Log = ::Log.for("matter.controller.commissioning.commissioner")
 
+        # This controller runs one certificate authority per fabric, so the root
+        # certificate it issues is always the first one.
+        ROOT_CERTIFICATE_ID = 1_u64
+        # Serial numbers only have to be distinguishable within a fabric
+        CERTIFICATE_SERIAL_BYTES = 8
+
         def initialize(
           @store : StateStore,
           @client : Client = Client.new,
@@ -104,7 +110,12 @@ module Matter
           csr_elements = Cluster::OperationalCredentials::CSRElements.from_slice(csr_resp.nocsr_elements)
 
           device_pub_key = CertificateUtil.extract_uncompressed_public_key_from_csr(csr_elements.csr)
-          device_noc = create_noc(fabric_id: fabric.fabric_id, node_id: node_id, public_key: device_pub_key)
+          device_noc = issue_noc(
+            root_key: fabric.certificate_authority_key,
+            fabric_id: fabric.fabric_id,
+            node_id: node_id,
+            public_key: device_pub_key
+          )
 
           add_noc_req = Cluster::OperationalCredentials::Tlv::AddNocRequest.new(
             noc_value: device_noc.to_slice,
@@ -191,59 +202,44 @@ module Matter
 
           root_key = Crypto::Key.generate_key_pair
           root_public_key = root_key.public_key
-          root_cert = create_root_cert(root_public_key)
+          root_cert = Crypto::MatterCertificate::Builder.root(root_key, ROOT_CERTIFICATE_ID, serial_number, @crypto)
 
           controller_key = Crypto::Key.generate_key_pair
-          controller_noc = create_noc(fabric_id: fabric_id, node_id: controller_node_id, public_key: controller_key.public_key)
+          controller_noc = issue_noc(
+            root_key: root_key,
+            fabric_id: fabric_id,
+            node_id: controller_node_id,
+            public_key: controller_key.public_key
+          )
 
-          info = FabricInfo.new(
+          FabricInfo.new(
             fabric_id: fabric_id,
             controller_node_id: controller_node_id,
             ipk_value: ipk,
             root_cert: root_cert,
             root_public_key: root_public_key,
             controller_noc: controller_noc,
-            controller_private_key: controller_key.private_key
+            controller_private_key: controller_key.private_key,
+            root_private_key: root_key.private_key
           )
-          info
         end
 
-        private def create_root_cert(public_key : Bytes) : Bytes
-          signature = @crypto.random_bytes(64)
-          subject = Crypto::DNAttributes.new(rcac_id: 1_u64)
-          issuer = Crypto::DNAttributes.new(rcac_id: 1_u64)
-
-          Crypto::MatterCertificate.new(
-            serial_number: Bytes[0x01],
-            signature_algorithm: 1_u8,
-            issuer: issuer,
-            not_before: 0_u32,
-            not_after: 0xFFFFFFFF_u32,
-            subject: subject,
-            public_key_algorithm: 1_u8,
-            elliptic_curve_id: 1_u8,
-            ec_public_key: public_key,
-            signature: signature
-          ).to_slice
+        # Issue a node certificate under this fabric's root
+        private def issue_noc(root_key : Crypto::Key, fabric_id : UInt64, node_id : UInt64, public_key : Bytes) : Bytes
+          Crypto::MatterCertificate::Builder.node(
+            public_key: public_key,
+            fabric_id: fabric_id,
+            node_id: node_id,
+            issuer_key: root_key,
+            issuer_rcac_id: ROOT_CERTIFICATE_ID,
+            serial: serial_number,
+            crypto: @crypto
+          )
         end
 
-        private def create_noc(fabric_id : UInt64, node_id : UInt64, public_key : Bytes) : Bytes
-          signature = @crypto.random_bytes(64)
-          subject = Crypto::DNAttributes.new(fabric_id: fabric_id, node_id: node_id)
-          issuer = Crypto::DNAttributes.new(rcac_id: 1_u64)
-
-          Crypto::MatterCertificate.new(
-            serial_number: Bytes[0x01],
-            signature_algorithm: 1_u8,
-            issuer: issuer,
-            not_before: 0_u32,
-            not_after: 0xFFFFFFFF_u32,
-            subject: subject,
-            public_key_algorithm: 1_u8,
-            elliptic_curve_id: 1_u8,
-            ec_public_key: public_key,
-            signature: signature
-          ).to_slice
+        # Certificates only have to be distinguishable within this fabric
+        private def serial_number : Bytes
+          @crypto.random_bytes(CERTIFICATE_SERIAL_BYTES)
         end
 
         private def assert_invoke_ok!(response : InteractionModel::InvokeResponseMessage, name : String) : Nil

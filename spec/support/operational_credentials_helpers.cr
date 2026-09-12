@@ -80,34 +80,14 @@ def create_remove_fabric_request_tlv(fabric_index : UInt8) : TLV::Any
   ).to_tlv(nil)
 end
 
-# Helper to create a mock NOC with node_id and fabric_id
+# A node certificate for `node_id` on `fabric_id`, issued by the test authority
 def create_mock_noc(node_id : UInt64, fabric_id : UInt64) : Bytes
-  # Generate a default public key
-  pub_key = Bytes.new(65)
-  pub_key[0] = 0x04_u8
-  (1...65).each { |i| pub_key[i] = i.to_u8 }
-  create_mock_noc_with_key(node_id, fabric_id, pub_key)
+  TestCertificateAuthority.default.issue(fabric_id, node_id)
 end
 
-# Helper to create a mock NOC with node_id, fabric_id, and public key
+# The same, for a node holding `public_key`
 def create_mock_noc_with_key(node_id : UInt64, fabric_id : UInt64, public_key : Bytes) : Bytes
-  signature = Bytes.new(64, 0xAB_u8)
-  # NOC has fabric_id and node_id in subject
-  subject = Matter::Crypto::DNAttributes.new(fabric_id: fabric_id, node_id: node_id)
-  issuer = Matter::Crypto::DNAttributes.new(rcac_id: 1_u64)
-
-  Matter::Crypto::MatterCertificate.new(
-    serial_number: Bytes[0x01],
-    signature_algorithm: 1_u8,
-    issuer: issuer,
-    not_before: 0_u32,
-    not_after: 0xFFFFFFFF_u32,
-    subject: subject,
-    public_key_algorithm: 1_u8,
-    elliptic_curve_id: 1_u8,
-    ec_public_key: public_key,
-    signature: signature
-  ).to_slice
+  TestCertificateAuthority.default.issue(fabric_id, node_id, public_key)
 end
 
 # Helper to create UpdateFabricLabel request TLV
@@ -143,59 +123,16 @@ module OpCredsTestHelpers
     )
   end
 
-  # Helper to create a TLV-encoded test NOC certificate
-  # This creates a valid Matter NOC with proper subject DN containing fabricId and nodeId
-  def create_test_noc(fabric_id : UInt64 = 0x1234567890_u64, node_id : UInt64 = 0xABCDEF_u64) : Bytes
-    # Create a 65-byte uncompressed EC public key (0x04 || x || y)
-    public_key = Bytes.new(65, 0_u8)
-    public_key[0] = 0x04_u8
-    (1..32).each { |i| public_key[i] = i.to_u8 }
-    (33..64).each { |i| public_key[i] = (i - 32).to_u8 }
-
-    signature = Bytes.new(64, 0xAB_u8)
-    subject = Matter::Crypto::DNAttributes.new(fabric_id: fabric_id, node_id: node_id)
-    issuer = Matter::Crypto::DNAttributes.new(rcac_id: 1_u64)
-
-    Matter::Crypto::MatterCertificate.new(
-      serial_number: Bytes[0x01],
-      signature_algorithm: 1_u8,
-      issuer: issuer,
-      not_before: 0_u32,
-      not_after: 0xFFFFFFFF_u32,
-      subject: subject,
-      public_key_algorithm: 1_u8,
-      elliptic_curve_id: 1_u8,
-      ec_public_key: public_key,
-      signature: signature
-    ).to_slice
+  # A node certificate issued by the test authority
+  def create_test_noc(
+    fabric_id : UInt64 = TestCertificateAuthority::DEFAULT_FABRIC_ID,
+    node_id : UInt64 = TestCertificateAuthority::DEFAULT_NODE_ID,
+  ) : Bytes
+    TestCertificateAuthority.default.issue(fabric_id, node_id)
   end
 
-  # Helper to create a TLV-encoded root certificate for testing
-  # Matter uses TLV-encoded certificates (starting with 0x15)
-  # This creates a certificate with a valid public key field (tag 9)
+  # The root certificate those node certificates chain to
   def create_test_root_cert : Bytes
-    # Create a 65-byte uncompressed EC public key (0x04 || x || y)
-    public_key = Bytes.new(65, 0_u8)
-    public_key[0] = 0x04_u8 # Uncompressed point marker
-    # Fill x and y coordinates with test data
-    (1..32).each { |i| public_key[i] = i.to_u8 }
-    (33..64).each { |i| public_key[i] = (i - 32).to_u8 }
-
-    signature = Bytes.new(64, 0xCD_u8)
-    subject = Matter::Crypto::DNAttributes.new(rcac_id: 1_u64)
-    issuer = Matter::Crypto::DNAttributes.new(rcac_id: 1_u64)
-
-    Matter::Crypto::MatterCertificate.new(
-      serial_number: Bytes[0x01],
-      signature_algorithm: 1_u8,
-      issuer: issuer,
-      not_before: 0_u32,
-      not_after: 0xFFFFFFFF_u32,
-      subject: subject,
-      public_key_algorithm: 1_u8,
-      elliptic_curve_id: 1_u8,
-      ec_public_key: public_key,
-      signature: signature
-    ).to_slice
+    TestCertificateAuthority.default.root_certificate
   end
 end

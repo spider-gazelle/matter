@@ -207,10 +207,9 @@ describe Matter::Cluster::OperationalCredentials do
 
         # Step 2: Add trusted root certificate
         # Create a valid TLV certificate with a public key
-        root_public_key = Bytes.new(65)
-        root_public_key[0] = 0x04_u8
-        (1...65).each { |i| root_public_key[i] = i.to_u8 }
-        root_cert = create_test_tlv_certificate(root_public_key)
+        authority = TestCertificateAuthority.default
+
+        root_cert = authority.root_certificate
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
         root_result = invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
@@ -260,7 +259,8 @@ describe Matter::Cluster::OperationalCredentials do
         cluster.failsafe_armed = true
 
         # Add trusted root first
-        root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
+        authority = TestCertificateAuthority.default
+        root_cert = authority.root_certificate
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
@@ -337,7 +337,8 @@ describe Matter::Cluster::OperationalCredentials do
           csr_request_tlv
         )
 
-        root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
+        authority = TestCertificateAuthority.default
+        root_cert = authority.root_certificate
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
@@ -416,7 +417,8 @@ describe Matter::Cluster::OperationalCredentials do
           create_csr_request_tlv(nonce1, false)
         )
 
-        root_public_key1 = Bytes.new(65); root_public_key1[0] = 0x04_u8; (1...65).each { |i| root_public_key1[i] = i.to_u8 }; root_cert1 = create_test_tlv_certificate(root_public_key1, 0xAAAAAAAAAAAAAAAA_u64)
+        authority1 = TestCertificateAuthority.default
+        root_cert1 = authority1.root_certificate(0xAAAAAAAAAAAAAAAA_u64)
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert1)
@@ -450,7 +452,8 @@ describe Matter::Cluster::OperationalCredentials do
         )
 
         # Try to add trusted root (not allowed for updates)
-        root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
+        authority = TestCertificateAuthority.default
+        root_cert = authority.root_certificate
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
@@ -499,10 +502,9 @@ describe Matter::Cluster::OperationalCredentials do
         )
 
         # Step 2: Add trusted root certificate
-        root_public_key = Bytes.new(65)
-        root_public_key[0] = 0x04_u8
-        (1...65).each { |i| root_public_key[i] = i.to_u8 }
-        root_cert = create_test_tlv_certificate(root_public_key)
+        authority = TestCertificateAuthority.default
+
+        root_cert = authority.root_certificate
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,

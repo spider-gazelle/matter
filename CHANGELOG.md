@@ -97,6 +97,10 @@ clusters, the interaction model and the protocol objects. It is a breaking relea
   with the cluster require cycle broken by `RollbackTargets`.
 - The mDNS responder answers subtype PTR queries (`_L`, `_S`, `_T`, `_V`, `_CM`) and instance
   queries, and sends a three-packet announcement burst.
+- `Crypto::MatterCertificate::Asn1` renders an operational certificate as the ASN.1 DER its issuer
+  signed, `::Validation` verifies a node certificate against its intermediate and root, and `::Builder`
+  issues a root and the node certificates under it. Checked against the operational certificates of
+  the specification and of Apple, Google, Amazon, SmartThings and Aqara.
 
 #### Controller and tooling
 
@@ -108,6 +112,10 @@ clusters, the interaction model and the protocol objects. It is a breaking relea
 - End-to-end persistence coverage: devices are restarted in place inside the compose network and
   their state is read back with chip-tool.
 - CI type-checks every example, the storage CLI and the e2e helpers.
+- The in-repo controller is a real certificate authority: it signs its root, and the node certificates
+  it issues to itself and to each device it commissions. `Controller::FabricInfo` gained
+  `root_private_key`; a fabric stored without one can still connect to the devices it commissioned but
+  cannot commission new ones.
 
 ### Changed
 

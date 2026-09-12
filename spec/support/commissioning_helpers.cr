@@ -85,40 +85,33 @@ class RecordingCredentialTarget
 end
 
 # Matter TLV certificates the credential flow accepts.
+# Certificates for commissioning specs, issued by the shared test authority.
 module CommissioningCertificates
   extend self
 
-  PUBLIC_KEY_SIZE = 65
-  SIGNATURE_SIZE  = 64
-
   def public_key : Bytes
-    key = Bytes.new(PUBLIC_KEY_SIZE, 0_u8)
-    key[0] = 0x04_u8
-    (1..32).each { |i| key[i] = i.to_u8 }
-    (33..64).each { |i| key[i] = (i - 32).to_u8 }
-    key
+    TestCertificateAuthority.default.node_public_key
   end
 
-  def root_certificate(rcac_id : UInt64 = 1_u64) : Bytes
-    certificate(Matter::Crypto::DNAttributes.new(rcac_id: rcac_id))
+  def root_public_key : Bytes
+    TestCertificateAuthority.default.root_public_key
   end
 
-  def noc(fabric_id : UInt64 = 0x1234567890_u64, node_id : UInt64 = 0xABCDEF_u64) : Bytes
-    certificate(Matter::Crypto::DNAttributes.new(fabric_id: fabric_id, node_id: node_id))
+  def root_certificate(rcac_id : UInt64 = TestCertificateAuthority::ROOT_CERTIFICATE_ID) : Bytes
+    TestCertificateAuthority.default.root_certificate(rcac_id)
   end
 
-  private def certificate(subject : Matter::Crypto::DNAttributes) : Bytes
-    Matter::Crypto::MatterCertificate.new(
-      serial_number: Bytes[0x01],
-      signature_algorithm: 1_u8,
-      issuer: Matter::Crypto::DNAttributes.new(rcac_id: 1_u64),
-      not_before: 0_u32,
-      not_after: 0xFFFFFFFF_u32,
-      subject: subject,
-      public_key_algorithm: 1_u8,
-      elliptic_curve_id: 1_u8,
-      ec_public_key: public_key,
-      signature: Bytes.new(SIGNATURE_SIZE, 0xAB_u8)
-    ).to_slice
+  def noc(
+    fabric_id : UInt64 = TestCertificateAuthority::DEFAULT_FABRIC_ID,
+    node_id : UInt64 = TestCertificateAuthority::DEFAULT_NODE_ID,
+  ) : Bytes
+    TestCertificateAuthority.default.issue(fabric_id, node_id)
+  end
+
+  def foreign_noc(
+    fabric_id : UInt64 = TestCertificateAuthority::DEFAULT_FABRIC_ID,
+    node_id : UInt64 = TestCertificateAuthority::DEFAULT_NODE_ID,
+  ) : Bytes
+    TestCertificateAuthority.default.foreign_noc(fabric_id, node_id)
   end
 end

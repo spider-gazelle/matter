@@ -35,13 +35,35 @@ private def tlv_certificate(public_key : Bytes, node_id : UInt64 = NODE_ID) : By
   TLV::Any.new(cert, nil).to_slice
 end
 
+# A fabric's certificate authority. Handshake fixtures issue real certificates
+# under one, because the responder checks that the peer's certificate chains to
+# the fabric root.
+private RCAC_ID = 1_u64
+
+private def fabric_authority(crypto : Matter::Crypto::StandardCrypto) : Matter::Crypto::Key
+  crypto.create_key_pair
+end
+
+private def issue(crypto : Matter::Crypto::StandardCrypto, authority : Matter::Crypto::Key, public_key : Bytes, node_id : UInt64) : Bytes
+  Matter::Crypto::MatterCertificate::Builder.node(
+    public_key: public_key,
+    fabric_id: FABRIC_ID,
+    node_id: node_id,
+    issuer_key: authority,
+    issuer_rcac_id: RCAC_ID,
+    serial: crypto.random_bytes(8),
+    crypto: crypto
+  )
+end
+
 private def new_initiator(
   crypto : Matter::Crypto::StandardCrypto,
   ipk : Bytes,
+  authority : Matter::Crypto::Key = crypto.create_key_pair,
   key : Matter::Crypto::Key = crypto.create_key_pair,
 ) : Matter::Session::Case::CaseInitiator
   Matter::Session::Case::CaseInitiator.new(
-    operational_cert: tlv_certificate(key.public_key),
+    operational_cert: issue(crypto, authority, key.public_key, NODE_ID),
     operational_key: key,
     fabric_id: FABRIC_ID,
     node_id: NODE_ID,
@@ -53,15 +75,17 @@ end
 private def new_responder(
   crypto : Matter::Crypto::StandardCrypto,
   ipk : Bytes,
+  authority : Matter::Crypto::Key = crypto.create_key_pair,
   key : Matter::Crypto::Key = crypto.create_key_pair,
 ) : Matter::Session::Case::CaseResponder
   Matter::Session::Case::CaseResponder.new(
-    cert_chain: Matter::Session::Case::OperationalCertChain.new(tlv_certificate(key.public_key, RESPONDER_NODE_ID)),
+    cert_chain: Matter::Session::Case::OperationalCertChain.new(issue(crypto, authority, key.public_key, RESPONDER_NODE_ID)),
     operational_key: key,
     fabric_id: FABRIC_ID,
     node_id: RESPONDER_NODE_ID,
     ipk: ipk,
-    crypto: crypto
+    crypto: crypto,
+    root_public_key: authority.public_key
   )
 end
 
@@ -189,7 +213,7 @@ describe Matter::Session::Case do
       key = crypto.create_key_pair
       ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
 
-      initiator = new_initiator(crypto, ipk, key)
+      initiator = new_initiator(crypto, ipk, key: key)
 
       initiator.operational_key.should eq(key)
       initiator.fabric_id.should eq(FABRIC_ID)
@@ -222,8 +246,9 @@ describe Matter::Session::Case do
     it "processes Sigma2 from a responder and generates Sigma3" do
       crypto = Matter::Crypto::StandardCrypto.new
       ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
-      initiator = new_initiator(crypto, ipk)
-      responder = new_responder(crypto, ipk)
+      authority = crypto.create_key_pair
+      initiator = new_initiator(crypto, ipk, authority)
+      responder = new_responder(crypto, ipk, authority)
 
       sigma1 = initiator.generate_sigma1(destination_id(crypto))
       sigma2 = responder.process_sigma1(
@@ -255,8 +280,9 @@ describe Matter::Session::Case do
       crypto = Matter::Crypto::StandardCrypto.new
       ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
       key = crypto.create_key_pair
-      initiator = new_initiator(crypto, ipk, key)
-      responder = new_responder(crypto, ipk)
+      authority = crypto.create_key_pair
+      initiator = new_initiator(crypto, ipk, authority, key)
+      responder = new_responder(crypto, ipk, authority)
 
       sigma1 = initiator.generate_sigma1(destination_id(crypto))
       sigma2 = responder.process_sigma1(
@@ -347,7 +373,7 @@ describe Matter::Session::Case do
       key = crypto.create_key_pair
       ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
 
-      responder = new_responder(crypto, ipk, key)
+      responder = new_responder(crypto, ipk, key: key)
 
       responder.operational_key.should eq(key)
       responder.fabric_id.should eq(FABRIC_ID)
@@ -400,8 +426,9 @@ describe Matter::Session::Case do
     it "behaves identically whichever side it is called from" do
       crypto = Matter::Crypto::StandardCrypto.new
       ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
-      initiator = new_initiator(crypto, ipk)
-      responder = new_responder(crypto, ipk)
+      authority = crypto.create_key_pair
+      initiator = new_initiator(crypto, ipk, authority)
+      responder = new_responder(crypto, ipk, authority)
 
       manager = Matter::Certificate::AttestationCertificateManager.new(0xFFF1_u16)
       roots = [manager.paa_cert] of Bytes | OpenSSL::X509::Certificate
@@ -434,8 +461,9 @@ describe Matter::Session::Case do
     it "derives the same session keys on both sides of an in-process handshake" do
       crypto = Matter::Crypto::StandardCrypto.new
       ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
-      initiator = new_initiator(crypto, ipk)
-      responder = new_responder(crypto, ipk)
+      authority = crypto.create_key_pair
+      initiator = new_initiator(crypto, ipk, authority)
+      responder = new_responder(crypto, ipk, authority)
 
       sigma1 = initiator.generate_sigma1(destination_id(crypto))
       sigma2 = responder.process_sigma1(
@@ -469,8 +497,9 @@ describe Matter::Session::Case do
     it "derives the keys the Matter spec constants prescribe" do
       crypto = Matter::Crypto::StandardCrypto.new
       ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
-      initiator = new_initiator(crypto, ipk)
-      responder = new_responder(crypto, ipk)
+      authority = crypto.create_key_pair
+      initiator = new_initiator(crypto, ipk, authority)
+      responder = new_responder(crypto, ipk, authority)
 
       sigma1 = initiator.generate_sigma1(destination_id(crypto))
       sigma2 = responder.process_sigma1(
@@ -512,19 +541,21 @@ describe Matter::Session::Case do
       ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
       initiator_key = crypto.create_key_pair
       responder_key = crypto.create_key_pair
+      authority = crypto.create_key_pair
 
       contexts = Matter::Session::Case.establish_session(
-        initiator_cert: tlv_certificate(initiator_key.public_key),
+        initiator_cert: issue(crypto, authority, initiator_key.public_key, NODE_ID),
         initiator_key: initiator_key,
         responder_cert_chain: Matter::Session::Case::OperationalCertChain.new(
-          tlv_certificate(responder_key.public_key, RESPONDER_NODE_ID)
+          issue(crypto, authority, responder_key.public_key, RESPONDER_NODE_ID)
         ),
         responder_key: responder_key,
         fabric_id: FABRIC_ID,
         initiator_node_id: NODE_ID,
         responder_node_id: RESPONDER_NODE_ID,
         crypto: crypto,
-        ipk: ipk
+        ipk: ipk,
+        root_public_key: authority.public_key
       )
 
       initiator_context = contexts[:initiator]
@@ -540,6 +571,33 @@ describe Matter::Session::Case do
       initiator_context.case_session?.should be_true
     end
 
+    it "rejects a peer whose certificate was issued by another root" do
+      crypto = Matter::Crypto::StandardCrypto.new
+      ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
+
+      # The attacker holds the fabric's IPK, so Sigma1 and the Sigma3 signature
+      # both pass, but it signed its own certificate rather than obtaining one.
+      attacker_authority = crypto.create_key_pair
+      initiator = new_initiator(crypto, ipk, attacker_authority)
+      responder = new_responder(crypto, ipk, crypto.create_key_pair)
+
+      sigma1 = initiator.generate_sigma1(destination_id(crypto))
+      sigma2 = responder.process_sigma1(
+        sigma1[:ephemeral_public_key],
+        sigma1[:random],
+        sigma1[:session_id],
+        sigma1[:sigma1_bytes]
+      )
+
+      sigma2_bytes = sigma2[:sigma2_bytes]
+      sigma3 = initiator.process_sigma2(
+        Matter::Session::Case::Definitions::Sigma2.from_slice(sigma2_bytes),
+        sigma2_bytes
+      )
+
+      responder.process_sigma3(sigma3[:encrypted_cert], sigma3[:sigma3_bytes]).should be_false
+    end
+
     it "rejects a Sigma3 whose signature does not match the NOC it presents" do
       crypto = Matter::Crypto::StandardCrypto.new
       ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
@@ -547,17 +605,18 @@ describe Matter::Session::Case do
       # The attacker replays a NOC that is not theirs. They reach Sigma3 (the
       # IPK is a fabric secret they hold) but cannot sign TBS_Data3 with the key
       # that NOC names, so they sign with their own.
+      authority = crypto.create_key_pair
       victim_key = crypto.create_key_pair
       attacker_key = crypto.create_key_pair
       initiator = Matter::Session::Case::CaseInitiator.new(
-        operational_cert: tlv_certificate(victim_key.public_key),
+        operational_cert: issue(crypto, authority, victim_key.public_key, NODE_ID),
         operational_key: attacker_key,
         fabric_id: FABRIC_ID,
         node_id: NODE_ID,
         ipk: ipk,
         crypto: crypto
       )
-      responder = new_responder(crypto, ipk)
+      responder = new_responder(crypto, ipk, authority)
 
       sigma1 = initiator.generate_sigma1(destination_id(crypto))
       sigma2 = responder.process_sigma1(

@@ -376,7 +376,10 @@ module Matter
           fabric_id: fabric.fabric_id,
           node_id: fabric.node_id,
           ipk: fabric.derived_ipk, # Derived with the "GroupKey v1.0" info string
-          crypto: Crypto::StandardCrypto.new
+          crypto: Crypto::StandardCrypto.new,
+          # Sigma1 already pinned the fabric via the destination id; the peer's
+          # node certificate has to chain to that fabric's root.
+          root_public_key: fabric.root_public_key
         )
 
         sigma2_data = responder.process_sigma1(

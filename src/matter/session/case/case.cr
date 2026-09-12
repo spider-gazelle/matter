@@ -365,6 +365,12 @@ module Matter
         # All authenticated Subject IDs for the peer (NodeId + any CATs).
         # Used for ACL evaluation (ACL subjects may be Node IDs or CATs).
         property peer_subject_ids : Array(UInt64) = [] of UInt64
+        # Intermediate certificate the peer presented in Sigma3, if any
+        property peer_icac : Bytes?
+        # Public key of the fabric's root certificate. The peer's node
+        # certificate has to chain to it, otherwise any member of the fabric
+        # could mint one naming any node id it likes.
+        property root_public_key : Bytes?
 
         def initialize(
           @cert_chain : OperationalCertChain,
@@ -373,6 +379,7 @@ module Matter
           @node_id : UInt64,
           @ipk : Bytes,
           @crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
+          @root_public_key : Bytes? = nil,
         )
           @peer_ephemeral_key = nil
           @shared_secret = nil
@@ -567,6 +574,7 @@ module Matter
 
             # Store peer NOC
             @peer_cert = encrypted_data3.responder_noc
+            @peer_icac = encrypted_data3.responder_icac
 
             Log.debug { "CASE Sigma3 peer NOC: #{encrypted_data3.responder_noc.size} bytes" }
             Log.debug { "CASE Sigma3 peer ICAC: #{encrypted_data3.responder_icac.try(&.size) || 0} bytes" }
@@ -613,6 +621,11 @@ module Matter
               encrypted_data3.signature
             )
 
+            # And the certificate itself has to have been issued by this
+            # fabric's root, or the identity it names is the peer's own
+            # invention.
+            verify_peer_chain(encrypted_data3.responder_noc, encrypted_data3.responder_icac)
+
             Log.info { "CASE Sigma3 processed successfully" }
 
             true
@@ -634,6 +647,16 @@ module Matter
           raise ex
         rescue ex
           raise Matter::AuthenticationError.new("CASE: Sigma3 signature could not be checked: #{ex.message}", cause: ex)
+        end
+
+        # Check the peer's certificates against the fabric root.
+        private def verify_peer_chain(peer_noc : Bytes, peer_icac : Bytes?) : Nil
+          root = @root_public_key
+          if root.nil?
+            raise Matter::AuthenticationError.new("CASE: no fabric root to check the peer certificate against")
+          end
+
+          Crypto::MatterCertificate::Validation.verify_chain(peer_noc, peer_icac, root)
         end
 
         # Validate the peer certificate chain against trusted roots
@@ -680,11 +703,15 @@ module Matter
         crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
         ipk : Bytes? = nil,
         destination_id : Bytes? = nil,
+        root_public_key : Bytes? = nil,
       ) : {initiator: SecureContext, responder: SecureContext}
         session_ipk = ipk || crypto.random_bytes(SYMMETRIC_KEY_LENGTH)
 
         initiator = CaseInitiator.new(initiator_cert, initiator_key, fabric_id, initiator_node_id, session_ipk, crypto)
-        responder = CaseResponder.new(responder_cert_chain, responder_key, fabric_id, responder_node_id, session_ipk, crypto)
+        responder = CaseResponder.new(
+          responder_cert_chain, responder_key, fabric_id, responder_node_id, session_ipk, crypto,
+          root_public_key: root_public_key
+        )
 
         # 1. Initiator generates Sigma1
         sigma1 = initiator.generate_sigma1(destination_id || crypto.random_bytes(DESTINATION_ID_LENGTH))

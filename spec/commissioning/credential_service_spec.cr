@@ -119,6 +119,24 @@ module Matter::Commissioning
         target.committed.should eq([{outcome.fabric_index.as(UInt8), 0x9999_u64}])
       end
 
+      it "refuses a node certificate the trusted root did not issue" do
+        service = credential_service(RecordingCredentialTarget.new)
+        commission(service)
+
+        outcome = service.add_noc(
+          noc: CommissioningCertificates.foreign_noc,
+          icac: nil,
+          ipk: Bytes.new(IPK_SIZE, 0_u8),
+          case_admin_subject: 0x9999_u64,
+          admin_vendor_id: 0xFFF1_u16,
+          session_id: TEST_SESSION
+        )
+
+        outcome.ok?.should be_false
+        outcome.status.should eq(Matter::Commissioning::NocStatus::InvalidNoc)
+        service.fabric_table.size.should eq(0)
+      end
+
       it "requires the CSR of this session" do
         service = credential_service(RecordingCredentialTarget.new)
         commission(service, session_id: 1_u64)
@@ -241,7 +259,7 @@ module Matter::Commissioning
 
         key = service.public_key_from_certificate(CommissioningCertificates.root_certificate)
 
-        key.should eq(CommissioningCertificates.public_key)
+        key.should eq(CommissioningCertificates.root_public_key)
       end
 
       it "rejects a certificate in an unknown format" do

@@ -238,7 +238,8 @@ describe Matter::Cluster::OperationalCredentials do
           csr_request_tlv
         )
 
-        root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
+        authority = TestCertificateAuthority.default
+        root_cert = authority.root_certificate
         add_root_tlv = create_add_trusted_root_cert_request_tlv(root_cert)
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
@@ -317,7 +318,8 @@ describe Matter::Cluster::OperationalCredentials do
           create_csr_request_tlv(nonce1, false)
         )
 
-        root_public_key1 = Bytes.new(65); root_public_key1[0] = 0x04_u8; (1...65).each { |i| root_public_key1[i] = i.to_u8 }; root_cert1 = create_test_tlv_certificate(root_public_key1, 0xAAAAAAAAAAAAAAAA_u64)
+        authority1 = TestCertificateAuthority.default
+        root_cert1 = authority1.root_certificate(0xAAAAAAAAAAAAAAAA_u64)
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert1)
@@ -343,13 +345,14 @@ describe Matter::Cluster::OperationalCredentials do
           create_csr_request_tlv(nonce2, false)
         )
 
-        root_public_key2 = Bytes.new(65); root_public_key2[0] = 0x04_u8; (1...65).each { |i| root_public_key2[i] = (i + 1).to_u8 }; root_cert2 = create_test_tlv_certificate(root_public_key2, 0xBBBBBBBBBBBBBBBB_u64)
+        authority2 = TestCertificateAuthority.new
+        root_cert2 = authority2.root_certificate(0xBBBBBBBBBBBBBBBB_u64)
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert2)
         )
 
-        noc2 = create_mock_noc(0x2222222222222222_u64, 0xBBBBBBBBBBBBBBBB_u64)
+        noc2 = authority2.issue(0xBBBBBBBBBBBBBBBB_u64, 0x2222222222222222_u64)
 
         ipk2 = Bytes.new(16, 0x02_u8)
         invoke(cluster,
@@ -381,7 +384,8 @@ describe Matter::Cluster::OperationalCredentials do
           create_csr_request_tlv(nonce1, false)
         )
 
-        root_public_key1 = Bytes.new(65); root_public_key1[0] = 0x04_u8; (1...65).each { |i| root_public_key1[i] = i.to_u8 }; root_cert1 = create_test_tlv_certificate(root_public_key1, 0xAAAAAAAAAAAAAAAA_u64)
+        authority1 = TestCertificateAuthority.default
+        root_cert1 = authority1.root_certificate(0xAAAAAAAAAAAAAAAA_u64)
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert1)
@@ -408,13 +412,14 @@ describe Matter::Cluster::OperationalCredentials do
           create_csr_request_tlv(nonce2, false)
         )
 
-        root_public_key2 = Bytes.new(65); root_public_key2[0] = 0x04_u8; (1...65).each { |i| root_public_key2[i] = (i + 1).to_u8 }; root_cert2 = create_test_tlv_certificate(root_public_key2, 0xBBBBBBBBBBBBBBBB_u64)
+        authority2 = TestCertificateAuthority.new
+        root_cert2 = authority2.root_certificate(0xBBBBBBBBBBBBBBBB_u64)
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert2)
         )
 
-        noc2 = create_mock_noc(0x2222222222222222_u64, same_fabric_id)
+        noc2 = authority2.issue(same_fabric_id, 0x2222222222222222_u64)
 
         ipk2 = Bytes.new(16, 0x02_u8)
         result = invoke(cluster,
@@ -444,7 +449,8 @@ describe Matter::Cluster::OperationalCredentials do
           create_csr_request_tlv(nonce1, false)
         )
 
-        root_public_key1 = Bytes.new(65); root_public_key1[0] = 0x04_u8; (1...65).each { |i| root_public_key1[i] = i.to_u8 }; root_cert1 = create_test_tlv_certificate(root_public_key1, 0xAAAAAAAAAAAAAAAA_u64)
+        authority1 = TestCertificateAuthority.default
+        root_cert1 = authority1.root_certificate(0xAAAAAAAAAAAAAAAA_u64)
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert1)
@@ -476,7 +482,7 @@ describe Matter::Cluster::OperationalCredentials do
           create_add_trusted_root_cert_request_tlv(root_cert1)
         )
 
-        noc2 = create_mock_noc(0x2222222222222222_u64, same_fabric_id)
+        noc2 = authority1.issue(same_fabric_id, 0x2222222222222222_u64)
         ipk2 = Bytes.new(16, 0x02_u8)
         result = invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_NOC,
@@ -507,7 +513,8 @@ describe Matter::Cluster::OperationalCredentials do
           create_csr_request_tlv(nonce, false)
         )
 
-        root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |i| root_public_key[i] = i.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
+        authority = TestCertificateAuthority.default
+        root_cert = authority.root_certificate
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
           create_add_trusted_root_cert_request_tlv(root_cert)
@@ -553,7 +560,8 @@ describe Matter::Cluster::OperationalCredentials do
             create_csr_request_tlv(nonce, false)
           )
 
-          root_public_key = Bytes.new(65); root_public_key[0] = 0x04_u8; (1...65).each { |j| root_public_key[j] = j.to_u8 }; root_cert = create_test_tlv_certificate(root_public_key)
+          authority = TestCertificateAuthority.default
+          root_cert = authority.root_certificate
           invoke(cluster,
             Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
             create_add_trusted_root_cert_request_tlv(root_cert)

@@ -38,6 +38,12 @@ module Matter
       getter controller_noc : Bytes
       getter controller_private_key : Bytes
 
+      # Private key of the root certificate, which is what issues a node
+      # certificate to each device this controller commissions. Nil for a
+      # fabric created before the controller kept it, which can still connect
+      # to the devices it already commissioned but cannot commission new ones.
+      getter root_private_key : Bytes?
+
       getter admin_vendor_id : UInt16
 
       def initialize(
@@ -48,8 +54,21 @@ module Matter
         @root_public_key : Bytes,
         @controller_noc : Bytes,
         @controller_private_key : Bytes,
+        @root_private_key : Bytes? = nil,
         @admin_vendor_id : UInt16 = DEFAULT_ADMIN_VENDOR_ID,
       )
+      end
+
+      # The key pair this fabric issues certificates with
+      def certificate_authority_key : Crypto::Key
+        private_key = @root_private_key
+        if private_key.nil?
+          raise Matter::ConfigurationError.new(
+            "Fabric 0x#{@fabric_id.to_s(16)} has no certificate authority key; re-pair to commission new devices"
+          )
+        end
+
+        Crypto.private_key(private_key)
       end
     end
 

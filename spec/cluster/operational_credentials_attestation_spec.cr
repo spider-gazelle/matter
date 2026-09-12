@@ -358,13 +358,11 @@ describe Matter::Cluster::OperationalCredentials do
           create_csr_request_tlv(nonce, false)
         )
 
-        # Create a valid 65-byte uncompressed EC public key
-        public_key = Bytes.new(65)
-        public_key[0] = 0x04_u8
-        (1...65).each { |i| public_key[i] = (i % 256).to_u8 }
+        authority = TestCertificateAuthority.default
+        public_key = authority.root_public_key
 
-        # Create a TLV root certificate with tag 9 containing a valid 65-byte EC public key
-        tlv_cert = create_test_tlv_certificate(public_key, 0x1234567890_u64)
+        # A TLV root certificate whose tag 9 carries that public key
+        tlv_cert = authority.root_certificate(0x1234567890_u64)
 
         # Add trusted root certificate (TLV format)
         invoke(cluster,
@@ -412,6 +410,9 @@ describe Matter::Cluster::OperationalCredentials do
         # Generate a real DER certificate using OpenSSL's native key generation
         # This ensures the certificate has a proper EC public key structure
         pkey = OpenSSL::PKey::EC.generate_by_curve_name("prime256v1")
+        root_key = Matter::Crypto::Key.new(Matter::Crypto::KeyType::EC, Matter::Crypto::CurveType::P256)
+        root_key.private_bits = pkey.private_key_bytes
+        root_key.public_bits = pkey.public_key_bytes
 
         cert = OpenSSL::X509::Certificate.new
         cert.version = 2
@@ -438,8 +439,15 @@ describe Matter::Cluster::OperationalCredentials do
           create_add_trusted_root_cert_request_tlv(der_cert)
         )
 
-        # Create NOC with same public key
-        noc = create_mock_noc_with_key(0x2222222222222222_u64, 0x9876543210_u64, public_key_bytes)
+        # A node certificate the DER root actually issued
+        noc = Matter::Crypto::MatterCertificate::Builder.node(
+          public_key: public_key_bytes,
+          fabric_id: 0x9876543210_u64,
+          node_id: 0x2222222222222222_u64,
+          issuer_key: root_key,
+          issuer_rcac_id: TestCertificateAuthority::ROOT_CERTIFICATE_ID,
+          serial: Bytes[0x01]
+        )
 
         # Invoke AddNOC - should successfully extract public key from DER certificate
         ipk = Bytes.new(16, 1_u8)
@@ -475,13 +483,11 @@ describe Matter::Cluster::OperationalCredentials do
           create_csr_request_tlv(nonce, false)
         )
 
-        # Create a known public key
-        public_key = Bytes.new(65)
-        public_key[0] = 0x04_u8
-        (1...65).each { |i| public_key[i] = i.to_u8 }
+        authority = TestCertificateAuthority.default
+        public_key = authority.root_public_key
 
         # Create TLV root certificate
-        tlv_cert = create_test_tlv_certificate(public_key, 0x1_u64)
+        tlv_cert = authority.root_certificate(0x1_u64)
 
         invoke(cluster,
           Matter::Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,

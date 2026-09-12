@@ -4,6 +4,7 @@ require "../src/matter"
 require "./support/test_network_backend"
 require "./support/cluster_helpers"
 require "./support/capture_transport"
+require "./support/certificate_authority"
 require "./support/commissioning_helpers"
 require "./support/protocol_messages"
 

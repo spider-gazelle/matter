@@ -360,6 +360,16 @@ module Matter
           Log.warn { "AddNOC: NO ICAC provided - CASE may fail if controller expects 3-tier PKI" }
         end
 
+        # The certificate has to have been issued by the root added in this
+        # same failsafe. Without this the node id and CASE authenticated tags
+        # it names are whatever the commissioner chose to write.
+        begin
+          Crypto::MatterCertificate::Validation.verify_chain(noc, icac, root_public_key)
+        rescue ex : Matter::AuthenticationError
+          Log.error(exception: ex) { "AddNOC: NOC does not chain to the trusted root" }
+          return NocOutcome.new(NocStatus::InvalidNoc, debug_text: "NOC is not issued by the trusted root: #{ex.message}")
+        end
+
         fabric = @fabric_table.add_fabric_auto_index(
           fabric_id: fabric_id,
           node_id: node_id,
