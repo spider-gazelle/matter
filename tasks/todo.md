@@ -124,11 +124,12 @@ Detailed plan: [phase6-plan.md](phase6-plan.md).
 
 ## Phase 7: Close out
 Detailed plan: [phase7-plan.md](phase7-plan.md).
-- [ ] Step 1: spec tranche 2 (`build` helper + `endpoint(n)` sweep, split the eleven 600+ line specs,
+- [x] Step 1: spec tranche 2 (`build` helper + `endpoint(n)` sweep, split every 600+ line spec,
       specs for the Phase 6 objects, resolve the one true pending)
-- [ ] Step 2: `CHANGELOG.md`, README architecture/controller/DSL sections, `docs/architecture.md`,
+- [x] Step 2: `CHANGELOG.md`, README architecture/controller/DSL sections, `docs/architecture.md`,
       `AGENTS.md` pointer, `shard.yml` 0.2.0
-- [ ] Step 3: CI build job for every example + storage CLI + e2e specs; final gates; PR to develop
+- [x] Step 3: CI build job for every example + storage CLI + e2e specs; final gates; PR to develop
+- [ ] iOS pairing smoke test by the user (the one gate that cannot be automated here)
 
 ## Phase 3 Step 2: consumers onto `Storage::Backend`, delete the legacy layer
 - [x] `Matter::Debouncer` (single fiber, trigger/flush/cancel) shared by cluster/fabric/session writes
@@ -323,6 +324,58 @@ Detailed plan: [phase7-plan.md](phase7-plan.md).
 | `message_handler.cr` lines | 2635 | 364 |
 | example lines (ten devices) | 3383 | 1191 + 347 shared |
 | unit examples | 2394 | 2546 |
+
+### Phase 7 (2026-09-12)
+- Spec tranche 2: the 87 remaining direct endpoint constructions are 8, all in files that test the
+  `EndpointNumber` wrapper itself or define the helper. `spec/mdns/responder_spec.cr` and
+  `spec/protocol/session_registry_spec.cr` split along their `describe` boundaries with their preambles
+  lifted into `spec/support/`; no spec exceeds 598 lines.
+- The one true pending became a passing spec. The matter.js report-data divergence is deliberate: iOS
+  needs fixed-width path fields, and the union-typed path members mean the width cannot be inferred from
+  the value. The spec now asserts our 43-byte encoding and that the divergence is confined to the path
+  list.
+- `spec/tlv_field_types_spec.cr` walks every `TLV::Serializable` includer at compile time and asserts no
+  field can reach an unencodable type, in both directions. The encode set is discovered from the shard's
+  live `serialize_value` overloads; the decode set is its closed union-branch member list, so the
+  asymmetry that produced the door lock bug is now a compile-time guard.
+- `DataType::FabricIndex` deleted: it wrapped a `UInt8` that is bare on the wire, had no TLV serializer,
+  and every call site unwrapped it. `DataType::NO_FABRIC` remains for the reserved index 0.
+- `CHANGELOG.md` (91 entries under Added/Changed/Fixed/Removed plus a "Migrating from 0.1" section),
+  README architecture, controller and device-DSL sections with every sample compiled, `docs/architecture.md`,
+  `AGENTS.md` as a pointer, `CLAUDE.md` with the conventions list, `shard.yml` at 0.2.0.
+- CI gained a `build` job type-checking all ten examples, the chip-tool, the storage CLI and the e2e
+  helpers. Nine examples, the CLI and the e2e specs had never been compiled in CI, which is how a
+  450-file refactor could have broken them silently.
+- The final `./test` failed once on an image build: Crystal keeps only the ten most recently used
+  program directories per cache root and prunes at the start of every compile, so one of the eleven
+  parallel example builds deleted a sibling's directory mid-codegen. Each build now gets its own cache
+  root.
+
+### Whole refactor (develop -> refactor/cleanup)
+
+| Metric | develop | refactor/cleanup |
+|---|---|---|
+| commits | - | 151 |
+| `src/` lines | 46,886 | 36,318 |
+| largest `src/` file | 2,946 (`message_handler.cr`) | 1,085 (`door_lock.cr`) |
+| `message_handler.cr` lines | 2,946 | 378 |
+| example lines (ten devices) | 5,508 | 2,134 incl. shared console |
+| spec files / lines | 140 / 40,208 | 193 / 42,484 |
+| largest spec file | 1,868 | 598 |
+| unit examples | 2,133 | 2,545 |
+| e2e examples | 61 | 66 |
+| ameba findings | 250 | 0 |
+| pending specs | 1 unconditional | 0 (3 environment guards) |
+
+Real defects the refactor found and fixed, none of which the old suite could see: the destination group
+id encoded as four bytes, the AAD mismatch between encrypt and decrypt, Groups / Colour Control / Window
+Covering decoding command payloads as raw slices, a CASE initiator that could never have interoperated,
+`fabric_id > Int64::MAX` silently factory-resetting a device on restart, subscriptions completed via a
+standalone ack never persisting, two racing cleanup fibers, single-slot handshake state, and door lock
+event payloads typed as datatype wrappers with no TLV encoder.
+
+Outstanding: the user's iOS pairing smoke test (attribute-list ordering and cluster revisions changed),
+and reporting the tlv shard's nilable-union decode gap upstream to `Crystal-Matter/tlv`.
 
 ### Phase 5 Step 2b (2026-09-11)
 - DSL: `computed:` (reader `name` / `name(fabric_index)`, writer `name=` when writable),
