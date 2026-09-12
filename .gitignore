@@ -22,3 +22,7 @@
 # Agent worktrees and local tooling
 /.claude/worktrees/
 .DS_Store
+
+# Working notes: plans, the running checklist and lessons. Local to whoever is
+# doing the work, never part of the repository.
+/tasks/

@@ -84,6 +84,9 @@ of how a datagram reaches a cluster and where persistence, events and commission
 
 ## Task Management
 
+`tasks/` is gitignored working notes, local to whoever is doing the work. Nothing in it is committed,
+so anything a reader of the repository needs belongs in `CHANGELOG.md`, `README.md` or `docs/`.
+
 1. **Plan First**: Write plan to `tasks/todo.md` with checkable items  
 2. **Verify Plan**: Check in before starting implementation  
 3. **Track Progress**: Mark items complete as you go  
