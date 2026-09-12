@@ -129,7 +129,7 @@ Detailed plan: [phase7-plan.md](phase7-plan.md).
 - [x] Step 2: `CHANGELOG.md`, README architecture/controller/DSL sections, `docs/architecture.md`,
       `AGENTS.md` pointer, `shard.yml` 0.2.0
 - [x] Step 3: CI build job for every example + storage CLI + e2e specs; final gates; PR to develop
-- [ ] iOS pairing smoke test by the user (the one gate that cannot be automated here)
+- [x] iOS pairing smoke test by the user (2026-09-12: paired, controlled and observed from the Home app)
 
 ## Phase 3 Step 2: consumers onto `Storage::Backend`, delete the legacy layer
 - [x] `Matter::Debouncer` (single fiber, trigger/flush/cancel) shared by cluster/fabric/session writes

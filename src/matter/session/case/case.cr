@@ -67,50 +67,6 @@ module Matter
         salt.to_slice
       end
 
-      # Validate a peer certificate chain against trusted roots. Shared by both
-      # ends of the handshake: the peer certificate is the only state involved.
-      #
-      # @param peer_cert The peer certificate (DER), or nil when none was received
-      # @param trusted_roots Array of trusted root certificates (DER or Certificate objects)
-      # @param intermediate_certs Optional array of intermediate certificates
-      # @return true if chain is valid, false otherwise
-      def self.validate_certificate_chain(
-        peer_cert : Bytes?,
-        trusted_roots : Array(Bytes | OpenSSL::X509::Certificate),
-        intermediate_certs : Array(Bytes | OpenSSL::X509::Certificate)? = nil,
-      ) : Bool
-        return false if peer_cert.nil?
-
-        begin
-          # Parse peer certificate
-          peer_cert_obj = OpenSSL::X509::Certificate.from_der(peer_cert)
-
-          # Create validator and add trusted roots
-          validator = OpenSSL::X509::CertificateValidator.new
-          trusted_roots.each do |root|
-            root_cert = root.is_a?(Bytes) ? OpenSSL::X509::Certificate.from_der(root) : root
-            validator.add_trusted_cert(root_cert)
-          end
-
-          # Build intermediate chain if provided
-          chain = if intermediate_certs
-                    intermediate_certs.map do |cert|
-                      cert.is_a?(Bytes) ? OpenSSL::X509::Certificate.from_der(cert) : cert
-                    end
-                  end
-
-          # Verify the certificate chain
-          validator.verify(peer_cert_obj, chain)
-          true
-        rescue ex : OpenSSL::X509::CertificateValidationError
-          Log.error(exception: ex) { "Certificate chain validation failed (peer_cert_hex=#{peer_cert.hexstring})" }
-          false
-        rescue ex
-          Log.error(exception: ex) { "Certificate parsing failed (peer_cert_hex=#{peer_cert.hexstring})" }
-          false
-        end
-      end
-
       # Derive the session keys both ends share once Sigma3 has been exchanged:
       #
       #     I2R ‖ R2I ‖ AttestationChallenge = HKDF(sharedSecret, salt, "SessionKeys", 48)
@@ -311,14 +267,6 @@ module Matter
             :SHA256
           )
           raise Matter::AuthenticationError.new("CASE: Sigma3 signature verification failed") unless verified
-        end
-
-        # Validate the peer certificate chain against trusted roots
-        def validate_certificate_chain(
-          trusted_roots : Array(Bytes | OpenSSL::X509::Certificate),
-          intermediate_certs : Array(Bytes | OpenSSL::X509::Certificate)? = nil,
-        ) : Bool
-          Case.validate_certificate_chain(@peer_cert, trusted_roots, intermediate_certs)
         end
 
         # Derive session keys after successful CASE
@@ -657,14 +605,6 @@ module Matter
           end
 
           Crypto::MatterCertificate::Validation.verify_chain(peer_noc, peer_icac, root)
-        end
-
-        # Validate the peer certificate chain against trusted roots
-        def validate_certificate_chain(
-          trusted_roots : Array(Bytes | OpenSSL::X509::Certificate),
-          intermediate_certs : Array(Bytes | OpenSSL::X509::Certificate)? = nil,
-        ) : Bool
-          Case.validate_certificate_chain(@peer_cert, trusted_roots, intermediate_certs)
         end
 
         # Derive session keys after successful CASE

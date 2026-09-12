@@ -422,41 +422,6 @@ describe Matter::Session::Case do
     end
   end
 
-  describe "certificate chain validation" do
-    it "behaves identically whichever side it is called from" do
-      crypto = Matter::Crypto::StandardCrypto.new
-      ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
-      authority = crypto.create_key_pair
-      initiator = new_initiator(crypto, ipk, authority)
-      responder = new_responder(crypto, ipk, authority)
-
-      manager = Matter::Certificate::AttestationCertificateManager.new(0xFFF1_u16)
-      roots = [manager.paa_cert] of Bytes | OpenSSL::X509::Certificate
-      no_roots = [] of Bytes | OpenSSL::X509::Certificate
-
-      # No peer certificate received yet
-      initiator.validate_certificate_chain(roots).should be_false
-      responder.validate_certificate_chain(roots).should be_false
-
-      # The PAI is signed by the PAA, so it validates against it on both sides
-      initiator.peer_cert = manager.pai_cert
-      responder.peer_cert = manager.pai_cert
-      initiator.validate_certificate_chain(roots).should be_true
-      responder.validate_certificate_chain(roots).should be_true
-
-      # Without a trusted root both reject it
-      initiator.validate_certificate_chain(no_roots).should be_false
-      responder.validate_certificate_chain(no_roots).should be_false
-
-      # An unparseable peer certificate is rejected, not raised, on both sides
-      garbage = crypto.random_bytes(64)
-      initiator.peer_cert = garbage
-      responder.peer_cert = garbage
-      initiator.validate_certificate_chain(roots).should be_false
-      responder.validate_certificate_chain(roots).should be_false
-    end
-  end
-
   describe "CASE session establishment" do
     it "derives the same session keys on both sides of an in-process handshake" do
       crypto = Matter::Crypto::StandardCrypto.new

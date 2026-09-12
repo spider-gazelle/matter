@@ -22,27 +22,6 @@ def create_certificate_chain_request_tlv(cert_type : UInt8) : TLV::Any
   ).to_tlv(nil)
 end
 
-# Helper to create a valid TLV certificate with a public key for testing (root cert format)
-def create_test_tlv_certificate(public_key : Bytes, fabric_id : UInt64 = 0x1_u64) : Bytes
-  signature = Bytes.new(64, 0xAB_u8)
-  # Root cert has rcac_id in subject (not fabric_id/node_id like NOC)
-  subject = Matter::Crypto::DNAttributes.new(rcac_id: fabric_id)
-  issuer = Matter::Crypto::DNAttributes.new(rcac_id: fabric_id)
-
-  Matter::Crypto::MatterCertificate.new(
-    serial_number: Bytes[0x01],
-    signature_algorithm: 1_u8,
-    issuer: issuer,
-    not_before: 0_u32,
-    not_after: 0xFFFFFFFF_u32,
-    subject: subject,
-    public_key_algorithm: 1_u8,
-    elliptic_curve_id: 1_u8,
-    ec_public_key: public_key,
-    signature: signature
-  ).to_slice
-end
-
 def create_csr_request_tlv(nonce : Bytes, is_for_update : Bool? = nil) : TLV::Any
   Matter::Cluster::OperationalCredentials::Tlv::CsrRequest.new(
     csr_nonce: nonce,

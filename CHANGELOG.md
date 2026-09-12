@@ -239,6 +239,9 @@ clusters, the interaction model and the protocol objects. It is a breaking relea
 - `FabricTable#export` / `#import`, five never-wired commissioning callbacks, the dead second
   interaction model path, and the transport's MRP retransmit engine (it had no caller and could
   never have run).
+- `Session::Case.validate_certificate_chain` and its two wrappers. It parsed X.509 DER, so it could
+  never have read the Matter TLV certificate a CASE peer presents; nothing outside its own spec called
+  it. Chain validation is `Crypto::MatterCertificate::Validation`.
 - The CASE Sigma3 "test compatibility" fallback — the handshake now fails closed on a decrypt or
   signature failure.
 - DER decoding and the X.509 helpers; `DERCodec` is limited to the certification declaration encoder.
