@@ -13,6 +13,10 @@ jobs:
         uses: crystal-lang/install-crystal@v1
       - name: Install Dependencies
         run: shards install
+      # ameba declares no executable in its shard.yml, so `shards install` never
+      # produces bin/ameba; build it the way the repository's own bin/ameba was built.
+      - name: Build Ameba
+        run: crystal build lib/ameba/bin/ameba.cr -o bin/ameba
       - name: Ameba
         run: ./bin/ameba
       - name: Format
