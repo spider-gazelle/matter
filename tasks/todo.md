@@ -148,6 +148,21 @@ Detailed plan: [phase7-plan.md](phase7-plan.md).
 - [x] Gates: full spec (2234 examples, 0 failures, 1 pending), `--no-codegen` builds (library, controller, chip-tool, storage CLI, ten examples),
       format, ameba on touched files
 
+## Follow-ups (not in this PR)
+
+- **Operational certificate chain validation.** The device verifies that a CASE peer holds the private
+  key of the certificate it presents, but never that the certificate was issued by the fabric's root.
+  A fabric member who knows the IPK can therefore mint a certificate with any node id or CAT and pass
+  the handshake, which defeats access control. The same is true at `AddNOC`, which checks the format
+  and extracts the root public key without verifying a signature. Implementing this needs a byte-exact
+  TLV to ASN.1 DER certificate encoder: a Matter operational certificate travels as TLV but its
+  signature is computed over the DER form (matter.js `X509Base#asUnsignedAsn1`), and the refactor
+  removed the DER helpers. The in-repo controller also issues certificates with a random 64-byte
+  signature, so it has to become a real certificate authority before the check can be enforced or
+  `run_validation.sh` stops passing.
+- `Case.validate_certificate_chain` only parses X.509 DER, so it cannot be used on a CASE peer
+  certificate; it is reachable from specs only. Fold it into the work above or delete it.
+
 ## Review
 
 ### Phase 0 (2026-09-10)
