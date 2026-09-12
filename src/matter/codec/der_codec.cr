@@ -19,13 +19,29 @@ module Matter
 
       alias Value = UInt8 | UInt16 | UInt32 | Slice(UInt8) | Array(Value) | Hash(String, Value)?
 
+      # The last year a UTCTime can express; later dates are GeneralizedTime
+      UTC_TIME_LAST_YEAR = 2049
+      # A bit string whose value bits are all zero has a full unused-bit count
+      BIT_STRING_BITS_PER_BYTE = 8
+
       enum Type : UInt8
+        Boolean          = 0x01
         UnsignedInt      = 0x02
+        BitString        = 0x03
         OctetString      = 0x04
         ObjectIdentifier = 0x06
+        Utf8String       = 0x0C
         Sequence         = 0x10
         Set              = 0x11
+        PrintableString  = 0x13
+        Ia5String        = 0x16
+        UtcTime          = 0x17
+        GeneralizedTime  = 0x18
       end
+
+      # DER spells `true` as every bit set, not as 1
+      BOOLEAN_TRUE  = 0xFF_u8
+      BOOLEAN_FALSE = 0x00_u8
 
       enum Class : UInt8
         ContextSpecific = 0x80
@@ -44,7 +60,7 @@ module Matter
             if value
                  .as(Hash(String, Value))
                  .[TAG_ID_KEY]?
-              return encode_ansi1(value[TAG_ID_KEY].as(UInt8), value[BYTES_KEY].as(Slice(UInt8)))
+              return encode_asn1(value[TAG_ID_KEY].as(UInt8), value[BYTES_KEY].as(Slice(UInt8)))
             end
 
             encode_hash(value)
@@ -68,11 +84,11 @@ module Matter
             encoded_entries.push(encode(entry))
           end
 
-          encode_ansi1((Type::Set.value | CONSTRUCTED).to_u8, Slice(UInt8).join(encoded_entries))
+          encode_asn1((Type::Set.value | CONSTRUCTED).to_u8, Slice(UInt8).join(encoded_entries))
         end
 
         private def encode_slice(value : Slice(UInt8)) : Slice(UInt8)
-          encode_ansi1(Type::OctetString.value, value)
+          encode_asn1(Type::OctetString.value, value)
         end
 
         private def encode_hash(hash : Hash(String, Value)) : Slice(UInt8)
@@ -82,11 +98,11 @@ module Matter
             attributes.push(encode(hash[key]))
           end
 
-          encode_ansi1((Type::Sequence.value | CONSTRUCTED).to_u8, Slice(UInt8).join(attributes))
+          encode_asn1((Type::Sequence.value | CONSTRUCTED).to_u8, Slice(UInt8).join(attributes))
         end
 
         def encode_unsigned_int(value : UInt8 | UInt16 | UInt32, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian)
-          return encode_ansi1(Type::UnsignedInt.value, Slice(UInt8).new(1, 0)) if value == 0
+          return encode_asn1(Type::UnsignedInt.value, Slice(UInt8).new(1, 0)) if value == 0
 
           writer = IO::Memory.new(INTEGER_BYTES + TAG_BYTES)
 
@@ -109,7 +125,7 @@ module Matter
           array = writer.rewind.to_slice.to_a.[index..]
           slice = Slice(UInt8).new(array.size) { |i| array[i] }
 
-          encode_ansi1(Type::UnsignedInt.value, slice)
+          encode_asn1(Type::UnsignedInt.value, slice)
         end
 
         def encode_length_bytes(value, byte_format : IO::ByteFormat = IO::ByteFormat::BigEndian)
@@ -144,7 +160,7 @@ module Matter
           Slice(UInt8).new(array.size) { |i| array[i] }
         end
 
-        private def encode_ansi1(type : UInt8, data : Slice(UInt8)) : Slice(UInt8)
+        def encode_asn1(type : UInt8, data : Slice(UInt8)) : Slice(UInt8)
           Slice(UInt8).join([Slice(UInt8).new(1, type), encode_length_bytes(data.size), data])
         end
 
@@ -199,19 +215,116 @@ module Matter
 
           # Wrap in DER OBJECT IDENTIFIER tag
           oid_bytes = io.to_slice
-          encode_ansi1(Type::ObjectIdentifier.value, oid_bytes)
+          encode_asn1(Type::ObjectIdentifier.value, oid_bytes)
         end
 
         # Encode bytes as DER OCTET STRING
         # Returns DER-encoded OCTET STRING (tag 0x04)
         def encode_octet_string(data : Bytes) : Bytes
-          encode_ansi1(Type::OctetString.value, data)
+          encode_asn1(Type::OctetString.value, data)
         end
 
         # Encode bytes as DER SEQUENCE
         # Returns DER-encoded SEQUENCE (tag 0x30 with constructed bit)
         def encode_sequence(data : Bytes) : Bytes
-          encode_ansi1((Type::Sequence.value | CONSTRUCTED).to_u8, data)
+          encode_asn1((Type::Sequence.value | CONSTRUCTED).to_u8, data)
+        end
+
+        # Concatenate already-encoded members into a SEQUENCE
+        def encode_sequence(members : Array(Bytes)) : Bytes
+          encode_sequence(Slice(UInt8).join(members))
+        end
+
+        # Concatenate already-encoded members into a SET
+        def encode_set(members : Array(Bytes)) : Bytes
+          encode_asn1((Type::Set.value | CONSTRUCTED).to_u8, Slice(UInt8).join(members))
+        end
+
+        def encode_boolean(value : Bool) : Bytes
+          encode_asn1(Type::Boolean.value, Bytes[value ? BOOLEAN_TRUE : BOOLEAN_FALSE])
+        end
+
+        # DER INTEGER from a big-endian magnitude. A leading zero byte is kept
+        # or added only where it is needed to keep the value positive, and
+        # redundant leading zeros are dropped.
+        def encode_integer(magnitude : Bytes) : Bytes
+          padded = Slice(UInt8).join([Bytes[0], magnitude])
+
+          start = 0
+          while start < padded.size - 1
+            break unless padded[start] == 0
+            break if padded[start + 1] >= LONG_FORM_LENGTH
+            start += 1
+          end
+
+          encode_asn1(Type::UnsignedInt.value, padded[start..])
+        end
+
+        # DER BIT STRING. `unused_bits` counts the bits of the final byte that
+        # carry no value, which DER stores as the first content byte.
+        def encode_bit_string(data : Bytes, unused_bits : Int = 0) : Bytes
+          encode_asn1(Type::BitString.value, Slice(UInt8).join([Bytes[unused_bits.to_u8], data]))
+        end
+
+        # A bit flag set encoded as a BIT STRING: bit 0 of `flags` is the first
+        # bit on the wire, so the byte is reversed and the trailing zero bits
+        # are reported as unused.
+        def encode_bit_flags(flags : Int) : Bytes
+          bits = flags.to_u8
+          reversed = 0_u8
+          BIT_STRING_BITS_PER_BYTE.times do |index|
+            reversed |= (1_u8 << (BIT_STRING_BITS_PER_BYTE - 1 - index)) if bits.bit(index) == 1
+          end
+
+          unused = BIT_STRING_BITS_PER_BYTE
+          BIT_STRING_BITS_PER_BYTE.times do |index|
+            if bits.bit(BIT_STRING_BITS_PER_BYTE - 1 - index) == 1
+              unused = index
+              break
+            end
+          end
+
+          encode_bit_string(Bytes[reversed], unused)
+        end
+
+        def encode_utf8_string(value : String) : Bytes
+          encode_asn1(Type::Utf8String.value, value.to_slice)
+        end
+
+        def encode_printable_string(value : String) : Bytes
+          unless value.matches?(/\A[A-Za-z0-9 '()+,\-.\/:=?]*\z/)
+            raise Matter::CodecError.new("#{value.inspect} is not a printable string")
+          end
+
+          encode_asn1(Type::PrintableString.value, value.to_slice)
+        end
+
+        def encode_ia5_string(value : String) : Bytes
+          unless value.each_char.all?(&.ascii?)
+            raise Matter::CodecError.new("#{value.inspect} is not an IA5 string")
+          end
+
+          encode_asn1(Type::Ia5String.value, value.to_slice)
+        end
+
+        # UTCTime up to 2049 and GeneralizedTime after it, the split X.509 uses
+        def encode_time(time : Time) : Bytes
+          utc = time.to_utc
+          if utc.year > UTC_TIME_LAST_YEAR
+            encode_asn1(Type::GeneralizedTime.value, utc.to_s("%Y%m%d%H%M%SZ").to_slice)
+          else
+            encode_asn1(Type::UtcTime.value, utc.to_s("%y%m%d%H%M%SZ").to_slice)
+          end
+        end
+
+        # `[n] { ... }`: a constructed context tag wrapping encoded content
+        def encode_explicit(tag : Int, content : Bytes) : Bytes
+          encode_asn1((tag.to_u8 | Class::ContextSpecific.value | CONSTRUCTED).to_u8, content)
+        end
+
+        # `[n] value`: a primitive context tag replacing the value's own tag
+        def encode_implicit(tag : Int, content : Bytes) : Bytes
+          encode_asn1((tag.to_u8 | Class::ContextSpecific.value).to_u8, content)
         end
       end
 
