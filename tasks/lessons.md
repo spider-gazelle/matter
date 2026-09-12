@@ -8,13 +8,13 @@
   parallel compiles share a cache, count the programs against that limit. See the earlier BuildKit
   cache-mount race below: same directory, different mechanism.
 
-- 2026-09-12: A custom type used as a TLV field must work in both directions, and the two are not
+- 2026-09-12: A custom type used as a TLV field must work in both directions, and the two were not
   symmetric. The tlv shard's `serialize_value` dispatches on a registered overload, so any
-  `define_id` type encodes; but its union branch (`lib/tlv/src/tlv/serializable.cr:406-503`) matches a
-  closed member set with no `else`, so a *nilable* custom type (`NodeId?`) encodes and then fails to
-  decode. Only `FabricIndex` broke encoding, because it never registered an overload. Test a new field
-  type by round-trip, nilable and non-nilable, not by encode alone. Report upstream to
-  `Crystal-Matter/tlv`.
+  `define_id` type encoded; but its union branch matched a closed member set with no `else`, so a
+  *nilable* custom type (`NodeId?`) encoded and then failed to decode. Only `FabricIndex` broke
+  encoding, because it never registered an overload. Fixed upstream in tlv 1.1.0 (the union branch now
+  falls back to the registered overload) and the guard spec discovers both sets from the shard rather
+  than listing them. Test a new field type by round-trip, nilable and non-nilable, not by encode alone.
 - 2026-09-12: `DataType::FabricIndex` wrapped a `UInt8` that is bare on the wire, so it could not be a
   TLV field and every call site unwrapped it. Deleted; `DataType::NO_FABRIC` remains as the constant for
   the spec's reserved index 0. A value struct earns its keep only when it carries behaviour the

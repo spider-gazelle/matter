@@ -539,5 +539,41 @@ describe Matter::Session::Case do
       responder_context.initiator?.should be_false
       initiator_context.case_session?.should be_true
     end
+
+    it "rejects a Sigma3 whose signature does not match the NOC it presents" do
+      crypto = Matter::Crypto::StandardCrypto.new
+      ipk = crypto.random_bytes(Matter::Session::Case::SYMMETRIC_KEY_LENGTH)
+
+      # The attacker replays a NOC that is not theirs. They reach Sigma3 (the
+      # IPK is a fabric secret they hold) but cannot sign TBS_Data3 with the key
+      # that NOC names, so they sign with their own.
+      victim_key = crypto.create_key_pair
+      attacker_key = crypto.create_key_pair
+      initiator = Matter::Session::Case::CaseInitiator.new(
+        operational_cert: tlv_certificate(victim_key.public_key),
+        operational_key: attacker_key,
+        fabric_id: FABRIC_ID,
+        node_id: NODE_ID,
+        ipk: ipk,
+        crypto: crypto
+      )
+      responder = new_responder(crypto, ipk)
+
+      sigma1 = initiator.generate_sigma1(destination_id(crypto))
+      sigma2 = responder.process_sigma1(
+        sigma1[:ephemeral_public_key],
+        sigma1[:random],
+        sigma1[:session_id],
+        sigma1[:sigma1_bytes]
+      )
+
+      sigma2_bytes = sigma2[:sigma2_bytes]
+      sigma3 = initiator.process_sigma2(
+        Matter::Session::Case::Definitions::Sigma2.from_slice(sigma2_bytes),
+        sigma2_bytes
+      )
+
+      responder.process_sigma3(sigma3[:encrypted_cert], sigma3[:sigma3_bytes]).should be_false
+    end
   end
 end

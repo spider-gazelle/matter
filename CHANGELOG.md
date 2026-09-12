@@ -111,6 +111,11 @@ clusters, the interaction model and the protocol objects. It is a breaking relea
 
 ### Changed
 
+- **The `tlv` shard moved to 2.0.0, which brings `bindata` 3.x.** 1.1.0 fixed a decoder gap this
+  library hit: a type registered through `define_id` encoded as a field but could not be decoded once
+  the field was nilable, because the decoder's union branch matched a closed list of members. 2.0.0 is
+  the bindata bump, a major because `TLV::Header` is a `BinData` and so a consumer cannot hold
+  bindata 2.x alongside it.
 - **`Device::Base` is now `Matter::Device`**, with the runtime in `src/matter/device/runtime.cr`.
 - **`Device.new` takes a storage backend**; `build_storage_manager` is gone.
 - **All 35 cluster classes and files dropped the `Cluster` suffix**: `Cluster::OnOffCluster` in
@@ -171,6 +176,12 @@ clusters, the interaction model and the protocol objects. It is a breaking relea
   callback.
 - The CASE initiator used neither the specification salts nor its constants, so it could never have
   interoperated.
+- The CASE responder decrypted Sigma3 and took the peer's node id and CATs from the certificate inside
+  it without ever verifying the signature over `TBS_Data3`. The certificate was therefore only a claim:
+  anyone who reached Sigma3 could replay a node operational certificate read off the wire and inherit
+  its node id, its CASE authenticated tags and every access control entry written for them. The
+  responder now verifies the signature against the public key the certificate carries and drops the
+  handshake when it does not match.
 - A basic commissioning window advertised a discriminator of `0`.
 - Fan `Step` and the signed Thermostat commands never reached their handlers; they now go through the
   same dispatch path as every other cluster.

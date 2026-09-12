@@ -603,15 +603,37 @@ module Matter
             signed_data_bytes = signed_data.to_slice
             Log.debug { "CASE Sigma3 TBS_Data3: #{signed_data_bytes.size} bytes" }
 
-            # TODO: Verify signature using peer's NOC public key
-            # For now, just log that we received it
+            # The peer holds the private key of the NOC it just presented. Until
+            # this passes, the NOC is only a claim: anyone who reached Sigma3
+            # could replay a NOC read off the wire and inherit its node id, its
+            # CATs and every ACL entry written for them.
+            verify_sigma3_signature(
+              encrypted_data3.responder_noc,
+              signed_data_bytes,
+              encrypted_data3.signature
+            )
+
             Log.info { "CASE Sigma3 processed successfully" }
 
             true
           rescue ex
-            Log.error(exception: ex) { "Failed to decrypt/process Sigma3 (encrypted3_hex=#{encrypted_cert.hexstring})" }
+            Log.error(exception: ex) { "Failed to process Sigma3 (encrypted3_hex=#{encrypted_cert.hexstring})" }
             false
           end
+        end
+
+        # Verify TBS_Data3 against the public key carried by the peer's NOC.
+        # Raises `Matter::AuthenticationError` when the certificate cannot be
+        # read or the signature does not verify.
+        private def verify_sigma3_signature(peer_noc : Bytes, transcript : Bytes, signature : Bytes) : Nil
+          public_key = Crypto::Key.new(Crypto::KeyType::EC, Crypto::CurveType::P256)
+          public_key.public_bits = Crypto::MatterCertificate.public_key_from_tlv(peer_noc)
+
+          @crypto.verify_ecdsa(public_key, transcript, signature)
+        rescue ex : Matter::AuthenticationError
+          raise ex
+        rescue ex
+          raise Matter::AuthenticationError.new("CASE: Sigma3 signature could not be checked: #{ex.message}", cause: ex)
         end
 
         # Validate the peer certificate chain against trusted roots

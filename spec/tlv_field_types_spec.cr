@@ -14,31 +14,17 @@ require "./spec_helper"
 # annotation, flattened through nilable unions, `Array(...)` and tuples, and
 # assert that nothing is left over.
 #
-# The two directions are checked separately, because the decode side is the
-# stricter of the two - see `DECODABLE_UNION_MEMBERS`.
+# Both directions are checked, because they are answered by different overload
+# sets: `serialize_value` for the encoder, `deserialize_value` for the decoder.
+# Each set is read out of the shard at macro time rather than hand-maintained,
+# so a type this library registers through `define_id`
+# (`src/matter/datatype/id.cr`) counts as supported without being listed here.
+#
+# Until tlv 1.1.0 the two were not symmetric: the decoder's union branch matched
+# a closed list of members with no fallback, so a registered type encoded as a
+# field and then raised on `from_slice` the moment the field became nilable.
+# That is fixed upstream; this spec now holds both sides to the same rule.
 module TLVFieldTypes
-  # The union members `TLV::Serializable.deserialize_value` knows how to produce
-  # when its target type is a union (`lib/tlv/src/tlv/serializable.cr`, the
-  # `T.union?` branch). That branch enumerates a closed set and falls through to
-  # `raise "Cannot deserialize TLV element type ..."` with no `else`, so this
-  # list cannot be discovered from the shard the way the encode set can.
-  #
-  # Enums, `Array(...)` and non-`@[TLV::ListFormat]` `TLV::Serializable` structs
-  # are handled by that branch too, and are allowed below in addition to these.
-  #
-  # The asymmetry that matters: a type registered externally through the
-  # `define_id` macro (`src/matter/datatype/id.cr`) installs its own
-  # `serialize_value`/`deserialize_value` overloads, so `NodeId` encodes AND
-  # decodes, but `NodeId?` is a union - it encodes fine and then raises on
-  # `from_slice`, because the union branch never reaches the overload.
-  DECODABLE_UNION_MEMBERS = %w[
-    Nil Bool String Slice(UInt8)
-    Int8 Int16 Int32 Int64
-    UInt8 UInt16 UInt32 UInt64
-    Float32 Float64
-    TLV::Any
-  ]
-
   # Fields whose type the encoder cannot serialize.
   #
   # The supported set is read out of the shard at macro time rather than
@@ -93,18 +79,27 @@ module TLVFieldTypes
     violations
   end
 
-  # Union-typed fields the decoder cannot reconstruct. Narrower than the encode
-  # set: a non-union field dispatches to a registered `deserialize_value`
-  # overload, a union member has to be one the shard's union branch enumerates.
+  # Union-typed fields the decoder cannot reconstruct. A union member has to be
+  # a type the shard's union branch recognises, or one with a registered
+  # `deserialize_value` overload that the branch now falls back to. A
+  # `@[TLV::ListFormat]` struct is excluded: that branch matches a member struct
+  # on a structure element, and a list-format struct is not one.
   def self.decode_violations : Array(String)
     violations = [] of String
 
     {% begin %}
+      {%
+        decodable = ::TLV::Serializable.class.methods
+          .select { |method| method.name.stringify == "deserialize_value" }
+          .map(&.args.[1].restriction.resolve?)
+          .reject(&.==(nil))
+          .map(&.instance)
+      %}
       {% for struct_type in ::TLV::Serializable.includers %}
         {% for ivar in struct_type.instance_vars %}
           {% if ivar.annotation(::TLV::Field) && ivar.type.union? %}
             {% for member in ivar.type.union_types %}
-              {% unless DECODABLE_UNION_MEMBERS.includes?(member.name.stringify) ||
+              {% unless decodable.includes?(member) ||
                           member < Enum ||
                           member.name.starts_with?("Array(") ||
                           (member < ::TLV::Serializable && !member.annotation(::TLV::ListFormat)) %}
