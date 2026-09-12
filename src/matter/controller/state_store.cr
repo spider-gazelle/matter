@@ -1,36 +1,41 @@
-require "json"
-require "file_utils"
+require "../storage/backend"
 require "./state"
 
 module Matter
   module Controller
+    # Persists the controller `State` as the `controller/state` document of a
+    # `Storage::Backend`.
     class StateStore
-      getter storage_directory : String
-      getter path : String
+      COLLECTION  = "controller"
+      DOCUMENT_ID = "state"
 
-      def initialize(@storage_directory : String, filename : String = "controller.json")
-        @path = File.join(@storage_directory, filename)
-        FileUtils.mkdir_p(@storage_directory)
+      getter backend : Storage::Backend
+
+      def initialize(@backend : Storage::Backend)
       end
 
       def load : State
-        state = if File.exists?(@path)
-                  State.from_json(File.read(@path))
-                else
-                  State.new
-                end
+        @backend.open unless @backend.open?
+
+        document = @backend.read(COLLECTION, DOCUMENT_ID)
+        state = document ? State.from_document(document) : State.new
 
         state, dirty = normalize(state)
-        save(state) if dirty && File.exists?(@path)
+        save(state) if dirty && document
         state
+      rescue ex : Matter::StorageError
+        raise ex
       rescue ex
-        raise "Failed to load controller state (path=#{@path}): #{ex.message}"
+        raise Matter::StorageError.new("Failed to load controller state (path=#{@backend.path.inspect}): #{ex.message}", cause: ex)
       end
 
       def save(state : State) : Nil
-        File.write(@path, state.to_pretty_json)
+        @backend.open unless @backend.open?
+        @backend.write(COLLECTION, DOCUMENT_ID, state.to_document)
+      rescue ex : Matter::StorageError
+        raise ex
       rescue ex
-        raise "Failed to save controller state (path=#{@path}): #{ex.message}"
+        raise Matter::StorageError.new("Failed to save controller state (path=#{@backend.path.inspect}): #{ex.message}", cause: ex)
       end
 
       private def normalize(state : State) : {State, Bool}

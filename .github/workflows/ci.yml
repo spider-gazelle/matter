@@ -13,10 +13,39 @@ jobs:
         uses: crystal-lang/install-crystal@v1
       - name: Install Dependencies
         run: shards install
+      # ameba declares no executable in its shard.yml, so `shards install` never
+      # produces bin/ameba; build it the way the repository's own bin/ameba was built.
+      - name: Build Ameba
+        run: mkdir -p bin && crystal build lib/ameba/bin/ameba.cr -o bin/ameba
       - name: Ameba
         run: ./bin/ameba
       - name: Format
         run: crystal tool format --check
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Crystal
+        uses: crystal-lang/install-crystal@v1
+      - name: Install Dependencies
+        run: shards install --ignore-crystal-version --skip-postinstall --skip-executables
+      # Type-check everything the spec suite does not: the ten example devices,
+      # the in-repo chip-tool, the storage CLI and the end-to-end spec helpers.
+      - name: Build library entrypoints
+        run: |
+          crystal build --no-codegen src/matter.cr
+          crystal build --no-codegen src/matter/controller.cr
+          crystal build --no-codegen src/matter/storage/cli.cr
+      - name: Build examples
+        run: |
+          for example in examples/matter_*_device.cr examples/chip-tool.cr examples/device_validation.cr; do
+            echo "==> $example"
+            crystal build --no-codegen "$example"
+          done
+      - name: Build end-to-end specs
+        run: crystal build --no-codegen e2e/spec/e2e_helper.cr
+      - name: Build storage CLI target
+        run: shards build matter-storage
   end_to_end_test:
     runs-on: ubuntu-latest
     steps:

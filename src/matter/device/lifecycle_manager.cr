@@ -3,12 +3,11 @@ require "../fabric"
 require "../mdns/responder"
 require "../mdns/responder_interface"
 require "../mdns/service_type"
-require "../protocol/message_handler"
-require "../protocol/session_manager"
-require "../cluster/operational_credentials_cluster"
+require "../protocol/session_registry"
+require "../cluster/operational_credentials"
 
 module Matter
-  module Device
+  abstract class Device
     # Wires fabric lifecycle events (commissioning/operational transitions) to:
     # - mDNS advertisements
     # - protocol session/subscription cleanup
@@ -17,7 +16,7 @@ module Matter
     # The device/application can still hook into these events, but does not need
     # to manually persist sessions/subscriptions or manage advertisement state.
     class LifecycleManager
-      Log = ::Log.for("matter.device.lifecycle")
+      Log = ::Log.for("matter.device.lifecycle_manager")
 
       enum Mode
         Commissioning
@@ -40,8 +39,8 @@ module Matter
 
       def initialize(
         @fabric_table : FabricTable,
-        @message_handler : Protocol::SessionManager,
-        @operational_credentials : Cluster::OperationalCredentialsCluster,
+        @registry : Protocol::SessionRegistry,
+        @operational_credentials : Cluster::OperationalCredentials,
         @responder : MDNS::ResponderInterface,
         @commissioning_info : Proc(MDNS::CommissioningInfo),
         @port : Int32 = 5540,
@@ -104,7 +103,7 @@ module Matter
         # commissioners (notably iOS) abort.
         #
         # To avoid this, defer session deletion by a short grace period.
-        session_ids = @message_handler.sessions
+        session_ids = @registry.sessions
           .select { |_, session| session.fabric_index == fabric_index }
           .keys
 
@@ -113,12 +112,12 @@ module Matter
         else
           delay = @fabric_session_cleanup_delay
           if delay <= Time::Span.zero
-            session_ids.each { |session_id| @message_handler.delete_session(session_id) }
+            session_ids.each { |session_id| @registry.delete_session(session_id) }
           else
             Log.debug { "Deferring cleanup of #{session_ids.size} session(s) for fabric #{fabric_index} by #{delay.total_milliseconds}ms" }
             spawn do
               sleep delay
-              session_ids.each { |session_id| @message_handler.delete_session(session_id) }
+              session_ids.each { |session_id| @registry.delete_session(session_id) }
             end
           end
         end

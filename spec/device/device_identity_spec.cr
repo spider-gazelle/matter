@@ -1,12 +1,10 @@
 require "../spec_helper"
-require "../../src/matter/device/base"
+require "../../src/matter/device"
 
 # Test device that uses default serial_number and unique_id (auto-generated)
-class TestDeviceWithDefaults < Matter::Device::Base
-  getter storage_backend : Matter::Storage::MemoryBackend
-
-  def initialize(@storage_backend : Matter::Storage::MemoryBackend = Matter::Storage::MemoryBackend.new)
-    super()
+class TestDeviceWithDefaults < Matter::Device
+  def initialize(backend : Matter::Storage::Backend = Matter::Storage::Memory.new)
+    super(backend)
   end
 
   def device_name : String
@@ -29,12 +27,8 @@ class TestDeviceWithDefaults < Matter::Device::Base
     20202021_u32
   end
 
-  def primary_device_type_id : UInt16
-    Matter::DeviceTypes::ROOT_NODE
-  end
-
-  protected def build_storage_manager : Matter::Storage::Manager
-    Matter::Storage::Manager.new(@storage_backend)
+  def primary_device_type_id : UInt32
+    Matter::DeviceType::ROOT_NODE
   end
 
   protected def device_clusters : Array(Matter::Cluster::Base)
@@ -47,12 +41,12 @@ class TestDeviceWithDefaults < Matter::Device::Base
 end
 
 # Test device that provides custom serial_number and unique_id
-class TestDeviceWithCustomIdentity < Matter::Device::Base
+class TestDeviceWithCustomIdentity < Matter::Device
   CUSTOM_SERIAL = "CUSTOM-SERIAL-123"
   CUSTOM_UNIQUE = "custom-unique-id-456"
 
   def initialize
-    super()
+    super(Matter::Storage::Memory.new)
   end
 
   def device_name : String
@@ -75,8 +69,8 @@ class TestDeviceWithCustomIdentity < Matter::Device::Base
     20202022_u32
   end
 
-  def primary_device_type_id : UInt16
-    Matter::DeviceTypes::ROOT_NODE
+  def primary_device_type_id : UInt32
+    Matter::DeviceType::ROOT_NODE
   end
 
   def serial_number : String?
@@ -85,10 +79,6 @@ class TestDeviceWithCustomIdentity < Matter::Device::Base
 
   def unique_id : String?
     CUSTOM_UNIQUE
-  end
-
-  protected def build_storage_manager : Matter::Storage::Manager
-    Matter::Storage::Manager.new(Matter::Storage::MemoryBackend.new)
   end
 
   protected def device_clusters : Array(Matter::Cluster::Base)
@@ -100,7 +90,27 @@ class TestDeviceWithCustomIdentity < Matter::Device::Base
   end
 end
 
+# Storage backend whose identity reads fail, as a corrupt store would.
+class FailingIdentityBackend < Matter::Storage::Memory
+  def read(collection : String, id : String) : Matter::Storage::Document?
+    if collection == Matter::Storage::Collections::DEVICE && id == Matter::Device::Persistence::IDENTITY_ID
+      raise Matter::StorageError.new("identity store unavailable")
+    end
+    super
+  end
+end
+
 describe "Device Identity" do
+  describe "with a failing storage backend" do
+    it "still generates every identity value" do
+      device = TestDeviceWithDefaults.new(FailingIdentityBackend.new)
+
+      device.basic_info.serial_number.should match(/^[0-9A-F]{16}$/)
+      device.basic_info.unique_id.size.should eq(32)
+      device.hostname.should match(/^[0-9A-F]{16}\.local$/)
+    end
+  end
+
   describe "serial_number" do
     it "auto-generates serial number when not provided" do
       device = TestDeviceWithDefaults.new
@@ -112,7 +122,7 @@ describe "Device Identity" do
     end
 
     it "persists serial number across device instances" do
-      backend = Matter::Storage::MemoryBackend.new
+      backend = Matter::Storage::Memory.new
 
       device1 = TestDeviceWithDefaults.new(backend)
       serial1 = device1.basic_info.serial_number
@@ -140,7 +150,7 @@ describe "Device Identity" do
     end
 
     it "persists unique_id across device instances" do
-      backend = Matter::Storage::MemoryBackend.new
+      backend = Matter::Storage::Memory.new
 
       device1 = TestDeviceWithDefaults.new(backend)
       unique_id1 = device1.basic_info.unique_id
@@ -168,7 +178,7 @@ describe "Device Identity" do
     end
 
     it "persists hostname across device instances" do
-      backend = Matter::Storage::MemoryBackend.new
+      backend = Matter::Storage::Memory.new
 
       device1 = TestDeviceWithDefaults.new(backend)
       hostname1 = device1.hostname

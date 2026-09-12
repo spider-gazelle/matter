@@ -1,8 +1,10 @@
-require "./mdns/multicast_socket"
-require "./mdns/server"
-require "./mdns/service_description"
-require "./mdns/commissionable_advertisement"
-require "./mdns/advertiser"
+# mDNS / DNS-SD: service advertisement for commissionable and operational
+# nodes. The device-side responder is loaded here; the scanner is
+# controller-only and is loaded by `matter/controller`.
+require "./mdns/service_type"
+require "./mdns/record_builder"
+require "./mdns/responder_interface"
+require "./mdns/responder"
 
 module Matter
   module MDNS

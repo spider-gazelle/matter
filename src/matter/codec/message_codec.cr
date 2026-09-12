@@ -6,6 +6,19 @@ module Matter
       HEADER_VERSION   = UInt8.new(0x00)
       COMMON_VENDOR_ID = UInt16.new(0x0000)
 
+      # Header version lives in the top nibble of the packet header flags byte
+      VERSION_SHIFT = 4
+
+      # A protocol id is `vendor id << 16 | protocol number`
+      VENDOR_ID_MASK  = 0xFFFF0000_u32
+      VENDOR_ID_SHIFT =             16
+
+      # Byte offsets of the fixed part of the packet header
+      FLAGS_OFFSET           = 0
+      SESSION_ID_OFFSET      = 1
+      SECURITY_FLAGS_OFFSET  = 3
+      MESSAGE_COUNTER_OFFSET = 4
+
       enum SessionType : UInt8
         Unicast = 0
         Group   = 1
@@ -15,7 +28,6 @@ module Matter
         HasDestNodeId   = 0b00000001
         HasDestGroupId  = 0b00000010
         HasSourceNodeId = 0b00000100
-        Reserved        = 0b00001000
         VersionMask     = 0b11110000
       end
 
@@ -31,6 +43,7 @@ module Matter
         HasPrivacyEnhancements = 0b10000000
         IsControlMessage       = 0b01000000
         HasMessageExtension    = 0b00100000
+        SessionTypeMask        = 0b00000011
       end
 
       struct PacketHeader
@@ -43,10 +56,27 @@ module Matter
         getter? privacy_enhancements : Bool
         getter? control_message : Bool
         getter? message_extensions : Bool
-        getter flags : UInt8          # Raw flags byte from wire (byte 0 of packet header)
-        getter security_flags : UInt8 # Raw security flags byte from wire (byte 3 of packet header)
 
-        def initialize(@session_id : UInt16, @session_type : SessionType, @message_id : UInt32, @privacy_enhancements : Bool, @control_message : Bool, @message_extensions : Bool, @flags : UInt8, @security_flags : UInt8, @source_node_id : DataType::NodeId? = nil, @destination_node_id : DataType::NodeId? = nil, @destination_group_id : DataType::GroupId? = nil)
+        def initialize(@session_id : UInt16, @session_type : SessionType, @message_id : UInt32, @privacy_enhancements : Bool = false, @control_message : Bool = false, @message_extensions : Bool = false, @source_node_id : DataType::NodeId? = nil, @destination_node_id : DataType::NodeId? = nil, @destination_group_id : DataType::GroupId? = nil)
+          if @destination_node_id && @destination_group_id
+            raise Matter::CodecError.new("The header cannot contain destination group and node at the same time")
+          end
+        end
+
+        def flags : UInt8
+          value = (HEADER_VERSION << VERSION_SHIFT).to_u8
+          value |= PacketHeaderFlag::HasSourceNodeId.value if @source_node_id
+          value |= PacketHeaderFlag::HasDestNodeId.value if @destination_node_id
+          value |= PacketHeaderFlag::HasDestGroupId.value if @destination_group_id
+          value
+        end
+
+        def security_flags : UInt8
+          value = @session_type.value
+          value |= SecurityFlag::HasPrivacyEnhancements.value if @privacy_enhancements
+          value |= SecurityFlag::IsControlMessage.value if @control_message
+          value |= SecurityFlag::HasMessageExtension.value if @message_extensions
+          value
         end
       end
 
@@ -64,47 +94,25 @@ module Matter
 
       struct Packet
         getter header : PacketHeader
+        getter header_bytes : Bytes?
         getter payload : Slice(UInt8)
 
-        def initialize(@header : PacketHeader, @payload : Slice(UInt8))
+        def initialize(@header : PacketHeader, @payload : Slice(UInt8), @header_bytes : Bytes? = nil)
         end
       end
 
       struct Message
         getter packet_header : PacketHeader
+        getter header_bytes : Bytes?
         getter payload_header : PayloadHeader
         getter payload : Slice(UInt8)
 
-        def initialize(@packet_header : PacketHeader, @payload_header : PayloadHeader, @payload : Slice(UInt8))
+        def initialize(@packet_header : PacketHeader, @payload_header : PayloadHeader, @payload : Slice(UInt8), @header_bytes : Bytes? = nil)
         end
       end
 
       module Base
         extend self
-
-        # Helper method to compute the flags byte from packet header fields
-        # This is used both when encoding and when creating new packet headers
-        #
-        # Presence is determined by nil-ness, NOT by the node ID value.
-        # Callers should pass nil when there's no node ID (e.g., PASE sessions),
-        # not NodeId(0). This ensures consistent AAD computation across the codebase.
-        def compute_flags(
-          source_node_id : DataType::NodeId?,
-          destination_node_id : DataType::NodeId?,
-          destination_group_id : DataType::GroupId?,
-        ) : UInt8
-          flags = (HEADER_VERSION << 4).to_u8
-
-          # Presence is based on nil-ness, not the ID value
-          source_present = !source_node_id.nil?
-          dest_present = !destination_node_id.nil?
-
-          flags |= PacketHeaderFlag::HasSourceNodeId.value if source_present
-          flags |= PacketHeaderFlag::HasDestNodeId.value if dest_present
-          flags |= PacketHeaderFlag::HasDestGroupId.value unless destination_group_id.nil?
-          Log.trace { "compute_flags: source=#{source_node_id.try(&.id) || "nil"}, dest=#{destination_node_id.try(&.id) || "nil"} -> flags=0x#{flags.to_s(16)}" }
-          flags
-        end
 
         def decode_packet(data : Slice(UInt8)) : Packet
           io = IO::Memory.new
@@ -113,7 +121,8 @@ module Matter
           io.rewind
           header = decode_packet_header(io)
 
-          Packet.new(header, io.getb_to_end)
+          header_bytes = data[0, io.pos.to_i].dup
+          Packet.new(header, io.getb_to_end, header_bytes)
         end
 
         def decode_payload(packet : Packet) : Message
@@ -123,7 +132,7 @@ module Matter
           io.rewind
           header = decode_payload_header(io)
 
-          Message.new(packet.header, header, io.getb_to_end)
+          Message.new(packet.header, header, io.getb_to_end, packet.header_bytes)
         end
 
         def encode_payload(message : Message) : Packet
@@ -131,6 +140,16 @@ module Matter
           encode_payload_header(message.payload_header, io)
 
           Packet.new(header: message.packet_header, payload: Slice.join([io.rewind.to_slice, message.payload]))
+        end
+
+        def encode_message(packet_header : PacketHeader, payload_header : PayloadHeader, payload : Bytes) : Bytes
+          encode_packet(encode_payload(Message.new(packet_header, payload_header, payload)))
+        end
+
+        def encode_packet_header(packet_header : PacketHeader) : Bytes
+          io = IO::Memory.new
+          encode_packet_header(packet_header, io)
+          io.to_slice
         end
 
         def encode_packet(packet : Packet) : Slice(UInt8)
@@ -141,14 +160,7 @@ module Matter
         end
 
         def encode_packet_header(packet_header : PacketHeader, io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian)
-          # Use the stored flags byte from the packet header
-          # This ensures the encoded flags match exactly what was used for AAD during encryption
           flags = packet_header.flags
-
-          # CRITICAL: Use the full security_flags byte, not just session_type
-          # The security_flags byte contains: [privacy(1) | control(1) | ext(1) | reserved(3) | session_type(2)]
-          # When encrypting, we use this exact byte in the AAD, so we must encode the same byte
-          # Otherwise chip-tool will fail to decrypt because AAD won't match
           security_flags = packet_header.security_flags
 
           byte_format.encode(UInt8.new(flags), io)
@@ -157,17 +169,16 @@ module Matter
           byte_format.encode(UInt32.new(packet_header.message_id), io)
 
           # Presence is based on nil-ness, not the ID value
-          # This must match the logic in compute_flags for consistent AAD
           source_node_id = packet_header.source_node_id
           dest_node_id = packet_header.destination_node_id
 
           byte_format.encode(UInt64.new(source_node_id.as(DataType::NodeId).id), io) if source_node_id
           byte_format.encode(UInt64.new(dest_node_id.as(DataType::NodeId).id), io) if dest_node_id
-          byte_format.encode(UInt32.new(packet_header.destination_group_id.as(DataType::GroupId).id), io) if packet_header.destination_group_id
+          byte_format.encode(UInt16.new(packet_header.destination_group_id.as(DataType::GroupId).id), io) if packet_header.destination_group_id
         end
 
         def encode_payload_header(payload_header : PayloadHeader, io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian)
-          vendor_id = (payload_header.protocol_id & 0xffff0000) >> 16
+          vendor_id = (payload_header.protocol_id & VENDOR_ID_MASK) >> VENDOR_ID_SHIFT
 
           flags = (payload_header.initiator_message? ? PayloadHeaderFlag::IsInitiatorMessage.value : 0) | \
             (payload_header.acknowledged_message_id.nil? ? 0 : PayloadHeaderFlag::IsAckMessage.value) | \
@@ -184,14 +195,14 @@ module Matter
 
         private def decode_packet_header(io : IO::Memory, byte_format : IO::ByteFormat = IO::ByteFormat::LittleEndian) : PacketHeader
           flags = io.read_bytes(UInt8, byte_format)
-          version = (flags & PacketHeaderFlag::VersionMask.value) >> 4
+          version = (flags & PacketHeaderFlag::VersionMask.value) >> VERSION_SHIFT
 
           has_destination_node_id = (flags & PacketHeaderFlag::HasDestNodeId.value) != 0
           has_destination_group_id = (flags & PacketHeaderFlag::HasDestGroupId.value) != 0
           has_source_node_id = (flags & PacketHeaderFlag::HasSourceNodeId.value) != 0
 
-          raise Exception.new("The header cannot contain destination group and node at the same time") if has_destination_node_id && has_destination_group_id
-          raise Exception.new("Unsupported header version #{version}") if version != HEADER_VERSION
+          raise Matter::CodecError.new("The header cannot contain destination group and node at the same time") if has_destination_node_id && has_destination_group_id
+          raise Matter::CodecError.new("Unsupported header version #{version}") if version != HEADER_VERSION
 
           session_id = io.read_bytes(UInt16, byte_format)
           security_flags = io.read_bytes(UInt8, byte_format)
@@ -201,18 +212,18 @@ module Matter
           destination_node_id = has_destination_node_id ? DataType::NodeId.new(io.read_bytes(UInt64, byte_format)) : nil
           destination_group_id = has_destination_group_id ? DataType::GroupId.new(io.read_bytes(UInt16, byte_format)) : nil
 
-          session_type = security_flags & 0b00000011
+          session_type = security_flags & SecurityFlag::SessionTypeMask.value
 
-          raise Exception.new("Unsupported session type #{session_type}") if session_type != SessionType::Group.value && session_type != SessionType::Unicast.value
+          raise Matter::CodecError.new("Unsupported session type #{session_type}") if session_type != SessionType::Group.value && session_type != SessionType::Unicast.value
 
           has_privacy_enhancements = (security_flags & SecurityFlag::HasPrivacyEnhancements.value) != 0
-          raise Exception.new("Privacy enhancements not supported") if has_privacy_enhancements
+          raise Matter::CodecError.new("Privacy enhancements not supported") if has_privacy_enhancements
 
           is_control_message = (security_flags & SecurityFlag::IsControlMessage.value) != 0
           # Control messages are valid - used for MRP standalone ACKs and other control functions
 
           has_message_extensions = (security_flags & SecurityFlag::HasMessageExtension.value) != 0
-          raise Exception.new("Message extensions not supported") if has_message_extensions
+          raise Matter::CodecError.new("Message extensions not supported") if has_message_extensions
 
           PacketHeader.new(session_id: session_id,
             session_type: SessionType.from_value(session_type),
@@ -220,8 +231,6 @@ module Matter
             privacy_enhancements: has_privacy_enhancements,
             control_message: is_control_message,
             message_extensions: has_message_extensions,
-            flags: flags,
-            security_flags: security_flags,
             source_node_id: source_node_id,
             destination_node_id: destination_node_id,
             destination_group_id: destination_group_id)
@@ -236,12 +245,12 @@ module Matter
           has_secured_extension = (flags & PayloadHeaderFlag::HasSecureExtension.value) != 0
           has_vendor_id = (flags & PayloadHeaderFlag::HasVendorId.value) != 0
 
-          raise Exception.new("Secured extension is not supported") if has_secured_extension
+          raise Matter::CodecError.new("Secured extension is not supported") if has_secured_extension
 
           message_type = io.read_bytes(UInt8, byte_format)
           exchange_id = io.read_bytes(UInt16, byte_format)
           vendor_id = has_vendor_id ? io.read_bytes(UInt16, byte_format) : COMMON_VENDOR_ID
-          protocol_id = (vendor_id << 16) | io.read_bytes(UInt16, byte_format)
+          protocol_id = (vendor_id << VENDOR_ID_SHIFT) | io.read_bytes(UInt16, byte_format)
           acknowledged_message_id = is_acknowledge_message ? io.read_bytes(UInt32, byte_format) : nil
 
           PayloadHeader.new(exchange_id: exchange_id,

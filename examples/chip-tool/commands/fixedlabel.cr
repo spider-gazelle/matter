@@ -19,9 +19,9 @@ module ChipTool
             next 2
           end
 
-          cluster_id = Matter::Cluster::FixedLabelCluster::CLUSTER_ID
+          cluster_id = Matter::Cluster::FixedLabel::CLUSTER_ID
           attribute_id = case attribute
-                         when "label-list" then Matter::Cluster::FixedLabelCluster::ATTR_LABEL_LIST
+                         when "label-list" then Matter::Cluster::FixedLabel::ATTR_LABEL_LIST
                          else
                            STDERR.puts "Unsupported attribute: #{attribute} (supported: label-list)"
                            next 2
@@ -53,8 +53,8 @@ module ChipTool
           node_id = parse_u64(node_id_str) || raise ArgumentError.new("invalid node-id: #{node_id_str}")
           endpoint_id = endpoint_str.to_u16
 
-          cluster_id = Matter::Cluster::FixedLabelCluster::CLUSTER_ID
-          attribute_id = Matter::Cluster::FixedLabelCluster::ATTR_LABEL_LIST
+          cluster_id = Matter::Cluster::FixedLabel::CLUSTER_ID
+          attribute_id = Matter::Cluster::FixedLabel::ATTR_LABEL_LIST
 
           labels = read_label_list(ctx, node_id, endpoint_id, cluster_id, attribute_id)
           if labels.empty?
@@ -84,9 +84,9 @@ module ChipTool
         cluster_id : UInt32,
         attribute_id : UInt32,
       ) : Array(Matter::Cluster::LabelStruct)
-        store = Matter::Controller::StateStore.new(ctx.storage_directory)
+        store = ctx.state_store
         state = store.load
-        fabric = state.fabric || raise "No controller fabric found; run `pairing code ...` first"
+        fabric = state.fabric || raise Matter::CommissioningError.new("No controller fabric found; run `pairing code ...` first")
 
         peer = resolve_peer(state, fabric, node_id, ctx.timeout)
         state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
@@ -107,7 +107,7 @@ module ChipTool
             attribute_id: attribute_id
           )
 
-          extract_report_label_list(report, cluster_id, attribute_id) || raise "ReportData missing LabelList"
+          extract_report_label_list(report, cluster_id, attribute_id) || raise Matter::ProtocolError.new("ReportData missing LabelList")
         ensure
           state.unsecured_message_counter = controller.transport.message_counter.counter
           store.save(state)
@@ -117,7 +117,7 @@ module ChipTool
 
       private def extract_report_label_list(report : Matter::InteractionModel::ReportDataMessage, cluster_id : UInt32, attribute_id : UInt32) : Array(Matter::Cluster::LabelStruct)?
         reports = report.attribute_reports
-        return nil unless reports
+        return unless reports
 
         reports.each do |attr_report|
           data = attr_report.attribute_data
@@ -126,7 +126,7 @@ module ChipTool
           next unless path.cluster == cluster_id
           next unless path.attribute == attribute_id
 
-          list = data.data.value.as?(Array(TLV::Any)) || return nil
+          list = data.data.value.as?(Array(TLV::Any)) || return
           return list.map { |entry| Matter::Cluster::LabelStruct.from_tlv(entry) }
         end
 
@@ -135,7 +135,7 @@ module ChipTool
 
       private def parse_u64(s : String) : UInt64?
         v = s.strip
-        return nil if v.empty?
+        return if v.empty?
         if v.starts_with?("0x") || v.starts_with?("0X")
           v[2..].to_u64?(16)
         else
@@ -150,8 +150,8 @@ module ChipTool
           end
         end
 
-        scanner = nil.as(Matter::MDNS::Scanner?)
-        scanner = Matter::MDNS::Scanner.new
+        scanner = nil.as(Matter::Controller::Scanner?)
+        scanner = Matter::Controller::Scanner.new
         scanner.start
         scanner.query_operational
 
@@ -167,7 +167,7 @@ module ChipTool
           sleep 100.milliseconds
         end
 
-        raise "Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})"
+        raise Matter::TransportError.new("Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})")
       ensure
         scanner.try(&.close)
       end

@@ -1,0 +1,473 @@
+require "./cluster"
+require "../commissioning"
+require "log"
+
+module Matter
+  module Cluster
+    # General Commissioning Cluster (0x0030)
+    #
+    # Provides commands and attributes to support the device commissioning process.
+    # This includes commissioning window management, failsafe timer management,
+    # regulatory configuration, and commissioning completion.
+    #
+    # The failsafe state machine itself lives in `Commissioning::FailsafeService`;
+    # this cluster is its wire front and owns the attributes a commissioner reads
+    # the result back from.
+    #
+    # Matter Core Spec §11.9 - General Commissioning Cluster
+    class GeneralCommissioning < Base
+      include Commissioning::RollbackTargets
+
+      Log = ::Log.for("matter.cluster.general_commissioning")
+
+      cluster 0x0030, revision: 2
+
+      # ========================================================================
+      # Enumerations
+      # ========================================================================
+
+      # Regulatory Location Type
+      enum RegulatoryLocationType : UInt8
+        Indoor        = 0 # Indoor use only
+        Outdoor       = 1 # Outdoor use only
+        IndoorOutdoor = 2 # Indoor and outdoor use
+      end
+
+      # Commissioning Error Codes, shared with the service behind this facade
+      alias CommissioningError = Commissioning::ErrorCode
+
+      # ========================================================================
+      # Command Structures
+      # ========================================================================
+
+      # ArmFailSafe command request
+      struct ArmFailSafeRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property expiry_length_seconds : UInt16
+
+        @[TLV::Field(tag: 1)]
+        property breadcrumb : UInt64
+
+        @[TLV::Field(tag: 2)]
+        property timeout_ms : UInt32 = 0_u32 # Deprecated, kept for compatibility
+
+        def initialize(@expiry_length_seconds, @breadcrumb, @timeout_ms = 0_u32)
+        end
+      end
+
+      # ArmFailSafe command response
+      struct ArmFailSafeResponse
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property error_code : CommissioningError
+
+        @[TLV::Field(tag: 1)]
+        property debug_text : String = ""
+
+        def initialize(@error_code : CommissioningError, @debug_text = "")
+        end
+      end
+
+      # SetRegulatoryConfig command request
+      struct SetRegulatoryConfigRequest
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property new_regulatory_config : RegulatoryLocationType
+
+        @[TLV::Field(tag: 1)]
+        property country_code : String
+
+        @[TLV::Field(tag: 2)]
+        property breadcrumb : UInt64
+
+        def initialize(@new_regulatory_config : RegulatoryLocationType, @country_code : String, @breadcrumb : UInt64)
+        end
+      end
+
+      # SetRegulatoryConfig command response
+      struct SetRegulatoryConfigResponse
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property error_code : CommissioningError
+
+        @[TLV::Field(tag: 1)]
+        property debug_text : String = ""
+
+        def initialize(@error_code : CommissioningError, @debug_text = "")
+        end
+      end
+
+      # CommissioningComplete command response
+      struct CommissioningCompleteResponse
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property error_code : CommissioningError
+
+        @[TLV::Field(tag: 1)]
+        property debug_text : String = ""
+
+        def initialize(@error_code : CommissioningError, @debug_text = "")
+        end
+      end
+
+      # BasicCommissioningInfo - returned by BasicCommissioningInfo attribute
+      struct BasicCommissioningInfo
+        include TLV::Serializable
+
+        @[TLV::Field(tag: 0)]
+        property fail_safe_expiry_length : UInt16
+
+        @[TLV::Field(tag: 1)]
+        property max_cumulative_failsafe_seconds : UInt16
+
+        def initialize(@fail_safe_expiry_length, @max_cumulative_failsafe_seconds)
+        end
+      end
+
+      # ========================================================================
+      # Attributes
+      # ========================================================================
+
+      # Failsafe and network commissioning windows default to 15 minutes
+      DEFAULT_COMMISSIONING_SECONDS = Commissioning::FailsafeService::DEFAULT_MAX_CUMULATIVE_SECONDS
+
+      # Recommended ArmFailSafe expiry reported in BasicCommissioningInfo
+      FAIL_SAFE_EXPIRY_LENGTH_SECONDS = 60_u16
+
+      # Progress tracking during commissioning; not persisted (Matter Core §11.10.6.1)
+      attribute 0x0000, :breadcrumb, UInt64, default: 0_u64, writable: true, persist: false, write_access: :administer
+      # Built from `FAIL_SAFE_EXPIRY_LENGTH_SECONDS` and `max_cumulative_failsafe_seconds`
+      attribute 0x0001, :basic_commissioning_info, BasicCommissioningInfo, computed: true, fixed: true
+      attribute 0x0002, :regulatory_config, RegulatoryLocationType, default: RegulatoryLocationType::IndoorOutdoor
+      attribute 0x0003, :location_capability, RegulatoryLocationType, default: RegulatoryLocationType::IndoorOutdoor, fixed: true
+      attribute 0x0004, :supports_concurrent_connection, Bool, default: true, fixed: true
+      # Commissioning on backup power is not supported
+      attribute 0x000C, :is_commissioning_without_power, Bool, default: false
+
+      # Longest network commissioning step a commissioner should allow for
+      property max_network_commissioning_seconds : UInt16 = DEFAULT_COMMISSIONING_SECONDS
+
+      # Country code (stored for rollback purposes)
+      property country_code : String = "XX" # Default: unknown/unspecified
+
+      # Country code whitelist (nil = all countries allowed)
+      property country_code_whitelist : Array(String)? = nil
+
+      # ========================================================================
+      # Commands
+      # ========================================================================
+
+      # Wire-format (TLV) request structs of the commands; the handlers convert
+      # them to the hand-written request types above.
+      module Tlv
+        # Input to the GeneralCommissioning armFailSafe command
+        struct ArmFailSafeRequest
+          include TLV::Serializable
+
+          @[TLV::Field(tag: 0)]
+          property expiry_length_seconds : UInt16
+
+          @[TLV::Field(tag: 1)]
+          property breadcrumb : UInt64
+        end
+
+        # Input to the GeneralCommissioning setRegulatoryConfig command
+        struct SetRegularConfigurationRequest
+          include TLV::Serializable
+
+          @[TLV::Field(tag: 0)]
+          property new_regulatory_configuration : RegulatoryLocationType
+
+          @[TLV::Field(tag: 1)]
+          property country_code : String
+
+          @[TLV::Field(tag: 2)]
+          property breadcrumb : UInt64
+        end
+      end
+
+      command 0x00, :arm_fail_safe, request: Tlv::ArmFailSafeRequest, response: ArmFailSafeResponse, response_id: 0x01, access: :administer
+      command 0x02, :set_regulatory_config, request: Tlv::SetRegularConfigurationRequest, response: SetRegulatoryConfigResponse, response_id: 0x03, access: :administer, handler: :handle_set_regulatory_config
+      command 0x04, :commissioning_complete, response: CommissioningCompleteResponse, response_id: 0x05, access: :administer
+
+      # ========================================================================
+      # State Management
+      # ========================================================================
+
+      # The failsafe state machine behind ArmFailSafe / CommissioningComplete.
+      # Built on first use: the service takes this cluster as its rollback
+      # target, and an object cannot hand itself out of its own constructor.
+      @failsafe : Commissioning::FailsafeService? = nil
+
+      def failsafe : Commissioning::FailsafeService
+        @failsafe ||= begin
+          service = Commissioning::FailsafeService.new(self)
+          # The breadcrumb tracks commissioner progress and is polled, never
+          # subscribed to, so it is written without bumping the data version.
+          service.on_breadcrumb_changed = ->(value : UInt64) { @breadcrumb = value }
+          service
+        end
+      end
+
+      # Terms & Conditions state, the per-failsafe reset hook the
+      # OperationalCredentials cluster installs and the armed state all belong
+      # to the service.
+      delegate terms_conditions_required?, :terms_conditions_required=,
+        terms_conditions_accepted?, on_failsafe_armed, :on_failsafe_armed=,
+        record_added_fabric,
+        to: failsafe
+
+      # Whether a failsafe is currently armed
+      def failsafe_armed? : Bool
+        failsafe.armed?
+      end
+
+      # ========================================================================
+      # Initialization
+      # ========================================================================
+
+      def initialize(
+        endpoint_id : DataType::EndpointNumber = DataType::EndpointNumber.new(0_u16),
+      )
+        super(endpoint_id, DataType::ClusterId.new(CLUSTER_ID))
+      end
+
+      # ========================================================================
+      # Command entry points (DSL dispatch)
+      # ========================================================================
+
+      def arm_fail_safe(request_def : Tlv::ArmFailSafeRequest) : ArmFailSafeResponse
+        request = ArmFailSafeRequest.new(
+          expiry_length_seconds: request_def.expiry_length_seconds,
+          breadcrumb: request_def.breadcrumb
+        )
+
+        # Session context comes from `Base#invoke_command`
+        arm_failsafe(
+          request: request,
+          session_fabric_index: request_fabric_index,
+          is_pase_session: !request_is_case_session?
+        )
+      end
+
+      def handle_set_regulatory_config(request_def : Tlv::SetRegularConfigurationRequest) : SetRegulatoryConfigResponse
+        request = SetRegulatoryConfigRequest.new(
+          new_regulatory_config: RegulatoryLocationType.from_value(request_def.new_regulatory_configuration.value),
+          country_code: request_def.country_code,
+          breadcrumb: request_def.breadcrumb
+        )
+
+        self.regulatory_config = request
+      end
+
+      def commissioning_complete : CommissioningCompleteResponse
+        # Session context comes from `Base#invoke_command`
+        commissioning_complete(
+          session_fabric_index: request_fabric_index,
+          is_case_session: request_is_case_session?
+        )
+      end
+
+      # ========================================================================
+      # Command handlers
+      # ========================================================================
+
+      # Handle ArmFailSafe command (0x00)
+      #
+      # @param request ArmFailSafe request with expiry length and breadcrumb
+      # @param session_fabric_index Fabric index of requesting session (nil for PASE)
+      # @param is_pase_session Whether this is a PASE session
+      def arm_failsafe(
+        request : ArmFailSafeRequest,
+        session_fabric_index : UInt8?,
+        is_pase_session : Bool,
+      ) : ArmFailSafeResponse
+        outcome = failsafe.arm(
+          expiry_length_seconds: request.expiry_length_seconds,
+          breadcrumb: request.breadcrumb,
+          session_fabric_index: session_fabric_index,
+          pase_session: is_pase_session
+        )
+
+        ArmFailSafeResponse.new(outcome.error, outcome.debug_text)
+      end
+
+      # Handle CommissioningComplete command (0x04)
+      #
+      # @param session_fabric_index Fabric index of requesting session
+      # @param is_case_session Whether this is a CASE session (required)
+      def commissioning_complete(
+        session_fabric_index : UInt8?,
+        is_case_session : Bool,
+      ) : CommissioningCompleteResponse
+        outcome = failsafe.complete(session_fabric_index, is_case_session)
+
+        CommissioningCompleteResponse.new(outcome.error, outcome.debug_text)
+      end
+
+      # Handle SetRegulatoryConfig command (0x02)
+      #
+      # Sets the regulatory configuration (indoor/outdoor) and country code,
+      # snapshotting the previous values so an expiring failsafe restores them.
+      def regulatory_config=(
+        request : SetRegulatoryConfigRequest,
+      ) : SetRegulatoryConfigResponse
+        Log.info { "SetRegulatoryConfig: location=#{request.new_regulatory_config}, country=#{request.country_code}" }
+
+        # Validate regulatory location against capability
+        unless validate_regulatory_location(request.new_regulatory_config)
+          return SetRegulatoryConfigResponse.new(
+            CommissioningError::ValueOutsideRange,
+            "Requested location #{request.new_regulatory_config} not supported (capability: #{@location_capability})"
+          )
+        end
+
+        # Validate country code format (2-character ISO 3166-1 alpha-2)
+        unless request.country_code.size == 2 && request.country_code.chars.all?(&.ascii_uppercase?)
+          return SetRegulatoryConfigResponse.new(
+            CommissioningError::ValueOutsideRange,
+            "Invalid country code format (expected 2 uppercase letters)"
+          )
+        end
+
+        # Validate country code against whitelist if configured
+        if whitelist = @country_code_whitelist
+          unless whitelist.includes?(request.country_code)
+            return SetRegulatoryConfigResponse.new(
+              CommissioningError::ValueOutsideRange,
+              "Country code #{request.country_code} not in whitelist"
+            )
+          end
+        end
+
+        # Record current state for rollback if the failsafe is armed
+        failsafe.record_regulatory_config(@regulatory_config.value, @country_code)
+
+        # Apply configuration atomically (only update breadcrumb on success)
+        @regulatory_config = request.new_regulatory_config
+        @country_code = request.country_code
+        @breadcrumb = request.breadcrumb
+
+        Log.info { "Regulatory config updated" }
+        SetRegulatoryConfigResponse.new(CommissioningError::OK)
+      end
+
+      # BasicCommissioningInfo attribute (0x01)
+      def basic_commissioning_info : BasicCommissioningInfo
+        BasicCommissioningInfo.new(
+          fail_safe_expiry_length: FAIL_SAFE_EXPIRY_LENGTH_SECONDS,
+          max_cumulative_failsafe_seconds: max_cumulative_failsafe_seconds
+        )
+      end
+
+      # ========================================================================
+      # Failsafe accessors
+      # ========================================================================
+
+      # Hard limit on ArmFailSafe durations, reported in BasicCommissioningInfo
+      def max_cumulative_failsafe_seconds : UInt16
+        failsafe.max_cumulative_seconds
+      end
+
+      def max_cumulative_failsafe_seconds=(seconds : UInt16) : UInt16
+        failsafe.max_cumulative_seconds = seconds
+      end
+
+      # Get failsafe expiry time (when it will expire)
+      def fail_safe_expiry_time : Time?
+        failsafe.expiry_time
+      end
+
+      # Arm the failsafe outside of an ArmFailSafe request
+      def arm_fail_safe(expiry_seconds : UInt16) : Nil
+        failsafe.arm_timer(expiry_seconds)
+      end
+
+      # Disarm the failsafe
+      def disarm_fail_safe : Nil
+        failsafe.disarm
+      end
+
+      # Check whether a failsafe that was armed has since expired
+      def fail_safe_expired? : Bool
+        return false unless failsafe.context
+        !failsafe.armed?
+      end
+
+      # Get current failsafe context (for testing/inspection)
+      def failsafe_context : Commissioning::FailsafeContext?
+        failsafe.context
+      end
+
+      # ========================================================================
+      # Rollback targets (`Commissioning::RollbackTargets`)
+      # ========================================================================
+
+      # Network configuration this cluster hands a rollback, when one is attached.
+      # `Cluster::NetworkCommissioning` includes `Commissioning::NetworkStateStore`.
+      property network_state_store : Commissioning::NetworkStateStore?
+
+      # Restore the network configuration captured in `snapshot`. A device with
+      # no network store attached has nothing to restore.
+      def restore_network_state(snapshot : Hash(String, String)) : Nil
+        @network_state_store.try(&.restore_network_state(snapshot))
+      end
+
+      # Restore regulatory config from the snapshot taken before SetRegulatoryConfig
+      def restore_regulatory_config(location_type : UInt8, country_code : String) : Nil
+        @regulatory_config = RegulatoryLocationType.from_value(location_type)
+        @country_code = country_code
+        Log.info { "Restored regulatory config: location=#{@regulatory_config}, country=#{country_code}" }
+      end
+
+      # Open commissioning window (allows PASE sessions)
+      def open_commissioning_window : Nil
+        failsafe.commissioning_window_open = true
+        Log.info { "Commissioning window opened" }
+      end
+
+      # Close commissioning window
+      def close_commissioning_window : Nil
+        failsafe.commissioning_window_open = false
+        Log.info { "Commissioning window closed" }
+      end
+
+      # ========================================================================
+      # Terms & Conditions
+      # ========================================================================
+
+      # Accept Terms & Conditions (for TC feature)
+      #
+      # This method is used when the Terms & Conditions feature is enabled
+      # to mark that the user has accepted the terms.
+      def accept_terms_conditions : Nil
+        failsafe.terms_conditions_accepted = true
+        Log.info { "Terms & Conditions accepted" }
+      end
+
+      # ========================================================================
+      # Helper Methods
+      # ========================================================================
+
+      # Validate that requested regulatory location is within capability
+      private def validate_regulatory_location(requested : RegulatoryLocationType) : Bool
+        case @location_capability
+        when RegulatoryLocationType::Indoor
+          requested == RegulatoryLocationType::Indoor
+        when RegulatoryLocationType::Outdoor
+          requested == RegulatoryLocationType::Outdoor
+        when RegulatoryLocationType::IndoorOutdoor
+          true # All locations supported
+        else
+          false
+        end
+      end
+    end
+  end
+end

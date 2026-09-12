@@ -1,10 +1,19 @@
 require "./device_type"
+require "./error"
+require "./hex"
 require "./cluster/cluster"
+require "./cluster/descriptor"
+require "./cluster/scenes_management"
 require "./datatype/endpoint_number"
 
 module Matter
-  # Endpoint represents a single functional unit on a Matter node
-  # Each endpoint has a device type and a set of clusters
+  # One functional unit of a node: a set of device types and the server
+  # clusters that implement them.
+  #
+  # An endpoint owns its clusters; `Node` indexes them for the Interaction
+  # Model. The Descriptor cluster is derived rather than declared -
+  # `populate_descriptor` injects it when absent and fills it from the clusters
+  # and device types actually present.
   class Endpoint
     getter endpoint_id : DataType::EndpointNumber
     getter device_types : Array(DeviceType)
@@ -23,11 +32,18 @@ module Matter
       @clusters = {} of UInt32 => Cluster::Base
     end
 
-    # Add a cluster to this endpoint
-    def add_cluster(cluster : Cluster::Base)
-      # Validate that the cluster's endpoint_id matches this endpoint
-      unless cluster.endpoint_id.number == @endpoint_id.number
-        raise ArgumentError.new("Cluster endpoint_id (#{cluster.endpoint_id.number}) does not match endpoint (#{@endpoint_id.number})")
+    # The endpoint number this endpoint answers on.
+    def number : UInt16
+      @endpoint_id.number
+    end
+
+    # Adds *cluster*, replacing any cluster already registered under its id.
+    # The cluster must have been built for this endpoint.
+    def add_cluster(cluster : Cluster::Base) : Cluster::Base
+      unless cluster.endpoint_id.number == number
+        raise ConfigurationError.new(
+          "Cluster endpoint_id (#{cluster.endpoint_id.number}) does not match endpoint (#{number})"
+        )
       end
 
       @clusters[cluster.cluster_id.id] = cluster
@@ -40,7 +56,19 @@ module Matter
 
     # Get a cluster by ID (raises if not found)
     def get_cluster!(cluster_id : UInt32) : Cluster::Base
-      @clusters[cluster_id]? || raise KeyError.new("Cluster #{cluster_id} not found on endpoint #{@endpoint_id.number}")
+      @clusters[cluster_id]? || raise KeyError.new("Cluster #{cluster_id} not found on endpoint #{number}")
+    end
+
+    # Get a typed cluster by class
+    # Usage: endpoint.get_cluster(OnOff)
+    def get_cluster(cluster_type : T.class) : T? forall T
+      found_cluster = @clusters.values.find { |clust| clust.is_a?(T) }
+      found_cluster.as(T) if found_cluster
+    end
+
+    # Get a typed cluster by class (raises if not found)
+    def get_cluster!(cluster_type : T.class) : T forall T
+      get_cluster(cluster_type) || raise KeyError.new("Cluster #{cluster_type} not found on endpoint #{number}")
     end
 
     # Check if endpoint has a cluster
@@ -48,9 +76,14 @@ module Matter
       @clusters.has_key?(cluster_id)
     end
 
-    # Get all cluster IDs
+    # Every cluster id on this endpoint, ascending (the Descriptor ServerList order).
     def cluster_ids : Array(UInt32)
-      @clusters.keys
+      @clusters.keys.sort!
+    end
+
+    # Get the number of clusters
+    def cluster_count : Int32
+      @clusters.size
     end
 
     # Get primary device type
@@ -58,26 +91,77 @@ module Matter
       @device_types.first?
     end
 
-    # Validate that this endpoint satisfies its device type requirements
+    # The Descriptor cluster of this endpoint, injected if the device did not
+    # provide one. Every endpoint has a Descriptor per the Matter spec.
+    def descriptor : Cluster::Descriptor
+      existing = @clusters[Cluster::Descriptor::CLUSTER_ID]?
+      return existing.as(Cluster::Descriptor) if existing
+
+      add_cluster(Cluster::Descriptor.new(@endpoint_id)).as(Cluster::Descriptor)
+    end
+
+    # Fills the Descriptor from what this endpoint actually holds: every
+    # cluster id in the ServerList, every device type (with its own revision)
+    # in the DeviceTypeList. Call after the last `add_cluster`.
+    def populate_descriptor : Cluster::Descriptor
+      descriptor = self.descriptor
+
+      cluster_ids.each do |id|
+        descriptor.server_list << id unless descriptor.server_list.includes?(id)
+      end
+
+      descriptor.device_type_list.clear
+      @device_types.each do |device_type|
+        descriptor.device_type_list << Cluster::Descriptor::DeviceTypeStruct.new(
+          device_type: device_type.device_type_id.id,
+          revision: device_type.revision
+        )
+      end
+
+      descriptor
+    end
+
+    # Lets this endpoint's Scenes Management cluster store and recall the state
+    # of every other cluster on the endpoint, keeping any extension callbacks
+    # the device installed itself.
+    def wire_scene_extensions : Nil
+      scenes = @clusters[Cluster::ScenesManagement::CLUSTER_ID]?.as?(Cluster::ScenesManagement)
+      return unless scenes
+
+      existing_get = scenes.get_extension_field_sets
+      existing_apply = scenes.apply_extension_field_sets
+
+      scenes.get_extension_field_sets = -> do
+        sets = [] of Cluster::ScenesManagement::ExtensionFieldSet
+        if callback = existing_get
+          sets.concat(callback.call)
+        end
+        sets.concat(@clusters.values.compact_map(&.store_scene_extension_field_set))
+        sets
+      end
+
+      scenes.apply_extension_field_sets = ->(field_sets : Array(Cluster::ScenesManagement::ExtensionFieldSet)) do
+        if callback = existing_apply
+          callback.call(field_sets)
+        end
+
+        field_sets.each do |field_set|
+          if target = @clusters[field_set.cluster_id]?
+            target.apply_scene_extension_field_set(field_set)
+          end
+        end
+      end
+    end
+
+    # The mandatory server clusters this endpoint's device types are missing,
+    # one message each; empty when the endpoint conforms.
     def validate : Array(String)
       errors = [] of String
 
       @device_types.each do |device_type|
-        # Check all required clusters are present
         device_type.required_server_clusters.each do |cluster_id|
           unless has_cluster?(cluster_id)
-            errors << "Missing required cluster 0x#{cluster_id.to_s(16).upcase.rjust(4, '0')} for device type #{device_type.name}"
-          end
-        end
-
-        # Check that no unexpected clusters are present (optional validation)
-        @clusters.each_key do |cluster_id|
-          # Descriptor (0x001D) is always allowed
-          next if cluster_id == 0x001D_u32
-
-          unless device_type.allows_cluster?(cluster_id)
-            # This is a warning rather than an error in Matter spec
-            # but we track it for completeness
+            errors << "Missing required cluster #{Hex.u16(cluster_id)} for device type #{device_type.name}"
           end
         end
       end
@@ -93,158 +177,7 @@ module Matter
     # Get a human-readable description of this endpoint
     def description : String
       device_type_names = @device_types.map(&.name).join(", ")
-      "Endpoint #{@endpoint_id.number}: #{device_type_names} (#{@clusters.size} clusters)"
-    end
-
-    # Get the number of clusters
-    def cluster_count : Int32
-      @clusters.size
-    end
-
-    # Read an attribute from a cluster on this endpoint
-    def read_attribute(cluster_id : UInt32, attribute_id : UInt32) : InteractionModel::Status | Bytes
-      cluster = get_cluster(cluster_id)
-      return InteractionModel::Status.new(InteractionModel::StatusCode::Failure) unless cluster
-
-      cluster.read_attribute(attribute_id)
-    end
-
-    # Write an attribute to a cluster on this endpoint
-    def write_attribute(cluster_id : UInt32, attribute_id : UInt32, value : Bytes) : InteractionModel::Status
-      cluster = get_cluster(cluster_id)
-      return InteractionModel::Status.new(InteractionModel::StatusCode::Failure) unless cluster
-
-      cluster.write_attribute(attribute_id, value)
-    end
-
-    # Invoke a command on a cluster on this endpoint
-    def invoke_command(cluster_id : UInt32, command_id : UInt32, fields : Bytes = Bytes.new(0)) : InteractionModel::Status | Bytes
-      cluster = get_cluster(cluster_id)
-      return InteractionModel::Status.new(InteractionModel::StatusCode::Failure) unless cluster
-
-      result = cluster.invoke_command(command_id, fields)
-
-      # Extract data from CommandResponse for backward compatibility
-      if result.is_a?(Cluster::CommandResponse)
-        result.data
-      else
-        result
-      end
-    end
-
-    # Get a typed cluster by class
-    # Usage: endpoint.get_cluster(OnOffCluster)
-    def get_cluster(cluster_type : T.class) : T? forall T
-      found_cluster = @clusters.values.find { |clust| clust.is_a?(T) }
-      found_cluster.as(T) if found_cluster
-    end
-
-    # Get a typed cluster by class (raises if not found)
-    def get_cluster!(cluster_type : T.class) : T forall T
-      get_cluster(cluster_type) || raise KeyError.new("Cluster #{cluster_type} not found on endpoint #{@endpoint_id.number}")
-    end
-  end
-
-  # MatterNode represents a complete Matter device with multiple endpoints
-  class MatterNode
-    getter endpoints : Hash(UInt16, Endpoint)
-
-    def initialize
-      @endpoints = {} of UInt16 => Endpoint
-    end
-
-    # Add an endpoint to this node
-    def add_endpoint(endpoint : Endpoint)
-      @endpoints[endpoint.endpoint_id.number] = endpoint
-    end
-
-    # Get an endpoint by ID
-    def get_endpoint(endpoint_id : UInt16) : Endpoint?
-      @endpoints[endpoint_id]?
-    end
-
-    # Get an endpoint by ID (raises if not found)
-    def get_endpoint!(endpoint_id : UInt16) : Endpoint
-      @endpoints[endpoint_id]? || raise KeyError.new("Endpoint #{endpoint_id} not found")
-    end
-
-    # Check if node has an endpoint
-    def has_endpoint?(endpoint_id : UInt16) : Bool
-      @endpoints.has_key?(endpoint_id)
-    end
-
-    # Get all endpoint IDs
-    def endpoint_ids : Array(UInt16)
-      @endpoints.keys
-    end
-
-    # Validate all endpoints
-    def validate : Hash(UInt16, Array(String))
-      errors = {} of UInt16 => Array(String)
-
-      @endpoints.each do |endpoint_id, endpoint|
-        endpoint_errors = endpoint.validate
-        errors[endpoint_id] = endpoint_errors unless endpoint_errors.empty?
-      end
-
-      errors
-    end
-
-    # Check if all endpoints are valid
-    def valid? : Bool
-      validate.empty?
-    end
-
-    # Get the number of endpoints
-    def endpoint_count : Int32
-      @endpoints.size
-    end
-
-    # Read an attribute from a cluster on an endpoint
-    def read_attribute(endpoint_id : UInt16, cluster_id : UInt32, attribute_id : UInt32) : InteractionModel::Status | Bytes
-      endpoint = get_endpoint(endpoint_id)
-      return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedEndpoint) unless endpoint
-
-      endpoint.read_attribute(cluster_id, attribute_id)
-    end
-
-    # Write an attribute to a cluster on an endpoint
-    def write_attribute(endpoint_id : UInt16, cluster_id : UInt32, attribute_id : UInt32, value : Bytes) : InteractionModel::Status
-      endpoint = get_endpoint(endpoint_id)
-      return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedEndpoint) unless endpoint
-
-      endpoint.write_attribute(cluster_id, attribute_id, value)
-    end
-
-    # Invoke a command on a cluster on an endpoint
-    def invoke_command(endpoint_id : UInt16, cluster_id : UInt32, command_id : UInt32, fields : Bytes = Bytes.new(0)) : InteractionModel::Status | Bytes
-      endpoint = get_endpoint(endpoint_id)
-      return InteractionModel::Status.new(InteractionModel::StatusCode::UnsupportedEndpoint) unless endpoint
-
-      endpoint.invoke_command(cluster_id, command_id, fields)
-    end
-
-    # Get a typed cluster from an endpoint
-    # Usage: node.get_cluster(1_u16, OnOffCluster)
-    def get_cluster(endpoint_id : UInt16, cluster_type : T.class) : T? forall T
-      endpoint = get_endpoint(endpoint_id)
-      return nil unless endpoint
-
-      endpoint.get_cluster(cluster_type)
-    end
-
-    # Get a typed cluster from an endpoint (raises if not found)
-    def get_cluster!(endpoint_id : UInt16, cluster_type : T.class) : T forall T
-      get_cluster(endpoint_id, cluster_type) || raise KeyError.new("Cluster #{cluster_type} not found on endpoint #{endpoint_id}")
-    end
-
-    # Get a human-readable description of this matter node
-    def description : String
-      lines = ["MatterNode with #{endpoint_count} endpoint(s):"]
-      @endpoints.values.each do |endpoint|
-        lines << "  #{endpoint.description}"
-      end
-      lines.join("\n")
+      "Endpoint #{number}: #{device_type_names} (#{@clusters.size} clusters)"
     end
   end
 end

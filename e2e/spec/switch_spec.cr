@@ -52,6 +52,29 @@ describe "matter_switch example" do
     [65528_i64, 65529_i64, 65531_i64, 65532_i64, 65533_i64].each { |id| list.should contain(id) }
   end
 
+  # The entrypoint stops the binary with SIGTERM (clean shutdown, storage
+  # flushed) and starts it again in the same directory, so this covers the
+  # persisted fabric, operational identity and cluster state end to end.
+  it "persists on/off state and fabric across a device restart" do
+    # StartUpOnOff null = "previous value": the earlier example set it to On,
+    # which would make the switch come up on regardless of what was stored.
+    expect_success(device.write("onoff", "start-up-on-off", "null"))
+    expect_success(device.write("basicinformation", "node-label", "restart-test", 0))
+    expect_success(device.invoke("onoff", "on"))
+    read_bool(device, "onoff", "on-off", "OnOff").should be_true
+
+    device.restart!
+
+    # Came back commissioned: operational banner, no new pairing code.
+    device.operational?.should be_true
+    device.restart_log.should_not match(E2E::PAIRING_CODE_RE)
+
+    # Reads succeed => the fabric persisted and CASE works against the restarted node.
+    read_bool(device, "onoff", "on-off", "OnOff").should be_true
+    read_value(device, "onoff", "start-up-on-off", "StartUpOnOff").should eq "null"
+    read_value(device, "basicinformation", "node-label", "NodeLabel", 0).should eq "restart-test"
+  end
+
   # Multi-fabric commissioning window, second fabric, ACL enforcement etc.
   it "passes examples/device_validation.cr" do
     validation = ENV["DEVICE_VALIDATION"]? || "/app/bin/device_validation"

@@ -1,4 +1,8 @@
+require "log"
 require "tlv"
+
+require "../error"
+require "../datatype/node_id"
 
 module Matter
   module Crypto
@@ -53,6 +57,18 @@ module Matter
     # See Matter spec section 6.5.2 "Matter Certificate Encoding"
     struct MatterCertificate
       include TLV::Serializable
+
+      Log = ::Log.for("matter.crypto.certificate")
+
+      # Context tags the raw-TLV helpers below reach for. A certificate that
+      # `TLV::Serializable` cannot decode (a truncated or vendor-extended NOC)
+      # can still be scanned field by field.
+      enum Tag : UInt8
+        Subject              =  6
+        PublicKey            =  9
+        NodeId               = 17
+        CaseAuthenticatedTag = 22
+      end
 
       # Tag 1: Serial number (octet string, 1-20 bytes)
       @[TLV::Field(tag: 1)]
@@ -114,6 +130,130 @@ module Matter
         @signature : Bytes,
         @extensions : TLV::Any? = nil,
       )
+      end
+
+      # Extract the EC public key (tag 9) from a Matter TLV certificate.
+      #
+      # Raises `Matter::CertificateError` when the certificate carries no
+      # public key field.
+      def self.public_key_from_tlv(cert_tlv : Bytes) : Bytes
+        public_key = find_tlv_field(TLV::Any.from_slice(cert_tlv), Tag::PublicKey)
+        if public_key.nil?
+          raise Matter::CertificateError.new("Could not find public key field (tag #{Tag::PublicKey.value}) in TLV certificate")
+        end
+
+        public_key.as_bytes
+      end
+
+      # Node ID of a Matter TLV certificate (Subject DN tag 17), or `nil` when
+      # the certificate has no Subject DN or no Node ID in it.
+      def self.node_id_from_tlv(cert_tlv : Bytes) : UInt64?
+        begin
+          if node_id = from_slice(cert_tlv).node_id
+            return node_id
+          end
+        rescue ex
+          Log.trace(exception: ex) { "Failed to parse NodeId via MatterCertificate, falling back to a raw TLV scan" }
+        end
+
+        subject = find_tlv_field(TLV::Any.from_slice(cert_tlv), Tag::Subject)
+        return unless subject
+
+        node_id = find_tlv_field(subject, Tag::NodeId)
+        return unless node_id
+
+        case value = node_id.value
+        when UInt64 then value
+        when UInt32 then value.to_u64
+        when UInt16 then value.to_u64
+        when UInt8  then value.to_u64
+        when Int    then value.to_u64
+        end
+      rescue ex
+        Log.trace(exception: ex) { "Failed to parse NodeId from certificate TLV" }
+        nil
+      end
+
+      # All authenticated Subject IDs of a Matter TLV NOC:
+      #
+      # - the Node ID (Subject DN tag 17)
+      # - zero or more CASE Authenticated Tags (Subject DN tag 22)
+      #
+      # Returned in priority order (Node ID first), de-duplicated. Used for ACL
+      # evaluation, where a subject may be a Node ID or a CAT.
+      def self.subject_ids_from_tlv(cert_tlv : Bytes) : Array(UInt64)
+        subject_ids = [] of UInt64
+
+        if node_id = node_id_from_tlv(cert_tlv)
+          subject_ids << node_id
+        end
+
+        # CATs may be encoded as multiple tag-22 entries in the Subject DN list.
+        # TLV::Serializable currently only exposes a single `noc_cat`, so scan the TLV directly.
+        begin
+          parsed = TLV::Any.from_slice(cert_tlv)
+          if tlv_struct = parsed.value.as?(TLV::Structure)
+            if subject_any = tlv_struct[Tag::Subject.value]?
+              subject_list = [] of TLV::Any
+              case value = subject_any.value
+              when Array(TLV::Any)
+                subject_list = value
+              when TLV::List
+                value.each { |elem| subject_list << elem }
+              else
+                # A Subject DN that is neither a list nor an array carries no CATs
+              end
+
+              subject_list.each do |elem|
+                next unless elem.header.ids == Tag::CaseAuthenticatedTag.value
+
+                raw = elem.as_u32?
+                next unless raw
+
+                begin
+                  cat = DataType::CaseAuthenticatedTag.new(raw)
+                  subject_ids << DataType::NodeId.from_case_authenticated_tag(cat).id
+                rescue ex
+                  Log.trace(exception: ex) { "Skipping invalid CAT value in NOC (raw=0x#{raw.to_s(16)})" }
+                end
+              end
+            end
+          end
+        rescue ex
+          Log.trace(exception: ex) { "Failed scanning NOC for CATs" }
+        end
+
+        subject_ids.uniq!
+        subject_ids
+      end
+
+      # Recursively search a decoded TLV certificate for a field by context tag
+      private def self.find_tlv_field(data : TLV::Any, tag : Tag) : TLV::Any?
+        tag_id = tag.value
+
+        case value = data.value
+        when TLV::Structure
+          return value[tag_id]? if value.has_key?(tag_id)
+
+          # Recursively search nested structures
+          value.each_value do |nested|
+            if found = find_tlv_field(nested, tag)
+              return found
+            end
+          end
+        when TLV::List
+          value.each do |elem|
+            # Check if this list element has the tag we're looking for
+            return elem if elem.header.ids == tag_id
+
+            # Also recurse in case it's a nested container
+            if found = find_tlv_field(elem, tag)
+              return found
+            end
+          end
+        end
+
+        nil
       end
 
       # Extract fabric ID from subject DN

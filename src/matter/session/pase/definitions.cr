@@ -4,8 +4,6 @@ module Matter
   module Session
     module Pase
       module Definitions
-        Log = ::Log.for("matter.pase")
-
         # MRP (Message Reliability Protocol) parameters
         struct MrpParameters
           include TLV::Serializable
@@ -220,8 +218,6 @@ module Matter
             protocol_data = if io.pos < data.size
                               remaining = data[io.pos..]
                               remaining.size > 0 ? remaining : nil
-                            else
-                              nil
                             end
 
             StatusReport.new(

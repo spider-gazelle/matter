@@ -10,7 +10,7 @@ module Matter
     # SPAKE2+ is a password-authenticated key exchange protocol used during Matter commissioning
     # This is a wrapper around the spake2_plus library configured for Matter's requirements
     class Spake2p
-      Log = ::Log.for("matter.spake2p")
+      Log = ::Log.for("matter.crypto.spake2p")
       # Delegate to the underlying SPAKE2Plus::Protocol instance
       @protocol : SPAKE2Plus::Protocol
       # M and N constants for P-256 curve

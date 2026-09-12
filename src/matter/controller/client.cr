@@ -17,6 +17,7 @@ module Matter
       PROTOCOL_INTERACTION_MODEL = 0x0001_u16
 
       MSG_STANDALONE_ACK = 0x10_u8
+      MAX_CACHED_ACKS    = Transport::MessageCounter::WINDOW_SIZE
 
       record ReceivedMessage, message : Codec::MessageCodec::Message, peer : Socket::IPAddress
 
@@ -24,6 +25,7 @@ module Matter
       getter crypto : Crypto::CryptoBase
 
       @sessions = {} of UInt16 => Session::SecureContext
+      @ack_packets = {} of {UInt16, UInt32} => Bytes
       @inbox : Channel(ReceivedMessage)
       @next_exchange_id : UInt16
       @unsecured_source_node_id : DataType::NodeId?
@@ -102,13 +104,9 @@ module Matter
         requires_ack : Bool = true,
         acknowledged_message_id : UInt32? = nil,
       ) : Nil
-        exchange = @transport.exchange_manager.get_exchange(exchange_id)
-        raise ArgumentError.new("unknown exchange_id=#{exchange_id}") unless exchange
-
-        security_flags = 0_u8
-        security_flags |= Codec::MessageCodec::SessionType::Unicast.value
-
-        flags = Codec::MessageCodec::Base.compute_flags(@unsecured_source_node_id, nil, nil)
+        unless @transport.exchange_manager.get_exchange(exchange_id)
+          raise Matter::ProtocolError.new("unknown exchange_id=#{exchange_id}")
+        end
 
         packet_header = Codec::MessageCodec::PacketHeader.new(
           session_id: 0_u16,
@@ -117,8 +115,6 @@ module Matter
           privacy_enhancements: false,
           control_message: false,
           message_extensions: false,
-          flags: flags,
-          security_flags: security_flags,
           source_node_id: @unsecured_source_node_id,
           destination_node_id: nil
         )
@@ -138,7 +134,7 @@ module Matter
           payload: payload.to_slice
         )
 
-        @transport.send_message(message, peer, exchange)
+        @transport.send_message(message, peer)
       end
 
       # Send an encrypted request on an existing secure session.
@@ -153,28 +149,6 @@ module Matter
         requires_ack : Bool = true,
         acknowledged_message_id : UInt32? = nil,
       ) : UInt16
-        message_counter = session.next_message_counter
-
-        security_flags = 0_u8
-        security_flags |= Codec::MessageCodec::SessionType::Unicast.value
-
-        # For encrypted requests, omit node IDs from the header (device-side decrypt
-        # currently uses the 8-byte header AAD).
-        flags = Codec::MessageCodec::Base.compute_flags(nil, nil, nil)
-
-        packet_header = Codec::MessageCodec::PacketHeader.new(
-          session_id: session.peer_session_id,
-          session_type: Codec::MessageCodec::SessionType::Unicast,
-          message_id: message_counter,
-          privacy_enhancements: false,
-          control_message: false,
-          message_extensions: false,
-          flags: flags,
-          security_flags: security_flags,
-          source_node_id: nil,
-          destination_node_id: nil
-        )
-
         payload_header = Codec::MessageCodec::PayloadHeader.new(
           exchange_id: exchange_id,
           protocol_id: protocol_id,
@@ -184,21 +158,8 @@ module Matter
           acknowledged_message_id: acknowledged_message_id
         )
 
-        payload_header_io = IO::Memory.new
-        Codec::MessageCodec::Base.encode_payload_header(payload_header, payload_header_io)
-        payload_header_bytes = payload_header_io.rewind.to_slice
-
-        packet_header_io = IO::Memory.new
-        Codec::MessageCodec::Base.encode_packet_header(packet_header, packet_header_io)
-        packet_header_bytes = packet_header_io.rewind.to_slice
-
-        application_payload = Slice.join([payload_header_bytes, payload.to_slice])
-
-        source_node_id = session.local_node_id.try(&.id) || 0_u64
-        nonce = Session::SecureMessage.build_nonce(source_node_id, message_counter, packet_header.security_flags)
-        encrypted = @crypto.encrypt(session.encryption_key, application_payload, nonce, packet_header_bytes)
-
-        udp_packet = Slice.join([packet_header_bytes, encrypted])
+        udp_packet, _ = Session::SecureMessage.encode(session, payload_header, payload.to_slice,
+          source_node_id: session.local_node_id, destination_node_id: session.peer_node_id, crypto: @crypto)
         @transport.send_raw(udp_packet, peer)
 
         exchange_id
@@ -215,7 +176,7 @@ module Matter
 
         loop do
           remaining = deadline - Time.instant
-          return nil if remaining <= 0.seconds
+          return if remaining <= 0.seconds
 
           select
           when rec = @inbox.receive
@@ -226,7 +187,7 @@ module Matter
             next unless msg.payload_header.message_type == message_type
             return rec
           when timeout(remaining)
-            return nil
+            return
           end
         end
       end
@@ -243,6 +204,15 @@ module Matter
           return
         end
 
+        case session.check_peer_message_counter(msg.packet_header.message_id)
+        when Transport::MessageCounter::CheckResult::Duplicate
+          if ack = @ack_packets[{session.session_id, msg.packet_header.message_id}]?
+            @transport.send_raw(ack, peer)
+          end
+          return
+        when Transport::MessageCounter::CheckResult::Stale
+          return
+        end
         decrypted_message = decrypt_message(session, msg)
         @inbox.send(ReceivedMessage.new(decrypted_message, peer))
       rescue ex
@@ -250,17 +220,8 @@ module Matter
       end
 
       private def decrypt_message(session : Session::SecureContext, msg : Codec::MessageCodec::Message) : Codec::MessageCodec::Message
-        packet_header_io = IO::Memory.new
-        Codec::MessageCodec::Base.encode_packet_header(msg.packet_header, packet_header_io)
-        packet_header_bytes = packet_header_io.rewind.to_slice
-
-        peer_node_id = session.peer_node_id.try(&.id) || msg.packet_header.source_node_id.try(&.id) || 0_u64
-        nonce = Session::SecureMessage.build_nonce(peer_node_id, msg.packet_header.message_id, msg.packet_header.security_flags)
-
-        decrypted_application_payload = @crypto.decrypt(session.decryption_key, msg.payload.to_slice, nonce, packet_header_bytes)
-
-        packet = Codec::MessageCodec::Packet.new(header: msg.packet_header, payload: decrypted_application_payload)
-        Codec::MessageCodec::Base.decode_payload(packet)
+        Session::SecureMessage.decode(session,
+          Codec::MessageCodec::Packet.new(msg.packet_header, msg.payload, msg.header_bytes), @crypto)
       end
 
       private def ack_encrypted_if_needed(rec : ReceivedMessage) : Nil
@@ -279,26 +240,6 @@ module Matter
         peer : Socket::IPAddress,
         original : Codec::MessageCodec::Message,
       ) : Nil
-        message_counter = session.next_message_counter
-
-        security_flags = 0_u8
-        security_flags |= Codec::MessageCodec::SessionType::Unicast.value
-
-        flags = Codec::MessageCodec::Base.compute_flags(nil, nil, nil)
-
-        packet_header = Codec::MessageCodec::PacketHeader.new(
-          session_id: session.peer_session_id,
-          session_type: Codec::MessageCodec::SessionType::Unicast,
-          message_id: message_counter,
-          privacy_enhancements: false,
-          control_message: false,
-          message_extensions: false,
-          flags: flags,
-          security_flags: security_flags,
-          source_node_id: nil,
-          destination_node_id: nil
-        )
-
         payload_header = Codec::MessageCodec::PayloadHeader.new(
           exchange_id: original.payload_header.exchange_id,
           protocol_id: PROTOCOL_SECURE_CHANNEL,
@@ -308,20 +249,10 @@ module Matter
           acknowledged_message_id: original.packet_header.message_id
         )
 
-        payload_header_io = IO::Memory.new
-        Codec::MessageCodec::Base.encode_payload_header(payload_header, payload_header_io)
-        payload_header_bytes = payload_header_io.rewind.to_slice
-
-        packet_header_io = IO::Memory.new
-        Codec::MessageCodec::Base.encode_packet_header(packet_header, packet_header_io)
-        packet_header_bytes = packet_header_io.rewind.to_slice
-
-        application_payload = payload_header_bytes
-
-        source_node_id = session.local_node_id.try(&.id) || 0_u64
-        nonce = Session::SecureMessage.build_nonce(source_node_id, message_counter, packet_header.security_flags)
-        encrypted = @crypto.encrypt(session.encryption_key, application_payload, nonce, packet_header_bytes)
-        udp_packet = Slice.join([packet_header_bytes, encrypted])
+        udp_packet, _ = Session::SecureMessage.encode(session, payload_header, Bytes.empty,
+          source_node_id: session.local_node_id, destination_node_id: session.peer_node_id, crypto: @crypto)
+        @ack_packets.shift if @ack_packets.size >= MAX_CACHED_ACKS
+        @ack_packets[{session.session_id, original.packet_header.message_id}] = udp_packet
         @transport.send_raw(udp_packet, peer)
       end
     end

@@ -1,176 +1,77 @@
-require "../src/matter"
+require "./support/console"
+require "./support/main"
 
+# Matter Ambient Light Sensor Device Example
+#
+# - Presents as a Light Sensor (endpoint 1)
+# - Samples a simulated illuminance every 10 seconds
 module MatterAmbientLightSensor
-  class Device < Matter::Device::Base
-    DEVICE_NAME  = "Crystal Ambient Light Sensor"
-    STORAGE_FILE = "matter_ambient_light_sensor_storage.json"
+  class Device < Matter::Device
+    include Examples::Console
 
-    UPDATE_INTERVAL_SECONDS =     10
-    MIN_LUX                 =   25.0
-    MAX_LUX                 = 1500.0
+    SAMPLE_INTERVAL = 10.seconds
 
-    VENDOR_ID      = Matter::SetupPayload.test_vendor_id
-    PRODUCT_ID     = rand(0x0001_u16..0xFFFF_u16)
-    DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
-    SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
+    MIN_LUX =   25.0
+    MAX_LUX = 1500.0
 
-    @illuminance : Matter::Cluster::IlluminanceMeasurementCluster? = nil
-    @identify : Matter::Cluster::IdentifyCluster? = nil
-    @fixed_label : Matter::Cluster::FixedLabelCluster? = nil
-    @running : Bool = false
+    identity vendor: "Spider-Gazelle", product: "Crystal Ambient Light Sensor",
+      vendor_id: Matter::SetupPayload.test_vendor_id,
+      product_id: rand(0x0001_u16..0xFFFF_u16),
+      discriminator: Matter::SetupPayload.generate_random_discriminator,
+      pin: Matter::SetupPayload.generate_random_pin,
+      device_type: Matter::DeviceType::LIGHT_SENSOR
 
-    def initialize
-      super(ip_addresses: local_ips)
+    storage yaml: "matter_ambient_light_sensor_storage.yml"
+
+    endpoint 1, device_type: Matter::DeviceType::LIGHT_SENSOR do
+      cluster Matter::Cluster::IlluminanceMeasurement,
+        measured_value: Matter::Cluster::IlluminanceMeasurement.from_lux(rand(MIN_LUX..MAX_LUX)),
+        as: :illuminance
+      cluster Matter::Cluster::Identify, identify_type: :visible_led
+      cluster Matter::Cluster::FixedLabel, [Matter::Cluster::LabelStruct.new("name", "Example Ambient Light Sensor")]
     end
 
-    def device_name : String
-      DEVICE_NAME
+    on(:illuminance, :illuminance_changed) do |_old_value, new_value|
+      notify "Ambient light: #{format_lux(new_value)}" if new_value
     end
 
-    def vendor_id : UInt16
-      VENDOR_ID
+    def console_notes : Array(String)
+      ["Device Type: Light Sensor"]
     end
 
-    def product_id : UInt16
-      PRODUCT_ID
+    def state_details : Nil
+      puts "  Ambient light: #{format_lux(illuminance.measured_value)}"
+      puts "  Sample interval: #{SAMPLE_INTERVAL.total_seconds.to_i}s"
     end
 
-    def discriminator : UInt16
-      DISCRIMINATOR
+    def status_details : Nil
+      puts "  Ambient light: #{format_lux(illuminance.measured_value)}"
     end
 
-    def setup_pin : UInt32
-      SETUP_PIN_CODE
+    def commands : Array(Tuple(String, String))
+      [{"sample", "Sample the ambient light now"}]
     end
 
-    def primary_device_type_id : UInt16
-      Matter::DeviceTypes::LIGHT_SENSOR
-    end
-
-    def vendor_name : String
-      "Spider-Gazelle"
-    end
-
-    def product_name : String
-      device_name
-    end
-
-    def illuminance : Matter::Cluster::IlluminanceMeasurementCluster
-      @illuminance.as(Matter::Cluster::IlluminanceMeasurementCluster)
-    end
-
-    protected def build_storage_manager : Matter::Storage::Manager
-      Matter::Storage::Manager.new(Matter::Storage::JsonFileBackend.new(STORAGE_FILE))
-    end
-
-    protected def device_clusters : Array(Matter::Cluster::Base)
-      endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-
-      initial_lux = rand(MIN_LUX..MAX_LUX)
-      @illuminance = Matter::Cluster::IlluminanceMeasurementCluster.new(
-        endpoint,
-        measured_value: Matter::Cluster::IlluminanceMeasurementCluster.from_lux(initial_lux)
-      )
-      illuminance.on_illuminance_changed do |_old_value, new_value|
-        if new_value
-          lux = Matter::Cluster::IlluminanceMeasurementCluster.to_lux(new_value)
-          puts "Ambient light: #{"%.1f" % lux} lx"
-        end
-      end
-
-      @identify = Matter::Cluster::IdentifyCluster.new(
-        endpoint,
-        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLED
-      )
-
-      @fixed_label = Matter::Cluster::FixedLabelCluster.new(
-        endpoint,
-        [Matter::Cluster::LabelStruct.new("name", "Example Ambient Light Sensor")]
-      )
-
-      [
-        illuminance,
-        @identify.as(Matter::Cluster::IdentifyCluster),
-        @fixed_label.as(Matter::Cluster::FixedLabelCluster),
-      ] of Matter::Cluster::Base
-    end
-
-    protected def started_commissioning_mode : Nil
-      manual_code = Matter::SetupPayload.generate_manual_code(discriminator, setup_pin)
-      puts "Starting in Commissioning Mode"
-      puts "  Discriminator: #{discriminator}"
-      puts "  Setup PIN: #{setup_pin}"
-      puts ""
-      puts "To pair this device:"
-      puts "  chip-tool pairing code 1 #{manual_code}"
-      puts ""
-    end
-
-    protected def started_operational_mode : Nil
-      puts "Starting in Operational Mode (already commissioned)"
-      puts ""
+    def handle_command(name : String, argument : String?) : Bool
+      return false unless name == "sample"
+      sample
+      true
     end
 
     protected def on_started : Nil
-      @running = true
-      puts "Sampling ambient light every #{UPDATE_INTERVAL_SECONDS}s"
-      spawn { run_sensor_loop }
+      super
+      every(SAMPLE_INTERVAL) { sample }
     end
 
-    protected def on_shutdown : Nil
-      @running = false
-      puts "Shutdown complete"
+    private def sample : Nil
+      illuminance.update_illuminance(Matter::Cluster::IlluminanceMeasurement.from_lux(rand(MIN_LUX..MAX_LUX)))
     end
 
-    private def run_sensor_loop : Nil
-      while @running
-        sleep UPDATE_INTERVAL_SECONDS.seconds
-        break unless @running
-
-        lux = rand(MIN_LUX..MAX_LUX)
-        measured = Matter::Cluster::IlluminanceMeasurementCluster.from_lux(lux)
-        illuminance.update_illuminance(measured)
-      end
-    end
-
-    private def local_ips : Array(Socket::IPAddress)
-      ips = [] of Socket::IPAddress
-
-      begin
-        socket = UDPSocket.new(:inet6)
-        socket.connect("2606:4700:4700::1111", 53)
-        addr = socket.local_address
-        socket.close
-        ips << Socket::IPAddress.new(addr.address, 0)
-      rescue
-      end
-
-      begin
-        socket = UDPSocket.new(:inet)
-        socket.connect("8.8.8.8", 80)
-        addr = socket.local_address
-        socket.close
-        ips << Socket::IPAddress.new(addr.address, 0)
-      rescue
-      end
-
-      ips << Socket::IPAddress.new("127.0.0.1", 0) if ips.empty?
-      ips
+    private def format_lux(measured : UInt16?) : String
+      return "unknown" unless measured
+      "#{"%.1f" % Matter::Cluster::IlluminanceMeasurement.to_lux(measured)} lx"
     end
   end
 end
 
-puts "Starting Matter Ambient Light Sensor Device..."
-puts ""
-
-Log.setup(:debug)
-
-device = MatterAmbientLightSensor::Device.new
-
-Process.on_terminate do
-  puts "\n\nReceived interrupt signal"
-  device.shutdown!
-end
-
-device.start
-device.await_shutdown
+Examples.main("Matter Ambient Light Sensor Device") { MatterAmbientLightSensor::Device.new }

@@ -19,9 +19,9 @@ module ChipTool
             next 2
           end
 
-          cluster_id = Matter::Cluster::BasicInformationCluster::CLUSTER_ID
+          cluster_id = Matter::Cluster::BasicInformation::CLUSTER_ID
           attribute_id = case attribute
-                         when "vendor-name" then Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME
+                         when "vendor-name" then Matter::Cluster::BasicInformation::ATTR_VENDOR_NAME
                          else
                            STDERR.puts "Unsupported attribute: #{attribute} (supported: vendor-name)"
                            next 2
@@ -30,9 +30,9 @@ module ChipTool
           node_id = parse_u64(node_id_str) || raise ArgumentError.new("invalid node-id: #{node_id_str}")
           endpoint_id = endpoint_str.to_u16
 
-          store = Matter::Controller::StateStore.new(ctx.storage_directory)
+          store = ctx.state_store
           state = store.load
-          fabric = state.fabric || raise "No controller fabric found; run `pairing code ...` first"
+          fabric = state.fabric || raise Matter::CommissioningError.new("No controller fabric found; run `pairing code ...` first")
 
           peer = resolve_peer(state, fabric, node_id, ctx.timeout)
           state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
@@ -53,7 +53,7 @@ module ChipTool
               attribute_id: attribute_id
             )
 
-            value = extract_report_string(report, cluster_id, attribute_id) || raise "ReportData missing #{attribute} value"
+            value = extract_report_string(report, cluster_id, attribute_id) || raise Matter::ProtocolError.new("ReportData missing #{attribute} value")
             puts "VendorName: #{value}"
             0
           ensure
@@ -66,7 +66,7 @@ module ChipTool
 
       private def parse_u64(s : String) : UInt64?
         v = s.strip
-        return nil if v.empty?
+        return if v.empty?
         if v.starts_with?("0x") || v.starts_with?("0X")
           v[2..].to_u64?(16)
         else
@@ -81,8 +81,8 @@ module ChipTool
           end
         end
 
-        scanner = nil.as(Matter::MDNS::Scanner?)
-        scanner = Matter::MDNS::Scanner.new
+        scanner = nil.as(Matter::Controller::Scanner?)
+        scanner = Matter::Controller::Scanner.new
         scanner.start
         scanner.query_operational
 
@@ -98,14 +98,14 @@ module ChipTool
           sleep 100.milliseconds
         end
 
-        raise "Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})"
+        raise Matter::TransportError.new("Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})")
       ensure
         scanner.try(&.close)
       end
 
       private def extract_report_string(report : Matter::InteractionModel::ReportDataMessage, cluster_id : UInt32, attribute_id : UInt32) : String?
         reports = report.attribute_reports
-        return nil unless reports
+        return unless reports
 
         reports.each do |attr_report|
           data = attr_report.attribute_data

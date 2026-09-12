@@ -99,7 +99,7 @@ module Matter
         end
 
         # Derive public key from private key using OpenSSL
-        ec_key = OpenSSL::PKey::EC.from_private_bytes(key_bytes, "P-256")
+        ec_key = OpenSSL::PKey::EC.from_private_bytes(key_bytes, Crypto::CRYPTO_EC_CURVE_NIST)
         public_key_bytes = ec_key.public_key_bytes
 
         # Create Key with both private and public keys

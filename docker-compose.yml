@@ -6,11 +6,9 @@
 # advertise their fd00:6d61:7474::/64 address over mDNS.
 name: matter-e2e
 
+# The device image is built once (by the `switch` service) and shared by every
+# other device service; building it per service races on the compiler cache.
 x-device: &device
-  build:
-    context: .
-    dockerfile: e2e/Dockerfile
-    target: device
   image: matter-e2e-device
   volumes:
     - e2e-logs:/e2e/logs
@@ -27,6 +25,10 @@ x-device: &device
 services:
   switch:
     <<: *device
+    build:
+      context: .
+      dockerfile: e2e/Dockerfile
+      target: device
     environment:
       E2E_DEVICE: matter_switch
 

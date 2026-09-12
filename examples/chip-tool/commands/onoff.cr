@@ -22,9 +22,9 @@ module ChipTool
           node_id = parse_u64(node_id_str) || raise ArgumentError.new("invalid node-id: #{node_id_str}")
           endpoint_id = endpoint_str.to_u16
 
-          store = Matter::Controller::StateStore.new(ctx.storage_directory)
+          store = ctx.state_store
           state = store.load
-          fabric = state.fabric || raise "No controller fabric found; run `pairing code ...` first"
+          fabric = state.fabric || raise Matter::CommissioningError.new("No controller fabric found; run `pairing code ...` first")
 
           peer = resolve_peer(state, fabric, node_id, ctx.timeout)
           state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
@@ -44,12 +44,12 @@ module ChipTool
                 session: session,
                 peer: peer,
                 endpoint_id: endpoint_id,
-                cluster_id: Matter::Cluster::OnOffCluster::CLUSTER_ID,
-                attribute_id: Matter::Cluster::OnOffCluster::ATTR_ON_OFF
+                cluster_id: Matter::Cluster::OnOff::CLUSTER_ID,
+                attribute_id: Matter::Cluster::OnOff::ATTR_ON_OFF
               )
 
               value = extract_report_bool(report)
-              raise "ReportData missing OnOff value" if value.nil?
+              raise Matter::ProtocolError.new("ReportData missing OnOff value") if value.nil?
               puts "OnOff: #{value ? "TRUE" : "FALSE"}"
               0
             when "attribute-list"
@@ -57,11 +57,11 @@ module ChipTool
                 session: session,
                 peer: peer,
                 endpoint_id: endpoint_id,
-                cluster_id: Matter::Cluster::OnOffCluster::CLUSTER_ID,
-                attribute_id: Matter::Cluster::OnOffCluster::ATTRIBUTE_LIST
+                cluster_id: Matter::Cluster::OnOff::CLUSTER_ID,
+                attribute_id: Matter::Cluster::Base::GLOBAL_ATTRIBUTE_LIST
               )
 
-              list = extract_report_u32_list(report, Matter::Cluster::OnOffCluster::CLUSTER_ID, Matter::Cluster::OnOffCluster::ATTRIBUTE_LIST) || raise "ReportData missing AttributeList"
+              list = extract_report_u32_list(report, Matter::Cluster::OnOff::CLUSTER_ID, Matter::Cluster::Base::GLOBAL_ATTRIBUTE_LIST) || raise Matter::ProtocolError.new("ReportData missing AttributeList")
               puts "AttributeList: #{list.size} entries"
               list.each_with_index do |id, idx|
                 puts "  [#{idx}]: #{id}"
@@ -79,15 +79,15 @@ module ChipTool
         end
 
         Registry.register("onoff", "on", "Send On command") do |_ctx, _args|
-          run_command(_ctx, _args, Matter::Cluster::OnOffCluster::CMD_ON, "On")
+          run_command(_ctx, _args, Matter::Cluster::OnOff::CMD_ON, "On")
         end
 
         Registry.register("onoff", "off", "Send Off command") do |_ctx, _args|
-          run_command(_ctx, _args, Matter::Cluster::OnOffCluster::CMD_OFF, "Off")
+          run_command(_ctx, _args, Matter::Cluster::OnOff::CMD_OFF, "Off")
         end
 
         Registry.register("onoff", "toggle", "Send Toggle command") do |_ctx, _args|
-          run_command(_ctx, _args, Matter::Cluster::OnOffCluster::CMD_TOGGLE, "Toggle")
+          run_command(_ctx, _args, Matter::Cluster::OnOff::CMD_TOGGLE, "Toggle")
         end
       end
 
@@ -104,9 +104,9 @@ module ChipTool
         node_id = parse_u64(node_id_str) || raise ArgumentError.new("invalid node-id: #{node_id_str}")
         endpoint_id = endpoint_str.to_u16
 
-        store = Matter::Controller::StateStore.new(ctx.storage_directory)
+        store = ctx.state_store
         state = store.load
-        fabric = state.fabric || raise "No controller fabric found; run `pairing code ...` first"
+        fabric = state.fabric || raise Matter::CommissioningError.new("No controller fabric found; run `pairing code ...` first")
 
         peer = resolve_peer(state, fabric, node_id, ctx.timeout)
         state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
@@ -123,7 +123,7 @@ module ChipTool
             session: session,
             peer: peer,
             endpoint_id: endpoint_id,
-            cluster_id: Matter::Cluster::OnOffCluster::CLUSTER_ID,
+            cluster_id: Matter::Cluster::OnOff::CLUSTER_ID,
             command_id: command_id,
             fields: Bytes.empty
           )
@@ -139,7 +139,7 @@ module ChipTool
 
       private def parse_u64(s : String) : UInt64?
         v = s.strip
-        return nil if v.empty?
+        return if v.empty?
         if v.starts_with?("0x") || v.starts_with?("0X")
           v[2..].to_u64?(16)
         else
@@ -154,8 +154,8 @@ module ChipTool
           end
         end
 
-        scanner = nil.as(Matter::MDNS::Scanner?)
-        scanner = Matter::MDNS::Scanner.new
+        scanner = nil.as(Matter::Controller::Scanner?)
+        scanner = Matter::Controller::Scanner.new
         scanner.start
         scanner.query_operational
 
@@ -171,28 +171,28 @@ module ChipTool
           sleep 100.milliseconds
         end
 
-        raise "Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})"
+        raise Matter::TransportError.new("Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})")
       ensure
         scanner.try(&.close)
       end
 
       private def extract_report_bool(report : Matter::InteractionModel::ReportDataMessage) : Bool?
         reports = report.attribute_reports
-        return nil unless reports
+        return unless reports
 
         reports.each do |attr_report|
           data = attr_report.attribute_data
           next unless data
           path = data.path
-          next unless path.cluster == Matter::Cluster::OnOffCluster::CLUSTER_ID
-          next unless path.attribute == Matter::Cluster::OnOffCluster::ATTR_ON_OFF
+          next unless path.cluster == Matter::Cluster::OnOff::CLUSTER_ID
+          next unless path.attribute == Matter::Cluster::OnOff::ATTR_ON_OFF
           case value = data.data.value
           when Bool
             return value
           when Int
             return value != 0
           else
-            return nil
+            return
           end
         end
 
@@ -201,7 +201,7 @@ module ChipTool
 
       private def extract_report_u32_list(report : Matter::InteractionModel::ReportDataMessage, cluster_id : UInt32, attribute_id : UInt32) : Array(UInt32)?
         reports = report.attribute_reports
-        return nil unless reports
+        return unless reports
 
         reports.each do |attr_report|
           data = attr_report.attribute_data
@@ -210,7 +210,7 @@ module ChipTool
           next unless path.cluster == cluster_id
           next unless path.attribute == attribute_id
 
-          list = data.data.value.as?(Array(TLV::Any)) || return nil
+          list = data.data.value.as?(Array(TLV::Any)) || return
 
           values = [] of UInt32
           list.each_with_index do |elem, idx|
@@ -241,11 +241,11 @@ module ChipTool
           if status_ib = resp.command_status
             saw_any = true
             return if status_ib.status.status == Matter::InteractionModel::StatusCode::Success.value
-            raise "#{name} failed (status=#{status_ib.status.status})"
+            raise Matter::ClusterError.from_wire("#{name} failed (status=#{status_ib.status.status})", status_ib.status.status, status_ib.status.cluster_status)
           end
         end
 
-        raise "#{name} failed (empty InvokeResponse)" unless saw_any
+        raise Matter::ProtocolError.new("#{name} failed (empty InvokeResponse)") unless saw_any
       end
     end
   end

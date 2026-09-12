@@ -2,78 +2,23 @@ require "../interaction_model/paths"
 require "../interaction_model/status_code"
 require "../interaction_model/tlv_messages"
 require "../cluster/cluster"
-require "../cluster/access_control_cluster"
+require "../event_journal"
+require "../cluster/access_control"
 require "tlv"
 
 module Matter
   module Protocol
     # Helper module for Interaction Model message handling
     module IMHandler
-      Log = ::Log.for("matter.im")
+      Log = ::Log.for("matter.protocol.im_handler")
 
-      private def self.access_control_cluster(clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base)) : Cluster::AccessControlCluster?
-        clusters[{0_u16, Cluster::AccessControlCluster::CLUSTER_ID}]?.as?(Cluster::AccessControlCluster)
-      end
-
-      # Extract raw value bytes from a TLV::Any, stripping the TLV header.
-      # Clusters expect raw value bytes (e.g. 1 byte for UInt8), not TLV-encoded data.
-      private def self.tlv_value_bytes(tlv : TLV::Any) : Bytes
-        case val = tlv.value
-        when UInt8
-          Bytes[val]
-        when UInt16
-          io = IO::Memory.new(2)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when UInt32
-          io = IO::Memory.new(4)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when UInt64
-          io = IO::Memory.new(8)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when Int8
-          Bytes[val.unsafe_as(UInt8)]
-        when Int16
-          io = IO::Memory.new(2)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when Int32
-          io = IO::Memory.new(4)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when Int64
-          io = IO::Memory.new(8)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when Bool
-          Bytes[val ? 1_u8 : 0_u8]
-        when Float32
-          io = IO::Memory.new(4)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when Float64
-          io = IO::Memory.new(8)
-          io.write_bytes(val, IO::ByteFormat::LittleEndian)
-          io.to_slice
-        when String
-          val.to_slice
-        when Bytes
-          val
-        when Nil
-          # TLV Null — return a single byte with the TLV null type marker
-          # so clusters can detect null vs empty
-          Bytes[0x14]
-        else
-          # For complex types (arrays, lists, structures), fall back to TLV encoding
-          tlv.to_slice
-        end
+      private def self.access_control_cluster(clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base)) : Cluster::AccessControl?
+        clusters[{0_u16, Cluster::AccessControl::CLUSTER_ID}]?.as?(Cluster::AccessControl)
       end
 
       private def self.authorized?(
         clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
-        required : Cluster::Definitions::AccessControl::EntryPrivilege,
+        required : InteractionModel::EntryPrivilege,
         endpoint_id : UInt16,
         cluster_id : UInt32,
         is_case_session : Bool,
@@ -90,7 +35,7 @@ module Matter
         # didn't persist ACLs), allow AccessControl reads/writes so the fabric can
         # re-establish its ACL and regain access.
         if acl.get_acl_for_fabric(fabric_index).empty?
-          return true if cluster_id == Cluster::AccessControlCluster::CLUSTER_ID
+          return true if cluster_id == Cluster::AccessControl::CLUSTER_ID
         end
 
         peer_subject_ids.any? do |subject_id|
@@ -100,7 +45,7 @@ module Matter
             privilege: required,
             cluster: cluster_id,
             endpoint: endpoint_id,
-            auth_mode: Cluster::Definitions::AccessControl::EntryAuthMode::Case
+            auth_mode: InteractionModel::EntryAuthMode::Case
           )
         end
       end
@@ -125,7 +70,7 @@ module Matter
         Log.debug { "ReadRequest parsed: #{attribute_requests.size} attribute request(s)" }
 
         attribute_requests.each_with_index do |path, idx|
-          Log.debug { "  Request #{idx}: endpoint=#{path.endpoint || "nil"}, cluster=0x#{path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}" }
+          Log.debug { "  Request #{idx}: #{path}" }
         end
 
         msg
@@ -148,7 +93,7 @@ module Matter
         requests = attribute_requests || [] of InteractionModel::AttributePath
 
         requests.each do |path|
-          Log.debug { "Reading attribute: endpoint=#{path.endpoint}, cluster=0x#{path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}" }
+          Log.debug { "Reading attribute: #{path}" }
 
           # Handle wildcard reads (endpoint/cluster/attribute can be nil)
           if path.wildcard?
@@ -206,7 +151,7 @@ module Matter
                 attribute: attribute_id
               )
 
-              required = cluster.attributes.find { |attr| attr.id.id == attribute_id }.try(&.access) || Cluster::Definitions::AccessControl::EntryPrivilege::View
+              required = cluster.attributes.find { |attr| attr.id.id == attribute_id }.try(&.access) || InteractionModel::EntryPrivilege::View
               unless authorized?(clusters, required, endpoint_id, cluster_id, is_case_session, fabric_index, peer_subject_ids)
                 status_ib = InteractionModel::StatusIB.new(status: InteractionModel::StatusCode::UnsupportedAccess.value)
                 attr_status = InteractionModel::AttributeStatusIB.new(path: concrete_path, status: status_ib)
@@ -238,7 +183,7 @@ module Matter
             next
           end
 
-          required = cluster.attributes.find { |attr| attr.id.id == attribute_id }.try(&.access) || Cluster::Definitions::AccessControl::EntryPrivilege::View
+          required = cluster.attributes.find { |attr| attr.id.id == attribute_id }.try(&.access) || InteractionModel::EntryPrivilege::View
           unless authorized?(clusters, required, endpoint_id, cluster_id, is_case_session, fabric_index, peer_subject_ids)
             status_ib = InteractionModel::StatusIB.new(status: InteractionModel::StatusCode::UnsupportedAccess.value)
             attr_status = InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
@@ -256,6 +201,126 @@ module Matter
         attribute_reports
       end
 
+      # Reads journaled events for *event_requests*.
+      #
+      # Wildcards in an `EventPath` expand against the journal rather than the
+      # data model: a record is reported when some requested path selects it,
+      # the reader's fabric may see it and the reader holds the privilege the
+      # cluster declared for that event.
+      #
+      # A concrete path (endpoint, cluster and event all given) that names
+      # something the node does not have - or that the reader may not read -
+      # produces an `EventStatusIB` so the controller learns why it got nothing.
+      # Wildcard paths stay silent, exactly as attribute reads do.
+      #
+      # *event_filters* carry the lowest event number the reader still wants;
+      # the node has one event number space, so the highest `event_min` across
+      # the filters wins. *after* is what a subscription has already reported.
+      def self.read_events(
+        event_requests : Array(InteractionModel::EventPath)?,
+        journal : EventJournal,
+        clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
+        event_filters : Array(InteractionModel::EventFilterIB)? = nil,
+        fabric_index : UInt8? = nil,
+        is_case_session : Bool = false,
+        peer_subject_ids : Array(UInt64)? = nil,
+        after : UInt64? = nil,
+      ) : Array(InteractionModel::EventReportIB)
+        reports = [] of InteractionModel::EventReportIB
+        requests = event_requests || [] of InteractionModel::EventPath
+        return reports if requests.empty?
+
+        requests.each do |path|
+          Log.debug { "Reading events: #{path}" }
+          next if path.wildcard?
+
+          if status = concrete_event_status(path, clusters, is_case_session, fabric_index, peer_subject_ids)
+            reports << InteractionModel::EventReportIB.new(event_status: status)
+          end
+        end
+
+        records = journal.query(
+          requests,
+          after: after,
+          min_event_number: minimum_event_number(event_filters),
+          fabric_index: fabric_index
+        )
+
+        records.each do |record|
+          privilege = event_access(clusters, record)
+          next unless privilege
+          next unless authorized?(clusters, privilege, record.endpoint, record.cluster, is_case_session, fabric_index, peer_subject_ids)
+
+          reports << InteractionModel::EventReportIB.new(event_data: build_event_data(record))
+        end
+
+        Log.debug { "Read #{reports.size} event report(s) from #{journal.size} journaled event(s)" }
+        reports
+      end
+
+      # The EventDataIB carrying *record*.
+      def self.build_event_data(record : EventJournal::Record) : InteractionModel::EventDataIB
+        InteractionModel::EventDataIB.new(
+          path: record.to_path,
+          event_number: record.event_number,
+          priority: record.priority,
+          data: record.data,
+          epoch_timestamp: record.epoch_timestamp_ms
+        )
+      end
+
+      # The privilege required to read *record*'s event, or `nil` when the
+      # cluster no longer declares it.
+      private def self.event_access(
+        clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
+        record : EventJournal::Record,
+      ) : InteractionModel::EntryPrivilege?
+        clusters[{record.endpoint, record.cluster}]?.try(&.get_event_metadata(record.event)).try(&.access)
+      end
+
+      # The status a fully specified event path answers with, or `nil` when it
+      # names an event the reader may read.
+      private def self.concrete_event_status(
+        path : InteractionModel::EventPath,
+        clusters : Hash(Tuple(UInt16, UInt32), Cluster::Base),
+        is_case_session : Bool,
+        fabric_index : UInt8?,
+        peer_subject_ids : Array(UInt64)?,
+      ) : InteractionModel::EventStatusIB?
+        endpoint_id = path.endpoint.as(UInt16)
+        cluster_id = path.cluster.as(UInt32)
+        event_id = path.event.as(UInt32)
+
+        cluster = clusters[{endpoint_id, cluster_id}]?
+        return event_status(path, InteractionModel::StatusCode::UnsupportedCluster) unless cluster
+
+        metadata = cluster.get_event_metadata(event_id)
+        return event_status(path, InteractionModel::StatusCode::UnsupportedEvent) unless metadata
+
+        unless authorized?(clusters, metadata.access, endpoint_id, cluster_id, is_case_session, fabric_index, peer_subject_ids)
+          return event_status(path, InteractionModel::StatusCode::UnsupportedAccess)
+        end
+
+        nil
+      end
+
+      private def self.event_status(
+        path : InteractionModel::EventPath,
+        status : InteractionModel::StatusCode,
+      ) : InteractionModel::EventStatusIB
+        InteractionModel::EventStatusIB.new(
+          path: path,
+          status: InteractionModel::StatusIB.new(status: status.value)
+        )
+      end
+
+      # The lowest event number *event_filters* still want reported.
+      private def self.minimum_event_number(event_filters : Array(InteractionModel::EventFilterIB)?) : UInt64?
+        return if event_filters.nil? || event_filters.empty?
+
+        event_filters.max_of(&.event_min)
+      end
+
       private def self.safe_read_attribute(
         cluster : Cluster::Base,
         attribute_id : UInt32,
@@ -263,55 +328,53 @@ module Matter
         path : InteractionModel::AttributePath,
         endpoint_id : UInt16,
         cluster_id : UInt32,
-      ) : InteractionModel::Status | Bytes
+      ) : InteractionModel::Status | TLV::Any
         cluster.read_attribute(attribute_id, fabric_index)
       rescue ex
         Log.error(exception: ex) do
-          "Failed reading attribute from cluster: endpoint=#{endpoint_id} cluster=0x#{cluster_id.to_s(16)} " \
-          "attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}"
+          "Failed reading attribute from cluster: #{path}"
         end
-        InteractionModel::Status.new(InteractionModel::StatusCode::Failure)
+        InteractionModel::Status.failure
+      end
+
+      # `Cluster::Base#invoke_command` already maps handler exceptions to a
+      # status; this guards the protocol layer against a cluster that overrides
+      # `invoke_command` itself and lets an exception escape.
+      private def self.safe_invoke_command(
+        cluster : Cluster::Base,
+        path : InteractionModel::CommandPath,
+        fields : TLV::Any?,
+        session_id : UInt64?,
+        is_case_session : Bool,
+        fabric_index : UInt8?,
+      ) : InteractionModel::Status | Cluster::CommandResponse
+        cluster.invoke_command(path.command, fields, session_id, is_case_session, fabric_index)
+      rescue ex
+        Log.error(exception: ex) do
+          "Failed invoking command on cluster: #{path}"
+        end
+        InteractionModel::Status.failure
       end
 
       private def self.build_attribute_report(
         path : InteractionModel::AttributePath,
-        result : InteractionModel::Status | Bytes,
+        result : InteractionModel::Status | TLV::Any,
         cluster_id : UInt32,
         endpoint_id : UInt16,
         data_version : UInt32,
       ) : InteractionModel::AttributeReportIB
         if result.is_a?(InteractionModel::Status)
-          status_ib = InteractionModel::StatusIB.new(status: result.status.value)
+          status_ib = InteractionModel::StatusIB.new(status: result.status.value, cluster_status: result.cluster_status)
           attr_status = InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
           return InteractionModel::AttributeReportIB.new(attribute_status: attr_status)
         end
 
-        bytes = result.as(Bytes)
-        if bytes.empty?
-          # Empty bytes can't be parsed as TLV - treat as failure
-          Log.warn { "Empty bytes returned for attribute #{path.attribute} on cluster 0x#{cluster_id.to_s(16)} endpoint #{endpoint_id}" }
-          status_ib = InteractionModel::StatusIB.new(status: InteractionModel::StatusCode::Failure.value)
-          attr_status = InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
-          return InteractionModel::AttributeReportIB.new(attribute_status: attr_status)
-        end
-
-        begin
-          data = TLV::Any.from_slice(bytes)
-          attr_data = InteractionModel::AttributeDataIB.new(
-            path: path,
-            data: data,
-            data_version: data_version
-          )
-          InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
-        rescue ex
-          Log.error(exception: ex) do
-            "Failed to decode attribute TLV: endpoint=#{endpoint_id} cluster=0x#{cluster_id.to_s(16)} " \
-            "attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"} bytes=#{bytes.hexstring}"
-          end
-          status_ib = InteractionModel::StatusIB.new(status: InteractionModel::StatusCode::Failure.value)
-          attr_status = InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
-          InteractionModel::AttributeReportIB.new(attribute_status: attr_status)
-        end
+        attr_data = InteractionModel::AttributeDataIB.new(
+          path: path,
+          data: result,
+          data_version: data_version
+        )
+        InteractionModel::AttributeReportIB.new(attribute_data: attr_data)
       end
 
       # Parse WriteRequest from decrypted TLV payload
@@ -322,7 +385,7 @@ module Matter
         Log.debug { "WriteRequest parsed: #{write_requests.size} write request(s)" }
 
         write_requests.each_with_index do |req, idx|
-          Log.debug { "  Write #{idx}: endpoint=#{req.path.endpoint || "nil"}, cluster=0x#{req.path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{req.path.attribute.try(&.to_s(16)) || "nil"}" }
+          Log.debug { "  Write #{idx}: #{req.path}" }
         end
 
         msg
@@ -346,7 +409,7 @@ module Matter
 
         requests.each do |request|
           path = request.path
-          Log.debug { "Writing attribute: endpoint=#{path.endpoint}, cluster=0x#{path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}" }
+          Log.debug { "Writing attribute: #{path}" }
 
           # Get endpoint and cluster IDs
           endpoint_id = path.endpoint || 0_u16 # Default to endpoint 0 if not specified
@@ -374,8 +437,8 @@ module Matter
             next
           end
 
-          if metadata = cluster.attributes.find { |attr| attr.id.id == attribute_id }
-            unless authorized?(clusters, metadata.access, endpoint_id, cluster_id, is_case_session, fabric_index, peer_subject_ids)
+          if metadata = cluster.get_attribute_metadata(attribute_id)
+            unless authorized?(clusters, metadata.write_access, endpoint_id, cluster_id, is_case_session, fabric_index, peer_subject_ids)
               status_ib = InteractionModel::StatusIB.new(status: InteractionModel::StatusCode::UnsupportedAccess.value)
               write_responses << InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
               next
@@ -387,11 +450,11 @@ module Matter
           cluster.request_fabric_index = fabric_index
           cluster.request_peer_node_id = peer_subject_ids.try(&.first?)
 
-          # Write attribute to cluster (extract raw value bytes from TLV)
-          value_bytes = tlv_value_bytes(request.data)
-          status = cluster.write_attribute(attribute_id, value_bytes)
+          # Preserve the TLV type when passing the attribute to its cluster.
+          value = request.data
+          status = cluster.write_attribute(attribute_id, value)
 
-          status_ib = InteractionModel::StatusIB.new(status: status.status.value)
+          status_ib = InteractionModel::StatusIB.new(status: status.status.value, cluster_status: status.cluster_status)
           write_responses << InteractionModel::AttributeStatusIB.new(path: path, status: status_ib)
         end
 
@@ -406,7 +469,7 @@ module Matter
         Log.debug { "SubscribeRequest parsed: #{attribute_requests.size} attribute request(s), min=#{msg.min_interval_floor}s, max=#{msg.max_interval_ceiling}s" }
 
         attribute_requests.each_with_index do |path, idx|
-          Log.debug { "  Request #{idx}: endpoint=#{path.endpoint || "nil"}, cluster=0x#{path.cluster.try(&.to_s(16)) || "nil"}, attribute=0x#{path.attribute.try(&.to_s(16)) || "nil"}" }
+          Log.debug { "  Request #{idx}: #{path}" }
         end
 
         msg
@@ -415,20 +478,22 @@ module Matter
         nil
       end
 
-      # Encode ReportData from array of AttributeReportIB
+      # Encode ReportData from arrays of AttributeReportIB and EventReportIB
       # Used for both ReadResponse and initial subscription data
       def self.encode_report_data(
         attribute_reports : Array(InteractionModel::AttributeReportIB),
         subscription_id : UInt32? = nil,
         more_chunked_messages : Bool = false,
         suppress_response : Bool = false,
+        event_reports : Array(InteractionModel::EventReportIB)? = nil,
       ) : Bytes
         report_msg = InteractionModel::ReportDataMessage.new(
           subscription_id: subscription_id,
           attribute_reports: attribute_reports.empty? ? nil : attribute_reports,
+          event_reports: (event_reports.nil? || event_reports.empty?) ? nil : event_reports,
           more_chunked_messages: more_chunked_messages ? true : nil,
           suppress_response: suppress_response,
-          interaction_model_revision: 12_u8
+          interaction_model_revision: InteractionModel::INTERACTION_MODEL_REVISION
         )
 
         report_msg.to_slice
@@ -440,72 +505,90 @@ module Matter
       # 1280 - 89 = ~1191 bytes available for TLV payload, use 1100 for safety margin
       MAX_REPORT_PAYLOAD_SIZE = 1100
 
-      # Chunk attributes into multiple ReportData messages that fit within MTU
-      # Returns an array of (encoded_bytes, is_last_chunk) tuples
+      # Bytes reserved in every chunk for the ReportData structure itself:
+      # structure start (~1) + attribute array start (~2) + moreChunkedMessages
+      # (~2) + interactionModelRevision (~3) + structure end (~1), rounded up.
+      REPORT_DATA_OVERHEAD = 15
+
+      # Extra bytes a subscription id costs in the ReportData structure.
+      SUBSCRIPTION_ID_OVERHEAD = 5
+
+      # Extra bytes the event report array costs when the chunk carries one.
+      EVENT_ARRAY_OVERHEAD = 2
+
+      # Chunk attribute and event reports into ReportData messages that fit
+      # within the MTU. Returns (encoded_bytes, is_last_chunk) tuples.
+      #
+      # Both kinds of report share one budget: a read that asks for attributes
+      # and events gets as many chunks as the two together need, never one
+      # ladder each. Attribute reports go out first, then events in event
+      # number order.
       def self.encode_chunked_report_data(
         attribute_reports : Array(InteractionModel::AttributeReportIB),
         subscription_id : UInt32? = nil,
+        event_reports : Array(InteractionModel::EventReportIB)? = nil,
       ) : Array(Tuple(Bytes, Bool))
         chunks = [] of Tuple(Bytes, Bool)
+        events = event_reports || [] of InteractionModel::EventReportIB
 
-        # Pre-encode all attribute reports with their sizes
-        encoded_reports = [] of Tuple(InteractionModel::AttributeReportIB, Bytes)
-        attribute_reports.each do |report|
-          encoded_reports << {report, report.to_slice}
-        end
+        # Pre-encode every report so its wire size is known before packing
+        encoded_attributes = attribute_reports.map { |report| {report, report.to_slice} }
+        encoded_events = events.map { |report| {report, report.to_slice} }
+        total = encoded_attributes.size + encoded_events.size
 
-        # Calculate base overhead for ReportData structure
-        # Structure start (~1) + subscriptionId (~6 if present) + array start (~2) +
-        # moreChunkedMessages (~2) + interactionModelRevision (~3) + structure end (~1) = ~15 bytes
-        base_overhead = subscription_id ? 20 : 15
+        base_overhead = REPORT_DATA_OVERHEAD
+        base_overhead += SUBSCRIPTION_ID_OVERHEAD if subscription_id
+        base_overhead += EVENT_ARRAY_OVERHEAD unless encoded_events.empty?
 
-        # Current chunk state
-        current_reports = [] of InteractionModel::AttributeReportIB
+        current_attributes = [] of InteractionModel::AttributeReportIB
+        current_events = [] of InteractionModel::EventReportIB
         current_size = base_overhead
-        report_index = 0
+        index = 0
 
-        # Process all reports
-        while report_index < encoded_reports.size
-          report, encoded = encoded_reports[report_index]
-
-          if current_size + encoded.size <= MAX_REPORT_PAYLOAD_SIZE
-            current_reports << report
-            current_size += encoded.size
-            report_index += 1
-          elsif current_reports.empty?
-            # Single report too large - include it anyway (will exceed MTU but necessary)
-            Log.warn { "Single attribute report exceeds max payload size (#{encoded.size} bytes)" }
-            current_reports << report
-            current_size += encoded.size
-            report_index += 1
-          else
-            # Chunk is full, output what we have
-            is_last = (report_index >= encoded_reports.size)
-            chunk_bytes = encode_report_data(current_reports, subscription_id, more_chunked_messages: !is_last)
-            chunks << {chunk_bytes, is_last}
-
-            Log.debug { "Created chunk #{chunks.size}: #{current_reports.size} reports, #{chunk_bytes.size} bytes, more=#{!is_last}" }
-
-            # Reset for next chunk
-            current_reports = [] of InteractionModel::AttributeReportIB
-            current_size = base_overhead
+        flush = ->(is_last : Bool) do
+          chunk_bytes = encode_report_data(
+            current_attributes,
+            subscription_id,
+            more_chunked_messages: !is_last,
+            event_reports: current_events
+          )
+          chunks << {chunk_bytes, is_last}
+          Log.debug do
+            "Created chunk #{chunks.size}: #{current_attributes.size} attribute report(s), " \
+            "#{current_events.size} event report(s), #{chunk_bytes.size} bytes, more=#{!is_last}"
           end
+          current_attributes = [] of InteractionModel::AttributeReportIB
+          current_events = [] of InteractionModel::EventReportIB
+          current_size = base_overhead
+          nil
         end
 
-        # Output final chunk if there's anything left
-        if !current_reports.empty?
-          chunk_bytes = encode_report_data(current_reports, subscription_id, more_chunked_messages: false)
-          chunks << {chunk_bytes, true}
+        while index < total
+          encoded = index < encoded_attributes.size ? encoded_attributes[index][1] : encoded_events[index - encoded_attributes.size][1]
+          empty_chunk = current_attributes.empty? && current_events.empty?
 
-          Log.debug { "Created final chunk #{chunks.size}: #{current_reports.size} reports, #{chunk_bytes.size} bytes" }
+          if current_size + encoded.size > MAX_REPORT_PAYLOAD_SIZE && !empty_chunk
+            # Chunk is full, output what we have and retry this report
+            flush.call(false)
+            next
+          end
+
+          if empty_chunk && current_size + encoded.size > MAX_REPORT_PAYLOAD_SIZE
+            # Single report too large - include it anyway (will exceed MTU but necessary)
+            Log.warn { "Single report exceeds max payload size (#{encoded.size} bytes)" }
+          end
+
+          if index < encoded_attributes.size
+            current_attributes << encoded_attributes[index][0]
+          else
+            current_events << encoded_events[index - encoded_attributes.size][0]
+          end
+          current_size += encoded.size
+          index += 1
         end
 
-        # Edge case: empty response
-        if chunks.empty?
-          chunk_bytes = encode_report_data([] of InteractionModel::AttributeReportIB, subscription_id)
-          chunks << {chunk_bytes, true}
-          Log.debug { "Created empty chunk: #{chunk_bytes.size} bytes" }
-        end
+        # The final chunk, which is also the only chunk of an empty response
+        flush.call(true) if !current_attributes.empty? || !current_events.empty? || chunks.empty?
 
         Log.debug { "Total chunks: #{chunks.size}" }
         chunks
@@ -519,7 +602,7 @@ module Matter
         msg = InteractionModel::SubscribeResponseMessage.new(
           subscription_id: subscription_id,
           max_interval: max_interval,
-          interaction_model_revision: 12_u8
+          interaction_model_revision: InteractionModel::INTERACTION_MODEL_REVISION
         )
         msg.to_slice
       end
@@ -528,7 +611,7 @@ module Matter
       def self.encode_write_response(write_responses : Array(InteractionModel::AttributeStatusIB)) : Bytes
         msg = InteractionModel::WriteResponseMessage.new(
           write_responses: write_responses,
-          interaction_model_revision: 12_u8
+          interaction_model_revision: InteractionModel::INTERACTION_MODEL_REVISION
         )
         msg.to_slice
       end
@@ -587,19 +670,11 @@ module Matter
             end
           end
 
-          # Convert command fields TLV::Any to bytes for cluster processing
-          fields_bytes = if fields = cmd_data.command_fields
-                           fields.to_slice
-                         else
-                           Bytes.empty
-                         end
-
-          # Invoke command on cluster (pass session info for authentication)
-          result = cluster.invoke_command(path.command, fields_bytes, session_id, is_case_session, fabric_index)
+          result = safe_invoke_command(cluster, path, cmd_data.command_fields, session_id, is_case_session, fabric_index)
 
           if result.is_a?(InteractionModel::Status)
             # Error status
-            status_ib = InteractionModel::StatusIB.new(status: result.status.value)
+            status_ib = InteractionModel::StatusIB.new(status: result.status.value, cluster_status: result.cluster_status)
             cmd_status = InteractionModel::CommandStatusIB.new(command_path: path, status: status_ib)
             invoke_responses << InteractionModel::InvokeResponseIB.new(command_status: cmd_status)
           elsif result.is_a?(Cluster::CommandResponse)
@@ -610,14 +685,9 @@ module Matter
               command: result.command_id # Use response command ID from cluster
             )
 
-            # Parse response data to TLV::Any if present
-            command_fields = unless result.data.empty?
-              TLV::Any.from_slice(result.data)
-            end
-
             cmd_response = InteractionModel::CommandDataIBTlv.new(
               command_path: response_path,
-              command_fields: command_fields
+              command_fields: result.response
             )
             invoke_responses << InteractionModel::InvokeResponseIB.new(command_data: cmd_response)
           end
@@ -636,7 +706,7 @@ module Matter
           suppress_response: suppress_response,
           invoke_responses: invoke_responses,
           more_chunked_messages: nil,
-          interaction_model_revision: 12_u8
+          interaction_model_revision: InteractionModel::INTERACTION_MODEL_REVISION
         )
         msg.to_slice
       end

@@ -1,3 +1,5 @@
+require "log"
+
 require "../../crypto/crypto"
 require "../../crypto/certificate"
 require "../../crypto/ecdh"
@@ -6,11 +8,46 @@ require "../context"
 require "openssl_ext"
 require "tlv"
 require "./definitions"
-require "../../datatype/case_authenticated_tag"
 
 module Matter
   module Session
     module Case
+      Log = ::Log.for("matter.session.case")
+
+      # Matter spec key derivation info strings and nonces (Matter core
+      # specification section 4.14.2, "CASE Session Establishment"). Both sides
+      # of the handshake derive from the same constants; matter.js keeps the
+      # same names in `packages/protocol/src/session/case/CaseMessages.ts`.
+      KDFSR2_INFO       = "Sigma2".to_slice
+      KDFSR3_INFO       = "Sigma3".to_slice
+      TBE_DATA2_NONCE   = "NCASE_Sigma2N".to_slice
+      TBE_DATA3_NONCE   = "NCASE_Sigma3N".to_slice
+      SESSION_KEYS_INFO = "SessionKeys".to_slice
+
+      # AES-128-CCM key length: Sigma2/Sigma3 keys and each session key
+      SYMMETRIC_KEY_LENGTH = 16
+      # Session key material: I2R key ‖ R2I key ‖ attestation challenge
+      SESSION_KEYS_LENGTH = SYMMETRIC_KEY_LENGTH * 3
+      I2R_KEY_OFFSET      = 0
+      R2I_KEY_OFFSET      = SYMMETRIC_KEY_LENGTH
+      CHALLENGE_OFFSET    = SYMMETRIC_KEY_LENGTH * 2
+      # Sigma1/Sigma2 random values
+      RANDOM_LENGTH = 32
+      # Resumption ID generated with Sigma2
+      RESUMPTION_ID_LENGTH = 16
+      # Sigma1 destination id: an HMAC-SHA256 tag
+      DESTINATION_ID_LENGTH = 32
+
+      # Which end of the handshake a set of session keys belongs to. The key
+      # material is identical on both sides; only the encrypt/decrypt roles of
+      # the I2R and R2I halves swap.
+      enum Role
+        Initiator
+        Responder
+      end
+
+      alias SessionKeys = NamedTuple(encryption: Bytes, decryption: Bytes, attestation_challenge: Bytes)
+
       # Operational certificate chain for CASE authentication
       # Note: For CASE Sigma2/Sigma3, these are operational certificates from commissioning,
       # NOT attestation certificates (DAC/PAI/PAA)
@@ -23,227 +60,235 @@ module Matter
         end
       end
 
+      # Concatenate the parts of an HKDF salt in order
+      def self.build_salt(*parts : Bytes) : Bytes
+        salt = IO::Memory.new
+        parts.each { |part| salt.write(part) }
+        salt.to_slice
+      end
+
+      # Derive the session keys both ends share once Sigma3 has been exchanged:
+      #
+      #     I2R ‖ R2I ‖ AttestationChallenge = HKDF(sharedSecret, salt, "SessionKeys", 48)
+      #
+      # The salt is `IPK ‖ SHA256(sigma1 ‖ sigma2 ‖ sigma3)`; the initiator
+      # encrypts with I2R and decrypts with R2I, the responder the other way
+      # round.
+      def self.derive_session_keys(
+        crypto : Crypto::CryptoBase,
+        shared_secret : Bytes,
+        salt : Bytes,
+        role : Role,
+      ) : SessionKeys
+        keys = crypto.create_hkdf_key(shared_secret, salt, SESSION_KEYS_INFO, SESSION_KEYS_LENGTH)
+
+        i2r_key = keys[I2R_KEY_OFFSET, SYMMETRIC_KEY_LENGTH]
+        r2i_key = keys[R2I_KEY_OFFSET, SYMMETRIC_KEY_LENGTH]
+        attestation_challenge = keys[CHALLENGE_OFFSET, SYMMETRIC_KEY_LENGTH]
+
+        Log.trace { "Session keys: I2R=#{i2r_key.hexstring} R2I=#{r2i_key.hexstring} challenge=#{attestation_challenge.hexstring}" }
+
+        case role
+        in Role::Initiator
+          {encryption: i2r_key, decryption: r2i_key, attestation_challenge: attestation_challenge}
+        in Role::Responder
+          {encryption: r2i_key, decryption: i2r_key, attestation_challenge: attestation_challenge}
+        end
+      end
+
       # CASE session establishment (initiator side - controller/commissioner)
       class CaseInitiator
         Log = ::Log.for("matter.session.case.initiator")
 
         property operational_cert : Bytes
+        property operational_icac : Bytes?
         property operational_key : Crypto::Key
         property ephemeral_key : Crypto::Key?
         property peer_cert : Bytes?
+        property peer_icac : Bytes?
+        property peer_signature : Bytes?
+        property peer_resumption_id : Bytes?
         property peer_ephemeral_key : Bytes?
+        property peer_session_id : UInt16?
         property shared_secret : Bytes?
         property crypto : Crypto::CryptoBase
         property fabric_id : UInt64
         property node_id : UInt64
+        property ipk : Bytes           # Identity Protection Key from fabric
+        property session_id : UInt16?  # Session ID we advertised in Sigma1
+        property sigma1_bytes : Bytes? # Raw Sigma1 message bytes for the transcript
+        property sigma2_bytes : Bytes? # Raw Sigma2 message bytes for the transcript
+        property sigma3_bytes : Bytes? # Raw Sigma3 message bytes for the transcript
 
         def initialize(
           @operational_cert : Bytes,
           @operational_key : Crypto::Key,
           @fabric_id : UInt64,
           @node_id : UInt64,
+          @ipk : Bytes,
           @crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
+          @operational_icac : Bytes? = nil,
         )
           @peer_ephemeral_key = nil
           @shared_secret = nil
         end
 
-        # Step 1: Generate ephemeral key and create Sigma1 message
-        def generate_sigma1 : {ephemeral_public_key: Bytes, random: Bytes, session_id: UInt16}
+        # Step 1: Generate an ephemeral key and the Sigma1 message.
+        #
+        # `destination_id` is the HMAC over the initiator random, root public
+        # key, fabric id and peer node id that identifies the fabric to the
+        # responder; the caller computes it because it holds the fabric's root
+        # public key.
+        def generate_sigma1(destination_id : Bytes) : {ephemeral_public_key: Bytes, random: Bytes, session_id: UInt16, sigma1_bytes: Bytes}
           # Generate ephemeral ECDH key pair
-          @ephemeral_key = Crypto::ECDH.generate_key_pair
+          ephemeral_key = Crypto::ECDH.generate_key_pair
+          @ephemeral_key = ephemeral_key
 
-          # Generate random nonce
-          random = @crypto.random_bytes(32)
-
-          # Generate session ID
+          random = @crypto.random_bytes(RANDOM_LENGTH)
           session_id = @crypto.random_uint16
+          @session_id = session_id
 
-          eph_key = @ephemeral_key.as(Crypto::Key)
+          sigma1 = Definitions::Sigma1.new(
+            initiator_random: random,
+            initiator_session_id: session_id,
+            destination_id: destination_id,
+            initiator_eph_pub_key: ephemeral_key.public_key
+          )
+          sigma1_bytes = sigma1.to_slice
+          @sigma1_bytes = sigma1_bytes
+
           {
-            ephemeral_public_key: eph_key.public_key,
+            ephemeral_public_key: ephemeral_key.public_key,
             random:               random,
             session_id:           session_id,
+            sigma1_bytes:         sigma1_bytes,
           }
         end
 
-        # Step 2: Process Sigma2 response and generate Sigma3
+        # Step 2: Process Sigma2 and produce Sigma3.
+        #
+        # `sigma2_bytes` is the raw TLV of the received message: the transcript
+        # hash has to cover the bytes as they were sent, not a re-encoding.
         def process_sigma2(
-          peer_ephemeral_public_key : Bytes,
-          peer_random : Bytes,
-          peer_encrypted_cert : Bytes,
-          peer_session_id : UInt16,
-        ) : {encrypted_cert: Bytes, signature: Bytes}
+          sigma2 : Definitions::Sigma2,
+          sigma2_bytes : Bytes,
+        ) : {encrypted_cert: Bytes, signature: Bytes, sigma3_bytes: Bytes}
           ephemeral_key = @ephemeral_key
-          raise "Ephemeral key not generated" if ephemeral_key.nil?
+          raise Matter::ProtocolError.new("Ephemeral key not generated") if ephemeral_key.nil?
 
-          # Store peer ephemeral key for later key derivation
+          sigma1_bytes = @sigma1_bytes
+          raise Matter::ProtocolError.new("Sigma1 bytes not available") if sigma1_bytes.nil?
+
+          peer_ephemeral_public_key = sigma2.responder_eph_pub_key
           @peer_ephemeral_key = peer_ephemeral_public_key
+          @peer_session_id = sigma2.responder_session_id
+          @sigma2_bytes = sigma2_bytes
 
           # Compute shared secret using ECDH
-          @shared_secret = Crypto::ECDH.compute_shared_secret(
+          shared_secret = Crypto::ECDH.compute_shared_secret(
             ephemeral_key.private_key,
             peer_ephemeral_public_key
           )
+          @shared_secret = shared_secret
 
-          shared = @shared_secret.as(Bytes)
-
-          # Derive encryption keys from shared secret using HKDF
-          encryption_key = @crypto.create_hkdf_key(
-            shared,
-            Bytes.new(0),
-            "Sigma2EncryptionKey".to_slice,
-            16
+          # Sigma2 key = HKDF(sharedSecret, IPK ‖ responderRandom ‖ responderEphPubKey ‖ SHA256(sigma1), "Sigma2")
+          sigma2_salt = Case.build_salt(
+            @ipk,
+            sigma2.responder_random,
+            peer_ephemeral_public_key,
+            @crypto.compute_sha256(sigma1_bytes)
           )
+          sigma2_key = @crypto.create_hkdf_key(shared_secret, sigma2_salt, KDFSR2_INFO, SYMMETRIC_KEY_LENGTH)
 
-          # Decrypt peer certificate using AES-128-CCM
-          # Derive nonce deterministically from shared secret for decryption
-          nonce_material = @crypto.create_hkdf_key(
-            shared,
-            Bytes.new(0),
-            "Sigma2Nonce".to_slice,
-            13
-          )
-
-          begin
-            # Decrypt the certificate
-            decrypted_cert_der = @crypto.decrypt(encryption_key, peer_encrypted_cert, nonce_material)
-            @peer_cert = decrypted_cert_der
-
-            # Parse the DER-encoded certificate to verify it's valid
-            begin
-              OpenSSL::X509::Certificate.from_der(decrypted_cert_der)
-              Log.debug { "Successfully parsed peer certificate in Sigma2" }
-              # Note: Full certificate chain validation should be done after the handshake
-              # by calling validate_certificate_chain(trusted_roots) with appropriate trusted roots
-            rescue e
-              Log.warn(exception: e) { "Failed to parse peer certificate" }
-            end
-          rescue ex
-            # If decryption fails, store encrypted cert for now (backward compatibility with tests)
-            @peer_cert = peer_encrypted_cert
+          # Decrypt TBE_Data2; a MIC failure means the peer does not hold the
+          # shared secret and the handshake must fail.
+          decrypted = begin
+            @crypto.decrypt(sigma2_key, sigma2.encrypted2, TBE_DATA2_NONCE)
+          rescue ex : Matter::CryptoError
+            raise Matter::AuthenticationError.new("CASE: Sigma2 certificate decryption failed", cause: ex)
           end
 
-          # Sign the handshake transcript
-          transcript = peer_random + peer_ephemeral_public_key
-          signature = @crypto.sign_ecdsa(@operational_key, transcript)
+          peer_data = begin
+            Definitions::EncryptedDataSigma2.from_slice(decrypted)
+          rescue ex
+            raise Matter::AuthenticationError.new("CASE: Sigma2 encrypted payload is not a TBE_Data2 structure", cause: ex)
+          end
 
-          # Encrypt our certificate with deterministic nonce
-          our_nonce = @crypto.create_hkdf_key(
-            shared,
-            Bytes.new(0),
-            "Sigma3Nonce".to_slice,
-            13
+          @peer_cert = peer_data.responder_noc
+          @peer_icac = peer_data.responder_icac
+          @peer_signature = peer_data.signature
+          @peer_resumption_id = peer_data.resumption_id
+          Log.debug { "CASE Sigma2: peer NOC #{peer_data.responder_noc.size} bytes, ICAC #{peer_data.responder_icac.try(&.size) || 0} bytes" }
+
+          # Sign TBS_Data3 with our operational key: our NOC and ICAC, our
+          # ephemeral public key, then the responder's.
+          signed_data = Definitions::SignedData.new(
+            responder_noc: @operational_cert,
+            responder_icac: @operational_icac,
+            responder_public_key: ephemeral_key.public_key,
+            initiator_public_key: peer_ephemeral_public_key
           )
-          encrypted_cert = @crypto.encrypt(encryption_key, @operational_cert, our_nonce)
+          signature = @crypto.sign_ecdsa(@operational_key, signed_data.to_slice)
 
-          {encrypted_cert: encrypted_cert, signature: signature}
+          encrypted_data3 = Definitions::EncryptedDataSigma3.new(
+            responder_noc: @operational_cert,
+            responder_icac: @operational_icac,
+            signature: signature
+          )
+
+          # Sigma3 key = HKDF(sharedSecret, IPK ‖ SHA256(sigma1 ‖ sigma2), "Sigma3")
+          sigma3_salt = Case.build_salt(@ipk, @crypto.compute_sha256([sigma1_bytes, sigma2_bytes]))
+          sigma3_key = @crypto.create_hkdf_key(shared_secret, sigma3_salt, KDFSR3_INFO, SYMMETRIC_KEY_LENGTH)
+          encrypted_cert = @crypto.encrypt(sigma3_key, encrypted_data3.to_slice, TBE_DATA3_NONCE)
+
+          sigma3_bytes = Definitions::Sigma3.new(encrypted3: encrypted_cert).to_slice
+          @sigma3_bytes = sigma3_bytes
+
+          {encrypted_cert: encrypted_cert, signature: signature, sigma3_bytes: sigma3_bytes}
         end
 
-        # Verify Sigma3 confirmation
-        def verify_sigma3(signature : Bytes, transcript : Bytes? = nil) : Bool
+        # Verify a signature over `transcript` with the peer's certificate.
+        # Raises `Matter::AuthenticationError` when the certificate cannot be
+        # parsed or the signature does not verify.
+        def verify_sigma3(signature : Bytes, transcript : Bytes) : Nil
           peer_cert = @peer_cert
-          raise "Peer certificate not received" if peer_cert.nil?
+          raise Matter::ProtocolError.new("Peer certificate not received") if peer_cert.nil?
 
-          # If we have a transcript, verify the signature
-          if transcript
-            begin
-              # Parse the peer's certificate from DER
-              cert_obj = OpenSSL::X509::Certificate.from_der(peer_cert)
-
-              # Verify the signature using the peer's certificate public key
-              result = OpenSSL::X509::SignatureVerifier.verify_signature(
-                transcript,
-                signature,
-                cert_obj,
-                :SHA256
-              )
-
-              return result
-            rescue ex
-              # If parsing or verification fails, fall back to accepting (for test compatibility)
-              Log.warn(exception: ex) { "Certificate verification failed" }
-            end
+          cert_obj = begin
+            OpenSSL::X509::Certificate.from_der(peer_cert)
+          rescue ex : OpenSSL::Error
+            raise Matter::AuthenticationError.new("CASE: peer certificate cannot be parsed", cause: ex)
           end
 
-          # For backward compatibility with tests, return true
-          true
-        end
-
-        # Validate peer certificate chain against trusted roots
-        #
-        # @param trusted_roots Array of trusted root certificates (DER or Certificate objects)
-        # @param intermediate_certs Optional array of intermediate certificates
-        # @return true if chain is valid, false otherwise
-        def validate_certificate_chain(
-          trusted_roots : Array(Bytes | OpenSSL::X509::Certificate),
-          intermediate_certs : Array(Bytes | OpenSSL::X509::Certificate)? = nil,
-        ) : Bool
-          peer_cert = @peer_cert
-          return false if peer_cert.nil?
-
-          begin
-            # Parse peer certificate
-            peer_cert_obj = OpenSSL::X509::Certificate.from_der(peer_cert)
-
-            # Create validator and add trusted roots
-            validator = OpenSSL::X509::CertificateValidator.new
-            trusted_roots.each do |root|
-              root_cert = root.is_a?(Bytes) ? OpenSSL::X509::Certificate.from_der(root) : root
-              validator.add_trusted_cert(root_cert)
-            end
-
-            # Build intermediate chain if provided
-            chain = if intermediate_certs
-                      intermediate_certs.map do |cert|
-                        cert.is_a?(Bytes) ? OpenSSL::X509::Certificate.from_der(cert) : cert
-                      end
-                    end
-
-            # Verify the certificate chain
-            validator.verify(peer_cert_obj, chain)
-            true
-          rescue ex : OpenSSL::X509::CertificateValidationError
-            Log.error(exception: ex) { "Certificate chain validation failed (peer_cert_hex=#{peer_cert.hexstring})" }
-            false
-          rescue ex
-            Log.error(exception: ex) { "Certificate parsing failed (peer_cert_hex=#{peer_cert.hexstring})" }
-            false
-          end
+          verified = OpenSSL::X509::SignatureVerifier.verify_signature(
+            transcript,
+            signature,
+            cert_obj,
+            :SHA256
+          )
+          raise Matter::AuthenticationError.new("CASE: Sigma3 signature verification failed") unless verified
         end
 
         # Derive session keys after successful CASE
-        def derive_session_keys : {encryption: Bytes, decryption: Bytes}
+        def derive_session_keys : SessionKeys
           shared_secret = @shared_secret
-          raise "Shared secret not computed" if shared_secret.nil?
+          sigma1_bytes = @sigma1_bytes
+          sigma2_bytes = @sigma2_bytes
+          sigma3_bytes = @sigma3_bytes
 
-          # Derive session keys from shared secret using HKDF
-          # Matter Spec: SessionKeys = HKDF(shared_secret, salt, "SessionKeys", 32)
-          session_keys = @crypto.create_hkdf_key(
-            shared_secret,
-            Bytes.new(0), # Empty salt
-            "SessionKeys".to_slice,
-            32 # Derive 32 bytes total (16 for each key)
-          )
+          raise Matter::ProtocolError.new("Shared secret not computed") if shared_secret.nil?
+          raise Matter::ProtocolError.new("Sigma1 bytes not available") if sigma1_bytes.nil?
+          raise Matter::ProtocolError.new("Sigma2 bytes not available") if sigma2_bytes.nil?
+          raise Matter::ProtocolError.new("Sigma3 bytes not available") if sigma3_bytes.nil?
 
-          # Split into initiator-to-responder and responder-to-initiator keys
-          {
-            encryption: session_keys[0, 16],  # I2R key
-            decryption: session_keys[16, 16], # R2I key
-          }
+          salt = Case.build_salt(@ipk, @crypto.compute_sha256([sigma1_bytes, sigma2_bytes, sigma3_bytes]))
+          Case.derive_session_keys(@crypto, shared_secret, salt, Role::Initiator)
         end
       end
 
       # CASE session establishment (responder side - device)
       class CaseResponder
         Log = ::Log.for("matter.session.case.responder")
-
-        # Matter spec key derivation info strings
-        KDFSR2_INFO       = "Sigma2".to_slice
-        KDFSR3_INFO       = "Sigma3".to_slice
-        TBE_DATA2_NONCE   = "NCASE_Sigma2N".to_slice
-        TBE_DATA3_NONCE   = "NCASE_Sigma3N".to_slice
-        SESSION_KEYS_INFO = "SessionKeys".to_slice
 
         property cert_chain : OperationalCertChain
         property operational_key : Crypto::Key
@@ -268,6 +313,12 @@ module Matter
         # All authenticated Subject IDs for the peer (NodeId + any CATs).
         # Used for ACL evaluation (ACL subjects may be Node IDs or CATs).
         property peer_subject_ids : Array(UInt64) = [] of UInt64
+        # Intermediate certificate the peer presented in Sigma3, if any
+        property peer_icac : Bytes?
+        # Public key of the fabric's root certificate. The peer's node
+        # certificate has to chain to it, otherwise any member of the fabric
+        # could mint one naming any node id it likes.
+        property root_public_key : Bytes?
 
         def initialize(
           @cert_chain : OperationalCertChain,
@@ -276,6 +327,7 @@ module Matter
           @node_id : UInt64,
           @ipk : Bytes,
           @crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
+          @root_public_key : Bytes? = nil,
         )
           @peer_ephemeral_key = nil
           @shared_secret = nil
@@ -287,7 +339,7 @@ module Matter
           if operational_key.public_bits.nil?
             # Use OpenSSL to derive public key from private key
             # Note: from_private_bytes expects NIST curve names like "P-256", not "prime256v1"
-            ec_key = OpenSSL::PKey::EC.from_private_bytes(operational_key.private_key, "P-256")
+            ec_key = OpenSSL::PKey::EC.from_private_bytes(operational_key.private_key, Crypto::CRYPTO_EC_CURVE_NIST)
             pub_bytes = ec_key.public_key_bytes
 
             # Create a new Key with both private and public components
@@ -330,11 +382,10 @@ module Matter
           @shared_secret = shared_secret
           Log.debug { "CASE Sigma2: ECDH shared_secret: #{shared_secret.hexstring}" }
           Log.debug { "CASE Sigma2: Our ephemeral public key: #{eph_key.public_key.hexstring}" }
-          Log.debug { "CASE Sigma2: Our ephemeral PRIVATE key: #{eph_key.private_key.hexstring}" }
           Log.debug { "CASE Sigma2: Peer ephemeral public key: #{peer_ephemeral_public_key.hexstring}" }
 
           # Generate random nonce for Sigma2 response
-          random = @crypto.random_bytes(32)
+          random = @crypto.random_bytes(RANDOM_LENGTH)
           @our_random = random # Store for later signature verification
 
           # Store our ephemeral public key for later signature verification
@@ -346,33 +397,15 @@ module Matter
           # This way we can continue adding data (Sigma2, Sigma3) later
           sigma1_hash = transcript_hash.dup.final
           Log.debug { "CASE Sigma2: sigma1_bytes size: #{sigma1_bytes.size}, hash: #{sigma1_hash.hexstring}" }
-          Log.debug { "CASE Sigma2: sigma1_bytes hex: #{sigma1_bytes.hexstring}" }
 
-          # Build Sigma2 salt: IPK + responderRandom + responderEcdhPublicKey + SHA256(sigma1_bytes)
+          # Sigma2 salt: IPK ‖ responderRandom ‖ responderEphPubKey ‖ SHA256(sigma1)
           # Per Matter spec section 4.14.2
-          sigma2_salt = IO::Memory.new
-          sigma2_salt.write(@ipk)
-          sigma2_salt.write(random)
-          sigma2_salt.write(ephemeral_public)
-          sigma2_salt.write(sigma1_hash)
-          salt_bytes = sigma2_salt.to_slice
-
-          Log.debug { "CASE Sigma2 salt components:" }
-          Log.debug { "  IPK: #{@ipk.hexstring}" }
-          Log.debug { "  responderRandom: #{random.hexstring}" }
-          Log.debug { "  responderEcdhPublicKey: #{ephemeral_public.size} bytes" }
-          Log.debug { "  SHA256(sigma1): #{sigma1_hash.hexstring}" }
-          Log.debug { "  Total salt: #{salt_bytes.size} bytes" }
+          salt_bytes = Case.build_salt(@ipk, random, ephemeral_public, sigma1_hash)
 
           # Derive Sigma2 encryption key using HKDF
           # Key = HKDF(sharedSecret, salt, "Sigma2", 16)
-          sigma2_key = @crypto.create_hkdf_key(
-            shared_secret,
-            salt_bytes,
-            KDFSR2_INFO,
-            16
-          )
-          Log.debug { "CASE Sigma2 encryption key: #{sigma2_key.hexstring}" }
+          sigma2_key = @crypto.create_hkdf_key(shared_secret, salt_bytes, KDFSR2_INFO, SYMMETRIC_KEY_LENGTH)
+          Log.trace { "CASE Sigma2 encryption key: #{sigma2_key.hexstring}" }
 
           # Build TLV structure for signature (TBS_Data2)
           # This contains: NOC, ICAC (optional), responder's ephemeral public key, initiator's ephemeral public key
@@ -386,47 +419,22 @@ module Matter
           # Sign the TLV-encoded SignedData structure
           signed_data_bytes = signed_data.to_slice
           Log.debug { "CASE Sigma2 TBS_Data2: #{signed_data_bytes.size} bytes" }
-          Log.debug { "  TBS_Data2 FULL hex: #{signed_data_bytes.hexstring}" }
-          Log.debug { "  TBS_Data2 first 10 bytes: #{signed_data_bytes[0, [10, signed_data_bytes.size].min].map { |byte| "0x%02x" % byte }.join(" ")}" }
-          Log.debug { "  NOC size: #{@cert_chain.noc.size}, ICAC size: #{@cert_chain.icac.try(&.size) || 0}" }
-          Log.debug { "  Responder eph pub key: #{ephemeral_public.size} bytes" }
-          Log.debug { "  Initiator eph pub key: #{peer_ephemeral_public_key.size} bytes" }
-          Log.debug { "  Operational key public bits: #{@operational_key.public_bits.try(&.size) || "nil"} bytes" }
-          if pub = @operational_key.public_bits
-            Log.debug { "  Operational key public (first 32): #{pub[0, [32, pub.size].min].hexstring}" }
-          end
+          Log.trace { "  TBS_Data2 hex: #{signed_data_bytes.hexstring}" }
           signature = @crypto.sign_ecdsa(@operational_key, signed_data_bytes)
-          Log.debug { "  Sigma2 signature: #{signature.size} bytes" }
-          Log.debug { "  Signature hex: #{signature.hexstring}" }
+          Log.trace { "  Sigma2 signature: #{signature.hexstring}" }
 
-          # Self-verify the signature to ensure it's correct
+          # The NOC must carry the public half of the key we just signed with,
+          # or the initiator will reject the signature.
           begin
-            verify_result = @crypto.verify_ecdsa(@operational_key, signed_data_bytes, signature)
-            Log.debug { "  Self-verification result: #{verify_result}" }
-          rescue ex
-            Log.error(exception: ex) { "  Self-verification FAILED (tbs_hex=#{signed_data_bytes.hexstring} sig_hex=#{signature.hexstring})" }
-          end
-
-          # Extract and log public key from NOC for comparison
-          # NOC is in Matter TLV format (not X.509 DER), public key is at tag 9
-          begin
-            noc_public_key = extract_public_key_from_tlv_cert(@cert_chain.noc)
-            Log.debug { "  NOC public key: #{noc_public_key.size} bytes" }
-            Log.debug { "  NOC public key: #{noc_public_key.hexstring}" }
-            if pub = @operational_key.public_bits
-              Log.debug { "  Operational key pub: #{pub.hexstring}" }
-              keys_match = (noc_public_key == pub)
-              Log.debug { "  NOC public key matches operational_key: #{keys_match}" }
-              unless keys_match
-                Log.error { "  PUBLIC KEY MISMATCH! Signature will fail verification!" }
-              end
+            noc_public_key = Crypto::MatterCertificate.public_key_from_tlv(@cert_chain.noc)
+            if (pub = @operational_key.public_bits) && noc_public_key != pub
+              Log.error { "CASE Sigma2: NOC public key does not match the operational key; the signature will fail verification" }
             end
           rescue ex
-            Log.warn(exception: ex) { "  Could not extract NOC public key" }
+            Log.warn(exception: ex) { "CASE Sigma2: could not extract the NOC public key" }
           end
 
-          # Generate resumption ID (16 bytes)
-          resumption_id = @crypto.random_bytes(16)
+          resumption_id = @crypto.random_bytes(RESUMPTION_ID_LENGTH)
 
           # Build TLV structure for encryption (TBE_Data2)
           # This contains: NOC, ICAC (optional), signature, resumption ID
@@ -440,21 +448,11 @@ module Matter
           # Encode the TLV structure to bytes
           encrypted_data_bytes = encrypted_data.to_slice
           Log.debug { "CASE Sigma2 TBE_Data2 (plaintext): #{encrypted_data_bytes.size} bytes" }
-          Log.debug { "CASE Sigma2 TBE_Data2 hex: #{encrypted_data_bytes.hexstring}" }
+          Log.trace { "CASE Sigma2 TBE_Data2 hex: #{encrypted_data_bytes.hexstring}" }
 
           # Encrypt the TLV-encoded structure with fixed nonce "NCASE_Sigma2N"
           encrypted_cert = @crypto.encrypt(sigma2_key, encrypted_data_bytes, TBE_DATA2_NONCE)
           Log.debug { "CASE Sigma2 encrypted2: #{encrypted_cert.size} bytes" }
-          Log.debug { "CASE Sigma2 encrypted2 hex: #{encrypted_cert.hexstring}" }
-
-          # Log all values needed to verify decryption
-          Log.debug { "=== CASE Sigma2 Debug Values (for chip-tool simulation) ===" }
-          Log.debug { "  Shared secret: #{shared_secret.hexstring}" }
-          Log.debug { "  Responder eph pub key hex: #{ephemeral_public.hexstring}" }
-          Log.debug { "  Initiator eph pub key hex: #{peer_ephemeral_public_key.hexstring}" }
-          Log.debug { "  Sigma1 bytes (for hash): #{sigma1_bytes.size} bytes" }
-          Log.debug { "  Sigma1 hex: #{sigma1_bytes.hexstring}" }
-          Log.debug { "  Nonce: #{TBE_DATA2_NONCE.hexstring}" }
 
           # Generate session ID
           session_id = @crypto.random_uint16
@@ -472,14 +470,7 @@ module Matter
           # Add sigma2_bytes to progressive hash (like chip-tool's AddData(Sigma2))
           # This is done AFTER building sigma2, matching chip-tool's sequence
           transcript_hash.update(sigma2_bytes)
-
-          # DEBUG: Log the actual Sigma2 TLV bytes for comparison with matter.js
-          Log.debug { "=== CASE Sigma2 TLV Debug ===" }
-          Log.debug { "  Sigma2 TLV total length: #{sigma2_bytes.size} bytes" }
-          Log.debug { "  Sigma2 TLV hex (first 150 bytes): #{sigma2_bytes[0, Math.min(150, sigma2_bytes.size)].hexstring}" }
-          Log.debug { "  responder_random in TLV: #{random.hexstring}" }
-          Log.debug { "  responder_eph_pub_key in TLV: #{ephemeral_public.hexstring}" }
-          Log.debug { "  session_id in TLV: #{session_id}" }
+          Log.trace { "CASE Sigma2 TLV (#{sigma2_bytes.size} bytes): #{sigma2_bytes.hexstring}" }
 
           {
             ephemeral_public_key: ephemeral_public,
@@ -501,11 +492,11 @@ module Matter
           sigma1_bytes = @sigma1_bytes
           sigma2_bytes = @sigma2_bytes
 
-          raise "Ephemeral key not generated" if ephemeral_key.nil?
-          raise "Shared secret not computed" if shared_secret.nil?
-          raise "Sigma1 bytes not available" if sigma1_bytes.nil?
-          raise "Sigma2 bytes not available" if sigma2_bytes.nil?
-          raise "Transcript hash not available" if @transcript_hash.nil?
+          raise Matter::ProtocolError.new("Ephemeral key not generated") if ephemeral_key.nil?
+          raise Matter::ProtocolError.new("Shared secret not computed") if shared_secret.nil?
+          raise Matter::ProtocolError.new("Sigma1 bytes not available") if sigma1_bytes.nil?
+          raise Matter::ProtocolError.new("Sigma2 bytes not available") if sigma2_bytes.nil?
+          raise Matter::ProtocolError.new("Transcript hash not available") if @transcript_hash.nil?
 
           # Get the combined hash from progressive hashing context (like chip-tool's GetDigest)
           # At this point, transcript_hash contains: Sigma1 + Sigma2
@@ -513,22 +504,12 @@ module Matter
           combined_hash = @transcript_hash.as(OpenSSL::Digest).dup.final
           Log.debug { "CASE Sigma3: SHA256(sigma1||sigma2) = #{combined_hash.hexstring}" }
 
-          # Build Sigma3 salt: IPK + SHA256(sigma1_bytes || sigma2_bytes)
-          sigma3_salt = IO::Memory.new
-          sigma3_salt.write(@ipk)
-          sigma3_salt.write(combined_hash)
-          salt_bytes = sigma3_salt.to_slice
-
-          Log.debug { "CASE Sigma3 salt: #{salt_bytes.size} bytes" }
+          # Sigma3 salt: IPK ‖ SHA256(sigma1 ‖ sigma2)
+          salt_bytes = Case.build_salt(@ipk, combined_hash)
 
           # Derive Sigma3 encryption key using HKDF
           # Key = HKDF(sharedSecret, salt, "Sigma3", 16)
-          sigma3_key = @crypto.create_hkdf_key(
-            shared_secret,
-            salt_bytes,
-            KDFSR3_INFO,
-            16
-          )
+          sigma3_key = @crypto.create_hkdf_key(shared_secret, salt_bytes, KDFSR3_INFO, SYMMETRIC_KEY_LENGTH)
           Log.trace { "CASE Sigma3 decryption key derived (#{sigma3_key.size} bytes)" }
 
           begin
@@ -541,17 +522,17 @@ module Matter
 
             # Store peer NOC
             @peer_cert = encrypted_data3.responder_noc
+            @peer_icac = encrypted_data3.responder_icac
 
             Log.debug { "CASE Sigma3 peer NOC: #{encrypted_data3.responder_noc.size} bytes" }
             Log.debug { "CASE Sigma3 peer ICAC: #{encrypted_data3.responder_icac.try(&.size) || 0} bytes" }
-            Log.debug { "CASE Sigma3 signature: #{encrypted_data3.signature.size} bytes" }
 
             # Extract peer Subject IDs (NodeId + CATs) from their NOC certificate.
             # This is required for ACL evaluation: subjects may be Node IDs or CATs.
-            @peer_subject_ids = extract_subject_ids_from_tlv_cert(encrypted_data3.responder_noc)
+            @peer_subject_ids = Crypto::MatterCertificate.subject_ids_from_tlv(encrypted_data3.responder_noc)
 
             # Always set peer_node_id from the NodeId field (not from CATs).
-            peer_node = extract_node_id_from_tlv_cert(encrypted_data3.responder_noc)
+            peer_node = Crypto::MatterCertificate.node_id_from_tlv(encrypted_data3.responder_noc)
             if peer_node
               @peer_node_id = peer_node
 
@@ -578,244 +559,79 @@ module Matter
             signed_data_bytes = signed_data.to_slice
             Log.debug { "CASE Sigma3 TBS_Data3: #{signed_data_bytes.size} bytes" }
 
-            # TODO: Verify signature using peer's NOC public key
-            # For now, just log that we received it
+            # The peer holds the private key of the NOC it just presented. Until
+            # this passes, the NOC is only a claim: anyone who reached Sigma3
+            # could replay a NOC read off the wire and inherit its node id, its
+            # CATs and every ACL entry written for them.
+            verify_sigma3_signature(
+              encrypted_data3.responder_noc,
+              signed_data_bytes,
+              encrypted_data3.signature
+            )
+
+            # And the certificate itself has to have been issued by this
+            # fabric's root, or the identity it names is the peer's own
+            # invention.
+            verify_peer_chain(encrypted_data3.responder_noc, encrypted_data3.responder_icac)
+
             Log.info { "CASE Sigma3 processed successfully" }
 
             true
           rescue ex
-            Log.error(exception: ex) { "Failed to decrypt/process Sigma3 (encrypted3_hex=#{encrypted_cert.hexstring})" }
+            Log.error(exception: ex) { "Failed to process Sigma3 (encrypted3_hex=#{encrypted_cert.hexstring})" }
             false
           end
         end
 
-        # Validate peer certificate chain against trusted roots
-        #
-        # @param trusted_roots Array of trusted root certificates (DER or Certificate objects)
-        # @param intermediate_certs Optional array of intermediate certificates
-        # @return true if chain is valid, false otherwise
-        def validate_certificate_chain(
-          trusted_roots : Array(Bytes | OpenSSL::X509::Certificate),
-          intermediate_certs : Array(Bytes | OpenSSL::X509::Certificate)? = nil,
-        ) : Bool
-          peer_cert = @peer_cert
-          return false if peer_cert.nil?
+        # Verify TBS_Data3 against the public key carried by the peer's NOC.
+        # Raises `Matter::AuthenticationError` when the certificate cannot be
+        # read or the signature does not verify.
+        private def verify_sigma3_signature(peer_noc : Bytes, transcript : Bytes, signature : Bytes) : Nil
+          public_key = Crypto::Key.new(Crypto::KeyType::EC, Crypto::CurveType::P256)
+          public_key.public_bits = Crypto::MatterCertificate.public_key_from_tlv(peer_noc)
 
-          begin
-            # Parse peer certificate
-            peer_cert_obj = OpenSSL::X509::Certificate.from_der(peer_cert)
-
-            # Create validator and add trusted roots
-            validator = OpenSSL::X509::CertificateValidator.new
-            trusted_roots.each do |root|
-              root_cert = root.is_a?(Bytes) ? OpenSSL::X509::Certificate.from_der(root) : root
-              validator.add_trusted_cert(root_cert)
-            end
-
-            # Build intermediate chain if provided
-            chain = if intermediate_certs
-                      intermediate_certs.map do |cert|
-                        cert.is_a?(Bytes) ? OpenSSL::X509::Certificate.from_der(cert) : cert
-                      end
-                    end
-
-            # Verify the certificate chain
-            validator.verify(peer_cert_obj, chain)
-            true
-          rescue ex : OpenSSL::X509::CertificateValidationError
-            Log.error(exception: ex) { "Certificate chain validation failed (peer_cert_hex=#{peer_cert.hexstring})" }
-            false
-          rescue ex
-            Log.error(exception: ex) { "Certificate parsing failed (peer_cert_hex=#{peer_cert.hexstring})" }
-            false
-          end
-        end
-
-        # Extract public key from Matter TLV certificate (tag 9)
-        private def extract_public_key_from_tlv_cert(cert_tlv : Bytes) : Bytes
-          parsed = TLV::Any.from_slice(cert_tlv)
-
-          # Matter TLV certificates have tag 9 for the EC public key
-          public_key_any = find_tlv_field(parsed, 9_u8)
-
-          raise "Could not find public key field (tag 9) in TLV certificate" if public_key_any.nil?
-
-          public_key_any.as_bytes
-        end
-
-        # Extract all Subject IDs from a Matter TLV NOC:
-        # - NodeId (tag 17 in Subject DN)
-        # - Zero or more CATs (tag 22 in Subject DN)
-        #
-        # Returned in priority order (NodeId first), de-duplicated.
-        private def extract_subject_ids_from_tlv_cert(cert_tlv : Bytes) : Array(UInt64)
-          subject_ids = [] of UInt64
-
-          if node_id = extract_node_id_from_tlv_cert(cert_tlv)
-            subject_ids << node_id
-          end
-
-          # CATs may be encoded as multiple tag-22 entries in the Subject DN list.
-          # TLV::Serializable currently only exposes a single `noc_cat`, so scan the TLV directly.
-          begin
-            parsed = TLV::Any.from_slice(cert_tlv)
-            if tlv_struct = parsed.value.as?(TLV::Structure)
-              subject_any = tlv_struct.each.find { |(k, _)| k == 6 || k == 6_u8 }.try(&.[1])
-              if subject_any
-                subject_list = [] of TLV::Any
-                case v = subject_any.value
-                when Array(TLV::Any)
-                  subject_list = v
-                when TLV::List
-                  v.each { |elem| subject_list << elem }
-                else
-                  # ignore
-                end
-
-                unless subject_list.empty?
-                  subject_list.each do |elem|
-                    next unless elem.header.ids == 22_u8
-
-                    raw = case v = elem.value
-                          when Int    then v.to_u32
-                          when UInt32 then v
-                          when UInt16 then v.to_u32
-                          when UInt8  then v.to_u32
-                          else             nil
-                          end
-                    next unless raw
-
-                    begin
-                      cat = DataType::CaseAuthenticatedTag.new(raw)
-                      subject_ids << DataType::NodeId.from_case_authenticated_tag(cat).id
-                    rescue ex
-                      Log.trace(exception: ex) { "CASE: Skipping invalid CAT value in peer NOC (raw=0x#{raw.to_s(16)})" }
-                    end
-                  end
-                end
-              end
-            end
-          rescue ex
-            Log.trace(exception: ex) { "CASE: Failed scanning peer NOC for CATs" }
-          end
-
-          subject_ids.uniq!
-          subject_ids
-        end
-
-        # Extract node ID from Matter TLV certificate
-        # Matter TLV certificate structure:
-        # - Tag 6: Subject (contains node_id and fabric_id)
-        #   - Tag 17 (0x11): Node ID
-        #   - Tag 18 (0x12): Fabric ID
-        def extract_node_id_from_tlv_cert(cert_tlv : Bytes) : UInt64?
-          begin
-            cert = Crypto::MatterCertificate.from_slice(cert_tlv)
-            if node_id = cert.node_id
-              return node_id
-            end
-          rescue ex
-            Log.trace(exception: ex) { "CASE: Failed to parse peer NodeId via MatterCertificate" }
-          end
-
-          parsed = TLV::Any.from_slice(cert_tlv)
-          subject_any = find_tlv_field(parsed, 6_u8)
-          return nil unless subject_any
-
-          node_any = find_tlv_field(subject_any, 17_u8)
-          return nil unless node_any
-
-          case v = node_any.value
-          when UInt64 then v
-          when UInt32 then v.to_u64
-          when UInt16 then v.to_u64
-          when UInt8  then v.to_u64
-          when Int    then v.to_u64
-          else             nil
-          end
+          @crypto.verify_ecdsa(public_key, transcript, signature)
+        rescue ex : Matter::AuthenticationError
+          raise ex
         rescue ex
-          Log.trace(exception: ex) { "CASE: Failed to parse peer NodeId from NOC TLV" }
-          nil
+          raise Matter::AuthenticationError.new("CASE: Sigma3 signature could not be checked: #{ex.message}", cause: ex)
         end
 
-        # Recursively search TLV structure for a field by tag
-        private def find_tlv_field(data : TLV::Any, tag : UInt8) : TLV::Any?
-          case value = data.value
-          when TLV::Structure
-            # Check for tag directly
-            return value[tag]? if value.has_key?(tag)
-
-            # Recursively search nested structures
-            value.each_value do |nested|
-              if found = find_tlv_field(nested, tag)
-                return found
-              end
-            end
-          when TLV::List
-            value.each do |elem|
-              # Check if this list element has the tag we're looking for
-              if elem.header.ids == tag
-                return elem
-              end
-              # Also recurse in case it's a nested container
-              if found = find_tlv_field(elem, tag)
-                return found
-              end
-            end
+        # Check the peer's certificates against the fabric root.
+        private def verify_peer_chain(peer_noc : Bytes, peer_icac : Bytes?) : Nil
+          root = @root_public_key
+          if root.nil?
+            raise Matter::AuthenticationError.new("CASE: no fabric root to check the peer certificate against")
           end
-          nil
+
+          Crypto::MatterCertificate::Validation.verify_chain(peer_noc, peer_icac, root)
         end
 
         # Derive session keys after successful CASE
         # sigma3_bytes: Raw TLV bytes of Sigma3 message
-        def derive_session_keys(sigma3_bytes : Bytes) : {encryption: Bytes, decryption: Bytes, attestation_challenge: Bytes}
+        def derive_session_keys(sigma3_bytes : Bytes) : SessionKeys
           shared_secret = @shared_secret
           sigma1_bytes = @sigma1_bytes
           sigma2_bytes = @sigma2_bytes
 
-          raise "Shared secret not computed" if shared_secret.nil?
-          raise "Sigma1 bytes not available" if sigma1_bytes.nil?
-          raise "Sigma2 bytes not available" if sigma2_bytes.nil?
+          raise Matter::ProtocolError.new("Shared secret not computed") if shared_secret.nil?
+          raise Matter::ProtocolError.new("Sigma1 bytes not available") if sigma1_bytes.nil?
+          raise Matter::ProtocolError.new("Sigma2 bytes not available") if sigma2_bytes.nil?
 
-          # Compute SHA256 of (sigma1_bytes || sigma2_bytes || sigma3_bytes) for session salt
-          combined_hash = @crypto.compute_sha256(sigma1_bytes + sigma2_bytes + sigma3_bytes)
-          Log.debug { "Session keys: SHA256(sigma1||sigma2||sigma3) = #{combined_hash.hexstring}" }
-
-          # Build session key salt: IPK + SHA256(sigma1_bytes || sigma2_bytes || sigma3_bytes)
-          session_salt = IO::Memory.new
-          session_salt.write(@ipk)
-          session_salt.write(combined_hash)
-          salt_bytes = session_salt.to_slice
-
-          Log.debug { "Session keys salt: #{salt_bytes.size} bytes" }
-
-          # Derive session keys from shared secret using HKDF
-          # Matter Spec: SessionKeys = HKDF(shared_secret, salt, "SessionKeys", 48)
-          # Output is 48 bytes: I2R_Key (16) + R2I_Key (16) + AttestationChallenge (16)
-          session_keys = @crypto.create_hkdf_key(
-            shared_secret,
-            salt_bytes,
-            SESSION_KEYS_INFO,
-            48 # Derive 48 bytes total (16 + 16 + 16)
-          )
-
-          Log.debug { "Session keys derived: #{session_keys.size} bytes" }
-          Log.debug { "  I2R key: #{session_keys[0, 16].hexstring}" }
-          Log.debug { "  R2I key: #{session_keys[16, 16].hexstring}" }
-          Log.debug { "  AttestationChallenge: #{session_keys[32, 16].hexstring}" }
-
-          # Split into initiator-to-responder and responder-to-initiator keys
-          # For responder: encryption is R2I, decryption is I2R
-          # Also return attestation_challenge for use in attestation signatures
-          {
-            encryption:            session_keys[16, 16], # R2I key
-            decryption:            session_keys[0, 16],  # I2R key
-            attestation_challenge: session_keys[32, 16], # AttestationChallenge
-          }
+          # Session key salt: IPK ‖ SHA256(sigma1 ‖ sigma2 ‖ sigma3)
+          salt = Case.build_salt(@ipk, @crypto.compute_sha256([sigma1_bytes, sigma2_bytes, sigma3_bytes]))
+          Case.derive_session_keys(@crypto, shared_secret, salt, Role::Responder)
         end
       end
 
-      # Helper to establish a CASE session (simplified)
+      # Run a full CASE handshake between an initiator and a responder in
+      # process. Both sides exchange the real Sigma1/Sigma2/Sigma3 TLV messages,
+      # so the session keys they derive must match; the live client-side path is
+      # `Matter::Controller::Pairing::CasePairing`, which talks to a socket.
+      #
+      # `destination_id` is opaque to this harness (nothing here resolves a
+      # fabric from it), so a random tag stands in when the caller has no root
+      # public key to compute one from.
       def self.establish_session(
         initiator_cert : Bytes,
         initiator_key : Crypto::Key,
@@ -826,63 +642,52 @@ module Matter
         responder_node_id : UInt64,
         crypto : Crypto::CryptoBase = Crypto::StandardCrypto.new,
         ipk : Bytes? = nil,
+        destination_id : Bytes? = nil,
+        root_public_key : Bytes? = nil,
       ) : {initiator: SecureContext, responder: SecureContext}
-        # Generate a test IPK if not provided
-        actual_ipk = ipk || crypto.random_bytes(16)
+        session_ipk = ipk || crypto.random_bytes(SYMMETRIC_KEY_LENGTH)
 
-        # Create initiator and responder
-        initiator = CaseInitiator.new(initiator_cert, initiator_key, fabric_id, initiator_node_id, crypto)
-        responder = CaseResponder.new(responder_cert_chain, responder_key, fabric_id, responder_node_id, actual_ipk, crypto)
+        initiator = CaseInitiator.new(initiator_cert, initiator_key, fabric_id, initiator_node_id, session_ipk, crypto)
+        responder = CaseResponder.new(
+          responder_cert_chain, responder_key, fabric_id, responder_node_id, session_ipk, crypto,
+          root_public_key: root_public_key
+        )
 
-        # Simulate CASE handshake
         # 1. Initiator generates Sigma1
-        sigma1 = initiator.generate_sigma1
-
-        # Build mock sigma1_bytes for the transcript
-        sigma1_bytes = crypto.random_bytes(100)
+        sigma1 = initiator.generate_sigma1(destination_id || crypto.random_bytes(DESTINATION_ID_LENGTH))
 
         # 2. Responder processes Sigma1 and generates Sigma2
         sigma2 = responder.process_sigma1(
           sigma1[:ephemeral_public_key],
           sigma1[:random],
           sigma1[:session_id],
-          sigma1_bytes
+          sigma1[:sigma1_bytes]
         )
 
         # 3. Initiator processes Sigma2 and generates Sigma3
-        sigma3 = initiator.process_sigma2(
-          sigma2[:ephemeral_public_key],
-          sigma2[:random],
-          sigma2[:encrypted_cert],
-          sigma2[:session_id]
-        )
+        sigma2_bytes = sigma2[:sigma2_bytes]
+        sigma3 = initiator.process_sigma2(Definitions::Sigma2.from_slice(sigma2_bytes), sigma2_bytes)
 
         # 4. Responder processes Sigma3 and verifies
-        unless responder.process_sigma3(sigma3[:encrypted_cert], sigma3[:signature])
-          raise "CASE Sigma3 verification failed"
+        unless responder.process_sigma3(sigma3[:encrypted_cert], sigma3[:sigma3_bytes])
+          raise Matter::AuthenticationError.new("CASE Sigma3 verification failed")
         end
 
-        # 5. Initiator verifies Sigma3 response
-        # (In full protocol, responder also sends a signature)
-        # unless initiator.verify_sigma3(responder_signature)
-        #   raise "CASE responder verification failed"
-        # end
-
-        # 6. Derive session keys
-        sigma3_bytes = crypto.random_bytes(100) # Mock sigma3_bytes for transcript
+        # 5. Both sides derive the session keys from the same transcript
         initiator_keys = initiator.derive_session_keys
-        responder_keys = responder.derive_session_keys(sigma3_bytes)
+        responder_keys = responder.derive_session_keys(sigma3[:sigma3_bytes])
 
-        # Create session contexts
         initiator_context = SecureContext.new(
           session_id: sigma1[:session_id],
           peer_session_id: sigma2[:session_id],
           session_type: SessionType::Unicast,
           encryption_key: initiator_keys[:encryption],
           decryption_key: initiator_keys[:decryption],
+          attestation_challenge: initiator_keys[:attestation_challenge],
           initiator: true,
           local_node_id: DataType::NodeId.new(initiator_node_id),
-          peer_node_id: DataType::NodeId.new(responder_node_id)
+          peer_node_id: DataType::NodeId.new(responder_node_id),
+          case_session: true
         )
 
         responder_context = SecureContext.new(
@@ -891,9 +696,11 @@ module Matter
           session_type: SessionType::Unicast,
           encryption_key: responder_keys[:encryption],
           decryption_key: responder_keys[:decryption],
+          attestation_challenge: responder_keys[:attestation_challenge],
           initiator: false,
           local_node_id: DataType::NodeId.new(responder_node_id),
-          peer_node_id: DataType::NodeId.new(initiator_node_id)
+          peer_node_id: DataType::NodeId.new(initiator_node_id),
+          case_session: true
         )
 
         {initiator: initiator_context, responder: responder_context}

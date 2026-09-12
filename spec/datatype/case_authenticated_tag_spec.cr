@@ -40,21 +40,28 @@ describe Matter::DataType::CaseAuthenticatedTag do
     end
   end
 
-  describe "class methods" do
-    it "identity_value returns upper 16 bits" do
-      tag = Matter::DataType::CaseAuthenticatedTag.new(0xABCD1234_u32)
-      Matter::DataType::CaseAuthenticatedTag.identity_value(tag).should eq(0xABCD_u16)
+  describe "value semantics" do
+    it "compares and hashes by value" do
+      a = Matter::DataType::CaseAuthenticatedTag.new(0xABCD1234_u32)
+      b = Matter::DataType::CaseAuthenticatedTag.new(0xABCD1234_u32)
+      a.should eq(b)
+      a.hash.should eq(b.hash)
+      a.should_not eq(Matter::DataType::CaseAuthenticatedTag.new(0xABCD1235_u32))
     end
 
-    it "version returns lower 16 bits" do
-      tag = Matter::DataType::CaseAuthenticatedTag.new(0xABCD1234_u32)
-      Matter::DataType::CaseAuthenticatedTag.version(tag).should eq(0x1234_u16)
+    it "compares against the raw value" do
+      (Matter::DataType::CaseAuthenticatedTag.new(0xABCD1234_u32) == 0xABCD1234_u32).should be_true
     end
 
-    it "increase_version returns new tag with incremented version" do
-      tag = Matter::DataType::CaseAuthenticatedTag.new(0xABCD0001_u32)
-      new_tag = Matter::DataType::CaseAuthenticatedTag.increase_version(tag)
-      new_tag.value.should eq(0xABCD0002_u32)
+    it "exposes the layout as constants" do
+      Matter::DataType::CaseAuthenticatedTag::IDENTITY_SHIFT.should eq(16)
+      Matter::DataType::CaseAuthenticatedTag::VERSION_MASK.should eq(0xFFFF_u32)
+      Matter::DataType::CaseAuthenticatedTag::MAX_VERSION.should eq(0xFFFF)
+      Matter::DataType::CaseAuthenticatedTag::BYTE_SIZE.should eq(4)
+    end
+
+    it "prints as fixed-width hex" do
+      "#{Matter::DataType::CaseAuthenticatedTag.new(0x00010001_u32)}".should eq("0x00010001")
     end
   end
 
@@ -71,18 +78,22 @@ describe Matter::DataType::CaseAuthenticatedTag do
     end
   end
 
-  describe "TLV serialization" do
-    it "serializes to TLV" do
+  describe "big-endian bytes" do
+    it "serializes to 4 big-endian bytes" do
       tag = Matter::DataType::CaseAuthenticatedTag.new(0x12345678_u32)
-      slice = tag.to_slice
-      slice.size.should be > 0
+      tag.to_slice.should eq(Bytes[0x12, 0x34, 0x56, 0x78])
     end
 
-    it "round-trips through TLV" do
+    it "round-trips" do
       original = Matter::DataType::CaseAuthenticatedTag.new(0xABCD1234_u32)
-      slice = original.to_slice
-      decoded = Matter::DataType::CaseAuthenticatedTag.new(slice)
-      decoded.value.should eq(original.value)
+      decoded = Matter::DataType::CaseAuthenticatedTag.new(original.to_slice)
+      decoded.should eq(original)
+    end
+
+    it "rejects short slices" do
+      expect_raises(Matter::CodecError, "CaseAuthenticatedTag slice must be at least 4 bytes") do
+        Matter::DataType::CaseAuthenticatedTag.new(Bytes[1, 2])
+      end
     end
   end
 end

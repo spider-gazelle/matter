@@ -1,5 +1,57 @@
 module Matter
   module InteractionModel
+    # Shared vocabulary for the human readable `to_s` form of every path type:
+    # `E:1/C:0x6/A:0x0`, `E:1/C:0x6/Cmd:0x1`, `N:*/E:1/C:0x28/Evt:0x0`.
+    module PathFormat
+      NODE      = "N:"
+      ENDPOINT  = "E:"
+      CLUSTER   = "C:"
+      ATTRIBUTE = "A:"
+      EVENT     = "Evt:"
+      COMMAND   = "Cmd:"
+      SEPARATOR = "/"
+      WILDCARD  = "*"
+      URGENT    = "(urgent)"
+
+      # `E:1` or `E:*` when the endpoint is a wildcard
+      def self.endpoint(io : IO, endpoint : UInt16?) : Nil
+        io << ENDPOINT
+        io << (endpoint || WILDCARD)
+      end
+
+      # `N:1` or `N:*` when the node is a wildcard
+      def self.node(io : IO, node : UInt64?) : Nil
+        io << NODE
+        io << (node || WILDCARD)
+      end
+
+      # `/C:0x6`, or nothing when the cluster is a wildcard
+      def self.cluster(io : IO, cluster : UInt32?) : Nil
+        identifier(io, CLUSTER, cluster)
+      end
+
+      # `/A:0x0`, or nothing when the attribute is a wildcard
+      def self.attribute(io : IO, attribute : UInt32?) : Nil
+        identifier(io, ATTRIBUTE, attribute)
+      end
+
+      # `/Evt:0x0`, or nothing when the event is a wildcard
+      def self.event(io : IO, event : UInt32?) : Nil
+        identifier(io, EVENT, event)
+      end
+
+      # `/Cmd:0x1`
+      def self.command(io : IO, command : UInt32) : Nil
+        identifier(io, COMMAND, command)
+      end
+
+      private def self.identifier(io : IO, prefix : String, id : UInt32?) : Nil
+        return unless id
+        io << SEPARATOR << prefix << Hex::PREFIX
+        id.to_s(io, 16)
+      end
+    end
+
     # Attribute path identifying a specific attribute
     # Encoded as a TLV list per Matter spec (and matter.js/CHIP encodings),
     # and TLV::Serializable decoding is tolerant of list/structure variations.
@@ -16,23 +68,23 @@ module Matter
       property enable_tag_compression : Bool?
 
       @[TLV::Field(tag: 1, optional: true, fixed_size: true)]
-      property node_raw : UInt64 | Nil
+      property node_raw : UInt64?
 
       # Internal storage accepts Bool for wildcard indicator from iOS
       @[TLV::Field(tag: 2, fixed_size: true)]
-      property endpoint_raw : UInt16 | Bool | Nil
+      property endpoint_raw : UInt16 | Bool?
 
       @[TLV::Field(tag: 3, fixed_size: true)]
-      property cluster_raw : UInt32 | Bool | Nil
+      property cluster_raw : UInt32 | Bool?
 
       @[TLV::Field(tag: 4, fixed_size: true)]
-      property attribute_raw : UInt32 | Bool | Nil
+      property attribute_raw : UInt32 | Bool?
 
       @[TLV::Field(tag: 5, fixed_size: true)]
-      property list_index_raw : UInt16 | Bool | Nil
+      property list_index_raw : UInt16 | Bool?
 
       @[TLV::Field(tag: 6, optional: true, fixed_size: true)]
-      property wildcard_path_flags_raw : UInt32 | Nil
+      property wildcard_path_flags_raw : UInt32?
 
       def initialize(
         endpoint : UInt16? = nil,
@@ -117,13 +169,13 @@ module Matter
         !wildcard?
       end
 
-      def to_s : String
-        parts = [] of String
-        parts << "E:#{endpoint || "*"}"
-        parts << "C:0x#{(cluster || 0).to_s(16)}" if cluster
-        parts << "A:0x#{(attribute || 0).to_s(16)}" if attribute
-        parts << "[#{list_index}]" if list_index
-        parts.join("/")
+      def to_s(io : IO) : Nil
+        PathFormat.endpoint(io, endpoint)
+        PathFormat.cluster(io, cluster)
+        PathFormat.attribute(io, attribute)
+        if index = list_index
+          io << PathFormat::SEPARATOR << "[" << index << "]"
+        end
       end
 
       def ==(other : AttributePath) : Bool
@@ -153,8 +205,10 @@ module Matter
       def initialize(@endpoint : UInt16, @cluster : UInt32, @command : UInt32)
       end
 
-      def to_s : String
-        "E:#{endpoint}/C:0x#{cluster.to_s(16)}/Cmd:0x#{command.to_s(16)}"
+      def to_s(io : IO) : Nil
+        PathFormat.endpoint(io, endpoint)
+        PathFormat.cluster(io, cluster)
+        PathFormat.command(io, command)
       end
 
       def ==(other : CommandPath) : Bool
@@ -175,32 +229,48 @@ module Matter
       include TLV::Serializable
 
       @[TLV::Field(tag: 0, fixed_size: true)]
-      property node_raw : UInt64 | Bool | Nil
+      property node_raw : UInt64 | Bool?
 
       # Internal storage accepts Bool for wildcard indicator from iOS
       @[TLV::Field(tag: 1, fixed_size: true)]
-      property endpoint_raw : UInt16 | Bool | Nil
+      property endpoint_raw : UInt16 | Bool?
 
       @[TLV::Field(tag: 2, fixed_size: true)]
-      property cluster_raw : UInt32 | Bool | Nil
+      property cluster_raw : UInt32 | Bool?
 
       @[TLV::Field(tag: 3, fixed_size: true)]
-      property event_raw : UInt32 | Bool | Nil
+      property event_raw : UInt32 | Bool?
 
-      @[TLV::Field(tag: 4)]
-      property? is_urgent : Bool = false
+      # Omitted rather than written as `false`, matching matter.js and the
+      # spec's optional EventPathIB field: a report path carries no urgency.
+      @[TLV::Field(tag: 4, optional: true)]
+      property is_urgent_raw : Bool?
 
       def initialize(
         node : UInt64? = nil,
         endpoint : UInt16? = nil,
         cluster : UInt32? = nil,
         event : UInt32? = nil,
-        @is_urgent : Bool = false,
+        is_urgent : Bool = false,
       )
         @node_raw = node
         @endpoint_raw = endpoint
         @cluster_raw = cluster
         @event_raw = event
+        @is_urgent_raw = is_urgent ? true : nil
+      end
+
+      # Whether the subscriber asked for events on this path to be reported
+      # without waiting out the subscription's minimum interval.
+      #
+      # ameba:disable Naming/PredicateName -- IsUrgent is the spec's field name.
+      def is_urgent? : Bool
+        @is_urgent_raw == true
+      end
+
+      def is_urgent=(value : Bool) : Bool
+        @is_urgent_raw = value ? true : nil
+        value
       end
 
       # Getters that convert Bool (wildcard) to nil
@@ -246,14 +316,13 @@ module Matter
         endpoint.nil? || cluster.nil? || event.nil?
       end
 
-      def to_s : String
-        parts = [] of String
-        parts << "N:#{node || "*"}"
-        parts << "E:#{endpoint || "*"}"
-        parts << "C:0x#{(cluster || 0).to_s(16)}" if cluster
-        parts << "Evt:0x#{(event || 0).to_s(16)}" if event
-        parts << "(urgent)" if is_urgent?
-        parts.join("/")
+      def to_s(io : IO) : Nil
+        PathFormat.node(io, node)
+        io << PathFormat::SEPARATOR
+        PathFormat.endpoint(io, endpoint)
+        PathFormat.cluster(io, cluster)
+        PathFormat.event(io, event)
+        io << PathFormat::SEPARATOR << PathFormat::URGENT if is_urgent?
       end
 
       def ==(other : EventPath) : Bool
@@ -287,8 +356,8 @@ module Matter
         AttributePath.new(@endpoint, @cluster, @attribute, @list_index)
       end
 
-      def to_s : String
-        to_path.to_s
+      def to_s(io : IO) : Nil
+        to_path.to_s(io)
       end
 
       def ==(other : ConcreteAttributePath) : Bool

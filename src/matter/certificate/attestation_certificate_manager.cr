@@ -1,18 +1,30 @@
 require "openssl"
 require "../crypto/crypto"
 require "../crypto/key"
-require "../codec/der_codec"
 require "./chip_paa_authorities"
 
 # Additional LibCrypto bindings for custom OID support
 lib LibCrypto
+  # openssl_ext's X509V3_CTX predates OpenSSL 3's issuer_pkey member.
+  # Keep the complete ABI layout here until the shard updates its binding.
+  struct MatterX509V3Context
+    flags : Int32
+    issuer_cert : Void*
+    subject_cert : Void*
+    subject_req : Void*
+    crl : Void*
+    db_meth : Void*
+    db : Void*
+    {% if compare_versions(LibCrypto::OPENSSL_VERSION, "3.0.0") >= 0 %}
+      issuer_pkey : Void*
+    {% end %}
+  end
+
   fun x509_name_add_entry_by_obj = X509_NAME_add_entry_by_OBJ(name : LibCrypto::X509_NAME, obj : LibCrypto::ASN1_OBJECT, type : Int32, bytes : UInt8*, len : Int32, loc : Int32, set : Int32) : Int32
 end
 
 module Matter
   module Certificate
-    Log = ::Log.for("matter.certificate")
-
     # Manages generation of attestation certificates (PAA, PAI, DAC)
     # Based on matter.js AttestationCertificateManager
     #
@@ -21,6 +33,8 @@ module Matter
     # - PAI (Product Attestation Intermediate) - intermediate CA
     # - DAC (Device Attestation Certificate) - device certificate
     class AttestationCertificateManager
+      Log = ::Log.for("matter.certificate.attestation_certificate_manager")
+
       # PAA key pair (persisted across instances for same vendor)
       getter paa_key_pair : Crypto::Key
 
@@ -73,45 +87,6 @@ module Matter
         {dac_cert, dac_key_pair}
       end
 
-      private def generate_paa_certificate(key : Crypto::Key) : Bytes
-        cert = OpenSSL::X509::Certificate.new
-        cert.version = 2 # X.509 v3 (version numbers are 0-indexed)
-        cert.serial = OpenSSL::BN.new(@next_cert_id)
-        @next_cert_id += 1
-
-        # Validity period
-        cert.not_before = OpenSSL::ASN1::Time.days_from_now(-365)    # 1 year ago
-        cert.not_after = OpenSSL::ASN1::Time.days_from_now(365 * 10) # 10 years from now
-
-        # Subject and Issuer (self-signed)
-        subject = build_subject_name("Matter Test PAA")
-        cert.subject = subject
-        cert.issuer = subject # Self-signed
-
-        # Public key
-        cert.public_key = build_ec_public_key(key.public_key)
-
-        # Extensions
-        # Basic Constraints: CA=TRUE (critical)
-        cert.add_extension(create_extension("basicConstraints", "critical,CA:TRUE"))
-
-        # Key Usage: keyCertSign, cRLSign (critical)
-        cert.add_extension(create_extension("keyUsage", "critical,keyCertSign,cRLSign"))
-
-        # Subject Key Identifier (SKI) - hash of public key
-        ski = compute_subject_key_identifier(key.public_key)
-        cert.add_extension(create_ski_extension(ski))
-
-        # Authority Key Identifier (AKI) - same as SKI for self-signed root
-        cert.add_extension(create_aki_extension(ski))
-
-        # Sign with own private key
-        private_key = build_ec_private_key(key.private_key)
-        cert.sign(private_key, OpenSSL::Digest.new("SHA256"))
-
-        cert.to_der
-      end
-
       private def generate_pai_certificate(key : Crypto::Key, vendor_id : UInt16, product_id : UInt16?) : Bytes
         cert = OpenSSL::X509::Certificate.new
         cert.version = 2
@@ -139,13 +114,7 @@ module Matter
         # Key Usage: keyCertSign, cRLSign (critical)
         cert.add_extension(create_extension("keyUsage", "critical,keyCertSign,cRLSign"))
 
-        # Subject Key Identifier (SKI) - hash of this certificate's public key
-        ski = compute_subject_key_identifier(key.public_key)
-        cert.add_extension(create_ski_extension(ski))
-
-        # Authority Key Identifier (AKI) - references PAA's SKI
-        # Use the official test PAA's SKID
-        cert.add_extension(create_aki_extension(ChipPAAuthorities::TEST_CERT_PAA_NO_VID_SKID))
+        add_key_identifiers(cert, OpenSSL::X509::Certificate.from_der(@paa_cert))
 
         # Note: Matter vendor/product IDs are automatically added as subject DN attributes
         # by build_subject_name() using custom OID entries per Matter spec section 6.3.5:
@@ -187,13 +156,7 @@ module Matter
         # Key Usage: digitalSignature (critical)
         cert.add_extension(create_extension("keyUsage", "critical,digitalSignature"))
 
-        # Subject Key Identifier (SKI) - hash of this certificate's public key
-        ski = compute_subject_key_identifier(key.public_key)
-        cert.add_extension(create_ski_extension(ski))
-
-        # Authority Key Identifier (AKI) - references PAI's public key
-        pai_ski = compute_subject_key_identifier(@pai_key_pair.public_key)
-        cert.add_extension(create_aki_extension(pai_ski))
+        add_key_identifiers(cert, OpenSSL::X509::Certificate.from_der(@pai_cert))
 
         # Note: Matter vendor/product IDs are automatically added as subject DN attributes
         # by build_subject_name() using custom OID entries per Matter spec section 6.3.5:
@@ -220,14 +183,14 @@ module Matter
         if vendor_id
           # VendorId OID: 1.3.6.1.4.1.37244.2.1
           # Encode as 4-character uppercase hex string
-          vid_str = vendor_id.to_s(16).upcase.rjust(4, '0')
+          vid_str = Hex.u16_upper(vendor_id)
           add_custom_oid_entry(name, "1.3.6.1.4.1.37244.2.1", vid_str)
         end
 
         if product_id
           # ProductId OID: 1.3.6.1.4.1.37244.2.2
           # Encode as 4-character uppercase hex string
-          pid_str = product_id.to_s(16).upcase.rjust(4, '0')
+          pid_str = Hex.u16_upper(product_id)
           add_custom_oid_entry(name, "1.3.6.1.4.1.37244.2.2", pid_str)
         end
 
@@ -239,7 +202,7 @@ module Matter
       private def add_custom_oid_entry(name : OpenSSL::X509::Name, oid : String, value : String)
         # Create ASN1_OBJECT from OID string
         obj = LibCrypto.obj_txt2obj(oid, 0)
-        raise OpenSSL::Error.new("Failed to create ASN1_OBJECT for OID #{oid}") if obj.null?
+        raise Matter::CertificateError.new("Failed to create ASN1_OBJECT for OID #{oid}") if obj.null?
 
         # Add entry to X509_NAME with UTF8String encoding
         # MBSTRING_UTF8 = 0x1000 | 0x0001 = 0x1001
@@ -256,7 +219,7 @@ module Matter
         # Free the ASN1_OBJECT
         LibCrypto.asn1_object_free(obj)
 
-        raise OpenSSL::Error.new("Failed to add OID entry to X509_NAME") if ret == 0
+        raise Matter::CertificateError.new("Failed to add OID entry to X509_NAME") if ret == 0
       end
 
       # Create OpenSSL extension
@@ -264,50 +227,30 @@ module Matter
         OpenSSL::X509::Extension.new(name, value)
       end
 
-      # Compute Subject Key Identifier (SHA-1 hash of public key)
-      private def compute_subject_key_identifier(public_key : Bytes) : Bytes
-        # SKI is SHA-1 hash of the public key (first 20 bytes)
-        digest = OpenSSL::Digest.new("SHA1")
-        digest.update(public_key)
-        digest.final[0, 20]
-      end
-
-      # Create Subject Key Identifier extension with manual DER encoding
-      # SKI OID: 2.5.29.14
-      private def create_ski_extension(key_id : Bytes) : OpenSSL::X509::Extension
-        # DER encode the key identifier as OCTET STRING
-        der_value = Codec::DERCodec::Base.encode_octet_string(key_id)
-
-        # Create extension with hex-encoded DER value
-        OpenSSL::X509::Extension.new("subjectKeyIdentifier", "DER:#{der_value.hexstring}")
-      end
-
-      # Create Authority Key Identifier extension with manual DER encoding
-      # AKI OID: 2.5.29.35
-      private def create_aki_extension(key_id : Bytes) : OpenSSL::X509::Extension
-        # DER encode as SEQUENCE { [0] IMPLICIT keyIdentifier }
-        # Tag [0] = 0x80 (context-specific, primitive, tag 0)
-        io = IO::Memory.new
-        io.write_byte 0x80_u8 # [0] IMPLICIT tag
-        io.write_byte key_id.size.to_u8
-        io.write key_id
-
-        # Wrap in SEQUENCE
-        tagged_value = io.to_slice
-        der_value = Codec::DERCodec::Base.encode_sequence(tagged_value)
-
-        # Create extension with hex-encoded DER value
-        OpenSSL::X509::Extension.new("authorityKeyIdentifier", "DER:#{der_value.hexstring}")
+      private def add_key_identifiers(cert : OpenSSL::X509::Certificate, issuer : OpenSSL::X509::Certificate) : Nil
+        context = LibCrypto::MatterX509V3Context.new
+        context_pointer = pointerof(context).as(LibCrypto::X509V3_CTX*)
+        LibCrypto.x509v3_set_ctx(context_pointer, issuer, cert, nil, nil, 0)
+        { {"subjectKeyIdentifier", "hash"}, {"authorityKeyIdentifier", "keyid:always"} }.each do |name, value|
+          nid = LibCrypto.obj_sn2nid(name)
+          extension = LibCrypto.x509v3_ext_conf_nid(nil, context_pointer, nid, value)
+          raise Matter::CertificateError.new("Failed to create #{name} extension") if extension.null?
+          begin
+            cert.add_extension(OpenSSL::X509::Extension.new(extension))
+          ensure
+            LibCrypto.x509_extension_free(extension)
+          end
+        end
       end
 
       # Build EC public key from raw bytes
       private def build_ec_public_key(public_key_bytes : Bytes) : OpenSSL::PKey::EC
-        OpenSSL::PKey::EC.from_public_bytes(public_key_bytes, "P-256")
+        OpenSSL::PKey::EC.from_public_bytes(public_key_bytes, Crypto::CRYPTO_EC_CURVE_NIST)
       end
 
       # Build EC private key from raw bytes
       private def build_ec_private_key(private_key_bytes : Bytes) : OpenSSL::PKey::EC
-        OpenSSL::PKey::EC.from_private_bytes(private_key_bytes, "P-256")
+        OpenSSL::PKey::EC.from_private_bytes(private_key_bytes, Crypto::CRYPTO_EC_CURVE_NIST)
       end
     end
   end

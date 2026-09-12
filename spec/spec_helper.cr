@@ -2,6 +2,11 @@ require "spec"
 require "timecop"
 require "../src/matter"
 require "./support/test_network_backend"
+require "./support/cluster_helpers"
+require "./support/capture_transport"
+require "./support/certificate_authority"
+require "./support/commissioning_helpers"
+require "./support/protocol_messages"
 
 # Some CI/sandbox environments disallow creating UDP sockets (Operation not permitted).
 # Use this helper at the top of specs that require real sockets, so the rest of the
@@ -16,17 +21,19 @@ macro require_udp_sockets!
 end
 
 # Helper to decode TLV-encoded attribute values
-def decode_tlv_value(bytes : Bytes)
-  parsed = TLV::Any.from_slice(bytes)
-  parsed.value
+def decode_tlv_value(value : TLV::Any)
+  value.value
 end
 
 # Helper to parse TLV arrays - returns the value, which should be an Array for list types
-def parse_tlv_array(bytes : Bytes)
-  parsed = TLV::Any.from_slice(bytes)
-  parsed.value.as(Array(TLV::Any))
+def parse_tlv_array(value : TLV::Any)
+  value.as_list
 end
 
+# Log level for the suite. Defaults to :warn to keep output quiet; set
+# MATTER_SPEC_LOG=trace (or debug, info, ...) to see protocol tracing:
+#   MATTER_SPEC_LOG=trace crystal spec
 Spec.before_suite do
-  ::Log.setup("*", :trace)
+  level = ::Log::Severity.parse(ENV["MATTER_SPEC_LOG"]? || "warn")
+  ::Log.setup("*", level)
 end

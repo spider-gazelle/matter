@@ -25,11 +25,18 @@ COPY examples ./examples
 
 # Build all `examples/matter_*_device.cr` into `bin/matter_*` (e.g. bin/matter_switch)
 # plus the chip-tool driven validation helper used by the switch spec.
-RUN --mount=type=cache,target=/root/.cache/crystal \
+#
+# Each build gets its own CRYSTAL_CACHE_DIR. Crystal keeps only the ten most
+# recently used program directories in a cache root and deletes the rest at the
+# start of every compile; with eleven programs sharing one root, a build would
+# delete a sibling's directory while that sibling was still writing object files
+# into it (`Error renaming file: ... No such file or directory`). Nothing is
+# shared between the roots -- the cache is per program either way.
+RUN --mount=type=cache,target=/root/.cache/crystal,sharing=locked \
     mkdir -p bin && \
     jobs="$(nproc)"; [ "$jobs" -gt 4 ] && jobs=4; \
     ls examples/matter_*_device.cr examples/device_validation.cr | \
-      xargs -P "$jobs" -I{} sh -c 'out="bin/$(basename {} .cr | sed "s/_device$//")"; echo "==> building $out"; crystal build {} -o "$out" --error-trace' && \
+      xargs -P "$jobs" -I{} sh -c 'name="$(basename {} .cr | sed "s/_device$//")"; echo "==> building bin/$name"; CRYSTAL_CACHE_DIR="/root/.cache/crystal/$name" crystal build {} -o "bin/$name" --error-trace' && \
     ls -la bin
 
 # ---------------------------------------------------------------------------

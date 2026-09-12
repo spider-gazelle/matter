@@ -1,9 +1,5 @@
-require "goban"
-require "../src/matter"
-require "../src/matter/cluster/thermostat_cluster"
-require "../src/matter/cluster/fan_control_cluster"
-require "../src/matter/cluster/temperature_measurement_cluster"
-require "../src/matter/cluster/on_off_cluster"
+require "./support/console"
+require "./support/main"
 
 # Matter Air Conditioner Device Example
 #
@@ -15,633 +11,252 @@ require "../src/matter/cluster/on_off_cluster"
 # - Thermostat device type has FanControl as a CLIENT cluster (talks TO a fan)
 # - Fan device type has FanControl as a SERVER cluster (IS the controller)
 #
-# Clusters by endpoint:
-# - Endpoint 1: Thermostat, TemperatureMeasurement, Identify, FixedLabel, Groups, ScenesManagement
-# - Endpoint 2: FanControl, OnOff, Identify, Groups
+# Fan speed maps 0-100% to 5 discrete steps: Quiet, Low, Medium, High, Max.
+# Ambient temperature is simulated every 10 seconds and fed to the thermostat.
 #
-# Fan speed maps 0-100% to 5 discrete steps: Quiet, Low, Medium, High, Max
-# Simulates ambient temperature updates every 10 seconds
-# Supports modes: Off, Cool, Heat, Fan Only
-
+# chip-tool commands for testing:
+#   chip-tool thermostat read local-temperature 1 1
+#   chip-tool fancontrol read fan-mode 1 2
+#   chip-tool onoff on 1 2
 module MatterAirConditioner
-  FAN_SPEED_NAMES = {0_u8 => "Off", 1_u8 => "Quiet", 2_u8 => "Low", 3_u8 => "Medium", 4_u8 => "High", 5_u8 => "Max"}
+  class Device < Matter::Device
+    include Examples::Console
 
-  class Device < Matter::Device::Base
-    DEVICE_NAME  = "Crystal Air Conditioner"
-    STORAGE_FILE = "matter_air_conditioner_storage.json"
+    THERMOSTAT_ENDPOINT = 1
+    FAN_ENDPOINT        = 2
 
-    UPDATE_INTERVAL_SECONDS =       10
-    MIN_TEMP_C              =     15.0
-    MAX_TEMP_C              =     35.0
-    MIN_TEMP_CENTI          = 1500_i16
-    MAX_TEMP_CENTI          = 3500_i16
+    SAMPLE_INTERVAL = 10.seconds
 
-    VENDOR_ID      = Matter::SetupPayload.test_vendor_id
-    PRODUCT_ID     = rand(0x0001_u16..0xFFFF_u16)
-    DISCRIMINATOR  = Matter::SetupPayload.generate_random_discriminator
-    SETUP_PIN_CODE = Matter::SetupPayload.generate_random_pin
+    # Hundredths of a degree Celsius, as the clusters report them.
+    MIN_TEMPERATURE  = 1500_i16
+    MAX_TEMPERATURE  = 3500_i16
+    TOLERANCE        =   50_u16
+    COOLING_SETPOINT = 2400_i16 # 24 C
+    HEATING_SETPOINT = 2000_i16 # 20 C
 
-    # Endpoint 1: Thermostat clusters
-    @thermostat : Matter::Cluster::ThermostatCluster? = nil
-    @temperature : Matter::Cluster::TemperatureMeasurementCluster? = nil
-    @identify1 : Matter::Cluster::IdentifyCluster? = nil
-    @fixed_label : Matter::Cluster::FixedLabelCluster? = nil
-    @groups1 : Matter::Cluster::GroupsCluster? = nil
-    @scenes_management : Matter::Cluster::ScenesManagementCluster? = nil
+    # Fan percentages, by name and by the step the fan snaps to.
+    FAN_SPEED_NAMES = {0_u8 => "Off", 1_u8 => "Quiet", 2_u8 => "Low", 3_u8 => "Medium", 4_u8 => "High", 5_u8 => "Max"}
+    FAN_PERCENTS    = {"off" => 0_u8, "quiet" => 20_u8, "low" => 40_u8, "med" => 60_u8, "medium" => 60_u8, "high" => 80_u8, "max" => 100_u8}
 
-    # Endpoint 2: Fan clusters
-    @fan_control : Matter::Cluster::FanControlCluster? = nil
-    @fan_on_off : Matter::Cluster::OnOffCluster? = nil
-    @identify2 : Matter::Cluster::IdentifyCluster? = nil
-    @groups2 : Matter::Cluster::GroupsCluster? = nil
+    FAN_SPEED_MAX   =   5_u8
+    FAN_STEP        =  20_u8
+    FAN_PERCENT_MAX = 100_u8
 
-    @running : Bool = false
+    # The speed the fan takes when a mode turns it on while it is off.
+    FAN_ONLY_PERCENT            = 60_u8
+    HEATING_COOLING_FAN_PERCENT = 40_u8
 
-    def initialize
-      super(ip_addresses: local_ips)
+    identity vendor: "Spider-Gazelle", product: "Crystal Air Conditioner",
+      vendor_id: Matter::SetupPayload.test_vendor_id,
+      product_id: rand(0x0001_u16..0xFFFF_u16),
+      discriminator: Matter::SetupPayload.generate_random_discriminator,
+      pin: Matter::SetupPayload.generate_random_pin,
+      device_type: Matter::DeviceType::THERMOSTAT,
+      appearance: :satin
+
+    storage yaml: "matter_air_conditioner_storage.yml"
+
+    endpoint THERMOSTAT_ENDPOINT, device_type: Matter::DeviceType::THERMOSTAT do
+      cluster Matter::Cluster::Thermostat,
+        feature_map: Matter::Cluster::Thermostat::Feature::Cooling | Matter::Cluster::Thermostat::Feature::Heating,
+        occupied_cooling_setpoint: COOLING_SETPOINT,
+        occupied_heating_setpoint: HEATING_SETPOINT,
+        system_mode: :off,
+        as: :thermostat
+      cluster Matter::Cluster::TemperatureMeasurement,
+        measured_value: rand(MIN_TEMPERATURE..MAX_TEMPERATURE),
+        min_measured_value: MIN_TEMPERATURE,
+        max_measured_value: MAX_TEMPERATURE,
+        tolerance: TOLERANCE,
+        as: :temperature
+      cluster Matter::Cluster::Identify, identify_type: :visible_light
+      cluster Matter::Cluster::FixedLabel, [Matter::Cluster::LabelStruct.new("name", "Example Air Conditioner")]
+      cluster Matter::Cluster::Groups
+      cluster Matter::Cluster::ScenesManagement
     end
 
-    def device_name : String
-      DEVICE_NAME
+    endpoint FAN_ENDPOINT, device_type: Matter::DeviceType::FAN do
+      cluster Matter::Cluster::FanControl,
+        feature_map: :step,
+        fan_mode: :off,
+        fan_mode_sequence: :off_low_med_high,
+        speed_max: FAN_SPEED_MAX,
+        step_percent: FAN_STEP,
+        as: :fan_control
+      cluster Matter::Cluster::OnOff, on_off: false, as: :fan_on_off
+      cluster Matter::Cluster::Identify, identify_type: :visible_light
+      cluster Matter::Cluster::Groups
     end
 
-    def vendor_id : UInt16
-      VENDOR_ID
-    end
-
-    def product_id : UInt16
-      PRODUCT_ID
-    end
-
-    def discriminator : UInt16
-      DISCRIMINATOR
-    end
-
-    def setup_pin : UInt32
-      SETUP_PIN_CODE
-    end
-
-    def primary_device_type_id : UInt16
-      Matter::DeviceTypes::THERMOSTAT
-    end
-
-    def vendor_name : String
-      "Spider-Gazelle"
-    end
-
-    def product_name : String
-      device_name
-    end
-
-    def product_appearance : Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct?
-      Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.new(
-        Matter::Cluster::BasicInformationCluster::ProductFinish::Satin
-      )
-    end
-
-    def thermostat : Matter::Cluster::ThermostatCluster
-      @thermostat.as(Matter::Cluster::ThermostatCluster)
-    end
-
-    def fan_control : Matter::Cluster::FanControlCluster
-      @fan_control.as(Matter::Cluster::FanControlCluster)
-    end
-
-    def fan_on_off : Matter::Cluster::OnOffCluster
-      @fan_on_off.as(Matter::Cluster::OnOffCluster)
-    end
-
-    def temperature : Matter::Cluster::TemperatureMeasurementCluster
-      @temperature.as(Matter::Cluster::TemperatureMeasurementCluster)
-    end
-
-    protected def build_storage_manager : Matter::Storage::Manager
-      Matter::Storage::Manager.new(Matter::Storage::JsonFileBackend.new(STORAGE_FILE))
-    end
-
-    protected def endpoint_device_types : Hash(UInt16, UInt32)
-      {
-        1_u16 => Matter::DeviceType::THERMOSTAT,
-        2_u16 => Matter::DeviceType::FAN,
-      }
-    end
-
-    protected def device_clusters : Array(Matter::Cluster::Base)
-      endpoint1 = Matter::DataType::EndpointNumber.new(1_u16)
-      endpoint2 = Matter::DataType::EndpointNumber.new(2_u16)
-
-      # ========================================================================
-      # Endpoint 1: Thermostat device type
-      # ========================================================================
-
-      # Thermostat cluster — cooling + heating, defaults to Off
-      @thermostat = Matter::Cluster::ThermostatCluster.new(
-        endpoint1,
-        feature_map: Matter::Cluster::ThermostatCluster::Feature::Cooling | Matter::Cluster::ThermostatCluster::Feature::Heating,
-        occupied_cooling_setpoint: 2400_i16, # 24°C
-        occupied_heating_setpoint: 2000_i16, # 20°C
-        system_mode: Matter::Cluster::ThermostatCluster::SystemMode::Off
-      )
-      thermostat.on_system_mode_changed do |old_mode, new_mode|
-        puts ""
-        puts "Mode changed: #{old_mode} -> #{new_mode}"
-        # Sync fan: turn off fan when thermostat is off, ensure fan is on otherwise
-        if new_mode == Matter::Cluster::ThermostatCluster::SystemMode::Off
-          # Turn off fan via OnOff cluster
-          fan_on_off.on_off = false
-        elsif new_mode == Matter::Cluster::ThermostatCluster::SystemMode::FanOnly
-          # Fan-only mode: ensure fan is running (default to Medium if off)
-          fan_on_off.on_off = true
-          if fan_control.fan_mode == Matter::Cluster::FanControlCluster::FanMode::Off
-            fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[60_u8])
-          end
-        else
-          # Cooling/Heating: ensure fan is running
-          fan_on_off.on_off = true
-          if fan_control.fan_mode == Matter::Cluster::FanControlCluster::FanMode::Off
-            fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[40_u8])
-          end
-        end
-        print_state_line
-        print "> "
+    # The thermostat drives the fan on endpoint 2: every callback is wired
+    # once both endpoints exist, so this may reach across them.
+    on(:thermostat, :system_mode_changed) do |old_mode, new_mode|
+      puts ""
+      puts "Mode changed: #{old_mode} -> #{new_mode}"
+      case new_mode
+      when Matter::Cluster::Thermostat::SystemMode::Off
+        fan_on_off.on_off = false
+      when Matter::Cluster::Thermostat::SystemMode::FanOnly
+        start_fan(FAN_ONLY_PERCENT)
+      else
+        start_fan(HEATING_COOLING_FAN_PERCENT)
       end
-      thermostat.on_setpoint_changed do |type, old_val, new_val|
-        puts ""
-        old_c = Matter::Cluster::TemperatureMeasurementCluster.to_celsius(old_val)
-        new_c = Matter::Cluster::TemperatureMeasurementCluster.to_celsius(new_val)
-        puts "#{type} setpoint changed: #{"%.1f" % old_c}°C -> #{"%.1f" % new_c}°C"
-        print "> "
+      print_state_lines
+      reprompt
+    end
+
+    on(:thermostat, :setpoint_changed) do |type, old_value, new_value|
+      notify "#{type} setpoint changed: #{format_temperature(old_value)} -> #{format_temperature(new_value)}"
+    end
+
+    on(:temperature, :temperature_changed) do |_old_value, new_value|
+      thermostat.update_local_temperature(new_value)
+      notify "Ambient temperature: #{format_temperature(new_value)}" if new_value
+    end
+
+    on(:fan_control, :percent_changed) do |_old_percent, new_percent|
+      notify "Fan: #{fan_speed_name} (#{new_percent}%)"
+    end
+
+    on(:fan_on_off, :state_changed) do |is_on|
+      # When the fan is turned off via OnOff, also set its fan mode to Off.
+      unless is_on || fan_control.fan_mode.off?
+        fan_control.write_attribute(
+          Matter::Cluster::FanControl::ATTR_FAN_MODE,
+          TLV::Any.new(Matter::Cluster::FanControl::FanMode::Off.value)
+        )
       end
+      notify "Fan power: #{is_on ? "ON" : "OFF"}"
+    end
 
-      # Temperature sensor — ambient temperature
-      initial_temp = random_temperature_centi
-      @temperature = Matter::Cluster::TemperatureMeasurementCluster.new(
-        endpoint1,
-        measured_value: initial_temp,
-        min_measured_value: MIN_TEMP_CENTI,
-        max_measured_value: MAX_TEMP_CENTI,
-        tolerance: 50_u16 # 0.5°C tolerance
-      )
-      # Feed temperature into thermostat's local temperature
-      thermostat.update_local_temperature(initial_temp)
-      temperature.on_temperature_changed do |_old_val, new_val|
-        thermostat.update_local_temperature(new_val)
-        if new_val
-          puts ""
-          puts "Ambient temperature: #{format_temperature(new_val)}°C"
-          print "> "
-        end
-      end
-
-      @identify1 = Matter::Cluster::IdentifyCluster.new(
-        endpoint1,
-        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLight
-      )
-      @fixed_label = Matter::Cluster::FixedLabelCluster.new(
-        endpoint1,
-        [Matter::Cluster::LabelStruct.new("name", "Air Conditioner")]
-      )
-      @groups1 = Matter::Cluster::GroupsCluster.new(endpoint1)
-      @scenes_management = Matter::Cluster::ScenesManagementCluster.new(endpoint1)
-
-      # ========================================================================
-      # Endpoint 2: Fan device type
-      # ========================================================================
-
-      # Fan control — 5 discrete speed steps (Quiet/Low/Medium/High/Max)
-      @fan_control = Matter::Cluster::FanControlCluster.new(
-        endpoint2,
-        feature_map: Matter::Cluster::FanControlCluster::Feature::Step,
-        fan_mode: Matter::Cluster::FanControlCluster::FanMode::Off,
-        fan_mode_sequence: Matter::Cluster::FanControlCluster::FanModeSequence::OffLowMedHigh,
-        speed_max: 5_u8,
-        step_percent: 20_u8
-      )
-      fan_control.on_percent_changed do |_old_pct, new_pct|
-        speed = fan_control.speed_current
-        name = FAN_SPEED_NAMES[speed]? || "Speed #{speed}"
-        puts ""
-        puts "Fan: #{name} (#{new_pct}%)"
-        print "> "
-      end
-
-      # OnOff cluster for fan power control
-      @fan_on_off = Matter::Cluster::OnOffCluster.new(endpoint2, on_off: false)
-      fan_on_off.on_state_changed do |is_on|
-        puts ""
-        puts "Fan power: #{is_on ? "ON" : "OFF"}"
-        # When fan is turned off via OnOff, also set fan mode to Off
-        if !is_on && fan_control.fan_mode != Matter::Cluster::FanControlCluster::FanMode::Off
-          fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_FAN_MODE, Bytes[Matter::Cluster::FanControlCluster::FanMode::Off.value])
-        end
-        print "> "
-      end
-
-      @identify2 = Matter::Cluster::IdentifyCluster.new(
-        endpoint2,
-        identify_type: Matter::Cluster::IdentifyCluster::IdentifyType::VisibleLight
-      )
-      @groups2 = Matter::Cluster::GroupsCluster.new(endpoint2)
-
-      # Return all clusters for both endpoints
+    def console_notes : Array(String)
       [
-        # Endpoint 1: Thermostat
-        thermostat,
-        temperature,
-        @identify1.as(Matter::Cluster::IdentifyCluster),
-        @fixed_label.as(Matter::Cluster::FixedLabelCluster),
-        @groups1.as(Matter::Cluster::GroupsCluster),
-        @scenes_management.as(Matter::Cluster::ScenesManagementCluster),
-        # Endpoint 2: Fan
-        fan_control,
-        fan_on_off,
-        @identify2.as(Matter::Cluster::IdentifyCluster),
-        @groups2.as(Matter::Cluster::GroupsCluster),
-      ] of Matter::Cluster::Base
+        "Endpoint #{THERMOSTAT_ENDPOINT}: Thermostat (0x301) - Temperature Control",
+        "Endpoint #{FAN_ENDPOINT}: Fan (0x002B) - Fan Control with OnOff",
+      ]
+    end
+
+    def state_details : Nil
+      print_state_lines
+    end
+
+    def status_details : Nil
+      print_state_lines
+      puts "  Running Mode: #{thermostat.thermostat_running_mode}"
+    end
+
+    def commands : Array(Tuple(String, String))
+      [
+        {"mode <off|cool|heat|fan|dry>", "Set the operating mode (endpoint #{THERMOSTAT_ENDPOINT})"},
+        {"cool <temp>", "Set the cooling setpoint in C"},
+        {"heat <temp>", "Set the heating setpoint in C"},
+        {"power <on|off>", "Set the fan power (endpoint #{FAN_ENDPOINT})"},
+        {"fan <off|quiet|low|med|high|max|0-100>", "Set the fan speed"},
+      ]
+    end
+
+    def handle_command(name : String, argument : String?) : Bool
+      case name
+      when "mode"  then set_mode(argument)
+      when "cool"  then set_setpoint(argument) { |value| thermostat.cooling_setpoint = value }
+      when "heat"  then set_setpoint(argument) { |value| thermostat.heating_setpoint = value }
+      when "power" then set_fan_power(argument)
+      when "fan"   then set_fan(argument)
+      else              return false
+      end
+      true
     end
 
     protected def before_start : Nil
-      print_header
-      print_state
-    end
-
-    protected def started_commissioning_mode : Nil
-      puts "Starting in Commissioning Mode"
-      puts "The device is ready to be paired with a Matter controller."
-      puts ""
-      puts "mDNS Advertisement Active:"
-      puts "  Service: _matterc._udp.local"
-      puts "  Instance: #{responder.commissioning_instance_name || "<pending>"}"
-      puts "  Hostname: #{hostname}"
-      puts "  Port: #{port}"
-      puts "  Discriminator: #{discriminator}"
-      puts ""
-
-      print_qr_code
-
-      manual_code = setup_code
-      puts "To pair this device:"
-      puts "  chip-tool pairing code 1 #{manual_code}"
-      puts ""
-    end
-
-    protected def started_operational_mode : Nil
-      puts "Starting in Operational Mode"
-      puts "The device is commissioned and ready for use."
-      puts ""
-
-      fabric_table.all_fabrics.each do |fabric|
-        puts "Operational Advertisement (Fabric #{fabric.fabric_index}):"
-        puts "  Service: _matter._tcp.local"
-        puts "  Fabric ID: 0x#{fabric.fabric_id.to_s(16).upcase}"
-        puts "  Node ID: 0x#{fabric.node_id.to_s(16).upcase}"
-        puts ""
+      # Feed the simulated ambient temperature into the thermostat.
+      if measured = temperature.measured_value
+        thermostat.update_local_temperature(measured)
       end
+      super
     end
 
     protected def on_started : Nil
-      @running = true
-      spawn { run_sensor_loop }
-
-      interactive = !ARGV.includes?("--no-interactive")
-      if interactive
-        spawn { run_interactive_loop }
-      else
-        puts "Running in non-interactive mode (--no-interactive)"
-        puts "Press Ctrl+C to stop."
-        puts ""
-      end
+      super
+      every(SAMPLE_INTERVAL) { temperature.update_temperature(rand(MIN_TEMPERATURE..MAX_TEMPERATURE)) }
     end
 
-    protected def on_shutdown : Nil
-      @running = false
-      puts "Shutdown complete"
+    # Turns the fan on, taking it to *percent* when it was not running.
+    private def start_fan(percent : UInt8) : Nil
+      fan_on_off.on_off = true
+      set_fan_percent(percent) if fan_control.fan_mode.off?
     end
 
-    private def run_sensor_loop : Nil
-      while @running
-        UPDATE_INTERVAL_SECONDS.times do
-          break unless @running
-          sleep 1.second
-        end
-
-        if @running
-          value = random_temperature_centi
-          temperature.update_temperature(value)
-        end
-      end
+    private def set_fan_percent(percent : UInt8) : Nil
+      fan_control.write_attribute(Matter::Cluster::FanControl::ATTR_PERCENT_SETTING, TLV::Any.new(percent))
     end
 
-    private def random_temperature_centi : Int16
-      rand(MIN_TEMP_CENTI..MAX_TEMP_CENTI)
-    end
-
-    private def format_temperature(centi_celsius : Int16) : String
-      celsius = Matter::Cluster::TemperatureMeasurementCluster.to_celsius(centi_celsius)
-      "%.1f" % celsius
-    end
-
-    private def print_header : Nil
-      puts "\n" + "=" * 70
-      puts "  Matter Air Conditioner Device"
-      puts "  Endpoint 1: Thermostat (0x301) - Temperature Control"
-      puts "  Endpoint 2: Fan (0x002B) - Fan Control with OnOff"
-      puts "=" * 70
-      puts ""
-    end
-
-    private def print_state : Nil
-      puts "Loading device state..."
-      puts "  Name: #{device_name}"
-      print_state_line
-      puts "  Commissioned: #{fabric_table.empty? ? "No" : "Yes"}"
-      puts "  Fabrics: #{fabric_table.size}"
-      puts "  Discriminator: #{discriminator}"
-      puts "  Setup PIN: #{setup_pin}"
-      puts ""
-      ip_addresses.each do |ip|
-        puts "  IP: #{ip.address} (#{ip.family == Socket::Family::INET ? "IPv4" : "IPv6"})"
-      end
-      puts ""
-    end
-
-    private def print_state_line : Nil
-      mode = thermostat.system_mode
-      temp = temperature.measured_value
-      cool_sp = thermostat.occupied_cooling_setpoint
-      heat_sp = thermostat.occupied_heating_setpoint
-      speed = fan_control.speed_current
-      fan_name = FAN_SPEED_NAMES[speed]? || "Speed #{speed}"
-      fan_power = fan_on_off.on_off? ? "ON" : "OFF"
-
-      puts "  Mode: #{mode}"
-      puts "  Ambient: #{temp ? format_temperature(temp) : "unknown"}°C"
-      puts "  Cool Setpoint: #{format_temperature(cool_sp)}°C"
-      puts "  Heat Setpoint: #{format_temperature(heat_sp)}°C"
-      puts "  Fan Power: #{fan_power}"
-      puts "  Fan Speed: #{fan_name} (#{fan_control.percent_current}%)"
-    end
-
-    private def setup_code : String
-      Matter::SetupPayload.generate_manual_code(discriminator, setup_pin)
-    end
-
-    private def qr_code_payload : String
-      Matter::SetupPayload::QRCode.generate_qr_code(
-        discriminator: discriminator,
-        pin: setup_pin,
-        vendor_id: vendor_id,
-        product_id: product_id,
-        flow: Matter::SetupPayload::QRCode::CommissionFlow::Standard,
-        capabilities: Matter::SetupPayload::QRCode::DiscoveryCapability::BLE
-      )
-    end
-
-    private def print_qr_code : Nil
-      payload = qr_code_payload
-      qr = Goban::QR.encode_string(payload, Goban::ECC::Level::Low)
-      puts "Scan this QR code with your Matter controller app:"
-      puts ""
-      qr.print_to_console
-      puts ""
-    rescue ex
-      puts "Failed to generate QR code: #{ex.message}"
-    end
-
-    private def run_interactive_loop : Nil
-      puts "Interactive Commands:"
-      puts "  mode <off|cool|heat|fan>  - Set operating mode"
-      puts "  cool <temp>               - Set cooling setpoint (°C)"
-      puts "  heat <temp>               - Set heating setpoint (°C)"
-      puts "  power <on|off>            - Set fan power (endpoint 2)"
-      puts "  fan <off|quiet|low|med|high|max|0-100>  - Set fan speed"
-      puts "  status                    - Show current status"
-      puts "  reset                     - Reset to factory defaults"
-      puts "  quit                      - Exit the application"
-      puts ""
-
-      loop do
-        print "> "
-        input = gets
-        break unless input
-        handle_command(input.strip)
-      end
-    end
-
-    private def handle_command(command : String) : Nil
-      parts = command.strip.split
-      return if parts.empty?
-
-      case parts[0].downcase
-      when "mode"
-        set_mode(parts)
-      when "cool"
-        set_cool_setpoint(parts)
-      when "heat"
-        set_heat_setpoint(parts)
-      when "power"
-        set_fan_power(parts)
-      when "fan"
-        set_fan(parts)
-      when "status"
-        show_status
-      when "reset"
-        factory_reset
-      when "quit", "exit", "q"
-        puts "Shutting down..."
-        shutdown!
-      when "help", "?"
-        show_help
-      else
-        puts "Unknown command: #{command}"
-        puts "Type 'help' for available commands."
-      end
-    end
-
-    private def set_mode(parts : Array(String)) : Nil
-      if parts.size < 2
-        puts "Usage: mode <off|cool|heat|fan>"
-        return
-      end
-
-      mode = case parts[1].downcase
-             when "off"  then Matter::Cluster::ThermostatCluster::SystemMode::Off
-             when "cool" then Matter::Cluster::ThermostatCluster::SystemMode::Cool
-             when "heat" then Matter::Cluster::ThermostatCluster::SystemMode::Heat
-             when "fan"  then Matter::Cluster::ThermostatCluster::SystemMode::FanOnly
-             when "dry"  then Matter::Cluster::ThermostatCluster::SystemMode::Dry
-             else
-               puts "Unknown mode: #{parts[1]}. Use: off, cool, heat, fan, dry"
-               return
+    private def set_mode(argument : String?) : Nil
+      mode = case argument.try(&.downcase)
+             when "off"  then Matter::Cluster::Thermostat::SystemMode::Off
+             when "cool" then Matter::Cluster::Thermostat::SystemMode::Cool
+             when "heat" then Matter::Cluster::Thermostat::SystemMode::Heat
+             when "fan"  then Matter::Cluster::Thermostat::SystemMode::FanOnly
+             when "dry"  then Matter::Cluster::Thermostat::SystemMode::Dry
              end
 
-      thermostat.system_mode = mode
-    end
-
-    private def set_cool_setpoint(parts : Array(String)) : Nil
-      if parts.size < 2
-        puts "Usage: cool <temperature in °C>"
+      unless mode
+        puts "Usage: mode <off|cool|heat|fan|dry>"
         return
       end
 
-      temp = parts[1].to_f?
-      unless temp
-        puts "Invalid temperature: #{parts[1]}"
+      thermostat.mode = mode
+    end
+
+    private def set_setpoint(argument : String?, & : Int16 -> Nil) : Nil
+      celsius = argument.try(&.to_f?)
+      unless celsius
+        puts "Usage: cool|heat <temperature in C>"
         return
       end
 
-      setpoint = Matter::Cluster::TemperatureMeasurementCluster.from_celsius(temp)
-      thermostat.cooling_setpoint = setpoint
+      yield Matter::Cluster::TemperatureMeasurement.from_celsius(celsius)
     end
 
-    private def set_heat_setpoint(parts : Array(String)) : Nil
-      if parts.size < 2
-        puts "Usage: heat <temperature in °C>"
+    private def set_fan_power(argument : String?) : Nil
+      case argument.try(&.downcase)
+      when "on"  then fan_on_off.on_off = true
+      when "off" then fan_on_off.on_off = false
+      else            puts "Usage: power <on|off>"
+      end
+    end
+
+    private def set_fan(argument : String?) : Nil
+      name = argument.try(&.downcase)
+      percent = name.try { |value| FAN_PERCENTS[value]? || value.to_u8? }
+
+      unless percent && percent <= FAN_PERCENT_MAX
+        puts "Usage: fan <#{FAN_PERCENTS.keys.join("|")}|0-#{FAN_PERCENT_MAX}>"
         return
       end
 
-      temp = parts[1].to_f?
-      unless temp
-        puts "Invalid temperature: #{parts[1]}"
-        return
-      end
-
-      setpoint = Matter::Cluster::TemperatureMeasurementCluster.from_celsius(temp)
-      thermostat.heating_setpoint = setpoint
+      fan_on_off.on_off = true if percent > 0
+      set_fan_percent(percent)
     end
 
-    private def set_fan_power(parts : Array(String)) : Nil
-      if parts.size < 2
-        puts "Usage: power <on|off>"
-        return
-      end
-
-      case parts[1].downcase
-      when "on"
-        fan_on_off.on_off = true
-      when "off"
-        fan_on_off.on_off = false
-      else
-        puts "Invalid power state: #{parts[1]}. Use: on, off"
-      end
+    private def print_state_lines : Nil
+      puts "  Mode: #{thermostat.system_mode}"
+      puts "  Ambient: #{format_temperature(temperature.measured_value)}"
+      puts "  Cool Setpoint: #{format_temperature(thermostat.occupied_cooling_setpoint)}"
+      puts "  Heat Setpoint: #{format_temperature(thermostat.occupied_heating_setpoint)}"
+      puts "  Fan Power: #{fan_on_off.on_off? ? "ON" : "OFF"}"
+      puts "  Fan Speed: #{fan_speed_name} (#{fan_control.percent_current}%)"
     end
 
-    private def set_fan(parts : Array(String)) : Nil
-      if parts.size < 2
-        puts "Usage: fan <off|quiet|low|med|high|max|0-100>"
-        return
-      end
-
-      percent = case parts[1].downcase
-                when "off"           then 0_u8
-                when "quiet"         then 20_u8
-                when "low"           then 40_u8
-                when "med", "medium" then 60_u8
-                when "high"          then 80_u8
-                when "max"           then 100_u8
-                else
-                  val = parts[1].to_u8?
-                  unless val && val <= 100
-                    puts "Invalid fan speed: #{parts[1]}. Use: off, quiet, low, med, high, max, or 0-100"
-                    return
-                  end
-                  val
-                end
-
-      # If setting fan speed > 0, ensure fan is on
-      if percent > 0
-        fan_on_off.on_off = true
-      end
-      fan_control.write_attribute(Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING, Bytes[percent])
+    private def fan_speed_name : String
+      speed = fan_control.speed_current
+      FAN_SPEED_NAMES[speed]? || "Speed #{speed}"
     end
 
-    private def show_status : Nil
-      puts ""
-      puts "Device Status:"
-      puts "  Name: #{device_name}"
-      print_state_line
-      puts "  Running Mode: #{thermostat.thermostat_running_mode}"
-      puts "  Commissioned: #{fabric_table.empty? ? "No" : "Yes"}"
-      puts "  Fabrics: #{fabric_table.size}"
-      puts "  Sessions: #{message_handler.sessions.size}"
-      puts "  Subscriptions: #{message_handler.active_subscriptions.size}"
-      puts ""
-    end
-
-    private def show_help : Nil
-      puts ""
-      puts "Available Commands:"
-      puts "  mode <off|cool|heat|fan>  - Set operating mode (endpoint 1)"
-      puts "  cool <temp>               - Set cooling setpoint in °C (e.g. 'cool 24')"
-      puts "  heat <temp>               - Set heating setpoint in °C (e.g. 'heat 20')"
-      puts "  power <on|off>            - Set fan power on/off (endpoint 2)"
-      puts "  fan <off|quiet|low|med|high|max|0-100>"
-      puts "                            - Set fan speed by name or percentage (endpoint 2)"
-      puts "    Fan Speed Mapping:"
-      puts "      off=0%, quiet=20%, low=40%, med=60%, high=80%, max=100%"
-      puts "  status                    - Show detailed device status"
-      puts "  reset                     - Reset device to factory defaults"
-      puts "  quit                      - Shut down the device and exit"
-      puts ""
-      puts "chip-tool Commands for Testing:"
-      puts "  chip-tool thermostat read local-temperature 1 1"
-      puts "  chip-tool fancontrol read fan-mode 1 2"
-      puts "  chip-tool onoff on 1 2"
-      puts "  chip-tool onoff off 1 2"
-      puts ""
-    end
-
-    private def factory_reset : Nil
-      print "Are you sure you want to reset to factory defaults? (yes/no): "
-      confirmation = gets
-      return unless confirmation && confirmation.strip.downcase == "yes"
-
-      puts "Performing factory reset..."
-      shutdown!
-      File.delete(STORAGE_FILE) if File.exists?(STORAGE_FILE)
-      puts "Factory reset complete."
-      puts "Please restart the application."
-      exit(0)
-    end
-
-    private def local_ips : Array(Socket::IPAddress)
-      ips = [] of Socket::IPAddress
-
-      begin
-        socket = UDPSocket.new(:inet6)
-        socket.connect("2606:4700:4700::1111", 53)
-        addr = socket.local_address
-        socket.close
-        ips << Socket::IPAddress.new(addr.address, 0)
-      rescue
-      end
-
-      begin
-        socket = UDPSocket.new(:inet)
-        socket.connect("8.8.8.8", 80)
-        addr = socket.local_address
-        socket.close
-        ips << Socket::IPAddress.new(addr.address, 0)
-      rescue
-      end
-
-      ips << Socket::IPAddress.new("127.0.0.1", 0) if ips.empty?
-      ips
+    private def format_temperature(centi_celsius : Int16?) : String
+      return "unknown" unless centi_celsius
+      "#{"%.1f" % Matter::Cluster::TemperatureMeasurement.to_celsius(centi_celsius)} C"
     end
   end
 end
 
-puts "Starting Matter Air Conditioner Device..."
-puts ""
-
-Log.setup(:debug)
-
-device = MatterAirConditioner::Device.new
-
-Process.on_terminate do
-  puts "\n\nReceived interrupt signal"
-  device.shutdown!
-end
-
-device.start
-device.await_shutdown
+Examples.main("Matter Air Conditioner Device") { MatterAirConditioner::Device.new }

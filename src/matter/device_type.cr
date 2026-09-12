@@ -1,5 +1,6 @@
 require "./datatype/device_type_id"
 require "./datatype/cluster_id"
+require "./hex"
 
 module Matter
   # Device type definitions from the Matter specification
@@ -108,11 +109,11 @@ module Matter
           0x001D_u32, # Descriptor
           0x0003_u32, # Identify
           0x0004_u32, # Groups
-          0x0005_u32, # Scenes
           0x0006_u32, # On/Off
         ],
         optional_server_clusters: [
           0x0008_u32, # Level Control (for compatibility)
+          0x0062_u32, # Scenes Management
         ]
       )
     end
@@ -126,9 +127,11 @@ module Matter
           0x001D_u32, # Descriptor
           0x0003_u32, # Identify
           0x0004_u32, # Groups
-          0x0005_u32, # Scenes
           0x0006_u32, # On/Off
           0x0008_u32, # Level Control
+        ],
+        optional_server_clusters: [
+          0x0062_u32, # Scenes Management
         ]
       )
     end
@@ -142,11 +145,11 @@ module Matter
           0x001D_u32, # Descriptor
           0x0003_u32, # Identify
           0x0004_u32, # Groups
-          0x0005_u32, # Scenes
           0x0006_u32, # On/Off
         ],
         optional_server_clusters: [
           0x0008_u32, # Level Control
+          0x0062_u32, # Scenes Management
         ]
       )
     end
@@ -228,12 +231,12 @@ module Matter
           0x001D_u32, # Descriptor
           0x0003_u32, # Identify
           0x0004_u32, # Groups
-          0x0005_u32, # Scenes
           0x0201_u32, # Thermostat
         ],
         optional_server_clusters: [
           0x0204_u32, # Thermostat User Interface Configuration
           0x0402_u32, # Temperature Measurement
+          0x0062_u32, # Scenes Management
         ]
       )
     end
@@ -253,6 +256,81 @@ module Matter
           0x0006_u32, # On/Off
         ]
       )
+    end
+
+    # Revision reported for a device type this library has no definition for.
+    # Every Matter device type starts at revision 1.
+    UNKNOWN_REVISION = 1_u16
+
+    # The definition for *device_type*, or a bare definition carrying just the
+    # id (no mandatory clusters, revision `UNKNOWN_REVISION`) when this library
+    # has no table entry for it. Endpoints built from a raw device type id go
+    # through here, so an unknown id costs conformance checking but never
+    # refuses to boot.
+    def self.for(device_type : UInt32) : DeviceType
+      case device_type
+      when ROOT_NODE           then root_node
+      when ON_OFF_LIGHT        then on_off_light
+      when DIMMABLE_LIGHT      then dimmable_light
+      when ON_OFF_PLUG_IN_UNIT then on_off_plug_in_unit
+      when ON_OFF_LIGHT_SWITCH then on_off_light_switch
+      when DIMMER_SWITCH       then dimmer_switch
+      when CONTACT_SENSOR      then contact_sensor
+      when TEMPERATURE_SENSOR  then temperature_sensor
+      when DOOR_LOCK           then door_lock
+      when THERMOSTAT          then thermostat
+      when FAN                 then fan
+      else
+        new(
+          DataType::DeviceTypeId.new(device_type),
+          name(device_type) || "Device Type #{Hex.u32(device_type)}",
+          UNKNOWN_REVISION
+        )
+      end
+    end
+
+    # Human-readable name for a device type id, `nil` when unknown
+    def self.name(device_type : UInt32) : String?
+      case device_type
+      when ROOT_NODE                  then "Root Node"
+      when POWER_SOURCE               then "Power Source"
+      when OTA_REQUESTOR              then "OTA Requestor"
+      when OTA_PROVIDER               then "OTA Provider"
+      when AGGREGATOR                 then "Aggregator"
+      when BRIDGED_NODE               then "Bridged Node"
+      when ON_OFF_LIGHT               then "On/Off Light"
+      when DIMMABLE_LIGHT             then "Dimmable Light"
+      when COLOR_TEMPERATURE_LIGHT    then "Color Temperature Light"
+      when EXTENDED_COLOR_LIGHT       then "Extended Color Light"
+      when ON_OFF_PLUG_IN_UNIT        then "On/Off Plug-in Unit"
+      when DIMMABLE_PLUG_IN_UNIT      then "Dimmable Plug-in Unit"
+      when ON_OFF_LIGHT_SWITCH        then "On/Off Light Switch"
+      when DIMMER_SWITCH              then "Dimmer Switch"
+      when COLOR_DIMMER_SWITCH        then "Color Dimmer Switch"
+      when CONTROL_BRIDGE             then "Control Bridge"
+      when PUMP_CONTROLLER            then "Pump Controller"
+      when PUMP                       then "Pump"
+      when CONTACT_SENSOR             then "Contact Sensor"
+      when LIGHT_SENSOR               then "Light Sensor"
+      when OCCUPANCY_SENSOR           then "Occupancy Sensor"
+      when TEMPERATURE_SENSOR         then "Temperature Sensor"
+      when PRESSURE_SENSOR            then "Pressure Sensor"
+      when FLOW_SENSOR                then "Flow Sensor"
+      when HUMIDITY_SENSOR            then "Humidity Sensor"
+      when DOOR_LOCK                  then "Door Lock"
+      when DOOR_LOCK_CONTROLLER       then "Door Lock Controller"
+      when WINDOW_COVERING            then "Window Covering"
+      when WINDOW_COVERING_CONTROLLER then "Window Covering Controller"
+      when HEATING_COOLING_UNIT       then "Heating/Cooling Unit"
+      when THERMOSTAT                 then "Thermostat"
+      when FAN                        then "Fan"
+      when BASIC_VIDEO_PLAYER         then "Basic Video Player"
+      when CASTING_VIDEO_PLAYER       then "Casting Video Player"
+      when SPEAKER                    then "Speaker"
+      when CONTENT_APP                then "Content App"
+      when CASTING_VIDEO_CLIENT       then "Casting Video Client"
+      when VIDEO_REMOTE_CONTROL       then "Video Remote Control"
+      end
     end
 
     # Helper method to check if a cluster is required

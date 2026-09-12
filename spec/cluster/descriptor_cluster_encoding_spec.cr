@@ -1,25 +1,22 @@
 require "../spec_helper"
-require "../../src/matter/cluster/descriptor_cluster"
+require "../../src/matter/cluster/descriptor"
 
-describe Matter::Cluster::DescriptorCluster do
+describe Matter::Cluster::Descriptor do
   describe "TLV encoding" do
     it "encodes DeviceTypeList as TLV Array (not List)" do
-      endpoint = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint)
+      cluster = build(Matter::Cluster::Descriptor, 0)
 
       # Add a device type
-      cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      cluster.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0016_u32, # Root Node
         revision: 1_u16
       )
 
       # Read the attribute
-      result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-      result.should be_a(Bytes)
-      bytes = result.as(Bytes)
+      encoded = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_DEVICE_TYPE_LIST).to_slice
 
       # Parse the TLV
-      tlv = TLV.parse(bytes)
+      tlv = TLV.parse(encoded)
 
       # The element type should be Array (0x16), not List (0x17)
       # Array = ElementType::Array
@@ -28,56 +25,45 @@ describe Matter::Cluster::DescriptorCluster do
     end
 
     it "encodes ServerList as TLV Array" do
-      endpoint = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint)
+      cluster = build(Matter::Cluster::Descriptor, 0)
 
       # ServerList should already have CLUSTER_ID from initialize
-      result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-      result.should be_a(Bytes)
-      bytes = result.as(Bytes)
+      encoded = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_SERVER_LIST).to_slice
 
-      tlv = TLV.parse(bytes)
+      tlv = TLV.parse(encoded)
       tlv.header.element_type.should eq(TLV::ElementType::Array)
     end
 
     it "encodes PartsList as TLV Array" do
-      endpoint = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint)
+      cluster = build(Matter::Cluster::Descriptor, 0)
       cluster.add_part(1_u16)
 
-      result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-      result.should be_a(Bytes)
-      bytes = result.as(Bytes)
+      encoded = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_PARTS_LIST).to_slice
 
-      tlv = TLV.parse(bytes)
+      tlv = TLV.parse(encoded)
       tlv.header.element_type.should eq(TLV::ElementType::Array)
     end
 
     it "encodes AttributeList as TLV Array" do
-      endpoint = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint)
+      cluster = build(Matter::Cluster::Descriptor, 0)
 
-      result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTRIBUTE_LIST)
-      result.should be_a(Bytes)
-      bytes = result.as(Bytes)
+      encoded = read_tlv(cluster, Matter::Cluster::Base::GLOBAL_ATTRIBUTE_LIST).to_slice
 
-      tlv = TLV.parse(bytes)
+      tlv = TLV.parse(encoded)
       tlv.header.element_type.should eq(TLV::ElementType::Array)
     end
 
     it "encodes DeviceTypeList elements with anonymous tags" do
-      endpoint = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint)
+      cluster = build(Matter::Cluster::Descriptor, 0)
 
-      cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      cluster.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0016_u32,
         revision: 1_u16
       )
 
-      result = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-      bytes = result.as(Bytes)
+      encoded = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_DEVICE_TYPE_LIST).to_slice
 
-      tlv = TLV.parse(bytes)
+      tlv = TLV.parse(encoded)
       tlv.header.element_type.should eq(TLV::ElementType::Array)
 
       # Array should have one element
@@ -92,7 +78,7 @@ describe Matter::Cluster::DescriptorCluster do
     end
 
     it "encodes DeviceTypeStruct with correct field tags" do
-      dt = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      dt = Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0016_u32, # Root Node
         revision: 2_u16
       )

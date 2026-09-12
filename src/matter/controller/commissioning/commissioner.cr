@@ -1,12 +1,10 @@
 require "log"
 
-require "../../cluster/general_commissioning_cluster"
-require "../../cluster/operational_credentials_cluster"
-require "../../cluster/definitions/general_commissioning"
-require "../../cluster/definitions/operational_credentials"
+require "../../cluster/general_commissioning"
+require "../../cluster/operational_credentials"
 require "../../crypto/certificate"
 require "../../crypto/key"
-require "../../mdns/scanner"
+require "../scanner"
 require "../../setup_payload"
 
 require "../certificate_util"
@@ -21,7 +19,13 @@ module Matter
   module Controller
     module Commissioning
       class Commissioner
-        Log = ::Log.for("matter.controller.commissioning")
+        Log = ::Log.for("matter.controller.commissioning.commissioner")
+
+        # This controller runs one certificate authority per fabric, so the root
+        # certificate it issues is always the first one.
+        ROOT_CERTIFICATE_ID = 1_u64
+        # Serial numbers only have to be distinguishable within a fabric
+        CERTIFICATE_SERIAL_BYTES = 8
 
         def initialize(
           @store : StateStore,
@@ -60,7 +64,7 @@ module Matter
 
           im = ImClient.new(@client, @timeout)
 
-          arm = Cluster::GeneralCommissioningCluster::ArmFailSafeRequest.new(
+          arm = Cluster::GeneralCommissioning::ArmFailSafeRequest.new(
             expiry_length_seconds: 60_u16,
             breadcrumb: 0_u64,
             timeout_ms: 0_u32
@@ -69,27 +73,27 @@ module Matter
             session: pase_session,
             peer: peer_addr,
             endpoint_id: 0_u16,
-            cluster_id: Cluster::GeneralCommissioningCluster::CLUSTER_ID,
-            command_id: Cluster::GeneralCommissioningCluster::CMD_ARM_FAIL_SAFE,
+            cluster_id: Cluster::GeneralCommissioning::CLUSTER_ID,
+            command_id: Cluster::GeneralCommissioning::CMD_ARM_FAIL_SAFE,
             fields: arm.to_slice
           )
           assert_invoke_ok!(arm_resp, "ArmFailSafe")
 
-          add_root_req = Cluster::Definitions::OperationalCredentials::AddTrustedRootCertificateRequest.new(
+          add_root_req = Cluster::OperationalCredentials::Tlv::AddTrustedRootCertificateRequest.new(
             root_certificate: fabric.root_cert.to_slice
           )
           add_root_resp = im.invoke(
             session: pase_session,
             peer: peer_addr,
             endpoint_id: 0_u16,
-            cluster_id: Cluster::OperationalCredentialsCluster::CLUSTER_ID,
-            command_id: Cluster::OperationalCredentialsCluster::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
+            cluster_id: Cluster::OperationalCredentials::CLUSTER_ID,
+            command_id: Cluster::OperationalCredentials::CMD_ADD_TRUSTED_ROOT_CERTIFICATE,
             fields: add_root_req.to_slice
           )
           assert_invoke_ok!(add_root_resp, "AddTrustedRootCertificate")
 
           csr_nonce = @crypto.random_bytes(32)
-          csr_req = Cluster::Definitions::OperationalCredentials::CsrRequest.new(
+          csr_req = Cluster::OperationalCredentials::Tlv::CsrRequest.new(
             csr_nonce: csr_nonce.to_slice,
             is_for_update_noc: nil
           )
@@ -97,18 +101,23 @@ module Matter
             session: pase_session,
             peer: peer_addr,
             endpoint_id: 0_u16,
-            cluster_id: Cluster::OperationalCredentialsCluster::CLUSTER_ID,
-            command_id: Cluster::OperationalCredentialsCluster::CMD_CSR_REQUEST,
+            cluster_id: Cluster::OperationalCredentials::CLUSTER_ID,
+            command_id: Cluster::OperationalCredentials::CMD_CSR_REQUEST,
             fields: csr_req.to_slice
           )
-          csr_fields = first_command_fields(csr_resp_msg, Cluster::OperationalCredentialsCluster::CMD_CSR_RESPONSE)
-          csr_resp = Cluster::Definitions::OperationalCredentials::CsrResponse.from_slice(csr_fields)
-          csr_elements = Cluster::OperationalCredentialsCluster::CSRElements.from_slice(csr_resp.nocsr_elements)
+          csr_fields = first_command_fields(csr_resp_msg, Cluster::OperationalCredentials::CMD_CSR_REQUEST_RESPONSE)
+          csr_resp = Cluster::OperationalCredentials::Tlv::CsrResponse.from_slice(csr_fields)
+          csr_elements = Cluster::OperationalCredentials::CSRElements.from_slice(csr_resp.nocsr_elements)
 
           device_pub_key = CertificateUtil.extract_uncompressed_public_key_from_csr(csr_elements.csr)
-          device_noc = create_noc(fabric_id: fabric.fabric_id, node_id: node_id, public_key: device_pub_key)
+          device_noc = issue_noc(
+            root_key: fabric.certificate_authority_key,
+            fabric_id: fabric.fabric_id,
+            node_id: node_id,
+            public_key: device_pub_key
+          )
 
-          add_noc_req = Cluster::Definitions::OperationalCredentials::AddNocRequest.new(
+          add_noc_req = Cluster::OperationalCredentials::Tlv::AddNocRequest.new(
             noc_value: device_noc.to_slice,
             icac_value: nil,
             ipk_value: fabric.ipk_value.to_slice,
@@ -119,14 +128,14 @@ module Matter
             session: pase_session,
             peer: peer_addr,
             endpoint_id: 0_u16,
-            cluster_id: Cluster::OperationalCredentialsCluster::CLUSTER_ID,
-            command_id: Cluster::OperationalCredentialsCluster::CMD_ADD_NOC,
+            cluster_id: Cluster::OperationalCredentials::CLUSTER_ID,
+            command_id: Cluster::OperationalCredentials::CMD_ADD_NOC,
             fields: add_noc_req.to_slice
           )
-          noc_fields = first_command_fields(add_noc_resp_msg, Cluster::OperationalCredentialsCluster::CMD_NOC_RESPONSE)
-          noc_resp = Cluster::Definitions::OperationalCredentials::TlvNocResponse.from_slice(noc_fields)
+          noc_fields = first_command_fields(add_noc_resp_msg, Cluster::OperationalCredentials::CMD_ADD_NOC_RESPONSE)
+          noc_resp = Cluster::OperationalCredentials::Tlv::TlvNocResponse.from_slice(noc_fields)
           unless noc_resp.status_code.ok?
-            raise "AddNOC failed (status=#{noc_resp.status_code} debug=#{noc_resp.debug_text})"
+            raise Matter::CommissioningError.new("AddNOC failed (status=#{noc_resp.status_code} debug=#{noc_resp.debug_text})")
           end
 
           case_pairing = Pairing::CasePairing.new(@crypto)
@@ -136,8 +145,8 @@ module Matter
             session: case_session,
             peer: peer_addr,
             endpoint_id: 0_u16,
-            cluster_id: Cluster::GeneralCommissioningCluster::CLUSTER_ID,
-            command_id: Cluster::GeneralCommissioningCluster::CMD_COMMISSIONING_COMPLETE,
+            cluster_id: Cluster::GeneralCommissioning::CLUSTER_ID,
+            command_id: Cluster::GeneralCommissioning::CMD_COMMISSIONING_COMPLETE,
             fields: Bytes.empty
           )
           assert_invoke_ok!(commissioning_complete_resp, "CommissioningComplete")
@@ -148,8 +157,8 @@ module Matter
         end
 
         private def discover_commissionable(discriminator : UInt16) : Socket::IPAddress
-          scanner = nil.as(MDNS::Scanner?)
-          scanner = MDNS::Scanner.new
+          scanner = nil.as(Scanner?)
+          scanner = Scanner.new
           scanner.start
           scanner.query_commissioning
           short_only = (discriminator & 0x00ff_u16) == 0_u16
@@ -157,12 +166,13 @@ module Matter
 
           deadline = Time.instant + @timeout
           loop do
-            if dev = scanner.commissioning_devices.find { |device|
-                 disc = device.discriminator
-                 next false unless disc
-                 next true if disc == discriminator
-                 short_only && SetupPayload.short_discriminator(disc) == short_discriminator
-               }
+            dev = scanner.commissioning_devices.find do |device|
+              disc = device.discriminator
+              next false unless disc
+              next true if disc == discriminator
+              short_only && SetupPayload.short_discriminator(disc) == short_discriminator
+            end
+            if dev
               address = dev.addresses.find(&.family.inet?) || dev.addresses.first?
               if addr = address
                 return Socket::IPAddress.new(addr.address, dev.port)
@@ -173,7 +183,7 @@ module Matter
             sleep 100.milliseconds
           end
 
-          raise "Failed to discover commissionable node via mDNS (discriminator=#{discriminator})"
+          raise Matter::TransportError.new("Failed to discover commissionable node via mDNS (discriminator=#{discriminator})")
         ensure
           scanner.try(&.close)
         end
@@ -192,59 +202,44 @@ module Matter
 
           root_key = Crypto::Key.generate_key_pair
           root_public_key = root_key.public_key
-          root_cert = create_root_cert(root_public_key)
+          root_cert = Crypto::MatterCertificate::Builder.root(root_key, ROOT_CERTIFICATE_ID, serial_number, @crypto)
 
           controller_key = Crypto::Key.generate_key_pair
-          controller_noc = create_noc(fabric_id: fabric_id, node_id: controller_node_id, public_key: controller_key.public_key)
+          controller_noc = issue_noc(
+            root_key: root_key,
+            fabric_id: fabric_id,
+            node_id: controller_node_id,
+            public_key: controller_key.public_key
+          )
 
-          info = FabricInfo.new(
+          FabricInfo.new(
             fabric_id: fabric_id,
             controller_node_id: controller_node_id,
-            ipk_value_hex: ipk.hexstring,
-            root_cert_hex: root_cert.hexstring,
-            root_public_key_hex: root_public_key.hexstring,
-            controller_noc_hex: controller_noc.hexstring,
-            controller_private_key_hex: controller_key.private_key.hexstring
+            ipk_value: ipk,
+            root_cert: root_cert,
+            root_public_key: root_public_key,
+            controller_noc: controller_noc,
+            controller_private_key: controller_key.private_key,
+            root_private_key: root_key.private_key
           )
-          info
         end
 
-        private def create_root_cert(public_key : Bytes) : Bytes
-          signature = @crypto.random_bytes(64)
-          subject = Crypto::DNAttributes.new(rcac_id: 1_u64)
-          issuer = Crypto::DNAttributes.new(rcac_id: 1_u64)
-
-          Crypto::MatterCertificate.new(
-            serial_number: Bytes[0x01],
-            signature_algorithm: 1_u8,
-            issuer: issuer,
-            not_before: 0_u32,
-            not_after: 0xFFFFFFFF_u32,
-            subject: subject,
-            public_key_algorithm: 1_u8,
-            elliptic_curve_id: 1_u8,
-            ec_public_key: public_key,
-            signature: signature
-          ).to_slice
+        # Issue a node certificate under this fabric's root
+        private def issue_noc(root_key : Crypto::Key, fabric_id : UInt64, node_id : UInt64, public_key : Bytes) : Bytes
+          Crypto::MatterCertificate::Builder.node(
+            public_key: public_key,
+            fabric_id: fabric_id,
+            node_id: node_id,
+            issuer_key: root_key,
+            issuer_rcac_id: ROOT_CERTIFICATE_ID,
+            serial: serial_number,
+            crypto: @crypto
+          )
         end
 
-        private def create_noc(fabric_id : UInt64, node_id : UInt64, public_key : Bytes) : Bytes
-          signature = @crypto.random_bytes(64)
-          subject = Crypto::DNAttributes.new(fabric_id: fabric_id, node_id: node_id)
-          issuer = Crypto::DNAttributes.new(rcac_id: 1_u64)
-
-          Crypto::MatterCertificate.new(
-            serial_number: Bytes[0x01],
-            signature_algorithm: 1_u8,
-            issuer: issuer,
-            not_before: 0_u32,
-            not_after: 0xFFFFFFFF_u32,
-            subject: subject,
-            public_key_algorithm: 1_u8,
-            elliptic_curve_id: 1_u8,
-            ec_public_key: public_key,
-            signature: signature
-          ).to_slice
+        # Certificates only have to be distinguishable within this fabric
+        private def serial_number : Bytes
+          @crypto.random_bytes(CERTIFICATE_SERIAL_BYTES)
         end
 
         private def assert_invoke_ok!(response : InteractionModel::InvokeResponseMessage, name : String) : Nil
@@ -260,11 +255,11 @@ module Matter
               saw_any = true
               # Some commands use CommandStatusIB with Success and no CommandDataIB.
               return if status_ib.status.status == InteractionModel::StatusCode::Success.value
-              raise "#{name} failed (status=#{status_ib.status.status})"
+              raise Matter::CommissioningError.new("#{name} failed (status=#{status_ib.status.status})")
             end
           end
 
-          raise "#{name} failed (empty InvokeResponse)" unless saw_any
+          raise Matter::ProtocolError.new("#{name} failed (empty InvokeResponse)") unless saw_any
         end
 
         private def first_command_fields(response : InteractionModel::InvokeResponseMessage, command_id : UInt32) : Bytes
@@ -275,7 +270,7 @@ module Matter
             fields = cmd.command_fields
             return fields ? fields.to_slice : Bytes.empty
           end
-          raise "InvokeResponse missing command_data for command_id=0x#{command_id.to_s(16)}"
+          raise Matter::ProtocolError.new("InvokeResponse missing command_data for command_id=0x#{command_id.to_s(16)}")
         end
       end
     end

@@ -244,3 +244,30 @@ describe Matter::Certificate::AttestationCertificateManager do
     pid_entry.as(Tuple(String, String))[1].should eq("0012")
   end
 end
+
+describe Matter::Certificate::AttestationCertificateManager do
+  it "preserves SHA1 subject and issuer key identifiers through OpenSSL extension generation" do
+    manager = Matter::Certificate::AttestationCertificateManager.new(0xFFF1_u16)
+    dac_der, dac_key = manager.get_dac_cert(0x8000_u16)
+    pai = OpenSSL::X509::Certificate.from_der(manager.pai_cert)
+    dac = OpenSSL::X509::Certificate.from_der(dac_der)
+    pai_hash = OpenSSL::Digest.new("SHA1").update(manager.pai_key_pair.public_key).final
+    dac_hash = OpenSSL::Digest.new("SHA1").update(dac_key.public_key).final
+    paa_hash = Matter::Certificate::ChipPAAuthorities::TEST_CERT_PAA_NO_VID_SKID
+    # Assert the actual DER extension values, independently of the encoder.
+    ski_tag = 0x04_u8
+    aki_sequence_tag = 0x30_u8
+    aki_identifier_tag = 0x80_u8
+    identifier_length = 20_u8
+    tagged_identifier_length = identifier_length + 2_u8
+    { {pai, pai_hash, paa_hash}, {dac, dac_hash, pai_hash} }.each do |cert, subject, authority|
+      ski = cert.extensions.find { |extension| extension.oid == "subjectKeyIdentifier" }.as(OpenSSL::X509::Extension)
+      aki = cert.extensions.find { |extension| extension.oid == "authorityKeyIdentifier" }.as(OpenSSL::X509::Extension)
+      { {ski, Slice.join([Bytes[ski_tag, identifier_length], subject])},
+       {aki, Slice.join([Bytes[aki_sequence_tag, tagged_identifier_length, aki_identifier_tag, identifier_length], authority])} }.each do |extension, expected|
+        data = LibCrypto.x509_extension_get_data(extension)
+        Bytes.new(LibCrypto.asn1_string_get0_data(data), LibCrypto.asn1_string_length(data)).should eq(expected)
+      end
+    end
+  end
+end

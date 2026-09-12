@@ -20,10 +20,10 @@ module Matter
         # Try new openssl_ext API first (OpenSSL 3+ compatible, cleaner code)
         # Fall back to low-level API if new API not available in this environment
         begin
-          priv_ec = OpenSSL::PKey::EC.from_private_bytes(private_key, "prime256v1")
-          peer_ec = OpenSSL::PKey::EC.from_public_bytes(peer_public_key, "prime256v1")
+          priv_ec = OpenSSL::PKey::EC.from_private_bytes(private_key, CRYPTO_EC_CURVE_NIST)
+          peer_ec = OpenSSL::PKey::EC.from_public_bytes(peer_public_key, CRYPTO_EC_CURVE_NIST)
           shared_secret = OpenSSL::PKey::EC.compute_shared_secret(priv_ec, peer_ec)
-          raise OpenSSL::Error.new("Unexpected shared secret length: #{shared_secret.size}") unless shared_secret.size == 32
+          raise Matter::CryptoError.new("Unexpected shared secret length: #{shared_secret.size}") unless shared_secret.size == 32
           return shared_secret
         rescue OpenSSL::PKey::EcError
           # Fall back to low-level implementation for environments where new API isn't available
@@ -31,32 +31,32 @@ module Matter
 
         # Low-level ECDH implementation using direct OpenSSL bindings
         # Create a temporary EC key for P-256 to get the group
-        temp_key = OpenSSL::PKey::EC.generate("P-256")
+        temp_key = OpenSSL::PKey::EC.generate(CRYPTO_EC_CURVE_NIST)
         ec_key = LibCrypto.evp_pkey_get1_ec_key(temp_key)
         group = LibCrypto.ec_key_get0_group(ec_key)
 
         # Convert peer's public key bytes to an EC_POINT
         peer_point = LibCrypto.ec_point_new(group)
-        raise OpenSSL::Error.new("Failed to create EC_POINT") if peer_point.null?
+        raise Matter::CryptoError.new("Failed to create EC_POINT") if peer_point.null?
 
         begin
           result = LibCrypto.ec_point_oct2point(group, peer_point, peer_public_key, peer_public_key.size, nil)
-          raise OpenSSL::Error.new("Failed to convert public key bytes to EC_POINT") if result != 1
+          raise Matter::CryptoError.new("Failed to convert public key bytes to EC_POINT") if result != 1
 
           # Convert private key bytes to BIGNUM
           priv_bn = LibCrypto.bn_new
-          raise OpenSSL::Error.new("Failed to create BIGNUM") if priv_bn.null?
+          raise Matter::CryptoError.new("Failed to create BIGNUM") if priv_bn.null?
 
           begin
             LibCrypto.bn_from_bin(private_key, private_key.size, priv_bn)
 
             # Compute shared_point = private_key * peer_public_key
             shared_point = LibCrypto.ec_point_new(group)
-            raise OpenSSL::Error.new("Failed to create shared point") if shared_point.null?
+            raise Matter::CryptoError.new("Failed to create shared point") if shared_point.null?
 
             begin
               result = LibCrypto.ec_point_mul(group, shared_point, nil, peer_point, priv_bn, nil)
-              raise OpenSSL::Error.new("Failed to compute ECDH shared point") if result != 1
+              raise Matter::CryptoError.new("Failed to compute ECDH shared point") if result != 1
 
               # Convert shared point to uncompressed format (0x04 || x || y)
               shared_bytes = Bytes.new(65)
@@ -68,7 +68,7 @@ module Matter
                 65,
                 nil
               )
-              raise OpenSSL::Error.new("Failed to convert shared point to bytes") if len != 65
+              raise Matter::CryptoError.new("Failed to convert shared point to bytes") if len != 65
 
               # Extract x-coordinate as the shared secret (bytes 1-32)
               shared_bytes[1, 32]

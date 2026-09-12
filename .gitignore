@@ -1,11 +1,28 @@
+# Build and dependency output
 /lib/
 /bin/
 /tmp/
 /.shards/
 *.dwarf
-/chip-tool-storage/
+*.o
 
 # Libraries don't need dependency lock
 # Dependencies will be locked in applications that use them
 /shard.lock
+
+# Runtime state written by the examples and chip-tool
 *.json
+!/spec/fixtures/*.json
+/chip-tool-storage/
+*_storage.yml
+*_storage.yaml
+*_storage.db
+*_storage.sqlite3
+
+# Agent worktrees and local tooling
+/.claude/worktrees/
+.DS_Store
+
+# Working notes: plans, the running checklist and lessons. Local to whoever is
+# doing the work, never part of the repository.
+/tasks/

@@ -16,7 +16,10 @@ All commands are invoked as:
 ./bin/chip-tool-crystal <cluster|command-set> <command> [args...] [--storage-directory <dir>] [--timeout <seconds>]
 ```
 
-`--storage-directory` persists controller state to `controller.json`.
+`--storage-directory` persists controller state (the fabric, its certificates, the known nodes and
+the unsecured message counter) to `controller.yml` inside that directory, through
+`Matter::Storage::YamlFile`. `bin/matter-storage inspect yaml:<dir>/controller.yml` prints it with
+the keys and certificates redacted.
 
 ## Pairing
 

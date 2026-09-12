@@ -124,7 +124,10 @@ compose down --remove-orphans >/dev/null 2>&1 || true
 UP_ARGS=(--exit-code-from tests --abort-on-container-exit)
 if [[ "$BUILD" -eq 1 ]]; then
   echo "==> Building images"
-  compose build
+  # Both targets share builder layers. Exporting them concurrently can race in
+  # Docker's snapshot store even though the compiler cache mount is locked.
+  compose build switch
+  compose build tests
 fi
 # Only stream the test runner's output unless --verbose (legacy docker-compose v1
 # has no --attach, in which case everything is streamed).

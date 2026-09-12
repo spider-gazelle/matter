@@ -1,12 +1,11 @@
 require "../spec_helper"
-require "../../src/matter/cluster/descriptor_cluster"
+require "../../src/matter/cluster/descriptor"
 require "tlv"
 
-describe Matter::Cluster::DescriptorCluster do
+describe Matter::Cluster::Descriptor do
   describe "initialization" do
     it "creates descriptor cluster" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
       cluster.cluster_id.id.should eq(0x001D_u32)
       cluster.name.should eq("Descriptor")
@@ -20,45 +19,39 @@ describe Matter::Cluster::DescriptorCluster do
 
   describe "attributes" do
     it "reads DeviceTypeList attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
-      value = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-      value.should be_a(Bytes)
+      value = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_DEVICE_TYPE_LIST)
       # Empty list should be encoded as empty TLV array (not just Bytes.new(0))
-      value.as(Bytes).size.should be > 0
+      value.to_slice.size.should be > 0
     end
 
     it "reads ServerList attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
-      value = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-      value.should be_a(Bytes)
+      value = cluster.read_attribute(Matter::Cluster::Descriptor::ATTR_SERVER_LIST)
+      value.should be_a(TLV::Any)
     end
 
     it "reads ClientList attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
-      value = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_CLIENT_LIST)
-      value.should be_a(Bytes)
+      value = cluster.read_attribute(Matter::Cluster::Descriptor::ATTR_CLIENT_LIST)
+      value.should be_a(TLV::Any)
     end
 
     it "reads PartsList attribute" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
-      value = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-      value.should be_a(Bytes)
+      value = cluster.read_attribute(Matter::Cluster::Descriptor::ATTR_PARTS_LIST)
+      value.should be_a(TLV::Any)
     end
 
     it "returns status for unsupported attribute write" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
-      status = cluster.write_attribute(
-        Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST,
+      status = write(cluster,
+        Matter::Cluster::Descriptor::ATTR_DEVICE_TYPE_LIST,
         Bytes[0, 1, 2, 3]
       )
 
@@ -68,24 +61,23 @@ describe Matter::Cluster::DescriptorCluster do
 
   describe "metadata" do
     it "provides attribute metadata" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
       attributes = cluster.attributes
       attributes.should_not be_empty
       attributes.size.should be >= 4
 
-      device_type = attributes.find { |attr| attr.id.id == Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST }
+      device_type = attributes.find { |attr| attr.id.id == Matter::Cluster::Descriptor::ATTR_DEVICE_TYPE_LIST }
       device_type.should_not be_nil
       device_type_attr = device_type.as(Matter::Cluster::AttributeMetadata)
-      device_type_attr.name.should eq("DeviceTypeList")
+      device_type_attr.name.should eq("deviceTypeList")
       device_type_attr.writable?.should be_false
     end
   end
 
   describe "DeviceTypeStruct" do
     it "creates device type struct" do
-      device_type = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      device_type = Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0100_u32,
         revision: 1_u16
       )
@@ -95,7 +87,7 @@ describe Matter::Cluster::DescriptorCluster do
     end
 
     it "creates on/off light device type" do
-      on_off_light = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      on_off_light = Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0100_u32, # On/Off Light
         revision: 2_u16
       )
@@ -105,7 +97,7 @@ describe Matter::Cluster::DescriptorCluster do
     end
 
     it "creates dimmable light device type" do
-      dimmable_light = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      dimmable_light = Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0101_u32, # Dimmable Light
         revision: 2_u16
       )
@@ -116,10 +108,9 @@ describe Matter::Cluster::DescriptorCluster do
 
   describe "device type management" do
     it "adds device type to list" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
-      device_type = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      device_type = Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0100_u32,
         revision: 2_u16
       )
@@ -130,17 +121,16 @@ describe Matter::Cluster::DescriptorCluster do
     end
 
     it "supports multiple device types" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
       # Add root node device type
-      cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      cluster.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0016_u32,
         revision: 1_u16
       )
 
       # Add aggregator device type
-      cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      cluster.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x000E_u32,
         revision: 1_u16
       )
@@ -151,8 +141,7 @@ describe Matter::Cluster::DescriptorCluster do
 
   describe "server list management" do
     it "adds server clusters" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
       cluster.server_list << 0x0006_u32 # On/Off
       cluster.server_list << 0x0008_u32 # Level Control
@@ -163,8 +152,7 @@ describe Matter::Cluster::DescriptorCluster do
     end
 
     it "tracks mandatory clusters" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
       # Add mandatory clusters (Descriptor already added automatically)
       cluster.server_list << 0x0003_u32 # Identify
@@ -175,8 +163,7 @@ describe Matter::Cluster::DescriptorCluster do
 
   describe "client list management" do
     it "adds client clusters" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
       cluster.client_list << 0x0006_u32 # On/Off client
       cluster.client_list << 0x0008_u32 # Level Control client
@@ -185,8 +172,7 @@ describe Matter::Cluster::DescriptorCluster do
     end
 
     it "can have empty client list" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
       cluster.client_list.should be_empty
     end
@@ -194,8 +180,7 @@ describe Matter::Cluster::DescriptorCluster do
 
   describe "parts list management" do
     it "adds child endpoints" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor, 0)
 
       cluster.parts_list << 1_u16
       cluster.parts_list << 2_u16
@@ -208,8 +193,7 @@ describe Matter::Cluster::DescriptorCluster do
     end
 
     it "can have empty parts list for leaf endpoints" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
       cluster.parts_list.should be_empty
     end
@@ -217,11 +201,10 @@ describe Matter::Cluster::DescriptorCluster do
 
   describe "device composition" do
     it "describes simple light endpoint" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
       # Device type: On/Off Light
-      cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      cluster.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0100_u32,
         revision: 2_u16
       )
@@ -240,11 +223,10 @@ describe Matter::Cluster::DescriptorCluster do
     end
 
     it "describes root endpoint with parts" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor, 0)
 
       # Device type: Root Node
-      cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      cluster.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0016_u32,
         revision: 1_u16
       )
@@ -269,8 +251,7 @@ describe Matter::Cluster::DescriptorCluster do
 
   describe "helpers" do
     it "checks if cluster is server" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
       cluster.server_list << 0x0006_u32
       cluster.server_list << 0x0008_u32
@@ -280,8 +261,7 @@ describe Matter::Cluster::DescriptorCluster do
     end
 
     it "checks if cluster is client" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
       cluster.client_list << 0x0006_u32
 
@@ -290,8 +270,7 @@ describe Matter::Cluster::DescriptorCluster do
     end
 
     it "checks if endpoint has part" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor, 0)
 
       cluster.parts_list << 1_u16
       cluster.parts_list << 2_u16
@@ -301,16 +280,15 @@ describe Matter::Cluster::DescriptorCluster do
     end
 
     it "gets primary device type" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-      cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::Descriptor)
 
       cluster.primary_device_type.should be_nil
 
-      device_type1 = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      device_type1 = Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0100_u32,
         revision: 2_u16
       )
-      device_type2 = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+      device_type2 = Matter::Cluster::Descriptor::DeviceTypeStruct.new(
         device_type: 0x0016_u32,
         revision: 1_u16
       )
@@ -320,76 +298,64 @@ describe Matter::Cluster::DescriptorCluster do
 
       primary = cluster.primary_device_type
       primary.should_not be_nil
-      primary.as(Matter::Cluster::DescriptorCluster::DeviceTypeStruct).device_type.should eq(0x0100_u32)
+      primary.as(Matter::Cluster::Descriptor::DeviceTypeStruct).device_type.should eq(0x0100_u32)
     end
   end
 
   describe "TLV encoding" do
     describe "DeviceTypeList" do
       it "encodes empty device type list" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+        cluster = build(Matter::Cluster::Descriptor)
 
-        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-        encoded.should be_a(Bytes)
-        encoded.as(Bytes).size.should be > 0
+        encoded = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_DEVICE_TYPE_LIST)
+        encoded.to_slice.size.should be > 0
 
         # Decode and verify empty array
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
-        device_types = parsed.value.as(Array(TLV::Any))
+        device_types = encoded.as_list
         device_types.should be_empty
       end
 
       it "encodes single device type" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+        cluster = build(Matter::Cluster::Descriptor)
 
-        cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+        cluster.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
           device_type: 0x0100_u32,
           revision: 2_u16
         )
 
-        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-        encoded.should be_a(Bytes)
-
         # Decode and verify
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
-        device_types = parsed.value.as(Array(TLV::Any))
+        device_types = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_DEVICE_TYPE_LIST).as_list
         device_types.size.should eq(1)
 
         # Parse the DeviceTypeStruct from the first element
-        dt = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.from_slice(device_types[0].to_slice)
+        dt = Matter::Cluster::Descriptor::DeviceTypeStruct.from_slice(device_types[0].to_slice)
         dt.device_type.should eq(0x0100_u32)
         dt.revision.should eq(2_u16)
       end
 
       it "encodes multiple device types" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+        cluster = build(Matter::Cluster::Descriptor, 0)
 
-        cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+        cluster.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
           device_type: 0x0016_u32,
           revision: 1_u16
         )
-        cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+        cluster.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
           device_type: 0x000E_u32,
           revision: 1_u16
         )
 
-        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-
         # Decode and verify
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
-        device_types = parsed.value.as(Array(TLV::Any))
+        device_types = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_DEVICE_TYPE_LIST).as_list
         device_types.size.should eq(2)
 
         # First device type
-        dt1 = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.from_slice(device_types[0].to_slice)
+        dt1 = Matter::Cluster::Descriptor::DeviceTypeStruct.from_slice(device_types[0].to_slice)
         dt1.device_type.should eq(0x0016_u32)
         dt1.revision.should eq(1_u16)
 
         # Second device type
-        dt2 = Matter::Cluster::DescriptorCluster::DeviceTypeStruct.from_slice(device_types[1].to_slice)
+        dt2 = Matter::Cluster::Descriptor::DeviceTypeStruct.from_slice(device_types[1].to_slice)
         dt2.device_type.should eq(0x000E_u32)
         dt2.revision.should eq(1_u16)
       end
@@ -397,19 +363,14 @@ describe Matter::Cluster::DescriptorCluster do
 
     describe "ServerList" do
       it "encodes server list" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+        cluster = build(Matter::Cluster::Descriptor)
 
         # Descriptor is automatically added
         cluster.server_list << 0x0006_u32 # On/Off
         cluster.server_list << 0x0008_u32 # Level Control
 
-        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-        encoded.should be_a(Bytes)
-
         # Decode and verify
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
-        clusters = parsed.value.as(Array(TLV::Any))
+        clusters = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_SERVER_LIST).as_list
         clusters.size.should eq(3)
 
         # Check cluster IDs
@@ -421,13 +382,9 @@ describe Matter::Cluster::DescriptorCluster do
       end
 
       it "encodes empty server list with only descriptor" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+        cluster = build(Matter::Cluster::Descriptor)
 
-        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
-        clusters = parsed.value.as(Array(TLV::Any))
+        clusters = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_SERVER_LIST).as_list
         clusters.size.should eq(1) # Just Descriptor itself
 
         cluster_id = clusters[0].value.as(Int).to_u32
@@ -437,28 +394,19 @@ describe Matter::Cluster::DescriptorCluster do
 
     describe "ClientList" do
       it "encodes empty client list" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+        cluster = build(Matter::Cluster::Descriptor)
 
-        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_CLIENT_LIST)
-        encoded.should be_a(Bytes)
-
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
-        clusters = parsed.value.as(Array(TLV::Any))
+        clusters = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_CLIENT_LIST).as_list
         clusters.should be_empty
       end
 
       it "encodes client list with clusters" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+        cluster = build(Matter::Cluster::Descriptor)
 
         cluster.client_list << 0x0006_u32 # On/Off client
         cluster.client_list << 0x0008_u32 # Level Control client
 
-        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_CLIENT_LIST)
-
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
-        clusters = parsed.value.as(Array(TLV::Any))
+        clusters = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_CLIENT_LIST).as_list
         clusters.size.should eq(2)
 
         cluster_ids = clusters.map { |entry| entry.value.as(Int).to_u32 }
@@ -470,29 +418,20 @@ describe Matter::Cluster::DescriptorCluster do
 
     describe "PartsList" do
       it "encodes empty parts list" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+        cluster = build(Matter::Cluster::Descriptor)
 
-        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-        encoded.should be_a(Bytes)
-
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
-        parts = parsed.value.as(Array(TLV::Any))
+        parts = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_PARTS_LIST).as_list
         parts.should be_empty
       end
 
       it "encodes parts list with child endpoints" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+        cluster = build(Matter::Cluster::Descriptor, 0)
 
         cluster.parts_list << 1_u16
         cluster.parts_list << 2_u16
         cluster.parts_list << 3_u16
 
-        encoded = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-
-        parsed = TLV::Any.from_slice(encoded.as(Bytes))
-        parts = parsed.value.as(Array(TLV::Any))
+        parts = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_PARTS_LIST).as_list
         parts.size.should eq(3)
 
         endpoint_ids = parts.map { |part| part.value.as(Int).to_u16 }
@@ -505,11 +444,10 @@ describe Matter::Cluster::DescriptorCluster do
 
     describe "complete endpoint encoding" do
       it "encodes root endpoint descriptor" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+        cluster = build(Matter::Cluster::Descriptor, 0)
 
         # Root node device type
-        cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+        cluster.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
           device_type: 0x0016_u32,
           revision: 1_u16
         )
@@ -524,28 +462,24 @@ describe Matter::Cluster::DescriptorCluster do
         cluster.parts_list << 2_u16
 
         # Verify all attributes encode successfully
-        device_types = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-        device_types.should be_a(Bytes)
-        device_types.as(Bytes).size.should be > 0
+        device_types = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_DEVICE_TYPE_LIST)
+        device_types.to_slice.size.should be > 0
 
-        servers = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-        servers.should be_a(Bytes)
-        servers.as(Bytes).size.should be > 0
+        servers = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_SERVER_LIST)
+        servers.to_slice.size.should be > 0
 
-        clients = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_CLIENT_LIST)
-        clients.should be_a(Bytes)
+        clients = cluster.read_attribute(Matter::Cluster::Descriptor::ATTR_CLIENT_LIST)
+        clients.should be_a(TLV::Any)
 
-        parts = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_PARTS_LIST)
-        parts.should be_a(Bytes)
-        parts.as(Bytes).size.should be > 0
+        parts = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_PARTS_LIST)
+        parts.to_slice.size.should be > 0
       end
 
       it "encodes light endpoint descriptor" do
-        endpoint_id = Matter::DataType::EndpointNumber.new(1_u16)
-        cluster = Matter::Cluster::DescriptorCluster.new(endpoint_id)
+        cluster = build(Matter::Cluster::Descriptor)
 
         # On/Off Light device type
-        cluster.device_type_list << Matter::Cluster::DescriptorCluster::DeviceTypeStruct.new(
+        cluster.device_type_list << Matter::Cluster::Descriptor::DeviceTypeStruct.new(
           device_type: 0x0100_u32,
           revision: 2_u16
         )
@@ -557,15 +491,11 @@ describe Matter::Cluster::DescriptorCluster do
         # No client clusters or parts for leaf endpoint
 
         # Decode device types
-        device_types = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_DEVICE_TYPE_LIST)
-        parsed = TLV::Any.from_slice(device_types.as(Bytes))
-        dt_array = parsed.value.as(Array(TLV::Any))
+        dt_array = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_DEVICE_TYPE_LIST).as_list
         dt_array.size.should eq(1)
 
         # Decode servers
-        servers = cluster.read_attribute(Matter::Cluster::DescriptorCluster::ATTR_SERVER_LIST)
-        parsed = TLV::Any.from_slice(servers.as(Bytes))
-        server_array = parsed.value.as(Array(TLV::Any))
+        server_array = read_tlv(cluster, Matter::Cluster::Descriptor::ATTR_SERVER_LIST).as_list
         server_array.size.should eq(3) # Descriptor + Identify + On/Off
       end
     end

@@ -43,4 +43,16 @@ describe "matter_door_lock example" do
     expect_success(device.write("doorlock", "auto-relock-time", 30, options: timed))
     read_int(device, "doorlock", "auto-relock-time", "AutoRelockTime").should eq 30
   end
+
+  # DoorLock keeps no persisted state, so this only checks that the
+  # fabric survives a restart and the lock can still be operated afterwards.
+  it "stays commissioned across a device restart" do
+    device.restart!
+    device.operational?.should be_true
+    device.restart_log.should_not match(E2E::PAIRING_CODE_RE)
+
+    read_int(device, "doorlock", "lock-state", "LockState").should be_in(0..3)
+    expect_success(device.invoke("doorlock", "lock-door", options: timed + pin))
+    read_int(device, "doorlock", "lock-state", "LockState").should eq locked
+  end
 end

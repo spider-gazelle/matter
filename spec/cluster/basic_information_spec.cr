@@ -1,11 +1,10 @@
 require "../spec_helper"
-require "../../src/matter/cluster/basic_information_cluster"
+require "../../src/matter/cluster/basic_information"
 
-describe Matter::Cluster::BasicInformationCluster do
+describe Matter::Cluster::BasicInformation do
   describe "initialization" do
     it "creates basic information cluster" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       cluster.cluster_id.id.should eq(0x0028_u32)
       cluster.name.should eq("BasicInformation")
@@ -13,8 +12,7 @@ describe Matter::Cluster::BasicInformationCluster do
     end
 
     it "initializes with default values" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       cluster.data_model_revision.should eq(1_u16)
       cluster.vendor_name.should eq("")
@@ -32,33 +30,32 @@ describe Matter::Cluster::BasicInformationCluster do
 
   describe "required attributes" do
     it "has all required attributes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       attributes = cluster.attributes
       attributes.should_not be_empty
       attributes.size.should be >= 15
 
       # Check for required attributes
-      data_model_revision = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformationCluster::ATTR_DATA_MODEL_REVISION }
+      data_model_revision = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformation::ATTR_DATA_MODEL_REVISION }
       data_model_revision.should_not be_nil
       dmr_attr = data_model_revision.as(Matter::Cluster::AttributeMetadata)
-      dmr_attr.name.should eq("DataModelRevision")
+      dmr_attr.name.should eq("dataModelRevision")
       dmr_attr.writable?.should be_false
 
-      vendor_name = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME }
+      vendor_name = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformation::ATTR_VENDOR_NAME }
       vendor_name.should_not be_nil
       vendor_name.as(Matter::Cluster::AttributeMetadata).writable?.should be_false
 
-      vendor_id = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_ID }
+      vendor_id = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformation::ATTR_VENDOR_ID }
       vendor_id.should_not be_nil
       vendor_id.as(Matter::Cluster::AttributeMetadata).writable?.should be_false
 
-      product_name = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_NAME }
+      product_name = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformation::ATTR_PRODUCT_NAME }
       product_name.should_not be_nil
       product_name.as(Matter::Cluster::AttributeMetadata).writable?.should be_false
 
-      node_label = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL }
+      node_label = attributes.find { |attr| attr.id.id == Matter::Cluster::BasicInformation::ATTR_NODE_LABEL }
       node_label.should_not be_nil
       node_label.as(Matter::Cluster::AttributeMetadata).writable?.should be_true # User can set node label
     end
@@ -66,155 +63,111 @@ describe Matter::Cluster::BasicInformationCluster do
 
   describe "TLV attribute encoding - read_attribute" do
     it "reads DATA_MODEL_REVISION with TLV encoding" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         data_model_revision: 17_u16
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_DATA_MODEL_REVISION)
-      result.should be_a(Bytes)
-
-      # Parse TLV
-      parsed = TLV::Any.from_slice(result.as(Bytes))
-      parsed.value.should eq(17)
+      read(cluster, Matter::Cluster::BasicInformation::ATTR_DATA_MODEL_REVISION).should eq(17)
     end
 
     it "reads VENDOR_NAME with TLV encoding" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         vendor_name: "Test Vendor"
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME)
-      result.should be_a(Bytes)
-
-      parsed = TLV::Any.from_slice(result.as(Bytes))
-      parsed.value.should eq("Test Vendor")
+      read(cluster, Matter::Cluster::BasicInformation::ATTR_VENDOR_NAME).should eq("Test Vendor")
     end
 
     it "reads VENDOR_ID with TLV encoding" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         vendor_id: 0xFFF1_u16
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_ID)
-      result.should be_a(Bytes)
-
-      parsed = TLV::Any.from_slice(result.as(Bytes))
-      parsed.value.should eq(0xFFF1)
+      read(cluster, Matter::Cluster::BasicInformation::ATTR_VENDOR_ID).should eq(0xFFF1)
     end
 
     it "reads SOFTWARE_VERSION with TLV encoding" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         software_version: 0x01020304_u32
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_SOFTWARE_VERSION)
-      result.should be_a(Bytes)
-
-      parsed = TLV::Any.from_slice(result.as(Bytes))
-      parsed.value.should eq(0x01020304)
+      read(cluster, Matter::Cluster::BasicInformation::ATTR_SOFTWARE_VERSION).should eq(0x01020304)
     end
 
     it "reads LOCAL_CONFIG_DISABLED with TLV encoding" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         local_config_disabled: true
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCAL_CONFIG_DISABLED)
-      result.should be_a(Bytes)
-
-      parsed = TLV::Any.from_slice(result.as(Bytes))
-      parsed.value.should eq(true)
+      read(cluster, Matter::Cluster::BasicInformation::ATTR_LOCAL_CONFIG_DISABLED).should be_true
     end
 
     it "reads CAPABILITY_MINIMA with TLV struct encoding" do
-      capability = Matter::Cluster::BasicInformationCluster::CapabilityMinimaStruct.new(
+      capability = Matter::Cluster::BasicInformation::CapabilityMinimaStruct.new(
         case_sessions_per_fabric: 5_u16,
         subscriptions_per_fabric: 10_u16
       )
 
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         capability_minima: capability
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_CAPABILITY_MINIMA)
-      result.should be_a(Bytes)
-
       # Parse TLV structure using TLV::Serializable
-      parsed = Matter::Cluster::BasicInformationCluster::CapabilityMinimaStruct.from_slice(result.as(Bytes))
+      parsed = Matter::Cluster::BasicInformation::CapabilityMinimaStruct.from_tlv(read_tlv(cluster, Matter::Cluster::BasicInformation::ATTR_CAPABILITY_MINIMA))
       parsed.case_sessions_per_fabric.should eq(5)
       parsed.subscriptions_per_fabric.should eq(10)
     end
 
     it "reads PRODUCT_APPEARANCE with TLV struct encoding" do
-      appearance = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.new(
-        finish: Matter::Cluster::BasicInformationCluster::ProductFinish::Matte,
-        primary_color: Matter::Cluster::BasicInformationCluster::Color::Blue
+      appearance = Matter::Cluster::BasicInformation::ProductAppearanceStruct.new(
+        finish: Matter::Cluster::BasicInformation::ProductFinish::Matte,
+        primary_color: Matter::Cluster::BasicInformation::Color::Blue
       )
 
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         product_appearance: appearance
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE)
-      result.should be_a(Bytes)
-
       # Parse TLV structure using TLV::Serializable
-      parsed = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.from_slice(result.as(Bytes))
-      parsed.finish.should eq(Matter::Cluster::BasicInformationCluster::ProductFinish::Matte)
-      parsed.primary_color.should eq(Matter::Cluster::BasicInformationCluster::Color::Blue)
+      parsed = Matter::Cluster::BasicInformation::ProductAppearanceStruct.from_tlv(read_tlv(cluster, Matter::Cluster::BasicInformation::ATTR_PRODUCT_APPEARANCE))
+      parsed.finish.should eq(Matter::Cluster::BasicInformation::ProductFinish::Matte)
+      parsed.primary_color.should eq(Matter::Cluster::BasicInformation::Color::Blue)
     end
 
     it "reads PRODUCT_APPEARANCE with nullable primary_color omitted" do
-      appearance = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.new(
-        finish: Matter::Cluster::BasicInformationCluster::ProductFinish::Polished,
+      appearance = Matter::Cluster::BasicInformation::ProductAppearanceStruct.new(
+        finish: Matter::Cluster::BasicInformation::ProductFinish::Polished,
         primary_color: nil
       )
 
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         product_appearance: appearance
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE)
-      result.should be_a(Bytes)
-
       # Parse TLV structure using TLV::Serializable
-      parsed = Matter::Cluster::BasicInformationCluster::ProductAppearanceStruct.from_slice(result.as(Bytes))
-      parsed.finish.should eq(Matter::Cluster::BasicInformationCluster::ProductFinish::Polished)
+      parsed = Matter::Cluster::BasicInformation::ProductAppearanceStruct.from_tlv(read_tlv(cluster, Matter::Cluster::BasicInformation::ATTR_PRODUCT_APPEARANCE))
+      parsed.finish.should eq(Matter::Cluster::BasicInformation::ProductFinish::Polished)
       parsed.primary_color.should be_nil
     end
 
     it "returns UnsupportedAttribute for missing PRODUCT_APPEARANCE" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         product_appearance: nil
       )
 
-      result = cluster.read_attribute(Matter::Cluster::BasicInformationCluster::ATTR_PRODUCT_APPEARANCE)
-      result.should be_a(Matter::InteractionModel::Status)
-      status = result.as(Matter::InteractionModel::Status)
-      status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, Matter::Cluster::BasicInformation::ATTR_PRODUCT_APPEARANCE).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 
   describe "raw attribute value decoding - write_attribute" do
     it "writes NODE_LABEL with TLV decoding" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       # Encode new label as TLV
-      tlv_value = "My Device".to_slice
+      tlv_value = "My Device"
 
       initial_version = cluster.data_version
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformation::ATTR_NODE_LABEL, tlv_value)
 
       status.should be_a(Matter::InteractionModel::Status)
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
@@ -223,103 +176,88 @@ describe Matter::Cluster::BasicInformationCluster do
     end
 
     it "rejects NODE_LABEL exceeding max length (32 bytes)" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       long_label = "a" * 33
-      tlv_value = long_label.to_slice
+      tlv_value = long_label
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_NODE_LABEL, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformation::ATTR_NODE_LABEL, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
     end
 
     it "writes LOCATION with TLV decoding and validates format" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
-      tlv_value = "US".to_slice
+      tlv_value = "US"
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformation::ATTR_LOCATION, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
       cluster.location.should eq("US")
     end
 
     it "normalizes LOCATION to uppercase" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
-      tlv_value = "gb".to_slice
+      tlv_value = "gb"
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformation::ATTR_LOCATION, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
       cluster.location.should eq("GB")
     end
 
     it "accepts region-agnostic location XX" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
-      tlv_value = "XX".to_slice
+      tlv_value = "XX"
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformation::ATTR_LOCATION, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
       cluster.location.should eq("XX")
     end
 
     it "rejects LOCATION with invalid length" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
-      tlv_value = "USA".to_slice
+      tlv_value = "USA"
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformation::ATTR_LOCATION, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
     end
 
     it "rejects LOCATION with non-alpha characters" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
-      tlv_value = "U1".to_slice
+      tlv_value = "U1"
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCATION, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformation::ATTR_LOCATION, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::ConstraintError)
     end
 
     it "writes LOCAL_CONFIG_DISABLED with TLV decoding" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         local_config_disabled: false
       )
 
-      tlv_value = Bytes[1]
+      tlv_value = true
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_LOCAL_CONFIG_DISABLED, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformation::ATTR_LOCAL_CONFIG_DISABLED, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::Success)
-      cluster.local_config_disabled?.should eq(true)
+      cluster.local_config_disabled?.should be_true
     end
 
     it "rejects write to read-only VENDOR_NAME" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
-      tlv_value = "New Vendor".to_slice
+      tlv_value = "New Vendor"
 
-      status = cluster.write_attribute(Matter::Cluster::BasicInformationCluster::ATTR_VENDOR_NAME, tlv_value)
+      status = write(cluster, Matter::Cluster::BasicInformation::ATTR_VENDOR_NAME, tlv_value)
 
       status.status.should eq(Matter::InteractionModel::StatusCode::UnsupportedWrite)
     end
@@ -327,8 +265,7 @@ describe Matter::Cluster::BasicInformationCluster do
 
   describe "event emission" do
     it "emits StartUp event with TLV-encoded software version" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         software_version: 0x01000000_u32
       )
 
@@ -336,39 +273,34 @@ describe Matter::Cluster::BasicInformationCluster do
       event_data.should be_a(Bytes)
 
       # Parse using TLV::Serializable
-      parsed = Matter::Cluster::BasicInformationCluster::StartUpEvent.from_slice(event_data)
+      parsed = Matter::Cluster::BasicInformation::StartUpEvent.from_slice(event_data)
       parsed.software_version.should eq(0x01000000)
     end
 
     it "emits ShutDown event with empty TLV structure" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       event_data = cluster.emit_shut_down_event
       event_data.should be_a(Bytes)
 
       # ShutDown event is an empty structure - just verify it deserializes
-      parsed = Matter::Cluster::BasicInformationCluster::ShutDownEvent.from_slice(event_data)
+      parsed = Matter::Cluster::BasicInformation::ShutDownEvent.from_slice(event_data)
       parsed.should_not be_nil
     end
 
     it "emits Leave event with fabric index" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16)
-      )
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
       event_data = cluster.emit_leave_event(1_u8)
       event_data.should be_a(Bytes)
 
       # Parse using TLV::Serializable
-      parsed = Matter::Cluster::BasicInformationCluster::LeaveEvent.from_slice(event_data)
+      parsed = Matter::Cluster::BasicInformation::LeaveEvent.from_slice(event_data)
       parsed.fabric_index.should eq(1)
     end
 
     it "emits ReachableChanged event and updates reachable attribute" do
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(0_u16),
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         reachable: true
       )
 
@@ -376,31 +308,26 @@ describe Matter::Cluster::BasicInformationCluster do
       event_data = cluster.emit_reachable_changed_event(false)
       event_data.should be_a(Bytes)
 
-      cluster.reachable?.should eq(false)
+      cluster.reachable?.should be_false
       cluster.data_version.should eq(initial_version + 1)
 
       # Parse using TLV::Serializable
-      parsed = Matter::Cluster::BasicInformationCluster::ReachableChangedEvent.from_slice(event_data)
-      parsed.reachable_new_value?.should eq(false)
+      parsed = Matter::Cluster::BasicInformation::ReachableChangedEvent.from_slice(event_data)
+      parsed.reachable_new_value?.should be_false
     end
   end
 
   describe "error handling" do
     it "returns error for unsupported attribute read" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(endpoint_id)
+      cluster = build(Matter::Cluster::BasicInformation, 0)
 
-      result = cluster.read_attribute(0x9999_u32)
-      result.should be_a(Matter::InteractionModel::Status)
-      result.as(Matter::InteractionModel::Status).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
+      read_status(cluster, 0x9999_u32).status.should eq(Matter::InteractionModel::StatusCode::UnsupportedAttribute)
     end
   end
 
   describe "complete device configuration" do
     it "configures a complete device with all attributes" do
-      endpoint_id = Matter::DataType::EndpointNumber.new(0_u16)
-      cluster = Matter::Cluster::BasicInformationCluster.new(
-        endpoint_id,
+      cluster = build(Matter::Cluster::BasicInformation, 0,
         vendor_name: "SmartHome Inc",
         vendor_id: 0xFFF1_u16,
         product_name: "WiFi Smart Bulb",

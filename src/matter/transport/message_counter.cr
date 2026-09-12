@@ -1,13 +1,10 @@
+require "set"
+
 module Matter
   module Transport
-    # Manages message IDs and deduplication
-    #
-    # Matter protocol uses 32-bit message counters for:
-    # - Ensuring message ordering
-    # - Detecting duplicate messages
-    # - Replay attack protection
+    # Shared outgoing counter and incoming replay window. Secure peers are only
+    # recorded after authentication; checking a counter never changes the window.
     class MessageCounter
-      # Rolling window size for duplicate detection (spec recommends at least 32)
       WINDOW_SIZE = 64
 
       enum CheckResult
@@ -17,74 +14,66 @@ module Matter
       end
 
       getter counter : UInt32
-      @received_window : Set(UInt32)
-      @max_received : UInt32
+      getter max_received : UInt32?
+      property maximum : UInt32 = UInt32::MAX
+      @received_window = Set(UInt32).new
+      @max_received : UInt32? = nil
+      @restored_floor : UInt32? = nil
 
-      def initialize(@counter : UInt32 = 0_u32)
-        @received_window = Set(UInt32).new
-        @max_received = 0_u32
+      def initialize(@counter : UInt32 = 0_u32, @rollover : Bool = true)
       end
 
-      # Get next message ID to send
       def next : UInt32
-        @counter = @counter &+ 1 # Wrapping addition
-        @counter
+        if @counter >= @maximum
+          raise Matter::SessionError.new("Message counter overflow - session must be renegotiated") unless @rollover
+          return @counter = 0_u32
+        end
+        @counter += 1
       end
 
-      # Check if a received message ID is valid (not a duplicate or replay)
-      # Returns true if message should be accepted
-      def valid?(message_id : UInt32) : Bool
-        check(message_id) == CheckResult::Accept
+      def peek(message_id : UInt32) : CheckResult
+        maximum = @max_received
+        return CheckResult::Accept unless maximum
+        return CheckResult::Stale if (floor = @restored_floor) && message_id <= floor
+        return CheckResult::Accept if message_id > maximum
+        return CheckResult::Duplicate if @received_window.includes?(message_id)
+        return CheckResult::Stale if maximum - message_id > WINDOW_SIZE
+        CheckResult::Accept
       end
 
-      # Check whether a received message ID is accepted, a duplicate, or stale.
-      #
-      # This allows reliability layers to treat duplicates as valid retransmissions
-      # (e.g. re-send a cached response) while still rejecting stale replays.
       def check(message_id : UInt32) : CheckResult
-        # First message is always valid
-        if @max_received == 0
+        result = peek(message_id)
+        return result unless result.accept?
+        maximum = @max_received
+        if maximum.nil? || message_id > maximum
           @max_received = message_id
-          @received_window.add(message_id)
-          return CheckResult::Accept
+          @received_window.reject! { |id| message_id - id > WINDOW_SIZE }
         end
-
-        # Message is in the future - always accept
-        if message_id > @max_received
-          # Clean old entries from window
-          cutoff = message_id > WINDOW_SIZE ? message_id &- WINDOW_SIZE : 0_u32
-          @received_window = @received_window.select { |id| id >= cutoff }.to_set
-
-          @received_window.add(message_id)
-          @max_received = message_id
-          return CheckResult::Accept
-        end
-
-        # Message is within window - check if we've seen it
-        window_start = @max_received > WINDOW_SIZE ? @max_received &- WINDOW_SIZE : 0_u32
-        if message_id >= window_start
-          if @received_window.includes?(message_id)
-            return CheckResult::Duplicate
-          else
-            @received_window.add(message_id)
-            return CheckResult::Accept
-          end
-        end
-
-        # Message is too old - reject (potential replay attack)
-        CheckResult::Stale
+        @received_window.add(message_id)
+        result
       end
 
-      # Mark a message ID as received (for testing/manual tracking)
+      def valid?(message_id : UInt32) : Bool
+        check(message_id).accept?
+      end
+
       def mark_received(message_id : UInt32) : Nil
-        valid?(message_id)
+        check(message_id)
       end
 
-      # Reset counter (used when establishing new session)
       def reset(value : UInt32 = 0_u32) : Nil
         @counter = value
         @received_window.clear
-        @max_received = 0_u32
+        @max_received = nil
+        @restored_floor = nil
+      end
+
+      # Persistence stores the high watermark, so conservatively reject its
+      # preceding window after restore instead of admitting previously seen ids.
+      def restore_received(value : UInt32?) : Nil
+        @received_window.clear
+        @max_received = value
+        @restored_floor = value
       end
     end
   end

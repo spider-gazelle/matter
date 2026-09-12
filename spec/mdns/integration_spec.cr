@@ -1,6 +1,6 @@
 require "../spec_helper"
 require "../../src/matter/mdns/responder"
-require "../../src/matter/mdns/scanner"
+require "../../src/matter/controller"
 require "../../src/matter/mdns/service_type"
 
 describe "mDNS Integration" do
@@ -9,12 +9,12 @@ describe "mDNS Integration" do
       require_udp_sockets!
 
       # Setup scanner
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       scanner.start
 
       # Track discovered devices
-      discovered_devices = [] of Matter::MDNS::DiscoveredDevice
-      scanner.on_device_discovered = ->(device : Matter::MDNS::DiscoveredDevice) {
+      discovered_devices = [] of Matter::Controller::DiscoveredDevice
+      scanner.on_device_discovered = ->(device : Matter::Controller::DiscoveredDevice) {
         discovered_devices << device
         nil
       }
@@ -32,7 +32,7 @@ describe "mDNS Integration" do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
-        device_type: 0x0016_u16,
+        device_type: 0x0016_u32,
         commissioning_mode: Matter::MDNS::CommissioningMode::Basic
       )
 
@@ -54,12 +54,12 @@ describe "mDNS Integration" do
       require_udp_sockets!
 
       # Setup scanner
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       scanner.start
 
       # Track discovered devices
-      discovered_devices = [] of Matter::MDNS::DiscoveredDevice
-      scanner.on_device_discovered = ->(device : Matter::MDNS::DiscoveredDevice) {
+      discovered_devices = [] of Matter::Controller::DiscoveredDevice
+      scanner.on_device_discovered = ->(device : Matter::Controller::DiscoveredDevice) {
         discovered_devices << device
         nil
       }
@@ -99,7 +99,7 @@ describe "mDNS Integration" do
     it "scanner queries for commissioning devices" do
       require_udp_sockets!
 
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       scanner.start
 
       # Send query
@@ -113,7 +113,7 @@ describe "mDNS Integration" do
     it "scanner queries for operational devices" do
       require_udp_sockets!
 
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       scanner.start
 
       # Send query
@@ -164,7 +164,7 @@ describe "mDNS Integration" do
     it "scanner handles device removal" do
       require_udp_sockets!
 
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       scanner.start
 
       # Track removed devices
@@ -203,12 +203,12 @@ describe "mDNS Integration" do
     it "scanner tracks device updates" do
       require_udp_sockets!
 
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       scanner.start
 
       # Track updated devices
-      updated_devices = [] of Matter::MDNS::DiscoveredDevice
-      scanner.on_device_updated = ->(device : Matter::MDNS::DiscoveredDevice) {
+      updated_devices = [] of Matter::Controller::DiscoveredDevice
+      scanner.on_device_updated = ->(device : Matter::Controller::DiscoveredDevice) {
         updated_devices << device
         nil
       }
@@ -236,7 +236,7 @@ describe "mDNS Integration" do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
-        device_type: 0x0016_u16
+        device_type: 0x0016_u32
       )
 
       responder.advertise_commissioning(commissioning_info, port: 5540)
@@ -259,7 +259,7 @@ describe "mDNS Integration" do
     it "scanner discovers both commissioning and operational" do
       require_udp_sockets!
 
-      scanner = Matter::MDNS::Scanner.new
+      scanner = Matter::Controller::Scanner.new
       scanner.start
 
       # Query for both service types
@@ -365,7 +365,7 @@ describe "mDNS Integration" do
     end
 
     it "formats device type subtype" do
-      subtype = Matter::MDNS::ServiceNames.device_type_subtype(0x0016_u16)
+      subtype = Matter::MDNS::ServiceNames.device_type_subtype(0x0016_u32)
       subtype.should eq("_T22._sub._matterc._udp.local")
     end
   end
@@ -374,8 +374,8 @@ describe "mDNS Integration" do
     it "handles multiple scanners" do
       require_udp_sockets!
 
-      scanner1 = Matter::MDNS::Scanner.new
-      scanner2 = Matter::MDNS::Scanner.new
+      scanner1 = Matter::Controller::Scanner.new
+      scanner2 = Matter::Controller::Scanner.new
 
       scanner1.start
       scanner2.start
@@ -406,7 +406,7 @@ describe "mDNS Integration" do
         vendor_id: 0xFFF1_u16,
         product_id: 0x8000_u16,
         discriminator: 3840_u16,
-        device_type: 0x0016_u16
+        device_type: 0x0016_u32
       )
 
       responder1.advertise_commissioning(info, port: 5540)

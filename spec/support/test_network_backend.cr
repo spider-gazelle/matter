@@ -11,36 +11,36 @@ module Matter
       property configured_networks : Hash(Bytes, Bytes) = {} of Bytes => Bytes
       property connected_network_id : Bytes? = nil
 
-      def scan_wifi(ssid : String?) : Array(Cluster::NetworkCommissioningCluster::WiFiInterfaceScanResult)
-        results = [] of Cluster::NetworkCommissioningCluster::WiFiInterfaceScanResult
+      def scan_wifi(ssid : String?) : Array(Cluster::NetworkCommissioning::WiFiInterfaceScanResult)
+        results = [] of Cluster::NetworkCommissioning::WiFiInterfaceScanResult
 
         if ssid
           # Directed scan - return single result if found
-          results << Cluster::NetworkCommissioningCluster::WiFiInterfaceScanResult.new(
-            security: Cluster::NetworkCommissioningCluster::WiFiSecurityType::WPA2,
+          results << Cluster::NetworkCommissioning::WiFiInterfaceScanResult.new(
+            security: Cluster::NetworkCommissioning::WiFiSecurityType::WPA2,
             ssid: ssid.to_slice,
             bssid: Bytes[0x00, 0x11, 0x22, 0x33, 0x44, 0x55],
             channel: 6_u16,
-            wifi_band: Cluster::NetworkCommissioningCluster::WiFiBandEnum::Band2G4,
+            wifi_band: Cluster::NetworkCommissioning::WiFiBandEnum::Band2G4,
             rssi: -50_i8
           )
         else
           # Full scan - return multiple results
-          results << Cluster::NetworkCommissioningCluster::WiFiInterfaceScanResult.new(
-            security: Cluster::NetworkCommissioningCluster::WiFiSecurityType::WPA3,
+          results << Cluster::NetworkCommissioning::WiFiInterfaceScanResult.new(
+            security: Cluster::NetworkCommissioning::WiFiSecurityType::WPA3,
             ssid: "TestNetwork1".to_slice,
             bssid: Bytes[0x00, 0x11, 0x22, 0x33, 0x44, 0x55],
             channel: 6_u16,
-            wifi_band: Cluster::NetworkCommissioningCluster::WiFiBandEnum::Band2G4,
+            wifi_band: Cluster::NetworkCommissioning::WiFiBandEnum::Band2G4,
             rssi: -45_i8
           )
 
-          results << Cluster::NetworkCommissioningCluster::WiFiInterfaceScanResult.new(
-            security: Cluster::NetworkCommissioningCluster::WiFiSecurityType::WPA2,
+          results << Cluster::NetworkCommissioning::WiFiInterfaceScanResult.new(
+            security: Cluster::NetworkCommissioning::WiFiSecurityType::WPA2,
             ssid: "TestNetwork2".to_slice,
             bssid: Bytes[0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF],
             channel: 11_u16,
-            wifi_band: Cluster::NetworkCommissioningCluster::WiFiBandEnum::Band2G4,
+            wifi_band: Cluster::NetworkCommissioning::WiFiBandEnum::Band2G4,
             rssi: -60_i8
           )
         end
@@ -50,10 +50,10 @@ module Matter
         results
       end
 
-      def scan_thread : Array(Cluster::NetworkCommissioningCluster::ThreadInterfaceScanResult)
-        results = [] of Cluster::NetworkCommissioningCluster::ThreadInterfaceScanResult
+      def scan_thread : Array(Cluster::NetworkCommissioning::ThreadInterfaceScanResult)
+        results = [] of Cluster::NetworkCommissioning::ThreadInterfaceScanResult
 
-        results << Cluster::NetworkCommissioningCluster::ThreadInterfaceScanResult.new(
+        results << Cluster::NetworkCommissioning::ThreadInterfaceScanResult.new(
           pan_id: 0x1234_u16,
           extended_pan_id: 0x1122334455667788_u64,
           network_name: "TestThread1",
@@ -63,7 +63,7 @@ module Matter
           lqi: 200_u8
         )
 
-        results << Cluster::NetworkCommissioningCluster::ThreadInterfaceScanResult.new(
+        results << Cluster::NetworkCommissioning::ThreadInterfaceScanResult.new(
           pan_id: 0x5678_u16,
           extended_pan_id: 0x8877665544332211_u64,
           network_name: "TestThread2",

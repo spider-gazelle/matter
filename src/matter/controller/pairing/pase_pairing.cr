@@ -10,7 +10,7 @@ module Matter
   module Controller
     module Pairing
       class PasePairing
-        Log = ::Log.for("matter.controller.pairing.pase")
+        Log = ::Log.for("matter.controller.pairing.pase_pairing")
 
         MSG_PBKDF_PARAM_REQUEST  = 0x20_u8
         MSG_PBKDF_PARAM_RESPONSE = 0x21_u8
@@ -49,13 +49,13 @@ module Matter
           )
 
           pbkdf_resp = client.wait_for(exchange_id, Client::PROTOCOL_SECURE_CHANNEL, MSG_PBKDF_PARAM_RESPONSE, timeout)
-          raise "PASE: timeout waiting for PBKDFParamResponse" unless pbkdf_resp
+          raise Matter::TimeoutError.new("PASE: timeout waiting for PBKDFParamResponse") unless pbkdf_resp
 
           pbkdf_resp_bytes = pbkdf_resp.message.payload.to_slice
           resp = Session::Pase::Definitions::PbkdfParamResponse.from_slice(pbkdf_resp_bytes)
 
           pbkdf_params = resp.pbkdf_parameters
-          raise "PASE: PBKDF parameters missing in response" unless pbkdf_params
+          raise Matter::ProtocolError.new("PASE: PBKDF parameters missing in response") unless pbkdf_params
 
           context_hash = OpenSSL::Digest.new("SHA256").tap do |digest|
             digest.update("CHIP PAKE V1 Commissioning".to_slice)
@@ -84,13 +84,13 @@ module Matter
           )
 
           pake2 = client.wait_for(exchange_id, Client::PROTOCOL_SECURE_CHANNEL, MSG_PASE_PAKE2, timeout)
-          raise "PASE: timeout waiting for Pake2" unless pake2
+          raise Matter::TimeoutError.new("PASE: timeout waiting for Pake2") unless pake2
 
           pake2_msg = Session::Pase::Definitions::Pake2.from_slice(pake2.message.payload.to_slice)
           secret = spake.compute_secret_and_verifiers_from_y(w0_w1.w1, p_a, pake2_msg.y)
 
           unless pake2_msg.verifier == secret.h_bx
-            raise "PASE: verifier mismatch (expected=#{secret.h_bx.hexstring} got=#{pake2_msg.verifier.hexstring})"
+            raise Matter::AuthenticationError.new("PASE: verifier mismatch (expected=#{secret.h_bx.hexstring} got=#{pake2_msg.verifier.hexstring})")
           end
 
           pake3_bytes = Session::Pase::Definitions::Pake3.new(verifier: secret.h_ay).to_slice
@@ -105,11 +105,11 @@ module Matter
           )
 
           status = client.wait_for(exchange_id, Client::PROTOCOL_SECURE_CHANNEL, MSG_STATUS_REPORT, timeout)
-          raise "PASE: timeout waiting for StatusReport" unless status
+          raise Matter::TimeoutError.new("PASE: timeout waiting for StatusReport") unless status
 
           report = Session::Pase::Definitions::StatusReport.from_bytes(status.message.payload.to_slice)
           unless report.general_status == 0_u16 && report.protocol_status == 0_u16
-            raise "PASE: status report failure (general_status=#{report.general_status} protocol_status=#{report.protocol_status})"
+            raise Matter::ProtocolError.new("PASE: status report failure (general_status=#{report.general_status} protocol_status=#{report.protocol_status})")
           end
 
           responder_session_id = resp.responder_session_id

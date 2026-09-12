@@ -27,7 +27,7 @@ Options:
   --chip-tool PATH    chip-tool binary for validation (overrides CHIP_TOOL)
   --storage-a DIR     Storage directory for Fabric A (default: tmp/device_validation/chip-tool-a-<timestamp>)
   --skip-build        Skip building binaries
-  --keep-device-state Don't delete `matter_switch_storage.json` before starting
+  --keep-device-state Don't delete `matter_switch_storage.yml` before starting
   --log PATH          Device stdout/stderr log path (default: ./bin/matter_switch_run.log)
   -h, --help          Show this help
 EOF
@@ -86,7 +86,7 @@ if [[ "$SKIP_BUILD" -ne 1 ]]; then
 fi
 
 if [[ "$KEEP_DEVICE_STATE" -ne 1 ]]; then
-  rm -f ./matter_switch_storage.json
+  rm -f ./matter_switch_storage.yml
 fi
 
 echo "==> Starting device (log: $DEVICE_LOG)"

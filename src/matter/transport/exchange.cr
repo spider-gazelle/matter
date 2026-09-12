@@ -2,15 +2,12 @@ require "../codec/message_codec"
 
 module Matter
   module Transport
-    # Represents a message exchange (request/response pair)
+    # One bidirectional conversation, identified by its exchange id.
     #
-    # In Matter protocol, exchanges are bidirectional conversations
-    # identified by an exchange ID. Each exchange tracks:
-    # - Exchange ID
-    # - Protocol ID
-    # - Whether we initiated the exchange
-    # - Pending acknowledgments
-    # - Retransmission state
+    # The node answers every message that asks to be acknowledged inline, so an
+    # exchange is bookkeeping rather than a queue: who the peer is, which
+    # protocol and session it belongs to, and when it was last used, so idle
+    # exchanges can be swept.
     class Exchange
       enum State
         Active
@@ -26,15 +23,9 @@ module Matter
       getter peer_node_id : DataType::NodeId?
       getter session_id : UInt16
 
-      # Retransmission parameters (from Matter spec)
-      MRP_BASE_TIMEOUT      = 200 # milliseconds
-      MRP_BACKOFF_BASE      = 1.6 # exponential backoff multiplier
-      MRP_MAX_RETRIES       =   5
-      MRP_STANDALONE_ACK_MS = 200 # Time to wait before sending standalone ACK
+      # How long an exchange may sit idle before the sweep reclaims it.
+      IDLE_TIMEOUT = 30.seconds
 
-      @pending_message : Codec::MessageCodec::Message?
-      @retransmit_count : Int32
-      @timeout_ms : Int32
       @last_activity : Time
 
       def initialize(
@@ -46,58 +37,17 @@ module Matter
         @peer_node_id : DataType::NodeId? = nil,
       )
         @state = State::Active
-        @pending_message = nil
-        @retransmit_count = 0
-        @timeout_ms = MRP_BASE_TIMEOUT
         @last_activity = Time.utc
       end
 
       # Mark exchange as closed
       def close : Nil
         @state = State::Closed
-        @pending_message = nil
       end
 
       # Mark exchange as failed
       def fail : Nil
         @state = State::Failed
-        @pending_message = nil
-      end
-
-      # Store message for retransmission if needed
-      def pending_message=(message : Codec::MessageCodec::Message) : Nil
-        @pending_message = message
-        @last_activity = Time.utc
-      end
-
-      # Clear pending message (successful acknowledgment received)
-      def clear_pending_message : Nil
-        @pending_message = nil
-        @retransmit_count = 0
-        @timeout_ms = MRP_BASE_TIMEOUT
-      end
-
-      # Check if message needs retransmission
-      # Returns the message to retransmit, or nil if none needed
-      def needs_retransmit? : Codec::MessageCodec::Message?
-        return nil if @pending_message.nil?
-        return nil if @state != State::Active
-
-        elapsed_ms = (Time.utc - @last_activity).total_milliseconds.to_i
-
-        if elapsed_ms >= @timeout_ms
-          if @retransmit_count >= MRP_MAX_RETRIES
-            fail
-            return nil
-          end
-
-          @retransmit_count += 1
-          @timeout_ms = (MRP_BASE_TIMEOUT * (MRP_BACKOFF_BASE ** @retransmit_count)).to_i
-          @last_activity = Time.utc
-          return @pending_message
-        end
-
-        nil
       end
 
       # Update activity timestamp
@@ -105,11 +55,12 @@ module Matter
         @last_activity = Time.utc
       end
 
-      # Check if exchange has timed out
-      def timed_out? : Bool
-        return false if @state != State::Active
-        elapsed_ms = (Time.utc - @last_activity).total_milliseconds.to_i
-        elapsed_ms > (@timeout_ms * 2) # Allow some grace period
+      # Whether the exchange may be reclaimed: it is no longer active, or
+      # nothing has been sent or received on it for `IDLE_TIMEOUT`.
+      def stale?(now : Time = Time.utc) : Bool
+        return true if @state != State::Active
+
+        now - @last_activity > IDLE_TIMEOUT
       end
     end
 
@@ -187,24 +138,10 @@ module Matter
         end
       end
 
-      # Get all exchanges that need retransmission
-      def retransmit_candidates : Array(Tuple(UInt16, Codec::MessageCodec::Message))
-        candidates = [] of Tuple(UInt16, Codec::MessageCodec::Message)
-
-        @exchanges.each do |exchange_id, exchange|
-          if message = exchange.needs_retransmit?
-            candidates << {exchange_id, message}
-          end
-        end
-
-        candidates
-      end
-
-      # Clean up timed out exchanges
-      def cleanup_stale_exchanges : Nil
-        @exchanges.reject! do |_exchange_id, exchange|
-          exchange.timed_out? || exchange.state != Exchange::State::Active
-        end
+      # Drops exchanges that are closed, failed, or long idle. Without this the
+      # table only ever grows.
+      def cleanup_stale_exchanges(now : Time = Time.utc) : Nil
+        @exchanges.reject! { |_exchange_id, exchange| exchange.stale?(now) }
       end
 
       # Get count of active exchanges

@@ -72,13 +72,13 @@ private class BrokenTlvCluster < Matter::Cluster::Base
     ]
   end
 
-  def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Matter::InteractionModel::Status | Bytes
+  def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Matter::InteractionModel::Status | TLV::Any
     case attribute_id
     when ATTR_GOOD
-      7_u8.to_tlv
+      TLV::Any.new(7_u8)
     when ATTR_BROKEN
-      # Truncated TLV element to simulate malformed cluster data.
-      Bytes[0x24_u8]
+      # A cluster decoding malformed stored data fails before returning a typed value.
+      TLV::Any.from_slice(Bytes[0x24_u8])
     else
       super(attribute_id, fabric_index)
     end
@@ -107,12 +107,12 @@ private class RaisingReadCluster < Matter::Cluster::Base
     ]
   end
 
-  def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Matter::InteractionModel::Status | Bytes
+  def read_attribute(attribute_id : UInt32, fabric_index : UInt8? = nil) : Matter::InteractionModel::Status | TLV::Any
     case attribute_id
     when ATTR_RAISE
       # Simulate a cluster implementation that raises while decoding stored TLV.
       TLV::Any.from_slice(Bytes[0x24_u8])
-      1_u8.to_tlv
+      TLV::Any.new(1_u8)
     else
       super(attribute_id, fabric_index)
     end
@@ -261,17 +261,17 @@ describe "SubscribeRequestMessage with wildcard paths" do
     end
 
     it "handles wildcard path expansion with OnOff cluster" do
-      endpoint = Matter::DataType::EndpointNumber.new(1_u16)
-      on_off = Matter::Cluster::OnOffCluster.new(endpoint)
+      endpoint = endpoint(1)
+      on_off = Matter::Cluster::OnOff.new(endpoint)
 
       clusters = {
-        {1_u16, Matter::Cluster::OnOffCluster::CLUSTER_ID} => on_off.as(Matter::Cluster::Base),
+        {1_u16, Matter::Cluster::OnOff::CLUSTER_ID} => on_off.as(Matter::Cluster::Base),
       }
 
       # Wildcard path targeting all attributes on endpoint 1
       wildcard_path = Matter::InteractionModel::AttributePath.new(
         endpoint: 1_u16,
-        cluster: Matter::Cluster::OnOffCluster::CLUSTER_ID
+        cluster: Matter::Cluster::OnOff::CLUSTER_ID
       )
 
       reports = Matter::Protocol::IMHandler.read_attributes(
@@ -298,21 +298,21 @@ describe "SubscribeRequestMessage with wildcard paths" do
       subscribe_request = request.as(Matter::InteractionModel::SubscribeRequestMessage)
       subscribe_request.data_version_filters.should be_nil
 
-      endpoint0 = Matter::DataType::EndpointNumber.new(0_u16)
-      endpoint1 = Matter::DataType::EndpointNumber.new(1_u16)
+      endpoint0 = endpoint(0)
+      endpoint1 = endpoint(1)
 
-      admin = Matter::Cluster::AdministratorCommissioningCluster.new(endpoint0)
-      fan = Matter::Cluster::FanControlCluster.new(
+      admin = Matter::Cluster::AdministratorCommissioning.new(endpoint0)
+      fan = Matter::Cluster::FanControl.new(
         endpoint1,
-        fan_mode: Matter::Cluster::FanControlCluster::FanMode::High,
-        fan_mode_sequence: Matter::Cluster::FanControlCluster::FanModeSequence::OffLowMedHigh,
+        fan_mode: Matter::Cluster::FanControl::FanMode::High,
+        fan_mode_sequence: Matter::Cluster::FanControl::FanModeSequence::OffLowMedHigh,
         percent_setting: nil,
         percent_current: 75_u8
       )
 
       clusters = {
-        {0_u16, Matter::Cluster::AdministratorCommissioningCluster::CLUSTER_ID} => admin.as(Matter::Cluster::Base),
-        {1_u16, Matter::Cluster::FanControlCluster::CLUSTER_ID}                 => fan.as(Matter::Cluster::Base),
+        {0_u16, Matter::Cluster::AdministratorCommissioning::CLUSTER_ID} => admin.as(Matter::Cluster::Base),
+        {1_u16, Matter::Cluster::FanControl::CLUSTER_ID}                 => fan.as(Matter::Cluster::Base),
       }
 
       reports = Matter::Protocol::IMHandler.read_attributes(
@@ -324,26 +324,26 @@ describe "SubscribeRequestMessage with wildcard paths" do
       fan_mode = find_attribute_data_any(
         reports,
         1_u16,
-        Matter::Cluster::FanControlCluster::CLUSTER_ID,
-        Matter::Cluster::FanControlCluster::ATTR_FAN_MODE
+        Matter::Cluster::FanControl::CLUSTER_ID,
+        Matter::Cluster::FanControl::ATTR_FAN_MODE
       )
       fan_mode.should_not be_nil
-      fan_mode.as(TLV::Any).as_u8.should eq(Matter::Cluster::FanControlCluster::FanMode::High.value.to_u8)
+      fan_mode.as(TLV::Any).as_u8.should eq(Matter::Cluster::FanControl::FanMode::High.value.to_u8)
 
       fan_mode_sequence = find_attribute_data_any(
         reports,
         1_u16,
-        Matter::Cluster::FanControlCluster::CLUSTER_ID,
-        Matter::Cluster::FanControlCluster::ATTR_FAN_MODE_SEQUENCE
+        Matter::Cluster::FanControl::CLUSTER_ID,
+        Matter::Cluster::FanControl::ATTR_FAN_MODE_SEQUENCE
       )
       fan_mode_sequence.should_not be_nil
-      fan_mode_sequence.as(TLV::Any).as_u8.should eq(Matter::Cluster::FanControlCluster::FanModeSequence::OffLowMedHigh.value.to_u8)
+      fan_mode_sequence.as(TLV::Any).as_u8.should eq(Matter::Cluster::FanControl::FanModeSequence::OffLowMedHigh.value.to_u8)
 
       fan_percent_setting = find_attribute_data_any(
         reports,
         1_u16,
-        Matter::Cluster::FanControlCluster::CLUSTER_ID,
-        Matter::Cluster::FanControlCluster::ATTR_PERCENT_SETTING
+        Matter::Cluster::FanControl::CLUSTER_ID,
+        Matter::Cluster::FanControl::ATTR_PERCENT_SETTING
       )
       fan_percent_setting.should_not be_nil
       fan_percent_setting.as(TLV::Any).value.should be_nil
@@ -351,8 +351,8 @@ describe "SubscribeRequestMessage with wildcard paths" do
       fan_percent_current = find_attribute_data_any(
         reports,
         1_u16,
-        Matter::Cluster::FanControlCluster::CLUSTER_ID,
-        Matter::Cluster::FanControlCluster::ATTR_PERCENT_CURRENT
+        Matter::Cluster::FanControl::CLUSTER_ID,
+        Matter::Cluster::FanControl::ATTR_PERCENT_CURRENT
       )
       fan_percent_current.should_not be_nil
       fan_percent_current.as(TLV::Any).as_u8.should eq(75_u8)
@@ -360,8 +360,8 @@ describe "SubscribeRequestMessage with wildcard paths" do
       admin_fabric_index = find_attribute_data_any(
         reports,
         0_u16,
-        Matter::Cluster::AdministratorCommissioningCluster::CLUSTER_ID,
-        Matter::Cluster::AdministratorCommissioningCluster::ATTR_ADMIN_FABRIC_INDEX
+        Matter::Cluster::AdministratorCommissioning::CLUSTER_ID,
+        Matter::Cluster::AdministratorCommissioning::ATTR_ADMIN_FABRIC_INDEX
       )
       admin_fabric_index.should_not be_nil
       admin_fabric_index.as(TLV::Any).value.should be_nil
@@ -369,8 +369,8 @@ describe "SubscribeRequestMessage with wildcard paths" do
       admin_vendor_id = find_attribute_data_any(
         reports,
         0_u16,
-        Matter::Cluster::AdministratorCommissioningCluster::CLUSTER_ID,
-        Matter::Cluster::AdministratorCommissioningCluster::ATTR_ADMIN_VENDOR_ID
+        Matter::Cluster::AdministratorCommissioning::CLUSTER_ID,
+        Matter::Cluster::AdministratorCommissioning::ATTR_ADMIN_VENDOR_ID
       )
       admin_vendor_id.should_not be_nil
       admin_vendor_id.as(TLV::Any).value.should be_nil
@@ -384,7 +384,7 @@ describe "SubscribeRequestMessage with wildcard paths" do
       subscribe_request = request.as(Matter::InteractionModel::SubscribeRequestMessage)
       subscribe_request.data_version_filters.as(Array(TLV::Any)).size.should eq(22)
 
-      endpoint1 = Matter::DataType::EndpointNumber.new(1_u16)
+      endpoint1 = endpoint(1)
       broken_cluster = BrokenTlvCluster.new(endpoint1)
       clusters = {
         {1_u16, BrokenTlvCluster::CLUSTER_ID} => broken_cluster.as(Matter::Cluster::Base),
@@ -423,7 +423,7 @@ describe "SubscribeRequestMessage with wildcard paths" do
       request.should_not be_nil
       subscribe_request = request.as(Matter::InteractionModel::SubscribeRequestMessage)
 
-      endpoint1 = Matter::DataType::EndpointNumber.new(1_u16)
+      endpoint1 = endpoint(1)
       raising_cluster = RaisingReadCluster.new(endpoint1)
       clusters = {
         {1_u16, RaisingReadCluster::CLUSTER_ID} => raising_cluster.as(Matter::Cluster::Base),

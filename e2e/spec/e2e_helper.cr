@@ -16,6 +16,7 @@ require "../../src/matter"
 #   E2E_PAIRING       "code" (mDNS discovery, default) or "address"
 #                     (`pairing already-discovered` using the device's IPv6 address)
 #   E2E_HOST_SUFFIX   appended to device hostnames (unused inside compose)
+#   E2E_RESTART_TIMEOUT  seconds to wait for a device to come back after `Device#restart!`
 module E2E
   CHIP_TOOL    = ENV["CHIP_TOOL"]? || "chip-tool"
   LOG_DIR      = ENV["E2E_LOG_DIR"]? || "/e2e/logs"
@@ -26,6 +27,23 @@ module E2E
 
   PAIRING_CODE_TIMEOUT = (ENV["E2E_PAIRING_CODE_TIMEOUT"]? || "90").to_i.seconds
   COMMAND_TIMEOUT      = (ENV["E2E_COMMAND_TIMEOUT"]? || "180").to_i.seconds
+  RESTART_TIMEOUT      = (ENV["E2E_RESTART_TIMEOUT"]? || "60").to_i.seconds
+  LOG_POLL             = 0.5.seconds
+  # The examples print their mode banner before binding the UDP transport;
+  # give them a moment so chip-tool's first message after a restart is answered.
+  RESTART_SETTLE = 1.second
+
+  # Files in LOG_DIR, per device (see e2e/device-entrypoint.sh).
+  LOG_SUFFIX            = ".log"
+  RESTART_MARKER_SUFFIX = ".restart"
+  # Appended to the log by the entrypoint before it starts the device again.
+  RESTART_BANNER = "=== e2e restart"
+
+  # Printed by every example on startup while un-commissioned.
+  PAIRING_CODE_RE = /chip-tool pairing code 1 (\d{4}-\d{3}-\d{4}|\d{11})/
+  # Mode banner printed by the examples on startup and on (de)commissioning,
+  # e.g. "Starting in Operational Mode" or "Commissioning mode".
+  MODE_BANNER_RE = /\b(Commissioning|Operational) mode\b/i
 
   ANSI_RE = /\e\[[0-9;]*[A-Za-z]/
 
@@ -150,6 +168,9 @@ module E2E
   class CommissioningError < Exception
   end
 
+  class RestartError < Exception
+  end
+
   # One example device container. Instances are shared across specs so each
   # device is only commissioned once per run.
   class Device
@@ -161,6 +182,8 @@ module E2E
     @@devices = {} of String => Device
     @commissioned = false
     @commissioning_error : Exception?
+    # Log size when the last restart was requested (see `restart_log`).
+    @restart_offset : Int64 = 0
 
     def self.[](name : String) : Device
       @@devices[name] ||= new(name)
@@ -177,25 +200,85 @@ module E2E
     end
 
     def log_path : String
-      File.join(LOG_DIR, "#{name}.log")
+      File.join(LOG_DIR, "#{name}#{LOG_SUFFIX}")
+    end
+
+    # Creating this file makes the device's entrypoint restart the binary.
+    def restart_marker_path : String
+      File.join(LOG_DIR, "#{name}#{RESTART_MARKER_SUFFIX}")
     end
 
     def log : String
       File.exists?(log_path) ? File.read(log_path) : ""
     end
 
+    def log_tail(lines : Int32 = 30) : String
+      log.lines.last(lines).join("\n")
+    end
+
+    # Console output written since the last `restart!` was requested (empty
+    # when the device has not been restarted).
+    def restart_log : String
+      return "" unless File.exists?(log_path)
+      File.open(log_path) do |file|
+        file.seek(@restart_offset)
+        file.gets_to_end
+      end
+    end
+
     # Manual pairing code printed by the example on startup, e.g. "3497-011-2332".
     def pairing_code : String
       deadline = Time.instant + PAIRING_CODE_TIMEOUT
       loop do
-        if m = log.match(/chip-tool pairing code 1 (\d{4}-\d{3}-\d{4}|\d{11})/)
+        if m = log.match(PAIRING_CODE_RE)
           return m[1]
         end
         if Time.instant > deadline
-          raise CommissioningError.new("#{name}: no pairing code found in #{log_path} after #{PAIRING_CODE_TIMEOUT.total_seconds.to_i}s\n#{log.lines.last(30).join("\n")}")
+          raise CommissioningError.new("#{name}: no pairing code found in #{log_path} after #{PAIRING_CODE_TIMEOUT.total_seconds.to_i}s\n#{log_tail}")
         end
-        sleep 0.5.seconds
+        sleep LOG_POLL
       end
+    end
+
+    # Whether the last mode banner in the log says the device is operational
+    # (commissioned) rather than waiting to be commissioned.
+    def operational? : Bool
+      operational_banner?(log) == true
+    end
+
+    # Restarts the device binary in place (see e2e/device-entrypoint.sh) and
+    # waits until it reports being operational again. chip-tool's state is
+    # untouched, so the device stays commissioned and later commands reuse the
+    # existing fabric over a new CASE session.
+    def restart! : Nil
+      @restart_offset = File.exists?(log_path) ? File.size(log_path) : 0_i64
+      File.write(restart_marker_path, "")
+
+      deadline = Time.instant + RESTART_TIMEOUT
+      loop do
+        output = restart_log
+        if index = output.index(RESTART_BANNER)
+          restarted = output[index..]
+          case operational_banner?(restarted)
+          when true
+            sleep RESTART_SETTLE
+            return
+          when false
+            raise RestartError.new("#{name}: came back in commissioning mode after a restart\n#{restarted}")
+          end
+        end
+        if Time.instant > deadline
+          raise RestartError.new("#{name}: not operational #{RESTART_TIMEOUT.total_seconds.to_i}s after requesting a restart via #{restart_marker_path}\n#{log_tail}")
+        end
+        sleep LOG_POLL
+      end
+    end
+
+    # true/false for the last mode banner in `text`, nil when there is none.
+    private def operational_banner?(text : String) : Bool?
+      mode = nil
+      text.scan(MODE_BANNER_RE) { |match| mode = match[1] }
+      mode.try(&.downcase.==("operational"))
     end
 
     # The device container's address (chip-tool only speaks IPv6).
@@ -226,7 +309,9 @@ module E2E
 
       result = E2E.run(args, storage_dir)
       unless result.success? && result.output.includes?("Device commissioning completed with success")
-        raise(@commissioning_error = CommissioningError.new("#{name}: commissioning failed\n#{result}"))
+        error = CommissioningError.new("#{name}: commissioning failed\n#{result}")
+        @commissioning_error = error
+        raise error
       end
       @commissioned = true
     rescue ex : CommissioningError

@@ -50,46 +50,6 @@ describe Matter::Transport::Exchange do
 
       exchange.state.should eq(Matter::Transport::Exchange::State::Closed)
     end
-
-    it "clears pending message" do
-      exchange = Matter::Transport::Exchange.new(
-        exchange_id: 1_u16,
-        protocol_id: 0_u16,
-        session_id: 100_u16,
-        initiator: true
-      )
-
-      # Create a mock message
-      # No source or destination node IDs, so flags is just version bits
-      flags = 0_u8
-      packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
-        session_id: 100_u16,
-        session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
-        message_id: 1_u32,
-        privacy_enhancements: false,
-        control_message: false,
-        message_extensions: false,
-        flags: flags,
-        security_flags: 0_u8
-      )
-      payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(
-        exchange_id: 1_u16,
-        protocol_id: 0_u16,
-        message_type: 1_u8,
-        initiator_message: true,
-        requires_acknowledge: true
-      )
-      message = Matter::Codec::MessageCodec::Message.new(
-        packet_header: packet_header,
-        payload_header: payload_header,
-        payload: Bytes.new(0)
-      )
-
-      exchange.pending_message = message
-      exchange.close
-
-      exchange.needs_retransmit?.should be_nil
-    end
   end
 
   describe "#fail" do
@@ -107,8 +67,8 @@ describe Matter::Transport::Exchange do
     end
   end
 
-  describe "retransmission logic" do
-    it "does not retransmit immediately" do
+  describe "#stale?" do
+    it "is fresh while active and recently used" do
       exchange = Matter::Transport::Exchange.new(
         exchange_id: 1_u16,
         protocol_id: 0_u16,
@@ -116,39 +76,10 @@ describe Matter::Transport::Exchange do
         initiator: true
       )
 
-      # Create and set pending message
-      # No source or destination node IDs, so flags is just version bits
-      flags = 0_u8
-      packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
-        session_id: 100_u16,
-        session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
-        message_id: 1_u32,
-        privacy_enhancements: false,
-        control_message: false,
-        message_extensions: false,
-        flags: flags,
-        security_flags: 0_u8
-      )
-      payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(
-        exchange_id: 1_u16,
-        protocol_id: 0_u16,
-        message_type: 1_u8,
-        initiator_message: true,
-        requires_acknowledge: true
-      )
-      message = Matter::Codec::MessageCodec::Message.new(
-        packet_header: packet_header,
-        payload_header: payload_header,
-        payload: Bytes.new(0)
-      )
-
-      exchange.pending_message = message
-
-      # Should not need retransmit immediately
-      exchange.needs_retransmit?.should be_nil
+      exchange.stale?.should be_false
     end
 
-    it "retransmits after timeout" do
+    it "goes stale once idle for longer than the idle timeout" do
       exchange = Matter::Transport::Exchange.new(
         exchange_id: 1_u16,
         protocol_id: 0_u16,
@@ -156,44 +87,12 @@ describe Matter::Transport::Exchange do
         initiator: true
       )
 
-      # Create and set pending message
-      # No source or destination node IDs, so flags is just version bits
-      flags = 0_u8
-      packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
-        session_id: 100_u16,
-        session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
-        message_id: 1_u32,
-        privacy_enhancements: false,
-        control_message: false,
-        message_extensions: false,
-        flags: flags,
-        security_flags: 0_u8
-      )
-      payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(
-        exchange_id: 1_u16,
-        protocol_id: 0_u16,
-        message_type: 1_u8,
-        initiator_message: true,
-        requires_acknowledge: true
-      )
-      message = Matter::Codec::MessageCodec::Message.new(
-        packet_header: packet_header,
-        payload_header: payload_header,
-        payload: Bytes.new(0)
-      )
-
-      exchange.pending_message = message
-
-      # Wait for timeout (200ms base timeout)
-      sleep 250.milliseconds
-
-      # Should need retransmit now
-      retransmit_msg = exchange.needs_retransmit?
-      retransmit_msg.should_not be_nil
-      retransmit_msg.as(Matter::Codec::MessageCodec::Message).packet_header.message_id.should eq(1_u32)
+      idle_timeout = Matter::Transport::Exchange::IDLE_TIMEOUT
+      exchange.stale?(Time.utc + idle_timeout - 1.second).should be_false
+      exchange.stale?(Time.utc + idle_timeout + 1.second).should be_true
     end
 
-    it "clears pending message on acknowledgment" do
+    it "is refreshed by traffic" do
       exchange = Matter::Transport::Exchange.new(
         exchange_id: 1_u16,
         protocol_id: 0_u16,
@@ -201,55 +100,22 @@ describe Matter::Transport::Exchange do
         initiator: true
       )
 
-      # Create and set pending message
-      # No source or destination node IDs, so flags is just version bits
-      flags = 0_u8
-      packet_header = Matter::Codec::MessageCodec::PacketHeader.new(
-        session_id: 100_u16,
-        session_type: Matter::Codec::MessageCodec::SessionType::Unicast,
-        message_id: 1_u32,
-        privacy_enhancements: false,
-        control_message: false,
-        message_extensions: false,
-        flags: flags,
-        security_flags: 0_u8
-      )
-      payload_header = Matter::Codec::MessageCodec::PayloadHeader.new(
-        exchange_id: 1_u16,
-        protocol_id: 0_u16,
-        message_type: 1_u8,
-        initiator_message: true,
-        requires_acknowledge: true
-      )
-      message = Matter::Codec::MessageCodec::Message.new(
-        packet_header: packet_header,
-        payload_header: payload_header,
-        payload: Bytes.new(0)
-      )
+      idle_timeout = Matter::Transport::Exchange::IDLE_TIMEOUT
+      later = Time.utc + idle_timeout + 1.second
 
-      exchange.pending_message = message
-      exchange.clear_pending_message
+      Timecop.travel(later) { exchange.touch }
 
-      # Even after timeout, should not retransmit
-      sleep 250.milliseconds
-      exchange.needs_retransmit?.should be_nil
+      exchange.stale?(later).should be_false
     end
-  end
 
-  describe "#touch" do
-    it "updates activity timestamp" do
-      exchange = Matter::Transport::Exchange.new(
-        exchange_id: 1_u16,
-        protocol_id: 0_u16,
-        session_id: 100_u16,
-        initiator: true
-      )
+    it "is stale as soon as it is closed or failed" do
+      closed = Matter::Transport::Exchange.new(1_u16, 0_u16, 100_u16, true)
+      closed.close
+      closed.stale?.should be_true
 
-      sleep 10.milliseconds
-      exchange.touch
-
-      # Activity is recent, so not timed out
-      exchange.timed_out?.should be_false
+      failed = Matter::Transport::Exchange.new(2_u16, 0_u16, 100_u16, true)
+      failed.fail
+      failed.stale?.should be_true
     end
   end
 end
@@ -325,7 +191,7 @@ describe Matter::Transport::ExchangeManager do
       exchange1.should be(exchange2) # Same object
     end
 
-    it "updates activity on existing exchange" do
+    it "updates activity on existing exchange, so traffic keeps it out of the sweep" do
       manager = Matter::Transport::ExchangeManager.new
       peer_address = Socket::IPAddress.new("192.168.1.100", 5540)
 
@@ -336,17 +202,19 @@ describe Matter::Transport::ExchangeManager do
         peer_address: peer_address
       )
 
-      sleep 10.milliseconds
+      later = Time.utc + Matter::Transport::Exchange::IDLE_TIMEOUT + 1.second
+      exchange.stale?(later).should be_true
 
-      # Get again - should touch the exchange
-      manager.get_or_create_exchange(
-        exchange_id: 42_u16,
-        protocol_id: 0_u16,
-        session_id: 100_u16,
-        peer_address: peer_address
-      )
+      Timecop.travel(later) do
+        manager.get_or_create_exchange(
+          exchange_id: 42_u16,
+          protocol_id: 0_u16,
+          session_id: 100_u16,
+          peer_address: peer_address
+        )
+      end
 
-      exchange.timed_out?.should be_false
+      exchange.stale?(later).should be_false
     end
   end
 
@@ -412,19 +280,33 @@ describe Matter::Transport::ExchangeManager do
   end
 
   describe "#cleanup_stale_exchanges" do
-    it "removes timed out exchanges" do
+    it "removes failed exchanges" do
       manager = Matter::Transport::ExchangeManager.new
       peer_address = Socket::IPAddress.new("192.168.1.100", 5540)
 
       exchange = manager.create_exchange(0_u16, 100_u16, peer_address)
-      exchange_id = exchange.exchange_id
-
-      # Mark as failed (stale)
       exchange.fail
 
       manager.cleanup_stale_exchanges
 
-      manager.get_exchange(exchange_id).should be_nil
+      manager.get_exchange(exchange.exchange_id).should be_nil
+    end
+
+    it "reclaims idle exchanges so the table cannot grow without bound" do
+      manager = Matter::Transport::ExchangeManager.new
+      peer_address = Socket::IPAddress.new("192.168.1.100", 5540)
+
+      idle = manager.create_exchange(0_u16, 100_u16, peer_address)
+      later = Time.utc + Matter::Transport::Exchange::IDLE_TIMEOUT + 1.second
+
+      # A second exchange that saw traffic just before the sweep survives it.
+      busy = manager.create_exchange(0_u16, 100_u16, peer_address)
+      Timecop.travel(later) { busy.touch }
+
+      manager.cleanup_stale_exchanges(later)
+
+      manager.get_exchange(idle.exchange_id).should be_nil
+      manager.get_exchange(busy.exchange_id).should_not be_nil
     end
   end
 end

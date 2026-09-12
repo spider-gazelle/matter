@@ -1,5 +1,5 @@
 require "../spec_helper"
-require "../../src/matter/cluster/window_covering_cluster"
+require "../../src/matter/cluster/window_covering"
 
 # Ported concepts from matter.js cluster mutation tests:
 # - ClusterTypeTest.ts
@@ -15,9 +15,8 @@ describe "Cluster Composition" do
   describe "feature-based element composition" do
     describe "WindowCovering with different feature sets" do
       it "includes Lift attributes when Lift feature is enabled" do
-        cluster = Matter::Cluster::WindowCoveringCluster.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-          feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift
+        cluster = build(Matter::Cluster::WindowCovering,
+          feature_map: Matter::Cluster::WindowCovering::Feature::Lift
         )
 
         attr_names = cluster.attributes.map(&.name)
@@ -31,10 +30,9 @@ describe "Cluster Composition" do
       end
 
       it "includes PositionAwareLift attributes when both Lift and PositionAwareLift enabled" do
-        cluster = Matter::Cluster::WindowCoveringCluster.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-          feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift |
-                       Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareLift
+        cluster = build(Matter::Cluster::WindowCovering,
+          feature_map: Matter::Cluster::WindowCovering::Feature::Lift |
+                       Matter::Cluster::WindowCovering::Feature::PositionAwareLift
         )
 
         attr_names = cluster.attributes.map(&.name)
@@ -46,9 +44,8 @@ describe "Cluster Composition" do
       end
 
       it "includes Tilt attributes when Tilt feature is enabled" do
-        cluster = Matter::Cluster::WindowCoveringCluster.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-          feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Tilt
+        cluster = build(Matter::Cluster::WindowCovering,
+          feature_map: Matter::Cluster::WindowCovering::Feature::Tilt
         )
 
         attr_names = cluster.attributes.map(&.name)
@@ -61,10 +58,9 @@ describe "Cluster Composition" do
       end
 
       it "includes PositionAwareTilt attributes when both Tilt and PositionAwareTilt enabled" do
-        cluster = Matter::Cluster::WindowCoveringCluster.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-          feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Tilt |
-                       Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareTilt
+        cluster = build(Matter::Cluster::WindowCovering,
+          feature_map: Matter::Cluster::WindowCovering::Feature::Tilt |
+                       Matter::Cluster::WindowCovering::Feature::PositionAwareTilt
         )
 
         attr_names = cluster.attributes.map(&.name)
@@ -76,10 +72,9 @@ describe "Cluster Composition" do
       end
 
       it "includes both Lift and Tilt attributes when both features enabled" do
-        cluster = Matter::Cluster::WindowCoveringCluster.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-          feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift |
-                       Matter::Cluster::WindowCoveringCluster::Feature::Tilt
+        cluster = build(Matter::Cluster::WindowCovering,
+          feature_map: Matter::Cluster::WindowCovering::Feature::Lift |
+                       Matter::Cluster::WindowCovering::Feature::Tilt
         )
 
         attr_names = cluster.attributes.map(&.name)
@@ -92,10 +87,9 @@ describe "Cluster Composition" do
 
     describe "command composition based on features" do
       it "includes goToLiftPercentage when Lift + PositionAwareLift enabled" do
-        cluster = Matter::Cluster::WindowCoveringCluster.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-          feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift |
-                       Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareLift
+        cluster = build(Matter::Cluster::WindowCovering,
+          feature_map: Matter::Cluster::WindowCovering::Feature::Lift |
+                       Matter::Cluster::WindowCovering::Feature::PositionAwareLift
         )
 
         cmd_names = cluster.commands.map(&.name)
@@ -103,9 +97,8 @@ describe "Cluster Composition" do
       end
 
       it "excludes goToLiftPercentage when only Lift enabled (no PositionAwareLift)" do
-        cluster = Matter::Cluster::WindowCoveringCluster.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-          feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift
+        cluster = build(Matter::Cluster::WindowCovering,
+          feature_map: Matter::Cluster::WindowCovering::Feature::Lift
         )
 
         cmd_names = cluster.commands.map(&.name)
@@ -113,10 +106,9 @@ describe "Cluster Composition" do
       end
 
       it "includes goToTiltPercentage when Tilt + PositionAwareTilt enabled" do
-        cluster = Matter::Cluster::WindowCoveringCluster.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-          feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Tilt |
-                       Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareTilt
+        cluster = build(Matter::Cluster::WindowCovering,
+          feature_map: Matter::Cluster::WindowCovering::Feature::Tilt |
+                       Matter::Cluster::WindowCovering::Feature::PositionAwareTilt
         )
 
         cmd_names = cluster.commands.map(&.name)
@@ -124,9 +116,8 @@ describe "Cluster Composition" do
       end
 
       it "excludes goToTiltPercentage when only Tilt enabled (no PositionAwareTilt)" do
-        cluster = Matter::Cluster::WindowCoveringCluster.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-          feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Tilt
+        cluster = build(Matter::Cluster::WindowCovering,
+          feature_map: Matter::Cluster::WindowCovering::Feature::Tilt
         )
 
         cmd_names = cluster.commands.map(&.name)
@@ -135,9 +126,8 @@ describe "Cluster Composition" do
 
       it "always includes base commands regardless of features" do
         # With minimal features
-        cluster = Matter::Cluster::WindowCoveringCluster.new(
-          endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-          feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift
+        cluster = build(Matter::Cluster::WindowCovering,
+          feature_map: Matter::Cluster::WindowCovering::Feature::Lift
         )
 
         cmd_names = cluster.commands.map(&.name)
@@ -154,10 +144,9 @@ describe "Cluster Composition" do
     it "marks feature-dependent attributes as optional when feature not enabled" do
       # When only Lift is enabled, lift-specific attributes are present
       # but position-aware attributes are not (they require PositionAwareLift)
-      cluster = Matter::Cluster::WindowCoveringCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-        feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift |
-                     Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareLift
+      cluster = build(Matter::Cluster::WindowCovering,
+        feature_map: Matter::Cluster::WindowCovering::Feature::Lift |
+                     Matter::Cluster::WindowCovering::Feature::PositionAwareLift
       )
 
       attrs = cluster.attributes
@@ -174,10 +163,9 @@ describe "Cluster Composition" do
     end
 
     it "marks commands as mandatory when required by feature combination" do
-      cluster = Matter::Cluster::WindowCoveringCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-        feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift |
-                     Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareLift
+      cluster = build(Matter::Cluster::WindowCovering,
+        feature_map: Matter::Cluster::WindowCovering::Feature::Lift |
+                     Matter::Cluster::WindowCovering::Feature::PositionAwareLift
       )
 
       cmds = cluster.commands
@@ -193,9 +181,7 @@ describe "Cluster Composition" do
     end
 
     it "marks fixed attributes correctly" do
-      cluster = Matter::Cluster::WindowCoveringCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16)
-      )
+      cluster = build(Matter::Cluster::WindowCovering)
 
       attrs = cluster.attributes
       attr_map = attrs.index_by(&.name)
@@ -212,64 +198,54 @@ describe "Cluster Composition" do
 
   describe "feature flag behavior" do
     it "feature_map correctly reflects enabled features" do
-      cluster = Matter::Cluster::WindowCoveringCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-        feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift |
-                     Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareLift
+      cluster = build(Matter::Cluster::WindowCovering,
+        feature_map: Matter::Cluster::WindowCovering::Feature::Lift |
+                     Matter::Cluster::WindowCovering::Feature::PositionAwareLift
       )
 
       # Check individual feature bits
-      (cluster.feature_map & Matter::Cluster::WindowCoveringCluster::Feature::Lift).should_not eq(Matter::Cluster::WindowCoveringCluster::Feature::None)
-      (cluster.feature_map & Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareLift).should_not eq(Matter::Cluster::WindowCoveringCluster::Feature::None)
-      (cluster.feature_map & Matter::Cluster::WindowCoveringCluster::Feature::Tilt).should eq(Matter::Cluster::WindowCoveringCluster::Feature::None)
+      (cluster.feature_map & Matter::Cluster::WindowCovering::Feature::Lift).should_not eq(Matter::Cluster::WindowCovering::Feature::None)
+      (cluster.feature_map & Matter::Cluster::WindowCovering::Feature::PositionAwareLift).should_not eq(Matter::Cluster::WindowCovering::Feature::None)
+      (cluster.feature_map & Matter::Cluster::WindowCovering::Feature::Tilt).should eq(Matter::Cluster::WindowCovering::Feature::None)
     end
 
     it "default feature map provides sensible defaults" do
-      cluster = Matter::Cluster::WindowCoveringCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16)
-      )
+      cluster = build(Matter::Cluster::WindowCovering)
 
       # Default is Lift + PositionAwareLift
       cluster.feature_map.should eq(
-        Matter::Cluster::WindowCoveringCluster::Feature::Lift |
-        Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareLift
+        Matter::Cluster::WindowCovering::Feature::Lift |
+        Matter::Cluster::WindowCovering::Feature::PositionAwareLift
       )
     end
 
     it "feature map is readable via attribute" do
-      cluster = Matter::Cluster::WindowCoveringCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-        feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Tilt |
-                     Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareTilt
+      cluster = build(Matter::Cluster::WindowCovering,
+        feature_map: Matter::Cluster::WindowCovering::Feature::Tilt |
+                     Matter::Cluster::WindowCovering::Feature::PositionAwareTilt
       )
 
-      result = cluster.read_attribute(Matter::Cluster::WindowCoveringCluster::FEATURE_MAP)
-      result.should be_a(Bytes)
-
       # Tilt (0x02) | PositionAwareTilt (0x10) = 0x12
-      decode_tlv_value(result.as(Bytes)).should eq(0x12)
+      read(cluster, Matter::Cluster::Base::GLOBAL_FEATURE_MAP).should eq(0x12)
     end
   end
 
   describe "element count varies by feature" do
     it "has more attributes with more features enabled" do
-      lift_only = Matter::Cluster::WindowCoveringCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-        feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift
+      lift_only = build(Matter::Cluster::WindowCovering,
+        feature_map: Matter::Cluster::WindowCovering::Feature::Lift
       )
 
-      lift_with_position = Matter::Cluster::WindowCoveringCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-        feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift |
-                     Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareLift
+      lift_with_position = build(Matter::Cluster::WindowCovering,
+        feature_map: Matter::Cluster::WindowCovering::Feature::Lift |
+                     Matter::Cluster::WindowCovering::Feature::PositionAwareLift
       )
 
-      all_features = Matter::Cluster::WindowCoveringCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-        feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift |
-                     Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareLift |
-                     Matter::Cluster::WindowCoveringCluster::Feature::Tilt |
-                     Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareTilt
+      all_features = build(Matter::Cluster::WindowCovering,
+        feature_map: Matter::Cluster::WindowCovering::Feature::Lift |
+                     Matter::Cluster::WindowCovering::Feature::PositionAwareLift |
+                     Matter::Cluster::WindowCovering::Feature::Tilt |
+                     Matter::Cluster::WindowCovering::Feature::PositionAwareTilt
       )
 
       # More features = more attributes
@@ -278,15 +254,13 @@ describe "Cluster Composition" do
     end
 
     it "has more commands with position-aware features" do
-      lift_only = Matter::Cluster::WindowCoveringCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-        feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift
+      lift_only = build(Matter::Cluster::WindowCovering,
+        feature_map: Matter::Cluster::WindowCovering::Feature::Lift
       )
 
-      lift_with_position = Matter::Cluster::WindowCoveringCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-        feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift |
-                     Matter::Cluster::WindowCoveringCluster::Feature::PositionAwareLift
+      lift_with_position = build(Matter::Cluster::WindowCovering,
+        feature_map: Matter::Cluster::WindowCovering::Feature::Lift |
+                     Matter::Cluster::WindowCovering::Feature::PositionAwareLift
       )
 
       # Position-aware adds goToLiftPercentage command
@@ -297,9 +271,8 @@ describe "Cluster Composition" do
   describe "base attributes always present" do
     it "includes mandatory base attributes regardless of features" do
       # Even with minimal features, base attributes are present
-      cluster = Matter::Cluster::WindowCoveringCluster.new(
-        endpoint_id: Matter::DataType::EndpointNumber.new(1_u16),
-        feature_map: Matter::Cluster::WindowCoveringCluster::Feature::Lift
+      cluster = build(Matter::Cluster::WindowCovering,
+        feature_map: Matter::Cluster::WindowCovering::Feature::Lift
       )
 
       attr_names = cluster.attributes.map(&.name)
@@ -310,7 +283,7 @@ describe "Cluster Composition" do
       attr_names.includes?("operationalStatus").should be_true
       attr_names.includes?("endProductType").should be_true
       attr_names.includes?("mode").should be_true
-      attr_names.includes?("featureMap").should be_true
+      read(cluster, Matter::Cluster::Base::GLOBAL_FEATURE_MAP).should eq(Matter::Cluster::WindowCovering::Feature::Lift.value)
     end
   end
 end

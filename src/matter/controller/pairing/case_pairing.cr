@@ -14,7 +14,7 @@ module Matter
   module Controller
     module Pairing
       class CasePairing
-        Log = ::Log.for("matter.controller.pairing.case")
+        Log = ::Log.for("matter.controller.pairing.case_pairing")
 
         MSG_CASE_SIGMA1   = 0x30_u8
         MSG_CASE_SIGMA2   = 0x31_u8
@@ -80,7 +80,7 @@ module Matter
           )
 
           sigma2 = client.wait_for(exchange_id, Client::PROTOCOL_SECURE_CHANNEL, MSG_CASE_SIGMA2, timeout)
-          raise "CASE: timeout waiting for Sigma2" unless sigma2
+          raise Matter::TimeoutError.new("CASE: timeout waiting for Sigma2") unless sigma2
 
           sigma2_msg = Session::Case::Definitions::Sigma2.from_slice(sigma2.message.payload.to_slice)
           sigma2_bytes = sigma2.message.payload.to_slice
@@ -140,11 +140,11 @@ module Matter
           )
 
           status = client.wait_for(exchange_id, Client::PROTOCOL_SECURE_CHANNEL, MSG_STATUS_REPORT, timeout)
-          raise "CASE: timeout waiting for StatusReport" unless status
+          raise Matter::TimeoutError.new("CASE: timeout waiting for StatusReport") unless status
 
           report = Session::Pase::Definitions::StatusReport.from_bytes(status.message.payload.to_slice)
           unless report.general_status == 0_u16 && report.protocol_status == 0_u16
-            raise "CASE: status report failure (general_status=#{report.general_status} protocol_status=#{report.protocol_status})"
+            raise Matter::ProtocolError.new("CASE: status report failure (general_status=#{report.general_status} protocol_status=#{report.protocol_status})")
           end
 
           session_hash = @crypto.compute_sha256(sigma1_bytes + sigma2_bytes + sigma3_bytes)
@@ -212,7 +212,7 @@ module Matter
 
           @crypto.verify_ecdsa(public_key, signed_data.to_slice, encrypted_data2.signature)
         rescue ex
-          raise "CASE: Sigma2 signature verification failed: #{ex.message}"
+          raise Matter::AuthenticationError.new("CASE: Sigma2 signature verification failed: #{ex.message}", cause: ex)
         end
       end
     end

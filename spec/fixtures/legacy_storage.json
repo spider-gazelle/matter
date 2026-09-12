@@ -1,0 +1,36 @@
+{
+  "device_identity": {
+    "commissioning_hostname": "0123456789ABCDEF.local",
+    "serial_number": "ABCDEF0123456789",
+    "unique_id": "00112233445566778899aabbccddeeff"
+  },
+  "fabrics": {
+    "fabric_table": "{\"1\":{\"fabric_id\":14250677199893128768,\"fabric_index\":1,\"node_id\":5000000001,\"root_public_key\":\"BAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=\",\"operational_cert\":\"MDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWVw==\",\"operational_key\":\"UFFSU1RVVldYWVpbXF1eX2BhYmNkZWZnaGlqa2xtbm8=\",\"operational_public_key\":\"BICBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8=\",\"ipk\":\"EBESExQVFhcYGRobHB0eHw==\",\"vendor_id\":65521,\"label\":\"Home\",\"intermediate_cert\":\"\",\"root_cert\":\"cHFyc3R1dnd4eXp7fH1+f4CBgoOEhYaH\",\"created_at\":1757462400,\"last_used_at\":1757466000,\"cats\":\"1234abcd,00000001\"},\"2\":{\"fabric_id\":4660,\"fabric_index\":2,\"node_id\":42,\"root_public_key\":\"BEBBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8=\",\"operational_cert\":\"oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr/AwcLDxMXGxw==\",\"operational_key\":\"wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t8=\",\"operational_public_key\":\"BCAhIiMkJSYnKCkqKywtLi8wMTIzNDU2Nzg5Ojs8PT4/QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8=\",\"ipk\":\"kJGSk5SVlpeYmZqbnJ2enw==\",\"vendor_id\":4939,\"label\":\"\",\"intermediate_cert\":\"\",\"root_cert\":\"\",\"created_at\":1757000000,\"last_used_at\":1757000000,\"cats\":\"\"}}"
+  },
+  "protocol": {
+    "case_sessions": "{\"100\":{\"session_id\":100,\"peer_session_id\":200,\"session_type\":1,\"encryption_key\":\"0102030405060708090a0b0c0d0e0f10\",\"decryption_key\":\"2122232425262728292a2b2c2d2e2f30\",\"is_initiator\":false,\"is_case\":true,\"local_message_counter\":123456,\"peer_message_counter\":654321,\"has_peer_message_counter\":true,\"creation_time\":1757462500,\"last_activity_time\":1757466100,\"peer_node_id\":112233,\"local_node_id\":5000000001,\"attestation_challenge\":\"4142434445464748494a4b4c4d4e4f50\",\"fabric_index\":1},\"101\":{\"session_id\":101,\"peer_session_id\":7,\"session_type\":0,\"encryption_key\":\"6162636465666768696a6b6c6d6e6f70\",\"decryption_key\":\"8182838485868788898a8b8c8d8e8f90\",\"is_initiator\":true,\"is_case\":false,\"local_message_counter\":99,\"peer_message_counter\":0,\"has_peer_message_counter\":false,\"creation_time\":1757462600,\"last_activity_time\":1757462600}}",
+    "active_subscriptions": "{\"1\":{\"subscription_id\":1,\"min_interval\":0,\"max_interval\":60,\"peer_address\":\"fe80::1\",\"peer_port\":5540,\"session_id\":100,\"next_exchange_id\":4097,\"last_report_time\":1757466200,\"attribute_paths\":[{\"endpoint\":null,\"cluster\":6,\"attribute\":null,\"list_index\":null}]},\"3\":{\"subscription_id\":3,\"min_interval\":1,\"max_interval\":30,\"peer_address\":\"192.168.1.20\",\"peer_port\":5541,\"session_id\":100,\"exchange_id\":12,\"last_report_time\":1757466300,\"attribute_paths\":[{\"endpoint\":1,\"cluster\":8,\"attribute\":0,\"list_index\":null}]}}",
+    "next_subscription_id": 4
+  },
+  "cluster_state": {
+    "endpoint_0_cluster_40": "{\"node_label\":\"Crystal Light\",\"location\":\"AU\",\"local_config_disabled\":false,\"data_version\":3}",
+    "endpoint_0_cluster_31": "{\"data_version\":2,\"acl\":[{\"privilege\":5,\"auth_mode\":2,\"subjects\":[112233],\"targets\":null,\"fabric_index\":1},{\"privilege\":3,\"auth_mode\":2,\"subjects\":[445566,18446744073709551615],\"targets\":[{\"cluster\":6,\"endpoint\":1,\"device_type\":null}],\"fabric_index\":2}],\"extension\":[{\"data_hex\":\"15360118\",\"fabric_index\":1}]}",
+    "endpoint_0_cluster_63": "{\"data_version\":1,\"key_sets\":{\"1\":[{\"group_key_set_id\":1,\"group_key_security_policy\":0,\"epoch_key0\":\"d0d1d2d3d4d5d6d7d8d9dadbdcdddedf\",\"epoch_start_time0\":1757462400000000,\"epoch_key1\":\"e0e1e2e3e4e5e6e7e8e9eaebecedeeef\",\"epoch_start_time1\":1757466000000000,\"epoch_key2\":null,\"epoch_start_time2\":null,\"group_key_multicast_policy\":0}]},\"group_key_map\":[{\"group_id\":257,\"group_key_set_id\":1,\"fabric_index\":1}],\"group_table\":[{\"group_id\":257,\"endpoints\":[1],\"group_name\":\"Kitchen\",\"fabric_index\":1}]}",
+    "endpoint_0_cluster_65": "[{\"label\":\"room\",\"value\":\"kitchen\"},{\"label\":\"floor\",\"value\":\"1\"}]",
+    "endpoint_1_cluster_6": "{\"on_off\":true,\"global_scene_control\":true,\"on_time\":0,\"off_wait_time\":0,\"start_up_on_off\":2,\"data_version\":5}",
+    "endpoint_1_cluster_8": "{\"current_level\":128,\"min_level\":1,\"max_level\":254,\"on_level\":null,\"options\":1,\"remaining_time\":0,\"on_off_transition_time\":10,\"on_transition_time\":null,\"off_transition_time\":5,\"default_move_rate\":50,\"start_up_current_level\":null,\"current_frequency\":0,\"min_frequency\":0,\"max_frequency\":0,\"data_version\":7}",
+    "endpoint_1_cluster_4": "{\"groups\":{\"257\":\"Kitchen\",\"258\":\"\"},\"data_version\":1}",
+    "endpoint_1_cluster_98": "{\"scenes\":[[{\"fabric_index\":1,\"group_id\":257,\"scene_id\":1},{\"transition_time\":1000,\"scene_name\":\"Evening\",\"extension_field_sets\":[{\"cluster_id\":6,\"attributes\":[[0,\"0901\"]]},{\"cluster_id\":8,\"attributes\":[[0,\"0480\"],[17,\"0400\"]]}]}]],\"fabric_scene_info\":{\"1\":{\"scene_count\":1,\"current_scene\":1,\"current_group\":257,\"scene_valid\":true,\"remaining_capacity\":15,\"fabric_index\":1}},\"data_version\":2}",
+    "endpoint_2_cluster_57": "{\"node_label\":\"Lamp\",\"reachable\":true,\"data_version\":1}"
+  },
+  "bridge": {
+    "bridged_devices": "{\"devices\":[{\"endpoint_id\":2,\"name\":\"Lamp\",\"unique_id\":\"lamp-0001\"}],\"device_counter\":1}"
+  },
+  "custom": {
+    "note": "kept verbatim",
+    "blob": {
+      "__type__": "bytes",
+      "value": "AQID"
+    }
+  }
+}

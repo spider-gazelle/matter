@@ -38,7 +38,7 @@ module ChipTool
 
           node_id = parse_u64(node_id_str) || raise ArgumentError.new("invalid node-id: #{node_id_str}")
 
-          store = Matter::Controller::StateStore.new(ctx.storage_directory)
+          store = ctx.state_store
           state = store.load
           controller = Matter::Controller::Client.new(
             unsecured_source_node_id: state.commissioner_node_id,
@@ -79,9 +79,9 @@ module ChipTool
           iterations = iteration_str.to_u32
           discriminator = discriminator_str.to_u16
 
-          store = Matter::Controller::StateStore.new(ctx.storage_directory)
+          store = ctx.state_store
           state = store.load
-          fabric = state.fabric || raise "No controller fabric found; run `pairing code ...` first"
+          fabric = state.fabric || raise Matter::CommissioningError.new("No controller fabric found; run `pairing code ...` first")
 
           peer = resolve_peer(state, fabric, node_id, ctx.timeout)
           state.nodes[node_id] = Matter::Controller::NodeInfo.new(node_id, peer.address, peer.port)
@@ -97,18 +97,18 @@ module ChipTool
 
             case option
             when 0
-              request = Matter::Cluster::Definitions::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(window_timeout)
+              request = Matter::Cluster::AdministratorCommissioning::OpenBasicCommissioningWindowRequest.new(window_timeout)
               resp = im.invoke(
                 session: session,
                 peer: peer,
                 endpoint_id: 0_u16,
-                cluster_id: Matter::Cluster::AdministratorCommissioningCluster::CLUSTER_ID,
-                command_id: Matter::Cluster::AdministratorCommissioningCluster::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
+                cluster_id: Matter::Cluster::AdministratorCommissioning::CLUSTER_ID,
+                command_id: Matter::Cluster::AdministratorCommissioning::CMD_OPEN_BASIC_COMMISSIONING_WINDOW,
                 fields: request.to_slice
               )
               if status = resp.invoke_responses.first?.try(&.command_status).try(&.status)
                 unless status.status == Matter::InteractionModel::StatusCode::Success.value
-                  raise "OpenBasicCommissioningWindow failed (status=#{status.status})"
+                  raise Matter::ClusterError.from_wire("OpenBasicCommissioningWindow failed (status=#{status.status})", status.status, status.cluster_status)
                 end
               end
               puts "OpenBasicCommissioningWindow: OK"
@@ -140,7 +140,7 @@ module ChipTool
 
       private def parse_u64(s : String) : UInt64?
         v = s.strip
-        return nil if v.empty?
+        return if v.empty?
         if v.starts_with?("0x") || v.starts_with?("0X")
           v[2..].to_u64?(16)
         else
@@ -155,8 +155,8 @@ module ChipTool
           end
         end
 
-        scanner = nil.as(Matter::MDNS::Scanner?)
-        scanner = Matter::MDNS::Scanner.new
+        scanner = nil.as(Matter::Controller::Scanner?)
+        scanner = Matter::Controller::Scanner.new
         scanner.start
         scanner.query_operational
 
@@ -172,7 +172,7 @@ module ChipTool
           sleep 100.milliseconds
         end
 
-        raise "Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})"
+        raise Matter::TransportError.new("Failed to resolve operational address via mDNS (fabric_id=0x#{fabric.fabric_id.to_s(16)} node_id=0x#{node_id.to_s(16)})")
       ensure
         scanner.try(&.close)
       end

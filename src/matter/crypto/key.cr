@@ -4,8 +4,12 @@ require "base64"
 
 module Matter
   module Crypto
-    # ECDSA P-256 constants (prime256v1)
+    # ECDSA P-256 constants. The two OpenSSL APIs disagree on the spelling:
+    # `generate_by_curve_name` wants the short name, while `from_private_bytes`
+    # and `from_public_bytes` want the NIST name and raise "unknown NIST curve"
+    # for anything else.
     CRYPTO_EC_CURVE        = "prime256v1"
+    CRYPTO_EC_CURVE_NIST   = "P-256"
     CRYPTO_EC_KEY_BYTES    = 32
     CRYPTO_AUTH_TAG_LENGTH = 16
 
@@ -95,7 +99,7 @@ module Matter
       def public_bits : Bytes?
         x = @x_bits
         y = @y_bits
-        return nil unless x && y
+        return unless x && y
 
         io = IO::Memory.new
         io.write_byte(0x04_u8) # Uncompressed point indicator
@@ -109,13 +113,13 @@ module Matter
 
         case value[0]
         when 0x02, 0x03
-          raise ArgumentError.new("Unsupported public key compression")
+          raise Matter::CryptoError.new("Unsupported public key compression")
         when 0x04
           # Uncompressed format
         when 0x05
-          raise ArgumentError.new("Illegal public key format specifier")
+          raise Matter::CryptoError.new("Illegal public key format specifier")
         else
-          raise ArgumentError.new("Invalid public key format")
+          raise Matter::CryptoError.new("Invalid public key format")
         end
 
         coordinate_length = (value.size - 1) // 2
@@ -130,7 +134,7 @@ module Matter
       def key_pair_bits : BinaryKeyPair?
         pub = public_bits
         priv = @private_bits
-        return nil unless pub && priv
+        return unless pub && priv
 
         BinaryKeyPair.new(pub, priv)
       end
@@ -142,15 +146,15 @@ module Matter
 
       # Asserted accessors that raise if not present
       def public_key : Bytes
-        public_bits || raise ArgumentError.new("Public key not defined")
+        public_bits || raise Matter::CryptoError.new("Public key not defined")
       end
 
       def private_key : Bytes
-        @private_bits || raise ArgumentError.new("Private key not defined")
+        @private_bits || raise Matter::CryptoError.new("Private key not defined")
       end
 
       def key_pair : BinaryKeyPair
-        key_pair_bits || raise ArgumentError.new("Complete key pair not defined")
+        key_pair_bits || raise Matter::CryptoError.new("Complete key pair not defined")
       end
 
       # Import PKCS#8 private key
@@ -254,7 +258,7 @@ module Matter
         end
 
         # Fallback for unexpected format
-        raise ArgumentError.new("Could not find private key in DER format")
+        raise Matter::CryptoError.new("Could not find private key in DER format")
       end
 
       # Extract 65-byte uncompressed public key from DER format
@@ -271,7 +275,7 @@ module Matter
         if der.size >= 65
           der[der.size - 65, 65]
         else
-          raise ArgumentError.new("Invalid DER public key size")
+          raise Matter::CryptoError.new("Invalid DER public key size")
         end
       end
 
@@ -283,11 +287,11 @@ module Matter
 
         # Determine curve name from key size
         curve_name = case priv_bytes.size
-                     when 32 then "prime256v1" # P-256
-                     when 48 then "secp384r1"  # P-384
-                     when 66 then "secp521r1"  # P-521
+                     when 32 then CRYPTO_EC_CURVE_NIST
+                     when 48 then "P-384"
+                     when 66 then "P-521"
                      else
-                       raise ArgumentError.new("Unsupported private key size: #{priv_bytes.size}")
+                       raise Matter::CryptoError.new("Unsupported private key size: #{priv_bytes.size}")
                      end
 
         # Create EC keys from raw bytes using new openssl_ext API
@@ -306,7 +310,7 @@ module Matter
                  when 48 then CurveType::P384
                  when 32 then CurveType::P256
                  else
-                   raise ArgumentError.new("Cannot infer curve from key length #{bytes}")
+                   raise Matter::CryptoError.new("Cannot infer curve from key length #{bytes}")
                  end
       end
 
@@ -320,10 +324,9 @@ module Matter
         begin
           # Determine curve name
           curve_name = case @curve
-                       when CurveType::P256 then CRYPTO_EC_CURVE
-                       when CurveType::P384 then "secp384r1"
-                       when CurveType::P521 then "secp521r1"
-                       else                      CRYPTO_EC_CURVE # Default to P-256
+                       when CurveType::P384 then "P-384"
+                       when CurveType::P521 then "P-521"
+                       else                      CRYPTO_EC_CURVE_NIST
                        end
 
           # Use new openssl_ext API to derive public key from private key
@@ -337,9 +340,9 @@ module Matter
             @x_bits = pub_bytes[1, coordinate_length]
             @y_bits = pub_bytes[coordinate_length + 1, coordinate_length]
           end
-        rescue
-          # Silently ignore derivation failures - public key can be set explicitly if needed
-          # This is expected in some environments or when using FIPS mode
+        rescue ex
+          # Expected in some environments (FIPS mode); the public key can be set explicitly.
+          Log.debug(exception: ex) { "Public key derivation from private key failed" }
         end
       end
     end
